@@ -24,7 +24,6 @@ def audit(src_build, logger=None):
 
     for build in src_build.find():
         for num, job in enumerate(build.get("jobs", [])):
-
             if job.get("status") == "in progress":
                 job["status"] = "canceled"
 

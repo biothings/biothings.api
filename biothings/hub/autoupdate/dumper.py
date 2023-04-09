@@ -1,16 +1,17 @@
-import os
-import json
-import re
 import asyncio
-import requests
-from urllib.parse import urlparse, urljoin
+import json
+import os
+import re
 from functools import partial
+from urllib.parse import urljoin, urlparse
+
 import boto3
+import requests
 from requests_aws4auth import AWS4Auth
 
 from biothings import config as btconfig
-from biothings.hub.dataload.dumper import HTTPDumper, DumperException
-from biothings.utils.common import uncompressall, md5sum
+from biothings.hub.dataload.dumper import DumperException, HTTPDumper
+from biothings.utils.common import md5sum, uncompressall
 
 
 class BiothingsDumper(HTTPDumper):
@@ -24,6 +25,7 @@ class BiothingsDumper(HTTPDumper):
     update is available, rules can set so full is preferably used over incremental (size can also
     be considered when selecting the preferred way).
     """
+
     # URL pointing to versions.json file, this is the main entry point
     VERSION_URL = None
 
@@ -35,7 +37,7 @@ class BiothingsDumper(HTTPDumper):
     AUTO_UPLOAD = False
 
     # Optionally, a schedule can be used to automatically check new version
-    #SCHEDULE = "0 9 * * *"
+    # SCHEDULE = "0 9 * * *"
 
     # what backend the dumper should work with. Must be defined before instantiation
     # (can be an instance or a partial() returning an instance)
@@ -65,8 +67,7 @@ class BiothingsDumper(HTTPDumper):
 
             def auth_get(url, *args, **kwargs):
                 if ".s3-website-" in url:
-                    raise DumperException(
-                        "Can't access s3 static website using authentication")
+                    raise DumperException("Can't access s3 static website using authentication")
                 # extract region from URL (reliable ?)
                 pat = re.compile(r"https?://(.*)\.(.*)\.amazonaws.com.*")
                 m = pat.match(url)
@@ -79,18 +80,16 @@ class BiothingsDumper(HTTPDumper):
                         s3client = boto3.client(
                             "s3",
                             aws_access_key_id=self.__class__.AWS_ACCESS_KEY_ID,
-                            aws_secret_access_key=self.__class__.
-                            AWS_SECRET_ACCESS_KEY)
-                        bucket_info = s3client.get_bucket_location(
-                            Bucket=bucket_name)
+                            aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY,
+                        )
+                        bucket_info = s3client.get_bucket_location(Bucket=bucket_name)
                         region = bucket_info["LocationConstraint"]
-                    auth = AWS4Auth(self.__class__.AWS_ACCESS_KEY_ID,
-                                    self.__class__.AWS_SECRET_ACCESS_KEY,
-                                    region, 's3')
+                    auth = AWS4Auth(
+                        self.__class__.AWS_ACCESS_KEY_ID, self.__class__.AWS_SECRET_ACCESS_KEY, region, "s3"
+                    )
                     return self._client.get(url, auth=auth, *args, **kwargs)
                 else:
-                    raise DumperException(
-                        "Couldn't determine s3 region from url '%s'" % url)
+                    raise DumperException(f"Couldn't determine s3 region from url '{url}'")
 
             self.client.get = auth_get
 
@@ -119,6 +118,7 @@ class BiothingsDumper(HTTPDumper):
             'count': 38729977
         }]
         """
+
         async def do():
             cnt = self.target_backend.count()
             return {
@@ -126,7 +126,7 @@ class BiothingsDumper(HTTPDumper):
                 "index": self.target_backend.target_name,
                 "index_alias": self.target_backend.target_alias,
                 "version": self.target_backend.version,
-                "count": cnt
+                "count": cnt,
             }
 
         result = await do()
@@ -144,25 +144,21 @@ class BiothingsDumper(HTTPDumper):
         parsed = urlparse(remoteurl)
         if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
             # accessing diffs controled by auth
-            key = parsed.path.strip(
-                "/")  # s3 key are relative, not / at beginning
+            key = parsed.path.strip("/")  # s3 key are relative, not / at beginning
             # extract bucket name from URL (reliable?)
             pat = re.compile(r"^(.*?)\..*\.amazonaws.com")
             m = pat.match(parsed.netloc)
             if m:
                 bucket_name = m.groups()[0]
             else:
-                raise DumperException(
-                    "Can't extract bucket name from URL '%s'" % remoteurl)
+                raise DumperException(f"Can't extract bucket name from URL '{remoteurl}'")
 
             return self.auth_download(bucket_name, key, localfile, headers)
         else:
             return self.anonymous_download(remoteurl, localfile, headers)
 
     def anonymous_download(self, remoteurl, localfile, headers={}):
-        res = super(BiothingsDumper, self).download(remoteurl,
-                                                    localfile,
-                                                    headers=headers)
+        res = super(BiothingsDumper, self).download(remoteurl, localfile, headers=headers)
         # use S3 metadata to set local mtime
         # we add 1 second to make sure we wouldn't download remoteurl again
         # because remote is older by just a few milliseconds
@@ -173,20 +169,18 @@ class BiothingsDumper(HTTPDumper):
     def auth_download(self, bucket_name, key, localfile, headers={}):
         session = boto3.Session(
             aws_access_key_id=self.__class__.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY)
+            aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY,
+        )
         bucket = session.resource("s3").Bucket(bucket_name)
         res = bucket.download_file(key, localfile)
         return res
 
     def check_compat(self, build_meta):
-        if hasattr(btconfig,
-                   "SKIP_CHECK_COMPAT") and btconfig.SKIP_CHECK_COMPAT:
+        if hasattr(btconfig, "SKIP_CHECK_COMPAT") and btconfig.SKIP_CHECK_COMPAT:
             return
 
         msg = []
-        for version_field in [
-                "app_version", "standalone_version", "biothings_version"
-        ]:
+        for version_field in ["app_version", "standalone_version", "biothings_version"]:
             VERSION_FIELD = version_field.upper()
             version = build_meta.get(version_field)
             assert version is not None, "Version field '%s' is None" % VERSION_FIELD
@@ -201,21 +195,22 @@ class BiothingsDumper(HTTPDumper):
             version = set(version)
             if version == set([None]):
                 raise DumperException(
-                    "Remote data is too old and can't be handled with current app (%s not defined)"
-                    % version_field)
-            versionfromconf = re.sub(
-                r"( \[.*\])", "",
-                getattr(btconfig, VERSION_FIELD).get("branch"))
+                    f"Remote data is too old and can't be handled with current app ({version_field} not defined)"
+                )
+            versionfromconf = re.sub(r"( \[.*\])", "", getattr(btconfig, VERSION_FIELD).get("branch"))
             VERSION = set()
             VERSION.add(versionfromconf)
             found_compat_version = VERSION.intersection(version)
             assert found_compat_version, "Remote data requires %s to be %s, but current app is %s" % (
-                version_field, version, VERSION)
+                version_field,
+                version,
+                VERSION,
+            )
             msg.append("%s=%s:OK" % (version_field, version))
 
     def load_remote_json(self, url):
         res = self.client.get(url, allow_redirects=True)
-        redirect = res.headers.get('x-amz-website-redirect-location')
+        redirect = res.headers.get("x-amz-website-redirect-location")
         if redirect:
             parsed = urlparse(url)
             newurl = parsed._replace(path=redirect)
@@ -231,23 +226,26 @@ class BiothingsDumper(HTTPDumper):
             self.logger.error(res)
             return None
 
-    def compare_remote_local(self, remote_version, local_version,
-                             orig_remote_version, orig_local_version):
+    def compare_remote_local(self, remote_version, local_version, orig_remote_version, orig_local_version):
         # we need have to some data locally. do we already have ?
         if remote_version > local_version:
-            self.logger.info("Remote version '%s' is more recent than local version '%s', download needed" %
-                             (orig_remote_version, orig_local_version))
+            self.logger.info(
+                "Remote version '%s' is more recent than local version '%s', download needed"
+                % (orig_remote_version, orig_local_version)
+            )
             return True
         else:
-            self.logger.info("Remote version '%s' is the same as " % orig_remote_version
-                             + "local version '%s'. " % orig_local_version + "Dump is waiting to be applied")
+            self.logger.info(
+                "Remote version '%s' is the same as " % orig_remote_version
+                + "local version '%s'. " % orig_local_version
+                + "Dump is waiting to be applied"
+            )
             return False
 
     def remote_is_better(self, remotefile, localfile):
         remote_dat = self.load_remote_json(remotefile)
         if not remote_dat:
-            self.logger.info("Couldn't find any build metadata at url '%s'" %
-                             remotefile)
+            self.logger.info("Couldn't find any build metadata at url '%s'", remotefile)
             return False
         orig_remote_version = remote_dat["build_version"]
 
@@ -259,27 +257,34 @@ class BiothingsDumper(HTTPDumper):
         local_version = orig_local_version.split(".")[-1]
         remote_version = orig_remote_version.split(".")[-1]
         if remote_version != orig_remote_version:
-            self.logger.debug("Remote version '%s' converted to '%s' " % (orig_remote_version, remote_version)
-                              + "(version that will be reached once incremental update has been applied)")
+            self.logger.debug(
+                "Remote version '%s' converted to '%s' (version that will be reached once incremental update has been applied)",
+                orig_remote_version,
+                remote_version,
+            )
         if local_version != orig_local_version:
-            self.logger.debug("Local version '%s' converted to '%s' " % (orig_local_version, local_version)
-                              + "(version that had been be reached using incremental update files)")
+            self.logger.debug(
+                "Local version '%s' converted to '%s' (version that had been be reached using incremental update files)",
+                orig_local_version,
+                local_version,
+            )
 
         backend_version = self.target_backend.version
         if backend_version is None:
             self.logger.info("No backend version found")
-            return self.compare_remote_local(remote_version, local_version,
-                                             orig_remote_version,
-                                             orig_local_version)
+            return self.compare_remote_local(
+                remote_version,
+                local_version,
+                orig_remote_version,
+                orig_local_version,
+            )
         elif remote_version > backend_version:
-            self.logger.info("Remote version '%s' is more recent than backend version '%s'" %
-                             (orig_remote_version, backend_version))
-            return self.compare_remote_local(remote_version, local_version,
-                                             orig_remote_version,
-                                             orig_local_version)
+            self.logger.info(
+                "Remote version '%s' is more recent than backend version '%s'", orig_remote_version, backend_version
+            )
+            return self.compare_remote_local(remote_version, local_version, orig_remote_version, orig_local_version)
         else:
-            self.logger.info("Backend version '%s' is up-to-date" %
-                             backend_version)
+            self.logger.info("Backend version '%s' is up-to-date", backend_version)
             return False
 
     def choose_best_version(self, versions):
@@ -294,9 +299,7 @@ class BiothingsDumper(HTTPDumper):
             raise DumperException("No compatible version found")
         preferreds = [v for v in versions if "." in v]
         if preferreds:
-            self.logger.info(
-                "Preferred versions (according to preferences): %s" %
-                preferreds)
+            self.logger.info("Preferred versions (according to preferences): %s", preferreds)
             versions = preferreds
         # we can directly take the max because:
         # - version is a string
@@ -315,25 +318,21 @@ class BiothingsDumper(HTTPDumper):
         the order the updates should be performed.
         """
         avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
-        assert avail_versions[
-            "format"] == "1.0", "versions.json format has changed: %s" % avail_versions[
-                "format"]
+        assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
         if version == "latest":
             version = avail_versions["versions"][-1]["build_version"]
             self.logger.info("Asking for latest version, ie. '%s'" % version)
         self.logger.info(
-            "Find update path to bring data from version '%s' up-to version '%s'"
-            % (backend_version, version))
+            "Find update path to bring data from version '%s' up-to version '%s'", backend_version, version
+        )
         file_url = urljoin(self.base_url, "%s.json" % version)
         build_meta = self.load_remote_json(file_url)
         if not build_meta:
-            raise Exception("Can't get remote build information about version '%s' (url was '%s')" %
-                            (version, file_url))
+            raise Exception(f"Can't get remote build information about version '{version}' (url was '{file_url}')")
         self.check_compat(build_meta)
 
         if build_meta["target_version"] == backend_version:
-            self.logger.info("Backend is up-to-date, version '%s'" %
-                             backend_version)
+            self.logger.info("Backend is up-to-date, version '%s'", backend_version)
             return []
 
         # from older to older, each required_version being compatible with the next target_version
@@ -347,27 +346,24 @@ class BiothingsDumper(HTTPDumper):
             # require_version contains the compatible version for which we can apply the diff
             # let's compare...
             if backend_version == build_meta["require_version"]:
-                self.logger.info("Diff update '%s' requires version '%s', which is compatible with current backend version, download update" %
-                                 (build_meta["build_version"], build_meta["require_version"]))
+                self.logger.info(
+                    "Diff update '%s' requires version '%s', which is compatible with current backend version, download update",
+                    build_meta["build_version"],
+                    build_meta["require_version"],
+                )
             else:
-                self.logger.info("Diff '%s' update requires version '%s'" %
-                                 (build_meta["build_version"],
-                                  build_meta["require_version"]))
+                self.logger.info(
+                    "Diff '%s' update requires version '%s'", build_meta["build_version"], build_meta["require_version"]
+                )
                 self.logger.info("Now looking for a compatible version")
                 # by default we'll check directly the required version
-                compatibles = [
-                    v for v in avail_versions["versions"]
-                    if v["target_version"] == version.split(".")[0]
-                ]
-                self.logger.info(
-                    "Compatible versions from which we can apply this update: %s"
-                    % compatibles)
+                compatibles = [v for v in avail_versions["versions"] if v["target_version"] == version.split(".")[0]]
+                self.logger.info("Compatible versions from which we can apply this update: %s", compatibles)
                 best_version = self.choose_best_version(compatibles)
                 self.logger.info("Best version found: '%s'" % best_version)
                 # keep this version as part of the update path
                 # fill the path from older to newer (no extend or append)
-                path = self.find_update_path(best_version["build_version"],
-                                             backend_version) + path
+                path = self.find_update_path(best_version["build_version"], backend_version) + path
         else:
             # full, just keep it as-is, it's a full (and it's already part of path during init, see above
             pass
@@ -382,19 +378,15 @@ class BiothingsDumper(HTTPDumper):
         # otherwise json file should match version explicitely in current folder.
         version = version == "latest" and self.current_release or version
         try:
-            current_localfile = os.path.join(self.current_data_folder,
-                                             "%s.json" % version)
+            current_localfile = os.path.join(self.current_data_folder, f"{version}.json")
             # check it actually exists (if data folder was deleted by src_dump still refers to
             # this folder, this file won't exist)
             if not os.path.exists(current_localfile):
-                self.logger.error("Local file '%s' doesn't exist" %
-                                  current_localfile)
+                self.logger.error("Local file '%s' doesn't exist", current_localfile)
                 raise FileNotFoundError
             dump_status = self.src_doc.get("download", {}).get("status")
             if dump_status != "success":
-                self.logger.error(
-                    "Found dump information but status is '%s', will ignore current dump"
-                    % dump_status)
+                self.logger.error("Found dump information but status is '%s', will ignore current dump", dump_status)
                 raise TypeError
         except (TypeError, FileNotFoundError):
             # current data folder doesn't even exist
@@ -402,33 +394,25 @@ class BiothingsDumper(HTTPDumper):
         self.logger.info("Local file: %s" % current_localfile)
         self.logger.info("Remote url : %s" % file_url)
         self.logger.info("Force: %s" % force)
-        if force or current_localfile is None or self.remote_is_better(
-                file_url, current_localfile):
+        if force or current_localfile is None or self.remote_is_better(file_url, current_localfile):
             # manually get the diff meta file (ie. not using download() because we don't know the version yet,
             # it's in the diff meta
             build_meta = self.load_remote_json(file_url)
             self.check_compat(build_meta)
             if not build_meta:
-                raise Exception("Can't get remote build information about version '%s' (url was '%s')" %
-                                (version, file_url))
+                raise Exception(f"Can't get remote build information about version '{version}' (url was '{file_url}')")
+
             if build_meta["type"] == "incremental":
                 self.release = build_meta["build_version"]
                 # ok, now we can use download()
                 # we will download it again during the normal process so we can then compare
                 # when we have new data release
-                new_localfile = os.path.join(self.new_data_folder,
-                                             "%s.json" % self.release)
-                self.to_dump.append({
-                    "remote": file_url,
-                    "local": new_localfile
-                })
+                new_localfile = os.path.join(self.new_data_folder, f"{self.release}.json")
+                self.to_dump.append({"remote": file_url, "local": new_localfile})
                 # get base url (used later to get diff files)
                 metadata_url = build_meta["metadata"]["url"]
-                base_url = os.path.dirname(
-                    metadata_url
-                ) + "/"  # "/" or urljoin will remove previous fragment...
-                new_localfile = os.path.join(self.new_data_folder,
-                                             os.path.basename(metadata_url))
+                base_url = os.path.dirname(metadata_url) + "/"  # "/" or urljoin will remove previous fragment...
+                new_localfile = os.path.join(self.new_data_folder, os.path.basename(metadata_url))
                 self.download(metadata_url, new_localfile)
                 metadata = json.load(open(new_localfile))
                 remote_files = metadata["diff"]["files"]
@@ -443,22 +427,14 @@ class BiothingsDumper(HTTPDumper):
                     else:
                         # this is a true URL
                         furl = fname
-                    new_localfile = os.path.join(self.new_data_folder,
-                                                 os.path.basename(fname))
-                    self.to_dump.append({
-                        "remote": furl,
-                        "local": new_localfile
-                    })
+                    new_localfile = os.path.join(self.new_data_folder, os.path.basename(fname))
+                    self.to_dump.append({"remote": furl, "local": new_localfile})
 
             else:
                 # it's a full snapshot release, it always can be applied
                 self.release = build_meta["build_version"]
-                new_localfile = os.path.join(self.new_data_folder,
-                                             "%s.json" % self.release)
-                self.to_dump.append({
-                    "remote": file_url,
-                    "local": new_localfile
-                })
+                new_localfile = os.path.join(self.new_data_folder, "%s.json" % self.release)
+                self.to_dump.append({"remote": file_url, "local": new_localfile})
                 # -------------------------------
                 # TODO review
                 # -------------------------------
@@ -470,10 +446,7 @@ class BiothingsDumper(HTTPDumper):
                     archive_url = build_meta["metadata"]["archive_url"]
                     archive = os.path.basename(archive_url)
                     new_localfile = os.path.join(self.new_data_folder, archive)
-                    self.to_dump.append({
-                        "remote": archive_url,
-                        "local": new_localfile
-                    })
+                    self.to_dump.append({"remote": archive_url, "local": new_localfile})
 
             # unset this one, as it may not be pickelable (next step is "download", which
             # uses different processes and need workers to be pickled)
@@ -484,27 +457,21 @@ class BiothingsDumper(HTTPDumper):
         if not self.release:
             # wasn't set before, means no need to post-process (ie. up-to-date, already done)
             return
-        build_meta = json.load(
-            open(os.path.join(self.new_data_folder, "%s.json" % self.release)))
+        build_meta = json.load(open(os.path.join(self.new_data_folder, f"{self.release}.json")))
         if build_meta["type"] == "incremental":
-            self.logger.info("Checking md5sum for files in '%s'" %
-                             self.new_data_folder)
-            metadata = json.load(
-                open(os.path.join(self.new_data_folder, "metadata.json")))
+            self.logger.info("Checking md5sum for files in '%s'" % self.new_data_folder)
+            metadata = json.load(open(os.path.join(self.new_data_folder, "metadata.json")))
             for md5_fname in metadata["diff"]["files"]:
                 spec_md5 = md5_fname["md5sum"]
                 fname = md5_fname["name"]
                 compute_md5 = md5sum(os.path.join(self.new_data_folder, fname))
                 if compute_md5 != spec_md5:
-                    self.logger.error(
-                        "md5 check failed for file '%s', it may be corrupted" %
-                        fname)
-                    e = DumperException("Bad md5sum for file '%s'" % fname)
+                    self.logger.error("md5 check failed for file '%s', it may be corrupted", fname)
+                    e = DumperException(f"Bad md5sum for file '{fname}'")
                     self.register_status("failed", download={"err": repr(e)})
                     raise e
                 else:
-                    self.logger.debug("md5 check success for file '%s'" %
-                                      fname)
+                    self.logger.debug(f"md5 check success for file '{fname}'")
         elif build_meta["type"] == "full":
             # if type=fs, check if archive must be uncompressed
             # TODO
@@ -513,7 +480,7 @@ class BiothingsDumper(HTTPDumper):
             if build_meta["metadata"]["repository"]["type"] == "fs":
                 uncompressall(self.new_data_folder)
 
-    async def info(self, version='latest'):
+    async def info(self, version="latest"):
         """
         Display version information (release note, etc...) for given version
         {
@@ -538,9 +505,7 @@ class BiothingsDumper(HTTPDumper):
                     else:
                         result["release_note"][filtyp] = res.text
                 else:
-                    raise DumperException(
-                        "Error while downloading release note '%s (%s)': %s" %
-                        (version, res, res.text))
+                    raise DumperException(f"Error while downloading release note '{version} ({res})': {res.text}")
         return result
 
     async def versions(self):
@@ -559,7 +524,5 @@ class BiothingsDumper(HTTPDumper):
         avail_versions = self.load_remote_json(self.__class__.VERSION_URL)
         if not avail_versions:
             raise DumperException("Can't find any versions available...")
-        assert avail_versions[
-            "format"] == "1.0", "versions.json format has changed: %s" % avail_versions[
-                "format"]
+        assert avail_versions["format"] == "1.0", "versions.json format has changed: %s" % avail_versions["format"]
         return avail_versions["versions"]

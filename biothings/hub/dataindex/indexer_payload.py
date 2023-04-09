@@ -1,21 +1,14 @@
 import asyncio
 from collections import UserDict
 
-__all__ = [
-    "DEFAULT_INDEX_SETTINGS",
-    "DEFAULT_INDEX_MAPPINGS",
-    "IndexMappings",
-    "IndexSettings"
-]
+__all__ = ["DEFAULT_INDEX_SETTINGS", "DEFAULT_INDEX_MAPPINGS", "IndexMappings", "IndexSettings"]
 
 
 # the hub may create an "all" field for all fields
 # we want to enable query string query by default
 
 DEFAULT_INDEX_SETTINGS = {
-    "query": {
-        "default_field": "_id,all"
-    },
+    "query": {"default_field": "_id,all"},
     "codec": "best_compression",
     "analysis": {
         "analyzer": {
@@ -23,40 +16,39 @@ DEFAULT_INDEX_SETTINGS = {
             # soon deprecated in favor of keyword_lowercase_normalizer
             "string_lowercase": {
                 "tokenizer": "keyword",
-                "filter": "lowercase"
+                "filter": "lowercase",
             },
             "whitespace_lowercase": {
                 "tokenizer": "whitespace",
-                "filter": "lowercase"
+                "filter": "lowercase",
             },
         },
         "normalizer": {
             "keyword_lowercase_normalizer": {
                 "filter": ["lowercase"],
                 "type": "custom",
-                "char_filter": []
+                "char_filter": [],
             },
-        }
+        },
     },
 }
 
 DEFAULT_INDEX_MAPPINGS = {
     "dynamic": "false",
-    "properties": {"all": {'type': 'text'}}
+    "properties": {"all": {"type": "text"}},
 }
 
 
 class _IndexPayload(UserDict):
-
     async def finalize(self, client):
-        """ Generate the ES payload format of the corresponding entities
+        """Generate the ES payload format of the corresponding entities
         originally in Hub representation. May require querying the ES client
-        for certain metadata to determine the compatible data format. """
+        for certain metadata to determine the compatible data format."""
+
 
 class IndexMappings(_IndexPayload):
-
     async def finalize(self, client):
-        version = int((await client.info())['version']['number'].split('.')[0])
+        version = int((await client.info())["version"]["number"].split(".")[0])
         if version < 7:  # inprecise
             doc_type = self.pop("__hub_doc_type", "doc")
             return {doc_type: dict(self)}
@@ -64,14 +56,15 @@ class IndexMappings(_IndexPayload):
             self.pop("__hub_doc_type", None)
         return dict(self)
 
-class IndexSettings(_IndexPayload):
 
+class IndexSettings(_IndexPayload):
     async def finalize(self, client):
         return {"index": dict(self)}
 
 
 def test_01():
     import asyncio
+
     from elasticsearch import AsyncElasticsearch
 
     client = AsyncElasticsearch()
@@ -84,6 +77,7 @@ def test_01():
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(finalize_mapping())
+
 
 def test_02():
     import asyncio

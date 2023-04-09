@@ -1,7 +1,6 @@
 import asyncio
-from tornado.web import RequestHandler
-import logging
 import datetime
+import logging
 
 # pandas.io.json encoder to deal with non-json compliant values NaN, Inf
 # (based on ujson, but pandas has its own way to deal with these values)
@@ -9,20 +8,18 @@ import datetime
 # import pandas.io.json as pdjson
 # replace pandas json encoder with orjson:
 import orjson
+from tornado.web import RequestHandler
 
 from biothings import config
 
 
 class DefaultHandler(RequestHandler):
     def set_default_headers(self):
-        self.set_header('Access-Control-Allow-Origin', '*')
-        self.set_header('Content-Type', 'application/json')
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Content-Type", "application/json")
         # part of pre-flight requests
-        self.set_header('Access-Control-Allow-Methods',
-                        'PUT, DELETE, POST, GET, OPTIONS')
-        self.set_header(
-            'Access-Control-Allow-Headers',
-            'Content-Type,X-BioThings-API,X-Biothings-Access-Token')
+        self.set_header("Access-Control-Allow-Methods", "PUT, DELETE, POST, GET, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type,X-BioThings-API,X-Biothings-Access-Token")
 
     def write(self, result):
         super(DefaultHandler, self).write(
@@ -30,22 +27,21 @@ class DefaultHandler(RequestHandler):
             #     "result": result,
             #     "status": "ok"
             # }, iso_dates=True)
-            orjson.dumps({
-                "result": result,
-                "status": "ok"
-            }, option=orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC).decode()
+            orjson.dumps(
+                {"result": result, "status": "ok"},
+                option=orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC,
+            ).decode()
         )
 
     def write_error(self, status_code, **kwargs):
         self.set_status(status_code)
-        super(DefaultHandler, self).write({
-            "error":
-            str(kwargs.get("exc_info", [None, None, None])[1]),
-            "status":
-            "error",
-            "code":
-            status_code
-        })
+        super(DefaultHandler, self).write(
+            {
+                "error": str(kwargs.get("exc_info", [None, None, None])[1]),
+                "status": "error",
+                "code": status_code,
+            }
+        )
 
     # defined by default so we accept OPTIONS pre-flight requests
     def options(self, *args, **kwargs):
@@ -75,8 +71,7 @@ class GenericHandler(DefaultHandler):
 
     def delete(self, *args, **kwargs):
         logging.debug("DELETE args: %s, kwargs: %s" % (args, kwargs))
-        self.write_error(405,
-                         exc_info=(None, "Method DELETE not allowed", None))
+        self.write_error(405, exc_info=(None, "Method DELETE not allowed", None))
 
     def head(self, *args, **kwargs):
         logging.debug("HEAD args: %s, kwargs: %s" % (args, kwargs))
@@ -89,11 +84,13 @@ class RootHandler(DefaultHandler):
         self.hub_name = hub_name
 
     async def get(self):
-        self.write({
-            "name": self.hub_name or getattr(config, "HUB_NAME", None),
-            "biothings_version": getattr(config, "BIOTHINGS_VERSION", None),
-            "app_version": getattr(config, "APP_VERSION", None),
-            "icon": getattr(config, "HUB_ICON", None),
-            "now": datetime.datetime.now().astimezone(),
-            "features": self.features
-        })
+        self.write(
+            {
+                "name": self.hub_name or getattr(config, "HUB_NAME", None),
+                "biothings_version": getattr(config, "BIOTHINGS_VERSION", None),
+                "app_version": getattr(config, "APP_VERSION", None),
+                "icon": getattr(config, "HUB_ICON", None),
+                "now": datetime.datetime.now().astimezone(),
+                "features": self.features,
+            }
+        )

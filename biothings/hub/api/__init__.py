@@ -1,15 +1,16 @@
-import inspect
-import types
-import logging
-import time
 import asyncio
-from functools import partial
-import socket
 import contextlib
+import inspect
+import logging
+import socket
+import time
+import types
+from functools import partial
 
 import tornado.web
+
 from biothings.hub.api.handlers.base import GenericHandler
-from biothings.utils.hub import CommandInformation, CommandError, CommandDefinition
+from biothings.utils.hub import CommandDefinition, CommandError, CommandInformation
 
 
 class EndpointDefinition(dict):
@@ -19,18 +20,20 @@ class EndpointDefinition(dict):
 def generate_endpoint_for_callable(name, command, method, force_bodyargs):
     if force_bodyargs is True:
         pass
-        #assert method != "get", \
+        # assert method != "get", \
         #    "Can't have force_bodyargs=True with method '%s' for command '%s'" % (method,command)
     try:
         specs = inspect.getfullargspec(command)
     except TypeError as e:
         # TODO: generate a display handler
-        raise TypeError("Can't determine arguments for command '%s': %s" %
-                        (command, e))
+        raise TypeError("Can't determine arguments for command '%s': %s" % (command, e))
 
     argfrom = 0
-    if isinstance(command, types.MethodType) or \
-            isinstance(command, partial) and isinstance(command.func, types.MethodType):
+    if (
+        isinstance(command, types.MethodType)
+        or isinstance(command, partial)
+        and isinstance(command.func, types.MethodType)
+    ):
         # skip "self" arg
         argfrom = 1
     defaultargs = {}
@@ -40,18 +43,16 @@ def generate_endpoint_for_callable(name, command, method, force_bodyargs):
         for i in range(-len(specs.defaults), 0):
             defaultargs[args[i]] = specs.defaults[i]
     # ignore "self" args, assuming it's the one used when dealing with method
-    #mandatargs = set(args).difference({"self"}).difference(defaultargs) or ""
-    mandatargs = force_bodyargs is False and set(args).difference(
-        defaultargs) or ""
+    # mandatargs = set(args).difference({"self"}).difference(defaultargs) or ""
+    mandatargs = force_bodyargs is False and set(args).difference(defaultargs) or ""
     cmdargs = "{}"
     if mandatargs:
         # this is for cmd args building before submitting to the shell
-        cmdargs = "{" + ",".join(["'''%s''':%s" % (v, v)
-                                  for v in mandatargs]) + "}"
+        cmdargs = "{" + ",".join(["'''%s''':%s" % (v, v) for v in mandatargs]) + "}"
         # this is for signature
         mandatargs = "," + ",".join(["%s" % v for v in mandatargs])
     # generate a wrapper over the passed command
-    #print({"method":method,"args":args,"defaultargs":defaultargs,"name":name,
+    # print({"method":method,"args":args,"defaultargs":defaultargs,"name":name,
     #       "mandatargs":mandatargs,"cmdargs":cmdargs})
     strcode = """
 async def %(method)s(self%(mandatargs)s):
@@ -140,9 +141,9 @@ async def %(method)s(self%(mandatargs)s):
         "mandatargs": mandatargs,
         "cmdargs": cmdargs,
         "command": repr(command),
-        "force_bodyargs": force_bodyargs
+        "force_bodyargs": force_bodyargs,
     }
-    #if name == "info" or name == "builds":
+    # if name == "info" or name == "builds":
     #    print(strcode)
     return strcode, mandatargs != ""
 
@@ -159,7 +160,7 @@ async def %(method)s(self):
     self.write(cmdres)
 """ % {
         "method": method,
-        "name": name
+        "name": name,
     }
     return strcode
 
@@ -175,7 +176,6 @@ async def %(method)s(self):
 
 
 def generate_handler(shell, name, command_defs):
-
     if not type(command_defs) == list:
         command_defs = [command_defs]
 
@@ -197,12 +197,11 @@ def generate_handler(shell, name, command_defs):
         force_bodyargs = commanddef.get("force_bodyargs", False)
         suffix = commanddef.get("suffix", "")
         num_mandatory = 0
-        #if callable(command):
-        strcode, num_mandatory = generate_endpoint_for_callable(
-            cmdname, command, method, force_bodyargs)
-        #elif type(command) == CompositeCommand:
+        # if callable(command):
+        strcode, num_mandatory = generate_endpoint_for_callable(cmdname, command, method, force_bodyargs)
+        # elif type(command) == CompositeCommand:
         #    strcode = generate_endpoint_for_composite_command(name,command,method)
-        #else:
+        # else:
         #    assert method == "get", "display endpoint needs a GET method for command '%s'" % name
         #    strcode = generate_endpoint_for_display(name,command,method)
         # compile the code string and eval (link) to a globals() dict
@@ -213,7 +212,7 @@ def generate_handler(shell, name, command_defs):
             "asyncio": asyncio,
             "shell": shell,
             "CommandInformation": CommandInformation,
-            "tornado": tornado
+            "tornado": tornado,
         }
         eval(code, endpoint_ns, command_globals)
         methodfunc = command_globals[method]
@@ -234,8 +233,7 @@ def generate_handler(shell, name, command_defs):
         for method, dat in by_method.items():
             confdict.update(dat["confdict"])
             methods.append(method)
-        handler_class = type("%s%s_handler" % (name, suffix),
-                             (GenericHandler, ), confdict)
+        handler_class = type("%s%s_handler" % (name, suffix), (GenericHandler,), confdict)
         num_mandatory = dat["num_mandatory"]
         if suffix and not suffix.startswith("/"):
             suffix = "/" + suffix
@@ -245,8 +243,7 @@ def generate_handler(shell, name, command_defs):
         else:
             url = r"/%s%s" % (name, suffix)
         routes.append((url, handler_class, {"shell": shell}))
-        logging.info("route: %s %s => %s" %
-                     (repr([m.upper() for m in methods]), url, handler_class))
+        logging.info("route: %s %s => %s" % (repr([m.upper() for m in methods]), url, handler_class))
 
     return routes
 
@@ -260,16 +257,16 @@ def create_handlers(shell, command_defs):
         else:
             # normalized as a list
             commands = [
-                EndpointDefinition(name=config["name"],
-                                   method=config.get("method", "GET"),
-                                   force_bodyargs=config.get(
-                                       "force_bodyargs", False))
+                EndpointDefinition(
+                    name=config["name"],
+                    method=config.get("method", "GET"),
+                    force_bodyargs=config.get("force_bodyargs", False),
+                )
             ]
         try:
             routes += generate_handler(shell, cmdname, commands)
         except TypeError as e:
-            logging.exception("Can't generate handler for '%s': %s" %
-                              (cmdname, e))
+            logging.exception("Can't generate handler for '%s': %s" % (cmdname, e))
             continue
 
     return routes
@@ -285,15 +282,11 @@ def start_api(app, port, check=True, wait=5, retry=5, settings={}):
         # check if port is used
         def check_socket(host, port):
             num = 1
-            with contextlib.closing(
-                    socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
                 if sock.connect_ex((host, port)) == 0:
                     if num >= retry:
-                        raise Exception("Can't start API, port %s is already used " % port
-                                        + "and already tried %s times" % retry)
-                    logging.info(
-                        "Port %s is already used, sleep and retry (%s/%s)" %
-                        (port, num, retry))
+                        raise Exception(f"Can't start API, port {port} is already used and already tried {retry} times")
+                    logging.info("Port %s is already used, sleep and retry (%s/%s)", port, num, retry)
                     time.sleep(wait)
                     num += 1
                 else:

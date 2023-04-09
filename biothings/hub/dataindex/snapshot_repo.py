@@ -1,11 +1,9 @@
-
 import elasticsearch
 
 from biothings.utils.exceptions import RepositoryVerificationFailed
 
 
-class Repository():
-
+class Repository:
     def __init__(self, client, repository):
         # Corresponds to HTTP operations on
         # /_snapshot/<repository>
@@ -45,13 +43,15 @@ class Repository():
                 incorrect_data[field] = {"config": config[field], "repo": repo_settings[field]}
 
         if incorrect_data:
-            raise RepositoryVerificationFailed({
-                "error": "repository_verification_exception",
-                "detail": {
-                    "message": "the repository's settings is not match with snapshot config.",
-                    "diff": incorrect_data,
-                },
-            })
+            raise RepositoryVerificationFailed(
+                {
+                    "error": "repository_verification_exception",
+                    "detail": {
+                        "message": "the repository's settings is not match with snapshot config.",
+                        "diff": incorrect_data,
+                    },
+                }
+            )
 
     def __str__(self):
         return (
@@ -61,14 +61,18 @@ class Repository():
             f">"
         )
 
+
 def test_01():
     from elasticsearch import Elasticsearch
+
     client = Elasticsearch()
     snapshot = Repository(client, "mynews")
     print(snapshot)
 
+
 def test_02():
     from elasticsearch import Elasticsearch
+
     client = Elasticsearch()
     snapshot = Repository(client, "______")
     print(snapshot)

@@ -198,10 +198,20 @@ def get_version(folder):
         commitdate = "unknown"
 
     try:
-        return {"branch": repo.active_branch.name, "commit": commit, "date": commitdate, "giturl": url}
+        return {
+            "branch": repo.active_branch.name,
+            "commit": commit,
+            "date": commitdate,
+            "giturl": url,
+        }
     except Exception as err:
         logging.warning("can't determine app version, assuming HEAD detached': %s", err)
-        return {"branch": "HEAD detached", "commit": commit, "date": commitdate, "giturl": url}
+        return {
+            "branch": "HEAD detached",
+            "commit": commit,
+            "date": commitdate,
+            "giturl": url,
+        }
 
 
 def set_versions(config, app_folder):

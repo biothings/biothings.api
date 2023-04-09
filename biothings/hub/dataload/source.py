@@ -1,13 +1,12 @@
+import importlib
+import logging
 import os
 import sys
 import types
-import logging
 from pprint import pformat
-import importlib
 
-from biothings.utils.hub_db import get_data_plugin
+from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.manager import BaseSourceManager
-from biothings.utils.hub_db import get_src_master, get_src_dump
 
 
 class SourceManager(BaseSourceManager):
@@ -15,8 +14,8 @@ class SourceManager(BaseSourceManager):
     Helper class to get information about a datasource,
     whether it has a dumper and/or uploaders associated.
     """
-    def __init__(self, source_list, dump_manager, upload_manager,
-                 data_plugin_manager):
+
+    def __init__(self, source_list, dump_manager, upload_manager, data_plugin_manager):
         self._orig_source_list = source_list
         self.source_list = None
         self.dump_manager = dump_manager
@@ -95,8 +94,7 @@ class SourceManager(BaseSourceManager):
         origin = None
         try:
             upk = self.upload_manager["%s.%s" % (mini["_id"], subsrc)]
-            assert len(
-                upk) == 1, "More than 1 uploader found, can't handle that..."
+            assert len(upk) == 1, "More than 1 uploader found, can't handle that..."
             upk = upk.pop()
             src_meta = upk.__metadata__["src_meta"]
             mapping = upk.get_mapping()
@@ -104,21 +102,19 @@ class SourceManager(BaseSourceManager):
             if not mapping:
                 raise AttributeError("Not hard-coded mapping")
         except (IndexError, KeyError, AttributeError) as e:
-            logging.debug(
-                "Can't find hard-coded mapping, now searching src_master: %s" %
-                e)
+            logging.debug("Can't find hard-coded mapping, now searching src_master: %s", e)
             m = self.src_master.find_one({"_id": subsrc})
             mapping = m and m.get("mapping")
             origin = "master"
             # use metadata from upload or reconstitute(-ish)
-            src_meta = src_meta or m and dict([(k, v) for (k, v) in m.items() if k not in ["_id", "name", "timestamp", "mapping"]])
+            src_meta = (
+                src_meta
+                or m
+                and dict([(k, v) for (k, v) in m.items() if k not in ["_id", "name", "timestamp", "mapping"]])
+            )
         if mapping:
-            mini.setdefault("mapping",
-                            {}).setdefault(subsrc,
-                                           {}).setdefault("mapping", mapping)
-            mini.setdefault("mapping",
-                            {}).setdefault(subsrc,
-                                           {}).setdefault("origin", origin)
+            mini.setdefault("mapping", {}).setdefault(subsrc, {}).setdefault("mapping", mapping)
+            mini.setdefault("mapping", {}).setdefault(subsrc, {}).setdefault("origin", origin)
         if src_meta:
             mini.setdefault("__metadata__", {}).setdefault(subsrc, src_meta)
 
@@ -237,23 +233,19 @@ class SourceManager(BaseSourceManager):
                     if src.get("upload"):
                         for subname in src["upload"].get("jobs", {}):
                             try:
-                                sources[src["name"]].setdefault(
-                                    "upload",
-                                    {"sources": {}})["sources"].setdefault(
-                                        subname, {})
-                                sources[src["name"]]["upload"]["sources"][
-                                    subname]["uploader"] = src["upload"][
-                                        "jobs"][subname].get("uploader")
+                                sources[src["name"]].setdefault("upload", {"sources": {}})["sources"].setdefault(
+                                    subname, {}
+                                )
+                                sources[src["name"]]["upload"]["sources"][subname]["uploader"] = src["upload"]["jobs"][
+                                    subname
+                                ].get("uploader")
                             except Exception as e:
-                                logging.error("Source is invalid: %s\n%s" %
-                                              (e, pformat(src)))
+                                logging.error("Source is invalid: %s\n%s" % (e, pformat(src)))
             # deal with plugin info if any
             if dpm:
                 src = bydpsrcs.get(_id)
                 if src:
-                    assert len(
-                        dpm[_id]
-                    ) == 1, "Expected only one uploader, got: %s" % dpm[_id]
+                    assert len(dpm[_id]) == 1, "Expected only one uploader, got: %s" % dpm[_id]
                     klass = dpm[_id][0]
                     src.pop("_id")
                     if hasattr(klass, "data_plugin_error"):
@@ -301,8 +293,7 @@ class SourceManager(BaseSourceManager):
                         break
                 if same:
                     # we consume all of them, ie. they're all equals
-                    src["__metadata__"] = list(
-                        src["__metadata__"].values()).pop()
+                    src["__metadata__"] = list(src["__metadata__"].values()).pop()
                 else:
                     # convert to a list of dict (so it's easier to detect if one or more
                     # licenses just by checking if type is dict (one) or array (more))
@@ -318,8 +309,7 @@ class SourceManager(BaseSourceManager):
         return self.get_sources(id=name, debug=debug, detailed=True)
 
     def save_mapping(self, name, mapping=None, dest="master", mode="mapping"):
-        logging.debug("Saving mapping for source '%s' destination='%s':\n%s" %
-                      (name, dest, pformat(mapping)))
+        logging.debug("Saving mapping for source '%s' destination='%s':\n%s", name, dest, pformat(mapping))
         # either given a fully qualified source or just sub-source
         try:
             subsrc = name.split(".")[1]
@@ -332,13 +322,10 @@ class SourceManager(BaseSourceManager):
         elif dest == "inspect":
             m = self.src_dump.find_one({"_id": name})
             try:
-                m["inspect"]["jobs"][subsrc]["inspect"]["results"][
-                    mode] = mapping
+                m["inspect"]["jobs"][subsrc]["inspect"]["results"][mode] = mapping
                 self.src_dump.save(m)
-            except KeyError as e:
-                raise ValueError(
-                    "Can't save mapping, document doesn't contain expected inspection data"
-                    % e)
+            except KeyError:
+                raise ValueError("Can't save mapping, document doesn't contain expected inspection data")
         else:
             raise ValueError("Unknow saving destination: %s" % repr(dest))
 
@@ -368,5 +355,4 @@ class SourceManager(BaseSourceManager):
             self.src_dump.save(doc)
         except KeyError as e:
             logging.exception(e)
-            raise ValueError(
-                "Can't delete information, not found in document: %s" % e)
+            raise ValueError(f"Can't delete information, not found in document: {e}")

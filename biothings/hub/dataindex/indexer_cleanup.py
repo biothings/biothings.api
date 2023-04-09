@@ -1,4 +1,3 @@
-
 import datetime
 import itertools
 import logging
@@ -6,8 +5,8 @@ from collections import UserDict, UserList
 from dataclasses import dataclass
 from pprint import pformat
 
-from pymongo.collection import Collection
 from elasticsearch import AsyncElasticsearch
+from pymongo.collection import Collection
 
 # NOTE
 # Throughout this module, an XML-like serialization
@@ -23,8 +22,8 @@ from elasticsearch import AsyncElasticsearch
 #
 _TAB = " " * 2
 
-class _Index(UserDict):
 
+class _Index(UserDict):
     def __str__(self):
         return (
             f"<Index"
@@ -34,6 +33,7 @@ class _Index(UserDict):
             f"/>"
         )
 
+
 class _Indices(UserList):
     group = NotImplemented
 
@@ -42,45 +42,45 @@ class _Indices(UserList):
         self.data = [_Index(x) for x in self]
 
     def __str__(self):
-        return '\n'.join((
-            f"<{self.group} len={len(self)}>",
-            *(_TAB + str(index) for index in self),
-            f"<{self.group}/>"
-        ))
+        return "\n".join(
+            (f"<{self.group} len={len(self)}>", *(_TAB + str(index) for index in self), f"<{self.group}/>")
+        )
+
 
 class _IndicesToKeep(_Indices):
     group = "Keep"
 
+
 class _IndicesToRemove(_Indices):
     group = "Remove"
 
+
 @dataclass
-class _BuildConfig():
+class _BuildConfig:
     name: str
     remove: _IndicesToRemove
     keep: _IndicesToKeep
 
     def __str__(self):
-        return '\n'.join((
-            f"<BuildConfig {repr(self.name)}>",
-            *(_TAB + line for line in str(self.remove).split('\n')),
-            *(_TAB + line for line in str(self.keep).split('\n')),
-            f"<BuildConfig/>"
-        ))
+        return "\n".join(
+            (
+                f"<BuildConfig {repr(self.name)}>",
+                *(_TAB + line for line in str(self.remove).split("\n")),
+                *(_TAB + line for line in str(self.keep).split("\n")),
+                "<BuildConfig/>",
+            )
+        )
 
     def __iter__(self):
         return iter(self.remove)
 
-class _CleanUps(UserList):
 
+class _CleanUps(UserList):
     def __str__(self):
-        lines = map(lambda x: str(x).split('\n'), self)
+        lines = map(lambda x: str(x).split("\n"), self)
         lines = itertools.chain.from_iterable(lines)
-        return "\n".join((
-            "<CleanUps>",
-            *(_TAB + line for line in lines),
-            "<CleanUps/>"
-        ))
+        return "\n".join(("<CleanUps>", *(_TAB + line for line in lines), "<CleanUps/>"))
+
 
 # OUTPUT EXAMPLE
 # ---------------------
@@ -116,20 +116,14 @@ class _CleanUps(UserList):
 # <CleanUp/>
 #
 
+
 class CleanUpResult(list):
-
     def __repr__(self):
-        return ''.join((
-            type(self).__name__,
-            "(", "\n" if self else "",
-            pformat(list(self), width=150), ")"
-        ))
+        return "".join((type(self).__name__, "(", "\n" if self else "", pformat(list(self), width=150), ")"))
 
 
-class Cleaner():
-
+class Cleaner:
     def __init__(self, collection, indexers, logger=None):
-
         self.collection = collection  # pymongo.collection.Collection
         self.indexers = indexers  # hub.dataindex.IndexManager
         self.logger = logger or logging.getLogger(__name__)
@@ -138,35 +132,56 @@ class Cleaner():
         if not isinstance(self.collection, Collection):
             raise NotImplementedError("Require MongoDB Hubdb.")
 
-        results = list(self.collection.aggregate([
-            {'$project': {
-                'build_config': '$build_config._id',
-                'index': {'$objectToArray': '$index'}}},
-            {'$unwind': {'path': '$index'}},
-            {'$addFields': {
-                'index.v.build_config': '$build_config',
-                'index.v._id': '$index.k'}},
-            {'$replaceRoot': {'newRoot': '$index.v'}},
-            {'$match': {'environment': env or {'$exists': True}, **filters}},
-            {'$project':  # ...............: {X
-                dict.fromkeys((  # ........:    '_id': 'mynews_202012280220_vsdevjdk',
-                    'build_config',  # ....:    'build_config': 'mynews',  ──────────┐
-                    'environment',  # .....:    'environment': 'local',              │
-                    'created_at'), 1)},  # :    'created_at': datetime(...)          │
-            {'$sort': {'created_at': 1}},  # }Y                                      │
-            {'$group': {  # ...............: {                              GROUP BY │
-                '_id': "$build_config",  # :    '_id': 'mynews',  <──────────────────┘
-                'indices': {  # ...........:    'indices': [
-                    "$push": "$$ROOT"  # ..:        {X ... }Y, ...
-                }}}  # ....................:    ]
-        ]))  # ............................: }
-        return _CleanUps([
-            _BuildConfig(
-                doc["_id"],  # ↓ -0 in slicing does not yield the desired result
-                _IndicesToRemove(doc["indices"][:-keep or len(doc["indices"])]),
-                _IndicesToKeep(doc["indices"][-keep or len(doc["indices"]):])
-            ) for doc in results
-        ])
+        results = list(
+            self.collection.aggregate(
+                [
+                    {"$project": {"build_config": "$build_config._id", "index": {"$objectToArray": "$index"}}},
+                    {"$unwind": {"path": "$index"}},
+                    {"$addFields": {"index.v.build_config": "$build_config", "index.v._id": "$index.k"}},
+                    {"$replaceRoot": {"newRoot": "$index.v"}},
+                    {"$match": {"environment": env or {"$exists": True}, **filters}},
+                    # {X
+                    # .  '_id': 'mynews_202012280220_vsdevjdk',
+                    # ...'build_config': 'mynews',  ──────────┐
+                    # ...'environment': 'local',              │
+                    # :  'created_at': datetime(...)          │
+                    # }Y                                      │
+                    # {                              GROUP BY │
+                    #    '_id': 'mynews',  <──────────────────┘
+                    # ...'indices': [
+                    # ..:    {X ... }Y, ...
+                    # ....]
+                    # .}
+                    {
+                        "$project": dict.fromkeys(
+                            (
+                                "build_config",
+                                "environment",
+                                "created_at",
+                            ),
+                            1,
+                        )
+                    },
+                    {"$sort": {"created_at": 1}},
+                    {
+                        "$group": {
+                            "_id": "$build_config",
+                            "indices": {"$push": "$$ROOT"},
+                        }
+                    },
+                ]
+            )
+        )  # ............................: }
+        return _CleanUps(
+            [
+                _BuildConfig(
+                    doc["_id"],  # ↓ -0 in slicing does not yield the desired result
+                    _IndicesToRemove(doc["indices"][: -keep or len(doc["indices"])]),
+                    _IndicesToKeep(doc["indices"][-keep or len(doc["indices"]) :]),
+                )
+                for doc in results
+            ]
+        )
 
     async def clean(self, cleanups):
         self.logger.debug(cleanups)
@@ -184,7 +199,7 @@ class Cleaner():
 
                 self.collection.update_many(
                     {f"index.{index['_id']}.environment": index["environment"]},
-                    {"$unset": {f"index.{index['_id']}": 1}}
+                    {"$unset": {f"index.{index['_id']}": 1}},
                 )
         return actions
 
@@ -206,7 +221,8 @@ class Cleaner():
                 ts = str(index.get("created_at"))
                 plain_texts.append(f"        {_id} (env={env}, created={ts})")
             plain_texts.append("")
-        return '\n'.join(plain_texts)
+        return "\n".join(plain_texts)
+
 
 # Feature Specification ↑
 # https://suwulab.slack.com/archives/CC19LHAF2/p1631119811009900?thread_ts=1631063230.003400&cid=CC19LHAF2
@@ -223,41 +239,66 @@ class Cleaner():
 # Using "env" instead of "indexer_env" as desribed in the feature spec
 # to match the signature of the Cleaner.find method (first argument).
 
+
 def test_str():
-    print(_CleanUps([_BuildConfig(
-        "mynews",
-        _IndicesToRemove([
-            {'_id': 'mynews_20210811_test',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2021, 8, 11, 19, 27, 25, 141000),
-             'environment': 'local'},
-            {'_id': 'mynews_202105261855_5ffxvchx',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2021, 8, 16, 9, 26, 56, 221000),
-             'environment': 'local'},
-            {'_id': 'mynews_202012280220_vsdevjdk',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2021, 8, 17, 0, 23, 11, 374000),
-             'environment': 'local'}
-        ]),
-        _IndicesToKeep([
-            {'_id': 'mynews_202009170234_fjvg7skx',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2020, 9, 17, 2, 35, 12, 800000),
-             'environment': 'local'},
-            {'_id': 'mynews_202009222133_6rz3vljq',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2020, 9, 22, 21, 33, 40, 958000),
-             'environment': 'local'},
-            {'_id': 'mynews_202010060100_ontyofuv',
-             'build_config': 'mynews',
-             'created_at': datetime.datetime(2020, 10, 6, 1, 0, 11, 237000),
-             'environment': 'local'}
-        ])
-    )]))
+    print(
+        _CleanUps(
+            [
+                _BuildConfig(
+                    "mynews",
+                    _IndicesToRemove(
+                        [
+                            {
+                                "_id": "mynews_20210811_test",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2021, 8, 11, 19, 27, 25, 141000),
+                                "environment": "local",
+                            },
+                            {
+                                "_id": "mynews_202105261855_5ffxvchx",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2021, 8, 16, 9, 26, 56, 221000),
+                                "environment": "local",
+                            },
+                            {
+                                "_id": "mynews_202012280220_vsdevjdk",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2021, 8, 17, 0, 23, 11, 374000),
+                                "environment": "local",
+                            },
+                        ]
+                    ),
+                    _IndicesToKeep(
+                        [
+                            {
+                                "_id": "mynews_202009170234_fjvg7skx",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2020, 9, 17, 2, 35, 12, 800000),
+                                "environment": "local",
+                            },
+                            {
+                                "_id": "mynews_202009222133_6rz3vljq",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2020, 9, 22, 21, 33, 40, 958000),
+                                "environment": "local",
+                            },
+                            {
+                                "_id": "mynews_202010060100_ontyofuv",
+                                "build_config": "mynews",
+                                "created_at": datetime.datetime(2020, 10, 6, 1, 0, 11, 237000),
+                                "environment": "local",
+                            },
+                        ]
+                    ),
+                )
+            ]
+        )
+    )
+
 
 def test_find():
     from pymongo import MongoClient
+
     logging.basicConfig(level="DEBUG")
 
     # mychem
@@ -284,12 +325,14 @@ def test_find():
     print(cleaner.plain_text(obj))
     return cleaner, obj
 
+
 def test_clean():
     import asyncio
+
     cleaner, cleanups = test_find()
     loop = asyncio.get_event_loop()
     print(loop.run_until_complete(cleaner.clean(cleanups)))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_find()

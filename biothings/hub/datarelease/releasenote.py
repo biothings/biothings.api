@@ -2,15 +2,16 @@
 # Use forward-references for compatible with python3.6
 # ref https://peps.python.org/pep-0484/#forward-references
 
-from biothings.utils.hub_db import get_source_fullname
-from biothings.utils.dataload import update_dict_recur
-from biothings.utils.jsondiff import make as make_json_diff
+import locale
+from datetime import datetime
 
 from dateutil.parser import parse as dtparse
-from datetime import datetime
-import locale
 
-locale.setlocale(locale.LC_ALL, '')
+from biothings.utils.dataload import update_dict_recur
+from biothings.utils.hub_db import get_source_fullname
+from biothings.utils.jsondiff import make as make_json_diff
+
+locale.setlocale(locale.LC_ALL, "")
 
 
 class ReleaseNoteSrcBuildReader:
@@ -21,7 +22,7 @@ class ReleaseNoteSrcBuildReader:
 
         # If `self` is a "hot" src_build doc reader, it can refer to a "cold" reader to access the cold build info.
         # This works like a two-node linked list.
-        self.cold_src_build_reader: 'ReleaseNoteSrcBuildReader' = None
+        self.cold_src_build_reader: "ReleaseNoteSrcBuildReader" = None
 
     @property
     def build_id(self) -> str:
@@ -38,25 +39,31 @@ class ReleaseNoteSrcBuildReader:
     def has_cold_collection(self) -> bool:
         return self.cold_collection_name is not None
 
-    def attach_cold_src_build_reader(self, other: 'ReleaseNoteSrcBuildReader'):
+    def attach_cold_src_build_reader(self, other: "ReleaseNoteSrcBuildReader"):
         """
         Attach a cold src_build reader.
 
         It's required that `self` is a hot src_builder reader and `other` is cold.
         """
         if not self.has_cold_collection():
-            raise ValueError(f"{self.build_id} is not a hot src_build doc, "
-                             f"thus not able to attach a cold reader of {other.build_id}.")
+            raise ValueError(
+                f"{self.build_id} is not a hot src_build doc, "
+                f"thus not able to attach a cold reader of {other.build_id}."
+            )
 
         if other.has_cold_collection():
-            raise ValueError(f"{other.build_id} is a hot src_build doc, "
-                             f"thus not able to be attached to the reader of {self.build_id}")
+            raise ValueError(
+                f"{other.build_id} is a hot src_build doc, "
+                f"thus not able to be attached to the reader of {self.build_id}"
+            )
 
         # src_build `_id`s and collection names are interchangeable
         # See https://github.com/biothings/biothings.api/blob/master/biothings/hub/databuild/builder.py#L311
         if self.cold_collection_name != other.build_id:
-            raise ValueError(f"{self.build_id} has cold collection {self.cold_collection_name}, "
-                             f"while the reader to be attached is for {other.build_id}")
+            raise ValueError(
+                f"{self.build_id} has cold collection {self.cold_collection_name}, "
+                f"while the reader to be attached is for {other.build_id}"
+            )
 
         self.cold_src_build_reader = other
 
@@ -90,7 +97,7 @@ class ReleaseNoteSrcBuildReader:
 
         combined_stats = {
             **self._get_datasource_stats(),
-            **self.cold_src_build_reader._get_datasource_stats()
+            **self.cold_src_build_reader._get_datasource_stats(),
         }
         return combined_stats
 
@@ -101,7 +108,7 @@ class ReleaseNoteSrcBuildReader:
 
         combined_versions = {
             **self._get_datasource_versions(),
-            **self.cold_src_build_reader._get_datasource_versions()
+            **self.cold_src_build_reader._get_datasource_versions(),
         }
         return combined_versions
 
@@ -112,7 +119,7 @@ class ReleaseNoteSrcBuildReader:
 
         combined_mapping = {
             **self._get_datasource_mapping(),
-            **self.cold_src_build_reader._get_datasource_mapping()
+            **self.cold_src_build_reader._get_datasource_mapping(),
         }
         return combined_mapping
 
@@ -194,11 +201,13 @@ class ReleaseNoteSrcBuildReaderAdapter:
 
 
 class ReleaseNoteSource:
-    def __init__(self,
-                 old_src_build_reader: ReleaseNoteSrcBuildReader,
-                 new_src_build_reader: ReleaseNoteSrcBuildReader,
-                 diff_stats_from_metadata_file: dict,
-                 addon_note: str):
+    def __init__(
+        self,
+        old_src_build_reader: ReleaseNoteSrcBuildReader,
+        new_src_build_reader: ReleaseNoteSrcBuildReader,
+        diff_stats_from_metadata_file: dict,
+        addon_note: str,
+    ):
         self.old_src_build_reader = old_src_build_reader
         self.new_src_build_reader = new_src_build_reader
 
@@ -244,8 +253,11 @@ class ReleaseNoteSource:
             indices (1, 3, 5...).
             """
             path_components = path.strip("/").split("/")
-            path_components = [path_components[i] for i in range(len(path_components))
-                               if (i % 2 == 0) or (i % 2 == 1 and path_components[i] != "properties")]
+            path_components = [
+                path_components[i]
+                for i in range(len(path_components))
+                if (i % 2 == 0) or (i % 2 == 1 and path_components[i] != "properties")
+            ]
             return ".".join(path_components)
 
         fields = {}
@@ -299,10 +311,8 @@ class ReleaseNoteSource:
                 "_fields": self.diff_datasource_mapping(),
                 "_summary": self.diff_stats_from_metadata_file,
             },
-
             "stats": self.diff_build_stats(),
             "sources": self.diff_datasource_info(),
-
             "note": self.addon_note,
             "generated_on": str(datetime.now().astimezone()),
         }
@@ -346,10 +356,9 @@ class ReleaseNoteTxt(object):
         txt += "Generated on: %s\n" % dt.strftime("%Y-%m-%d at %H:%M:%S")
         txt += "\n"
 
-        table = prettytable.PrettyTable([
-            "Updated datasource", "prev. release", "new release",
-            "prev. # of docs", "new # of docs"
-        ])
+        table = prettytable.PrettyTable(
+            ["Updated datasource", "prev. release", "new release", "prev. # of docs", "new # of docs"]
+        )
         table.align["Updated datasource"] = "l"
         table.align["prev. release"] = "c"
         table.align["new release"] = "c"
@@ -361,28 +370,30 @@ class ReleaseNoteTxt(object):
             sub_infos = dict([(k, v) for k, v in info.items() if not k.startswith("_")])
             if sub_infos:
                 for sub, sub_info in sub_infos.items():
-                    table.add_row([
-                        "%s.%s" % (src, sub), "-", main_info["_version"], "-", self._format_number(sub_info["_count"])
-                    ])  # only _count avail there
+                    table.add_row(
+                        ["%s.%s" % (src, sub), "-", main_info["_version"], "-", self._format_number(sub_info["_count"])]
+                    )  # only _count avail there
             else:
                 main_count = main_info.get("_count") and self._format_number(main_info["_count"]) or ""
-                table.add_row([
-                    src, "-", main_info.get("_version", ""), "-", main_count
-                ])
+                table.add_row([src, "-", main_info.get("_version", ""), "-", main_count])
 
         for src, info in sorted(self.changes["sources"]["deleted"].items(), key=lambda e: e[0]):
             main_info = dict([(k, v) for k, v in info.items() if k.startswith("_")])
             sub_infos = dict([(k, v) for k, v in info.items() if not k.startswith("_")])
             if sub_infos:
                 for sub, sub_info in sub_infos.items():
-                    table.add_row([
-                        "%s.%s" % (src, sub), main_info.get("_version", ""), "-", self._format_number(sub_info["_count"]), "-"
-                    ])  # only _count avail there
+                    table.add_row(
+                        [
+                            "%s.%s" % (src, sub),
+                            main_info.get("_version", ""),
+                            "-",
+                            self._format_number(sub_info["_count"]),
+                            "-",
+                        ]
+                    )  # only _count avail there
             else:
                 main_count = main_info.get("_count") and self._format_number(main_info["_count"]) or ""
-                table.add_row([
-                    src, main_info.get("_version", ""), "-", main_count, "-"
-                ])
+                table.add_row([src, main_info.get("_version", ""), "-", main_count, "-"])
 
         for src, info in sorted(self.changes["sources"]["updated"].items(), key=lambda e: e[0]):
             # extract information from main-source
@@ -391,8 +402,9 @@ class ReleaseNoteTxt(object):
             old_main_count = old_main_info.get("_count") and self._format_number(old_main_info["_count"]) or None
             new_main_count = new_main_info.get("_count") and self._format_number(new_main_info["_count"]) or None
             if old_main_count is None:
-                assert new_main_count is None, \
+                assert new_main_count is None, (
                     "Sub-sources found for '%s', old and new count should " % src + "both be None. Info was: %s" % info
+                )
                 old_sub_infos = dict([(k, v) for k, v in info["old"].items() if not k.startswith("_")])
                 new_sub_infos = dict([(k, v) for k, v in info["new"].items() if not k.startswith("_")])
                 # old & new sub_infos should have the same structure (same existing keys)
@@ -400,23 +412,28 @@ class ReleaseNoteTxt(object):
                 if old_sub_infos:
                     assert new_sub_infos
                     for sub, sub_info in old_sub_infos.items():
-                        table.add_row([
-                            "%s.%s" % (src, sub),
-                            old_main_info.get("_version", ""),
-                            new_main_info.get("_version", ""),
-                            self._format_number(sub_info["_count"]),
-                            self._format_number(new_sub_infos[sub]["_count"])
-                        ])
+                        table.add_row(
+                            [
+                                "%s.%s" % (src, sub),
+                                old_main_info.get("_version", ""),
+                                new_main_info.get("_version", ""),
+                                self._format_number(sub_info["_count"]),
+                                self._format_number(new_sub_infos[sub]["_count"]),
+                            ]
+                        )
             else:
-                assert new_main_count is not None, \
+                assert new_main_count is not None, (
                     "No sub-sources found, old and new count should NOT " + "both be None. Info was: %s" % info
-                table.add_row([
-                    src,
-                    old_main_info.get("_version", ""),
-                    new_main_info.get("_version", ""),
-                    old_main_count,
-                    new_main_count
-                ])
+                )
+                table.add_row(
+                    [
+                        src,
+                        old_main_info.get("_version", ""),
+                        new_main_info.get("_version", ""),
+                        old_main_count,
+                        new_main_count,
+                    ]
+                )
 
         if table._rows:
             txt += table.get_string()
@@ -441,11 +458,13 @@ class ReleaseNoteTxt(object):
         for stat_name, stat in sorted(self.changes["stats"]["deleted"].items(), key=lambda e: e[0]):
             table.add_row([stat_name, self._format_number(stat["_count"]), "-"])
         for stat_name, stat in sorted(self.changes["stats"]["updated"].items(), key=lambda e: e[0]):
-            table.add_row([
-                stat_name,
-                self._format_number(stat["old"]["_count"]),
-                self._format_number(stat["new"]["_count"])
-            ])
+            table.add_row(
+                [
+                    stat_name,
+                    self._format_number(stat["old"]["_count"]),
+                    self._format_number(stat["new"]["_count"]),
+                ]
+            )
 
         if table._rows:
             txt += table.get_string()
@@ -469,8 +488,12 @@ class ReleaseNoteTxt(object):
         if self.changes["new"]["_summary"]:
             sumups = []
             sumups.append("%s document(s) added" % self._format_number(self.changes["new"]["_summary"].get("add", 0)))
-            sumups.append("%s document(s) deleted" % self._format_number(self.changes["new"]["_summary"].get("delete", 0)))
-            sumups.append("%s document(s) updated" % self._format_number(self.changes["new"]["_summary"].get("update", 0)))
+            sumups.append(
+                "%s document(s) deleted" % self._format_number(self.changes["new"]["_summary"].get("delete", 0))
+            )
+            sumups.append(
+                "%s document(s) updated" % self._format_number(self.changes["new"]["_summary"].get("update", 0))
+            )
             txt += ", ".join(sumups) + "\n"
         else:
             txt += "No information available for added/deleted/updated documents\n"

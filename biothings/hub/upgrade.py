@@ -1,10 +1,10 @@
-import sys
 import os
 import subprocess
+import sys
 
-from biothings.utils.hub_db import get_src_dump, get_data_plugin, get_hub_db_conn, backup, restore
 from biothings import config
 from biothings.hub.dataload.dumper import GitDumper
+from biothings.utils.hub_db import backup, get_data_plugin, get_hub_db_conn, get_src_dump, restore
 
 logging = config.logger
 
@@ -29,64 +29,53 @@ def migrate_0dot1_to_0dot2():
             # 1.
             for field in ["data_folder", "release"]:
                 if field in src:
-                    logging.debug(
-                        "\t\t%s: found '%s' in document, moving under 'download'"
-                        % (src["_id"], field))
+                    logging.debug("\t\t%s: found '%s' in document, moving under 'download'" % (src["_id"], field))
                     try:
                         src["download"][field] = src.pop(field)
                         wasdue = True
                     except KeyError as e:
                         logging.warning(
-                            "\t\t%s: no such field '%s' found, skip it (error: %s)"
-                            % (src["_id"], field, e))
+                            "\t\t%s: no such field '%s' found, skip it (error: %s)" % (src["_id"], field, e)
+                        )
             # 2.
             for subsrc_name in src.get("upload", {}).get("jobs", {}):
                 for field in ["data_folder", "release"]:
                     if field not in src["upload"]["jobs"][subsrc_name]:
                         logging.debug(
                             "\t\t%s: no '%s' found in upload jobs, taking it from 'download' (or from root keys)"
-                            % (src["_id"], field))
+                            % (src["_id"], field)
+                        )
                         try:
-                            src["upload"]["jobs"][subsrc_name][field] = src[
-                                "download"][field]
+                            src["upload"]["jobs"][subsrc_name][field] = src["download"][field]
                             wasdue = True
                         except KeyError:
                             try:
-                                src["upload"]["jobs"][subsrc_name][
-                                    field] = src[field]
+                                src["upload"]["jobs"][subsrc_name][field] = src[field]
                                 wasdue = True
                             except KeyError:
-                                logging.warning(
-                                    "\t\t%s: no such field '%s' found, skip it"
-                                    % (src["_id"], field))
+                                logging.warning("\t\t%s: no such field '%s' found, skip it" % (src["_id"], field))
             # 3. & 4.
             for field in ["err", "status"]:
                 if field in src.get("upload", {}):
-                    logging.debug("\t\t%s: removing '%s' key from 'upload'" %
-                                  (src["_id"], field))
+                    logging.debug("\t\t%s: removing '%s' key from 'upload'" % (src["_id"], field))
                     src["upload"].pop(field)
                     wasdue = True
             # 5.
             if "pending_to_upload" in src:
-                logging.debug(
-                    "\t%s: found 'pending_to_upload' field, moving to 'pending' list"
-                    % src["_id"])
+                logging.debug("\t%s: found 'pending_to_upload' field, moving to 'pending' list" % src["_id"])
                 src.pop("pending_to_upload")
                 wasdue = True
                 if "upload" not in src.get("pending", []):
                     src.setdefault("pending", []).append("upload")
             if wasdue:
-                logging.info("\tFinishing converting document for '%s'" %
-                             src["_id"])
+                logging.info("\tFinishing converting document for '%s'" % src["_id"])
                 srccol.save(src)
             else:
-                logging.info("\tDocument for '%s' already converted" %
-                             src["_id"])
+                logging.info("\tDocument for '%s' already converted" % src["_id"])
 
 
 def migrate(from_version, to_version, restore_if_failure=True):
-    func_name = "migrate_%s_to_%s" % (from_version.replace(
-        ".", "dot"), to_version.replace(".", "dot"))
+    func_name = "migrate_%s_to_%s" % (from_version.replace(".", "dot"), to_version.replace(".", "dot"))
     # backup
     db = get_hub_db_conn()[config.DATA_HUB_DB_DATABASE]
     logging.info("Backing up %s" % db.name)
@@ -96,13 +85,10 @@ def migrate(from_version, to_version, restore_if_failure=True):
     try:
         func = getattr(thismodule, func_name)
     except AttributeError:
-        logging.error(
-            "Can't upgrade, no such function to migrate from '%s' to '%s'" %
-            (from_version, to_version))
+        logging.error("Can't upgrade, no such function to migrate from '%s' to '%s'", from_version, to_version)
         raise
     # resolve A->C = A->B then B->C
-    logging.info("Start upgrading from '%s' to '%s'" %
-                 (from_version, to_version))
+    logging.info("Start upgrading from '%s' to '%s'", from_version, to_version)
     try:
         func()
     except Exception as e:
@@ -110,17 +96,12 @@ def migrate(from_version, to_version, restore_if_failure=True):
         if restore_if_failure:
             logging.info("Now restoring original database from '%s" % path)
             restore(db, path, drop=True)
-            logging.info(
-                "Done. If you want to keep converted data for inspection, use restore_if_failure=False"
-            )
+            logging.info("Done. If you want to keep converted data for inspection, use restore_if_failure=False")
         else:
-            logging.info(
-                "*not* restoring original data. It can still be restored using file '%s'"
-                % path)
+            logging.info("*not* restoring original data. It can still be restored using file '%s'", path)
 
 
 class BaseSystemUpgrade(GitDumper):
-
     def _pull(self, *args):
         old = os.path.abspath(os.curdir)
         try:
@@ -135,10 +116,11 @@ class BaseSystemUpgrade(GitDumper):
 
 class BioThingsSystemUpgrade(BaseSystemUpgrade):
     """Used to upgrade biothings SDK code"""
+
     SRC_NAME = "__biothings_sdk"  # "__" means private, not listed
 
 
 class ApplicationSystemUpgrade(BaseSystemUpgrade):
     """Used to upgrade application (api app) code"""
+
     SRC_NAME = "__application"  # "__" means private, not listed
-    

@@ -1,15 +1,15 @@
 import os
-import subprocess
 import shutil
-import boto3
-from biothings.utils.aws import send_s3_file
+import subprocess
 
-from biothings.utils.hub_db import get_src_build
-from biothings.utils.mongo import get_src_db, id_feeder, get_target_db, \
-    get_cache_filename
-from biothings.utils.common import anyfile
+import boto3
 
 from biothings import config as btconfig
+from biothings.utils.aws import send_s3_file
+from biothings.utils.common import anyfile
+from biothings.utils.hub_db import get_src_build
+from biothings.utils.mongo import get_cache_filename, get_src_db, get_target_db, id_feeder
+
 logging = btconfig.logger
 
 
@@ -69,7 +69,9 @@ def export_ids(col_name):
         fout = anyfile(outfn, "wb")
         colext = os.path.splitext(col_ids_cache)[1]
         coldext = os.path.splitext(cold_ids_cache)[1]
-        assert colext == coldext, "Hot and Cold _id cache are compressed differently (%s and %s), it should be the same" % (coldext, coldext)
+        assert (
+            colext == coldext
+        ), "Hot and Cold _id cache are compressed differently (%s and %s), it should be the same" % (coldext, coldext)
         comp = colext.replace(".", "")
         supportedcomps = ["xz", "gz", ""]  # no compression allowed as well
         assert comp in supportedcomps, "Compression '%s' isn't supported (%s)" % (comp, supportedcomps)
@@ -122,18 +124,27 @@ def upload_ids(ids_file, redirect_from, s3_bucket, aws_key, aws_secret):
     # cache file should be named the same as target_name
     logging.info("Uploading _ids file %s to s3 (bucket: %s)" % (repr(ids_file), s3_bucket))
     s3path = os.path.basename(ids_file)
-    send_s3_file(ids_file, s3path, overwrite=True,
-                 s3_bucket=s3_bucket,
-                 aws_key=aws_key,
-                 aws_secret=aws_secret)
+    send_s3_file(
+        ids_file,
+        s3path,
+        overwrite=True,
+        s3_bucket=s3_bucket,
+        aws_key=aws_key,
+        aws_secret=aws_secret,
+    )
     # make the file public
-    s3_resource = boto3.resource('s3', aws_access_key_id=aws_key,
-                                 aws_secret_access_key=aws_secret)
+    s3_resource = boto3.resource(
+        "s3",
+        aws_access_key_id=aws_key,
+        aws_secret_access_key=aws_secret,
+    )
     actual_object = s3_resource.Object(bucket_name=s3_bucket, key=s3path)
-    actual_object.Acl().put(ACL='public-read')
+    actual_object.Acl().put(ACL="public-read")
     # update permissions and redirect metadata
     redir_object = s3_resource.Object(bucket_name=s3_bucket, key=redirect_from)
     redir_object.load()  # check if object exists, will raise if not
-    redir_object.put(WebsiteRedirectLocation='/%s' % s3path)
-    redir_object.Acl().put(ACL='public-read')
-    logging.info("IDs file '%s' uploaded to s3, redirection set from '%s'" % (ids_file, redirect_from), extra={"notify": True})
+    redir_object.put(WebsiteRedirectLocation="/%s" % s3path)
+    redir_object.Acl().put(ACL="public-read")
+    logging.info(
+        "IDs file '%s' uploaded to s3, redirection set from '%s'", ids_file, redirect_from, extra={"notify": True}
+    )

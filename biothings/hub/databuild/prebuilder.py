@@ -1,6 +1,7 @@
+import pymongo
+
 import biothings.utils.redis as redis
 from biothings.utils.mongo import doc_feeder
-import pymongo
 
 
 class BasePreCompiledDataProvider(object):
@@ -41,7 +42,7 @@ class RedisPreCompiledDataProvider(BasePreCompiledDataProvider):
 
     def get_all(self):
         for _id in self.db.scan_iter():
-            #cols = list(self.db.hgetall(_id).keys())
+            # cols = list(self.db.hgetall(_id).keys())
             cols = []
             yield (_id, cols)
 
