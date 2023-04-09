@@ -1,8 +1,8 @@
-from typing import Optional, MutableMapping, Type
+from typing import MutableMapping, Optional, Type
 
 
 class _BaseMetaClass(type):
-    subclasses: MutableMapping[str, Type['_ChildContext']] = {}
+    subclasses: MutableMapping[str, Type["_ChildContext"]] = {}
 
     def __new__(cls, clsname, bases, attrs):
         # produce the method that creates child contexts
@@ -10,7 +10,7 @@ class _BaseMetaClass(type):
             def fn(self, **kwargs):
                 ch_context = cls.subclasses[child_context](self)
                 for at, v in kwargs.items():
-                    if not at.startswith('_') and at in dir(ch_context):
+                    if not at.startswith("_") and at in dir(ch_context):
                         meth = getattr(ch_context, at)
                         if callable(meth):
                             meth(v)
@@ -18,6 +18,7 @@ class _BaseMetaClass(type):
                     raise AttributeError(f"Child does not have {at}")
                 self.document[field] = ch_context.document
                 return ch_context
+
             return fn
 
         # produce the method that updates attributes
@@ -25,10 +26,11 @@ class _BaseMetaClass(type):
             def fn(self, v):
                 self.document[field] = v
                 return self
+
             return fn
 
-        if 'CHILD_CONTEXTS' in attrs:
-            for name, (ch_context, field) in attrs['CHILD_CONTEXTS'].items():
+        if "CHILD_CONTEXTS" in attrs:
+            for name, (ch_context, field) in attrs["CHILD_CONTEXTS"].items():
                 # FIXME: Hopefully we want the docstrings for params here
                 #  Which is kind of a problem because the "more root" types
                 #  are defined earlier, and to obtain the possible params
@@ -41,8 +43,8 @@ class _BaseMetaClass(type):
                 meth.__doc__ = docstring
                 meth.__name__ = name
                 attrs[name] = meth
-        if 'ATTRIBUTE_FIELDS' in attrs:
-            for name, field in attrs['ATTRIBUTE_FIELDS'].items():
+        if "ATTRIBUTE_FIELDS" in attrs:
+            for name, field in attrs["ATTRIBUTE_FIELDS"].items():
                 docstring = f"""Set {field} field"""
                 meth = mk_attr_meth(field)
                 meth.__doc__ = docstring
@@ -66,7 +68,7 @@ class _BaseContext(metaclass=_BaseMetaClass):
 
     def __getattr__(self, item: str):
         if self.EXTENSION and item.startswith("x_") and len(item) > 2:
-            default_field_name = item.replace('_', '-')
+            default_field_name = item.replace("_", "-")
 
             def set_extension_value(__value, field: str = default_field_name):
                 if not field.startswith("x-") or len(field) < 3:
@@ -79,9 +81,7 @@ class _BaseContext(metaclass=_BaseMetaClass):
 
             return set_extension_value
 
-        raise AttributeError(
-            f"'{self.__class__.__name__}' has no attribute '{item}'"
-        )
+        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{item}'")
 
 
 class _ChildContext(_BaseContext):
@@ -102,136 +102,120 @@ class _ChildContext(_BaseContext):
             return super(_ChildContext, self).__getattr__(attr_name)
         except AttributeError:
             pass  # would have returned if it's an extension
-        multilevel_allow = ['path', 'get', 'put', 'post', 'delete', 'options',
-                            'head', 'patch', 'trace']
-        if not attr_name.startswith('_'):
-            if attr_name in dir(self.parent) or (
-                    attr_name in multilevel_allow and
-                    hasattr(self.parent, attr_name)):
+        multilevel_allow = ["path", "get", "put", "post", "delete", "options", "head", "patch", "trace"]
+        if not attr_name.startswith("_"):
+            if attr_name in dir(self.parent) or (attr_name in multilevel_allow and hasattr(self.parent, attr_name)):
                 return getattr(self.parent, attr_name)
         raise AttributeError()
 
 
 class _HasParameters(_BaseContext):
     def parameter(self, name, in_, required):
-        parameters = self.document.setdefault('parameters', [])
+        parameters = self.document.setdefault("parameters", [])
         param_context = OpenAPIParameterContext(self, name, in_, required)
         parameters.append(param_context.document)
         return param_context
 
 
 class _HasSummary(_BaseContext):
-    ATTRIBUTE_FIELDS = {
-        'summary': 'summary'
-    }
+    ATTRIBUTE_FIELDS = {"summary": "summary"}
 
 
 class _HasDescription(_BaseContext):
-    ATTRIBUTE_FIELDS = {
-        'description': 'description'
-    }
+    ATTRIBUTE_FIELDS = {"description": "description"}
 
 
 class _HasExternalDocs(_BaseContext):
     CHILD_CONTEXTS = {
-        'external_docs': ('OpenAPIExternalDocsContext', 'externalDocs'),
+        "external_docs": ("OpenAPIExternalDocsContext", "externalDocs"),
     }
 
 
 class _HasTags(_BaseContext):
     def tag(self, t):
-        tags = self.document.setdefault('tags', [])
+        tags = self.document.setdefault("tags", [])
         tags.append(t)
         return self
 
 
 class OpenAPIContext(_HasExternalDocs):
     CHILD_CONTEXTS = {
-        'info': ('OpenAPIInfoContext', 'info'),
+        "info": ("OpenAPIInfoContext", "info"),
     }
     EXTENSION = True
 
     def __init__(self):
         super(OpenAPIContext, self).__init__()
         self.document = {
-            'openapi': '3.0.3',
-            'paths': {},
+            "openapi": "3.0.3",
+            "paths": {},
         }
 
     def server(self, url: str, description: Optional[str] = None):
-        servers = self.document.setdefault('servers', [])
-        server = {
-            'url': url
-        }
+        servers = self.document.setdefault("servers", [])
+        server = {"url": url}
         if description:
-            server['description'] = description
+            server["description"] = description
         servers.append(server)
         return self
 
-    def path(self, path: str,
-             summary: Optional[str] = None,
-             description: Optional[str] = None):
+    def path(self, path: str, summary: Optional[str] = None, description: Optional[str] = None):
         path_item = OpenAPIPathItemContext(self)
         if summary:
             path_item.summary(summary)
         if description:
             path_item.description(description)
-        self.document['paths'][path] = path_item.document
+        self.document["paths"][path] = path_item.document
         return path_item
 
 
 class OpenAPIInfoContext(_ChildContext, _HasDescription):
     ATTRIBUTE_FIELDS = {
-        'title': 'title',
-        'terms_of_service': 'termsOfService',
-        'version': 'version',
+        "title": "title",
+        "terms_of_service": "termsOfService",
+        "version": "version",
     }
     CHILD_CONTEXTS = {
-        'contact': ('OpenAPIContactContext', 'contact'),
-        'license': ('OpenAPILicenseContext', 'license'),
+        "contact": ("OpenAPIContactContext", "contact"),
+        "license": ("OpenAPILicenseContext", "license"),
     }
     EXTENSION = True
 
 
 class OpenAPIContactContext(_ChildContext):
     ATTRIBUTE_FIELDS = {
-        'name': 'name',
-        'url': 'url',
-        'email': 'email',
+        "name": "name",
+        "url": "url",
+        "email": "email",
     }
     EXTENSION = True
 
 
 class OpenAPILicenseContext(_ChildContext):
     ATTRIBUTE_FIELDS = {
-        'name': 'name',
-        'url': 'url',
+        "name": "name",
+        "url": "url",
     }
     EXTENSION = True
 
 
-class OpenAPIPathItemContext(_ChildContext, _HasSummary, _HasDescription,
-                             _HasParameters):
+class OpenAPIPathItemContext(_ChildContext, _HasSummary, _HasDescription, _HasParameters):
     CHILD_CONTEXTS = {}
-    for http_method in ['get', 'put', 'post', 'delete', 'options', 'head',
-                        'patch', 'trace']:
-        CHILD_CONTEXTS[http_method] = ('OpenAPIOperation', http_method)
+    for http_method in ["get", "put", "post", "delete", "options", "head", "patch", "trace"]:
+        CHILD_CONTEXTS[http_method] = ("OpenAPIOperation", http_method)
     EXTENSION = True
 
 
-class OpenAPIOperation(_ChildContext, _HasSummary, _HasExternalDocs, _HasTags,
-                       _HasDescription, _HasParameters):
-    ATTRIBUTE_FIELDS = {
-        'operation_id': 'operationId'
-    }
+class OpenAPIOperation(_ChildContext, _HasSummary, _HasExternalDocs, _HasTags, _HasDescription, _HasParameters):
+    ATTRIBUTE_FIELDS = {"operation_id": "operationId"}
     EXTENSION = True
 
     def __init__(self, parent):
         super(OpenAPIOperation, self).__init__(parent)
         self.document = {
-            'responses': {
-                '200': {
-                    'description': "Success",
+            "responses": {
+                "200": {
+                    "description": "Success",
                 }
             }
         }
@@ -239,28 +223,28 @@ class OpenAPIOperation(_ChildContext, _HasSummary, _HasExternalDocs, _HasTags,
 
 class OpenAPIParameterContext(_ChildContext, _HasDescription):
     ATTRIBUTE_FIELDS = {
-        'deprecated': 'deprecated',
-        'allow_empty': 'allowEmptyValue',
-        'style': 'style',
-        'explode': 'explode',
-        'allow_reserved': 'allowReserved',
-        'schema': 'schema',
+        "deprecated": "deprecated",
+        "allow_empty": "allowEmptyValue",
+        "style": "style",
+        "explode": "explode",
+        "allow_reserved": "allowReserved",
+        "schema": "schema",
     }
     EXTENSION = True
 
     def __init__(self, parent, name: str, in_: str, required: bool):
         super(OpenAPIParameterContext, self).__init__(parent)
         self.document = {
-            'name': name,
-            'in': in_,
-            'required': required,
+            "name": name,
+            "in": in_,
+            "required": required,
         }
 
     def type(self, typ: str, **kwargs):
         schema = {
-            'type': typ,
+            "type": typ,
         }
-        for k in ['minimum', 'maximum', 'default']:
+        for k in ["minimum", "maximum", "default"]:
             v = kwargs.get(k)
             if v is not None:
                 schema[k] = v
@@ -270,8 +254,9 @@ class OpenAPIParameterContext(_ChildContext, _HasDescription):
 
 class OpenAPIExternalDocsContext(_ChildContext, _HasDescription):
     ATTRIBUTE_FIELDS = {
-        'url': 'url',
+        "url": "url",
     }
     EXTENSION = True
+
 
 OpenAPIDocumentBuilder = OpenAPIContext

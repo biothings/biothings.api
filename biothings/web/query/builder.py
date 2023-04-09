@@ -342,12 +342,8 @@ class ESQueryBuilder:
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
             if "all" not in options._source:
-                fields_with_minus = [
-                    field.lstrip("-") for field in options._source if field.startswith("-")
-                ]
-                fields_without_minus = [
-                    field for field in options._source if not field.startswith("-")
-                ]
+                fields_with_minus = [field.lstrip("-") for field in options._source if field.startswith("-")]
+                fields_without_minus = [field for field in options._source if not field.startswith("-")]
                 search = search.source(includes=fields_without_minus, excludes=fields_with_minus)
         for key in ("from", "size", "explain", "version"):
             if key in options:
@@ -382,9 +378,7 @@ class MongoQueryBuilder:
         assert q is None and not fields or q and isinstance(q, str)
         assert all((isinstance(field, str) for field in fields))
 
-        filter_ = {
-            field: 1 for field in options.get("_source", ())  # project fields to return
-        } or None
+        filter_ = {field: 1 for field in options.get("_source", ())} or None  # project fields to return
 
         query = {"$or": [{field: q} for field in fields]} if fields else {}
 
@@ -395,7 +389,6 @@ class MongoQueryBuilder:
 
 
 class SQLQueryBuilder:
-
     # PROOF OF CONCEPT
     # INPUT NOT SANITIZED
     # INTERNAL USE ONLY
@@ -413,7 +406,6 @@ class SQLQueryBuilder:
             self.tables[None] = next(iter(self.tables.values()))
 
     def build(self, q, **options):
-
         statements = [
             "SELECT {}".format(", ".join(options.get("_source", ())) or "*"),
             "FROM {}".format(self.tables[options.get("biothing_type")]),
@@ -443,11 +435,10 @@ class SQLQueryBuilder:
 
 class ESUserQuery:
     def __init__(self, path):
-
         self._queries = {}
         self._filters = {}
         try:
-            for (dirpath, dirnames, filenames) in os.walk(path):
+            for dirpath, dirnames, filenames in os.walk(path):
                 if dirnames:
                     self.logger.info("User query folders: %s.", dirnames)
                     continue
@@ -457,22 +448,16 @@ class ESUserQuery:
                             ## alternative implementation  # noqa: E266
                             # self._queries[os.path.basename(dirpath)] = text_file.read()
                             ##
-                            self._queries[os.path.basename(dirpath)] = orjson.loads(
-                                text_file.read()
-                            )
+                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
                         elif "filter" in filename:
-                            self._filters[os.path.basename(dirpath)] = orjson.loads(
-                                text_file.read()
-                            )
+                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
         except Exception:
             self.logger.exception("Error loading user queries.")
 
     def has_query(self, named_query):
-
         return named_query in self._queries
 
     def has_filter(self, named_query):
-
         return named_query in self._filters
 
     def get_query(self, named_query, **kwargs):
@@ -500,7 +485,6 @@ class ESUserQuery:
         ##
 
     def get_filter(self, named_query):
-
         dic = self._filters.get(named_query)
         key, val = next(iter(dic.items()))
         return Q(key, **val)

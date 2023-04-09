@@ -1,21 +1,17 @@
-
 import importlib.util
 import logging
 import os
 import types
+from collections.abc import Collection
 from importlib import import_module
 from typing import NamedTuple
-from collections.abc import Collection
 
-
-from . import default
-from . import validators
+from . import default, validators
 
 logger = logging.getLogger(__name__)
 
 
 def load(config="config"):
-
     config = load_module(config)
     if config.__name__ == config.__package__:
         attrs = [getattr(config, attr) for attr in dir(config)]
@@ -23,17 +19,21 @@ def load(config="config"):
         valis = (
             validators.WebAPIValidator(),
             validators.DBParamValidator(),
-            validators.SubmoduleValidator()
+            validators.SubmoduleValidator(),
         )
         return ConfigPackage(
-            ConfigModule(config), [
-                ConfigModule(conf, config, valis) for conf in confs
-            ])
+            ConfigModule(config),
+            [ConfigModule(conf, config, valis) for conf in confs],
+        )
     else:  # config is a single file module, not a package
-        return ConfigModule(config, validators=(
-            validators.WebAPIValidator(),
-            validators.DBParamValidator()
-        ))
+        return ConfigModule(
+            config,
+            validators=(
+                validators.WebAPIValidator(),
+                validators.DBParamValidator(),
+            ),
+        )
+
 
 def load_module(config, default=None):
     """
@@ -46,7 +46,7 @@ def load_module(config, default=None):
     """
     if isinstance(config, types.ModuleType):
         return config
-    elif isinstance(config, str) and config.endswith('.py'):
+    elif isinstance(config, str) and config.endswith(".py"):
         spec = importlib.util.spec_from_file_location("config", config)
         config = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(config)
@@ -64,21 +64,22 @@ def load_module(config, default=None):
 # known attributes that persisit throughout the application. For
 # those reasons, item-access interface is not supported.
 
+
 class ConfigPackage(NamedTuple):
     root: object
     modules: Collection
 
-class ConfigModule():
-    '''
+
+class ConfigModule:
+    """
     A wrapper for the settings that configure the web API.
 
     * Environment variables can override settings of the same names.
     * Default values are defined in biothings.web.settings.default.
 
-    '''
+    """
 
     def __init__(self, config=None, parent=None, validators=(), **kwargs):
-
         self._fallback = parent  # config package
         self._primary = config
         self._override = types.SimpleNamespace()
@@ -96,7 +97,7 @@ class ConfigModule():
                 if isinstance(getattr(self, name), str):
                     new_value = os.environ[name]
                 elif isinstance(getattr(self, name), bool):
-                    new_value = os.environ[name].lower() in ('true', '1')
+                    new_value = os.environ[name].lower() in ("true", "1")
                 if new_value is not None:
                     logger.info("$ %s = %s", name, os.environ[name])
                     setattr(self._override, name, new_value)

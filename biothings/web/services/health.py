@@ -1,9 +1,10 @@
-from elasticsearch import Elasticsearch, AsyncElasticsearch
 from collections import UserDict
 
-class _HCResult():
+from elasticsearch import AsyncElasticsearch, Elasticsearch
 
-    MIN_RES_FLD = 'status'
+
+class _HCResult:
+    MIN_RES_FLD = "status"
 
     def __init__(self, verbose=False):
         self._verbose = verbose
@@ -18,8 +19,8 @@ class _HCResult():
     def to_dict(self):
         return dict(self._content)
 
-class DBHealth():
 
+class DBHealth:
     def __init__(self, client):
         self.client = client
 
@@ -28,8 +29,8 @@ class DBHealth():
         # return db server status details.
         raise NotImplementedError()
 
-class ESHealth(DBHealth):
 
+class ESHealth(DBHealth):
     # https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-health.html
     # GET http://localhost:9200/_cluster/health
     # {
@@ -85,8 +86,8 @@ class ESHealth(DBHealth):
 
         if self.payload:
             document = await self.client.get(**self.payload)
-            response.update({'payload': self.payload})
-            response.update({'document': document})
+            response.update({"payload": self.payload})
+            response.update({"document": document})
 
         return response.to_dict()
 
@@ -94,14 +95,14 @@ class ESHealth(DBHealth):
         assert isinstance(self.client, Elasticsearch)
         return self.client.cluster.health()
 
-class MongoHealth(DBHealth):
 
+class MongoHealth(DBHealth):
     def check(self, **kwargs):
         # typical response: {'ok': 1.0}
-        return self.client.command('ping')
+        return self.client.command("ping")
+
 
 class SQLHealth(DBHealth):
-
     def check(self, **kwargs):
         # https://docs.sqlalchemy.org/en/13/core/connections.html
         # #sqlalchemy.engine.Connection.closed

@@ -8,7 +8,6 @@ import elasticsearch
 import elasticsearch_dsl
 import requests
 from elasticsearch import AIOHttpConnection, RequestsHttpConnection as _Conn
-from requests_aws4auth import AWS4Auth
 from tornado.ioloop import IOLoop
 
 from biothings.utils.common import run_once

@@ -131,9 +131,7 @@ QUERY_KWARGS = {
         "from": {"type": int, "max": 10000, "alias": "skip"},
         "sort": {"type": list, "max": 10},
         "with_total": {"type": bool},
-        "analyzer": {
-            "type": str
-        },  # any of built-in analyzer (overrides default index-time analyzer)
+        "analyzer": {"type": str},  # any of built-in analyzer (overrides default index-time analyzer)
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-analyzers.html
     },
 }

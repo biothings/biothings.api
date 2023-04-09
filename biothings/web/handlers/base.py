@@ -18,43 +18,42 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
-import orjson
 import logging
 
+import orjson
 import yaml
+from tornado.web import HTTPError, RequestHandler
+
 from biothings.utils import serializer
 from biothings.web.analytics.events import Event
 from biothings.web.analytics.notifiers import AnalyticsMixin
 from biothings.web.options import OptionError, ReqArgs
-from tornado.web import HTTPError, RequestHandler
-
 
 logger = logging.getLogger(__name__)
 
-class BaseHandler(RequestHandler):
 
+class BaseHandler(RequestHandler):
     @property
     def biothings(self):
         return self.application.biothings
 
 
 class BaseAPIHandler(BaseHandler, AnalyticsMixin):
-
-    name = '__base__'
+    name = "__base__"
     kwargs = {
-        '*': {
-            'format': {
-                'type': str,
-                'default': 'json',
-                'enum': ('json', 'yaml', 'html', 'msgpack'),
+        "*": {
+            "format": {
+                "type": str,
+                "default": "json",
+                "enum": ("json", "yaml", "html", "msgpack"),
             }
         }
     }
-    format = 'json'
+    format = "json"
     cache = None
     cache_control_template = "max-age={cache}, public"
 
-    def initialize(self,  cache=None):
+    def initialize(self, cache=None):
         cache_value = self.biothings.config.DEFAULT_CACHE_MAX_AGE
         if self.cache is not None:
             cache_value = self.cache
@@ -77,27 +76,20 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         # self.event may be replaced with its sub-classes.
 
     def prepare(self):
-
-        content_type = self.request.headers.get('Content-Type', '')
-        if content_type.startswith('application/json'):
+        content_type = self.request.headers.get("Content-Type", "")
+        if content_type.startswith("application/json"):
             self.args_json = self._parse_json()
-        elif content_type.startswith('application/yaml'):
+        elif content_type.startswith("application/yaml"):
             self.args_yaml = self._parse_yaml()
 
-        self.args_query = {
-            key: self.get_query_argument(key)
-            for key in self.request.query_arguments}
-        self.args_form = {
-            key: self.get_body_argument(key)
-            for key in self.request.body_arguments}
+        self.args_query = {key: self.get_query_argument(key) for key in self.request.query_arguments}
+        self.args_form = {key: self.get_body_argument(key) for key in self.request.body_arguments}
 
         reqargs = ReqArgs(
-            ReqArgs.Path(
-                args=self.path_args,
-                kwargs=self.path_kwargs),
+            ReqArgs.Path(args=self.path_args, kwargs=self.path_kwargs),
             query=self.args_query,
             form=self.args_form,
-            json_=self.args_json
+            json_=self.args_json,
         )
         # standardized request arguments
         self.args = self._parse_args(reqargs)
@@ -105,23 +97,26 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
     def _parse_json(self):
         if not self.request.body:
-            raise HTTPError(400, reason=(
-                'Empty body is not a valid JSON. '
-                'Remove the content-type header, or '
-                'provide an empty object in the body.'))
+            raise HTTPError(
+                400,
+                reason=(
+                    "Empty body is not a valid JSON. "
+                    "Remove the content-type header, or "
+                    "provide an empty object in the body."
+                ),
+            )
         try:
             return orjson.loads(self.request.body)
         except orjson.JSONDecodeError:
-            raise HTTPError(400, reason='Invalid JSON body.')
+            raise HTTPError(400, reason="Invalid JSON body.")
 
     def _parse_yaml(self):
         try:
             return yaml.load(self.request.body, Loader=yaml.SafeLoader)
         except (yaml.scanner.ScannerError, yaml.parser.ParserError):
-            raise HTTPError(400, reason='Invalid YAML body.')
+            raise HTTPError(400, reason="Invalid YAML body.")
 
     def _parse_args(self, reqargs):
-
         if not self.name:  # feature disabled
             return {}  # default value
 
@@ -139,15 +134,10 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
             return args
 
         finally:  # one log message regardless of success
-            logger.debug(
-                "%s %s\n%s\n%s",
-                self.request.method,
-                self.request.uri,
-                reqargs, args)
+            logger.debug("%s %s\n%s\n%s", self.request.method, self.request.uri, reqargs, args)
 
     def write(self, chunk):
         try:
-
             if self.format == "json":
                 chunk = serializer.to_json(chunk)
                 self.set_header("Content-Type", "application/json; charset=UTF-8")
@@ -175,6 +165,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         # APIs should not normally need to use templating
         # set the path to where we can find the api.html
         import biothings.web.templates
+
         return next(iter(biothings.web.templates.__path__))
 
     def on_finish(self):
@@ -200,32 +191,26 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         }
         """
 
-        reason = kwargs.pop('reason', self._reason)
+        reason = kwargs.pop("reason", self._reason)
         # "reason" is a reserved tornado keyword
         # see RequestHandler.send_error
         assert isinstance(reason, str)
-        assert '\n' not in reason
+        assert "\n" not in reason
 
-        message = {
-            "code": status_code,
-            "success": False,
-            "error": reason
-        }
+        message = {"code": status_code, "success": False, "error": reason}
         try:  # merge exception info
-            exception = kwargs['exc_info'][1]
-            message.update(exception.args[0]) # <-
+            exception = kwargs["exc_info"][1]
+            message.update(exception.args[0])  # <-
         except:
             pass
 
         self.finish(message)
 
     def options(self, *args, **kwargs):
-
         self.set_status(204)
         self.finish()
 
     def set_default_headers(self):
-
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Access-Control-Allow-Methods", "*")
         self.set_header("Access-Control-Allow-Headers", "*")

@@ -1,8 +1,5 @@
-
-class WebAPIValidator():
-
+class WebAPIValidator:
     def validate(self, config):
-
         # Compatibility
 
         if getattr(config, "API_PREFIX", None) is not None:
@@ -17,16 +14,14 @@ class WebAPIValidator():
         )
 
 
-class DBParamValidator():
-
+class DBParamValidator:
     def validate(self, config):
-
         assert isinstance(config.ES_INDICES, dict)
 
         # compatibility settings
-        if getattr(config, "ES_INDEX", None) and \
-           getattr(config, "ES_DOC_TYPE", None):
+        if getattr(config, "ES_INDEX", None) and getattr(config, "ES_DOC_TYPE", None):
             from biothings.web.settings import default
+
             if config.ES_INDICES is default.ES_INDICES:
                 config.ES_INDICES = {}
             else:  # combine with the user provided value
@@ -38,11 +33,11 @@ class DBParamValidator():
         # the application is built for a previous version.
         # to ensure delivering intended behaviors,
         # upgrade the config module of the application.
-        assert not hasattr(config, 'ES_SNIFF'), ERROR
-        assert not hasattr(config, 'ES_CLIENT_TIMEOUT'), ERROR
+        assert not hasattr(config, "ES_SNIFF"), ERROR
+        assert not hasattr(config, "ES_CLIENT_TIMEOUT"), ERROR
 
-class SubmoduleValidator():
 
+class SubmoduleValidator:
     def __init__(self):
         self._prefixes = set()
 
@@ -51,7 +46,7 @@ class SubmoduleValidator():
         assert config.APP_PREFIX not in self._prefixes, "APP_PREFIX conflicts."
         self._prefixes.add(config.APP_PREFIX)
 
-class MongoParamValidaor():
 
+class MongoParamValidaor:
     def validate(self, config):
         pass

@@ -13,7 +13,6 @@ from urllib.parse import urlencode
 
 
 class Event(UserDict):
-
     # HTTP PageView
     # Fields under __request__:
     # user_agent, user_ip, host, path, referer
@@ -59,11 +58,11 @@ class Event(UserDict):
             rip: Union[IPv4Address, IPv6Address] = ip_address(self.user_ip)
             ip_packed = rip.packed
         except ValueError:  # in the weird case I don't get an IP
-            ip_packed = randint(0, 0xFFFFFFFF).to_bytes(4, 'big')  # nosec
+            ip_packed = randint(0, 0xFFFFFFFF).to_bytes(4, "big")  # nosec
 
-        h = hashlib.blake2b(digest_size=16, salt=b'biothings')
+        h = hashlib.blake2b(digest_size=16, salt=b"biothings")
         h.update(ip_packed)
-        h.update(self.user_agent.encode('utf-8', errors='replace'))
+        h.update(self.user_agent.encode("utf-8", errors="replace"))
 
         d = bytearray(h.digest())
         # truncating hash is not that bad, fixing some bits should be okay, too
@@ -73,7 +72,6 @@ class Event(UserDict):
         return u
 
     def _cid(self, version):
-
         if version == 1:
             return self._cid_v1()
         elif version == 2:
@@ -83,7 +81,6 @@ class Event(UserDict):
         raise ValueError("CID Version.")
 
     def to_GA_payload(self, tracking_id, cid_version=1):
-
         # by default implements
         # a GA PageView hit-type
 
@@ -122,8 +119,8 @@ class Event(UserDict):
             "name": "page_view",
             "params": _clean(
                 {
-                    "page_location": f'{self.host}{self.path}',
-                    "page_title": self.path.strip('/').replace('/', '-'),
+                    "page_location": f"{self.host}{self.path}",
+                    "page_title": self.path.strip("/").replace("/", "-"),
                 }
             ),
         }
@@ -149,7 +146,6 @@ def _clean(dict):
 
 
 class GAEvent(Event):
-
     # GA Event
     # {
     #   "category": "video",
@@ -159,7 +155,6 @@ class GAEvent(Event):
     # }
 
     def to_GA_payload(self, tracking_id, cid_version=1):
-
         payloads = super().to_GA_payload(tracking_id, cid_version)
         if self.get("category") and self.get("action"):
             payloads.append(
@@ -226,7 +221,7 @@ class Message(Event):
 
     def __getattr__(self, attr):
         # virtual attributes
-        if attr in ('title', 'body', 'url', 'url_text', 'image', 'image_altext'):
+        if attr in ("title", "body", "url", "url_text", "image", "image_altext"):
             if attr in self:
                 return self[attr]
             if attr in self.DEFAULTS:
@@ -241,9 +236,7 @@ class Message(Event):
         """
         adf = {"version": 1, "type": "doc", "content": []}
         if self.body:
-            adf["content"].append(
-                {"type": "paragraph", "content": [{"type": "text", "text": self.body}]}
-            )
+            adf["content"].append({"type": "paragraph", "content": [{"type": "text", "text": self.body}]})
         if self.url:
             adf["content"].append(
                 {
@@ -322,17 +315,17 @@ class Message(Event):
         https://docs.aws.amazon.com/ses/latest/DeveloperGuide/examples-send-using-smtp.html
         """
         # Create message container - the correct MIME type is multipart/alternative.
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = self.title
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = self.title
         # msg['From'] = email.utils.formataddr((SENDERNAME, SENDER))
-        msg['From'] = sendfrom
-        msg['To'] = sendto
+        msg["From"] = sendfrom
+        msg["To"] = sendto
 
         # Comment or delete the next line if you are not using a configuration set
         # msg.add_header('X-SES-CONFIGURATION-SET',CONFIGURATION_SET)
 
         # Record the MIME types of both parts - text/plain and text/html.
-        part1 = MIMEText(self.body, 'plain')
+        part1 = MIMEText(self.body, "plain")
         part2 = MIMEText(
             f"""
         <!DOCTYPE html>
@@ -344,7 +337,7 @@ class Message(Event):
                 <p>{self.body}</p>
             </body>
         </html>""",
-            'html',
+            "html",
         )
 
         # Attach parts into message container.

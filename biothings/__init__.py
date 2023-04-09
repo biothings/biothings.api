@@ -16,9 +16,6 @@ def config_for_app(config):
     import warnings
 
     warnings.warn(
-        (
-            "It is safe to remove this function call now. "
-            "import biothings.hub will take care of it."
-        ),
+        'It is safe to remove this function call now, just "import biothings.hub" will take care of it.',
         DeprecationWarning,
     )

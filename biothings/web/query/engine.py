@@ -23,9 +23,10 @@
 
 import asyncio
 
-from biothings.web.query.builder import ESScrollID
 from elasticsearch import NotFoundError, RequestError
 from elasticsearch_dsl import MultiSearch, Search
+
+from biothings.web.query.builder import ESScrollID
 
 
 class ResultInterrupt(Exception):
@@ -33,21 +34,18 @@ class ResultInterrupt(Exception):
         super().__init__()
         self.data = data
 
+
 class RawResultInterrupt(ResultInterrupt):
     pass
 
+
 class EndScrollInterrupt(ResultInterrupt):
     def __init__(self):
-        super().__init__({
-            "success": False,
-            "error": "No more results to return."
-        })
+        super().__init__({"success": False, "error": "No more results to return."})
 
 
-class ESQueryBackend():
-
+class ESQueryBackend:
     def __init__(self, client, indices=None):
-
         self.client = client
         self.indices = indices or {None: "_all"}
 
@@ -65,7 +63,7 @@ class ESQueryBackend():
 
     def execute(self, query, **options):
         assert isinstance(query, Search)
-        index = self.indices[options.get('biothing_type')]
+        index = self.indices[options.get("biothing_type")]
         # index can be further adjusted (e.g. based on options) if necessary
         index = self.adjust_index(index, query, **options)
         return self.client.search(query.to_dict(), index)
@@ -76,16 +74,20 @@ class ESQueryBackend():
         """
         return original_index
 
+
 class AsyncESQueryBackend(ESQueryBackend):
     """
     Execute an Elasticsearch query
     """
 
     def __init__(
-        self, client, indices=None,
-        scroll_time='1m', scroll_size=1000,
+        self,
+        client,
+        indices=None,
+        scroll_time="1m",
+        scroll_size=1000,
         multisearch_concurrency=5,
-        total_hits_as_int=True
+        total_hits_as_int=True,
     ):
         super().__init__(client, indices)
 
@@ -110,39 +112,44 @@ class AsyncESQueryBackend(ESQueryBackend):
             fetch_all: also return a scroll_id for this query (default: false)
             biothing_type: which type's corresponding indices to query (default in config.py)
         """
-        assert isinstance(query, (
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-multi-search.html
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/scroll-api.html
-            Search, MultiSearch, ESScrollID
-        ))
+        assert isinstance(
+            query,
+            (
+                # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
+                # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-multi-search.html
+                # https://www.elastic.co/guide/en/elasticsearch/reference/current/scroll-api.html
+                Search,
+                MultiSearch,
+                ESScrollID,
+            ),
+        )
 
         if isinstance(query, ESScrollID):
             try:
                 res = await self.client.scroll(
-                    scroll_id=query.data, scroll=self.scroll_time,
-                    rest_total_hits_as_int=self.total_hits_as_int)
+                    scroll_id=query.data, scroll=self.scroll_time, rest_total_hits_as_int=self.total_hits_as_int
+                )
             except (
                 RequestError,  # the id is not in the correct format of a context id
-                NotFoundError  # the id does not correspond to any search context
+                NotFoundError,  # the id does not correspond to any search context
             ):
                 raise ValueError("Invalid or stale scroll_id.")
             else:
-                if options.get('raw'):
+                if options.get("raw"):
                     raise RawResultInterrupt(res)
 
-                if not res['hits']['hits']:
+                if not res["hits"]["hits"]:
                     raise EndScrollInterrupt()
 
                 return res
 
         # everything below require us to know which indices to query
-        index = self.indices[options.get('biothing_type')]
+        index = self.indices[options.get("biothing_type")]
         # index can be further adjusted (e.g. based on options) if necessary
         index = self.adjust_index(index, query, **options)
 
         if isinstance(query, Search):
-            if options.get('fetch_all'):
+            if options.get("fetch_all"):
                 query = query.extra(size=self.scroll_size)
                 query = query.params(scroll=self.scroll_time)
             if self.total_hits_as_int:
@@ -159,15 +166,15 @@ class AsyncESQueryBackend(ESQueryBackend):
                 res = await self.client.msearch(body=query.to_dict(), index=index)
             finally:
                 self.semaphore.release()
-            res = res['responses']
+            res = res["responses"]
 
-        if options.get('raw'):
+        if options.get("raw"):
             raise RawResultInterrupt(res)
 
         return res
 
-class MongoQueryBackend():
 
+class MongoQueryBackend:
     def __init__(self, client, collections):
         self.client = client
         self.collections = collections
@@ -176,14 +183,11 @@ class MongoQueryBackend():
             self.collections[None] = next(iter(self.collections.values()))
 
     def execute(self, query, **options):
+        client = self.client[self.collections[options.get("biothing_type")]]
+        return list(client.find(*query).skip(options.get("from", 0)).limit(options.get("size", 10)))
 
-        client = self.client[self.collections[options.get('biothing_type')]]
-        return list(client.find(*query)
-                    .skip(options.get('from', 0))
-                    .limit(options.get('size', 10)))
 
-class SQLQueryBackend():
-
+class SQLQueryBackend:
     def __init__(self, client):
         self.client = client
 
