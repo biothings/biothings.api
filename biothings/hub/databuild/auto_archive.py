@@ -78,9 +78,7 @@ class AutoArchiveManager(BaseManager):
             if deltadate.days > days:
                 logger.info("Archiving build %s (older than %s)" % (build_id, deltadate))
                 if dryrun:
-                    logger.info(
-                        'This is a dryrun of "archive(%s)", no real changes were made.', build_id
-                    )
+                    logger.info('This is a dryrun of "archive(%s)", no real changes were made.', build_id)
                 else:
                     self.build_manager.archive_merge(build_id)
                 at_least_one = True

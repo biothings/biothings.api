@@ -13,10 +13,17 @@ from importlib import import_module
 from pprint import pformat
 from types import SimpleNamespace
 
-import aiocron
-import asyncssh
+try:
+    import aiocron
+    import asyncssh
+except ImportError:
+    # Suppress import error when we just run CLI
+    class asyncssh:
+        SSHServer = object
+        SSHServerSession = object  # noqa
 
-from biothings.utils.common import get_random_string, get_timestamp, DummyConfig
+
+from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 from biothings.utils.configuration import ConfigurationError, ConfigurationWrapper
 from biothings.utils.document_generator import generate_command_documentations
 
@@ -26,7 +33,6 @@ config = None  # a global variable. It should be set by calling the _config_for_
 
 
 def _config_for_app(config_mod=None):
-
     if not config_mod:
         if "." not in sys.path:
             sys.path.insert(0, ".")  # import config.py in current folder
@@ -284,7 +290,7 @@ def get_schedule(loop):
 
 
 async def start_ssh_server(
-    loop, name, passwords, keys=["bin/ssh_host_key"], shell=None, host="", port=8022
+    loop, name, passwords, keys=["bin/ssh_host_key"], shell=None, host="", port=8022  # NOQA B006
 ):
     for key in keys:
         assert os.path.exists(key), "Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (
@@ -294,9 +300,7 @@ async def start_ssh_server(
     HubSSHServer.PASSWORDS = passwords
     HubSSHServer.NAME = name
     HubSSHServer.SHELL = shell
-    aiocron.crontab(
-        HUB_REFRESH_COMMANDS, func=shell.__class__.refresh_commands, start=True, loop=loop
-    )
+    aiocron.crontab(HUB_REFRESH_COMMANDS, func=shell.__class__.refresh_commands, start=True, loop=loop)
     # yield from asyncssh.create_server(HubSSHServer,
     #                                   host,
     #                                   port,
@@ -319,7 +323,6 @@ class HubCommands(OrderedDict):
 
 
 class HubServer(object):
-
     DEFAULT_FEATURES = [
         "config",
         "job",
@@ -359,6 +362,7 @@ class HubServer(object):
         "version_urls": getattr(config, "VERSION_URLS", []),
         "indexer_factory": getattr(config, "AUTOHUB_INDEXER_FACTORY", None),
         "es_host": getattr(config, "AUTOHUB_ES_HOST", None),
+        "validator_class": getattr(config, "AUTOHUB_VALIDATOR_CLASS", None),
     }
 
     def __init__(
@@ -446,9 +450,7 @@ class HubServer(object):
         given API definition honoring REST principle for HTTP verbs, generate endpoints only for
         which actions are read-only actions.
         """
-        assert (
-            self.api_endpoints
-        ), "Can't derive a read-only API is no read-write endpoints are defined"
+        assert self.api_endpoints, "Can't derive a read-only API is no read-write endpoints are defined"
         self.readonly_api_endpoints = {}
         for cmd, api_endpoints in self.api_endpoints.items():
             if not isinstance(api_endpoints, list):
@@ -488,9 +490,7 @@ class HubServer(object):
             # First deal with read-only API
             if "readonly" in self.features:
                 self.configure_readonly_api_endpoints()
-                self.readonly_routes.extend(
-                    generate_api_routes(self.shell, self.readonly_api_endpoints)
-                )
+                self.readonly_routes.extend(generate_api_routes(self.shell, self.readonly_api_endpoints))
                 # we don't want to expose feature read-only for the API that is *not*
                 # read-only. "readonly" feature means we're running another webapp for
                 # a specific readonly API. UI can then query the root handler and see
@@ -503,7 +503,7 @@ class HubServer(object):
                 self.features.remove("readonly")
                 hub_name = getattr(config, "HUB_NAME", "Hub") + " (read-only)"
                 self.readonly_routes.append(
-                    ("/", RootHandler, {"features": ro_features, "hub_name": hub_name})
+                    ("/", RootHandler, {"features": ro_features, "hub_name": hub_name}),
                 )
 
             # Then deal with read-write API
@@ -555,14 +555,10 @@ class HubServer(object):
             if self.readonly_routes:
                 if not getattr(config, "READONLY_HUB_API_PORT", None):
                     self.logger.warning(
-                        "Read-only Hub API feature is set but READONLY_HUB_API_PORT "
-                        + "isn't set in configuration"
+                        "Read-only Hub API feature is set but READONLY_HUB_API_PORT " + "isn't set in configuration"
                     )
                 else:
-                    self.logger.info(
-                        "Starting read-only Hub API server on port %s"
-                        % config.READONLY_HUB_API_PORT
-                    )
+                    self.logger.info("Starting read-only Hub API server on port %s" % config.READONLY_HUB_API_PORT)
                     # self.logger.info(self.readonly_routes)
                     ro_api = tornado.web.Application(self.readonly_routes)
                     start_api(
@@ -649,19 +645,19 @@ class HubServer(object):
         build_manager.configure()
         self.managers["build_manager"] = build_manager
         build_manager.poll()
-    
+
     def configure_auto_archive_manager(self):
         from biothings.hub.databuild.auto_archive import AutoArchiveManager
 
         if not self.managers.get("build_manager"):
             self.configure_build_manager()
-        
+
         args = self.mixargs("auto_archive")
         auto_archive_manager = AutoArchiveManager(
             build_manager=self.managers["build_manager"],
             job_manager=self.managers["job_manager"],
-            auto_archive_config=getattr(config, "AUTO_ARCHIVE_CONFIG"),
-            **args
+            auto_archive_config=config.AUTO_ARCHIVE_CONFIG,
+            **args,
         )
         auto_archive_manager.configure()
         self.managers["auto_archive_manager"] = auto_archive_manager
@@ -670,9 +666,7 @@ class HubServer(object):
         from biothings.hub.databuild.differ import DifferManager, SelfContainedJsonDiffer
 
         args = self.mixargs("diff")
-        diff_manager = DifferManager(
-            job_manager=self.managers["job_manager"], poll_schedule="* * * * * */10", **args
-        )
+        diff_manager = DifferManager(job_manager=self.managers["job_manager"], poll_schedule="* * * * * */10", **args)
         diff_manager.configure(
             [
                 SelfContainedJsonDiffer,
@@ -792,9 +786,7 @@ class HubServer(object):
         if "upload" in self.features and not getattr(config, "SKIP_UPLOADER_POLL", False):
             self.managers["upload_manager"].poll(
                 "upload",
-                lambda doc: self.shell.launch(
-                    partial(self.managers["upload_manager"].upload_src, doc["_id"])
-                ),
+                lambda doc: self.shell.launch(partial(self.managers["upload_manager"].upload_src, doc["_id"])),
             )
 
     def configure_autohub_feature(self):
@@ -830,6 +822,7 @@ class HubServer(object):
         version_urls = self.autohub_config["version_urls"]
         indexer_factory = self.autohub_config["indexer_factory"]
         es_host = self.autohub_config["es_host"]
+        validator_class = self.autohub_config["validator_class"]
         factory = None
         if indexer_factory:
             assert (
@@ -838,11 +831,14 @@ class HubServer(object):
             try:
                 factory_class = get_class_from_classpath(indexer_factory)
                 factory = factory_class(version_urls, es_host)
-            except (ImportError, ModuleNotFoundError) as e:
-                self.logger.error(
-                    "Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e)
-                )
-        self.autohub_feature = AutoHubFeature(autohub_managers, version_urls, factory)
+            except ImportError as e:
+                self.logger.error("Couldn't find indexer factory class from '%s': %s" % (indexer_factory, e))
+        self.autohub_feature = AutoHubFeature(
+            autohub_managers,
+            version_urls,
+            factory,
+            validator_class=validator_class,
+        )
         try:
             self.autohub_feature.configure()
             self.autohub_feature.configure_auto_release(config)
@@ -903,8 +899,7 @@ class HubServer(object):
                 pass  # this is configured after managers but should not produce an error
             else:
                 raise AttributeError(
-                    "Feature '%s' listed but no 'configure_%s_{manager|feature}' method found"
-                    % (feat, feat)
+                    "Feature '%s' listed but no 'configure_%s_{manager|feature}' method found" % (feat, feat)
                 )
 
         self.logger.info("Active manager(s): %s" % pformat(self.managers))
@@ -919,12 +914,9 @@ class HubServer(object):
         and apply them on current code base
         """
 
-        if not getattr(config, "app_folder", None) or not getattr(
-            config, "biothings_folder", None
-        ):
+        if not getattr(config, "app_folder", None) or not getattr(config, "biothings_folder", None):
             self.logger.warning(
-                "Can't schedule check for new code updates, "
-                + "app folder and/or biothings folder not defined"
+                "Can't schedule check for new code updates, " + "app folder and/or biothings folder not defined"
             )
             return
 
@@ -942,28 +934,18 @@ class HubServer(object):
                 _skip_list = getattr(self, "upgrader_skip_folders", [])
                 if folder not in _skip_list:
                     _skip_list.append(folder)
-                    setattr(self, "upgrader_skip_folders", _skip_list)
+                    setattr(self, "upgrader_skip_folders", _skip_list)  # NOQA B010
 
         bt_upgrader_class = get_upgrader(BioThingsSystemUpgrade, config.biothings_folder)
         app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
-        self.managers["dump_manager"].register_classes(
-            [cls for cls in [bt_upgrader_class, app_upgrader_class] if cls]
-        )
+        self.managers["dump_manager"].register_classes([cls for cls in [bt_upgrader_class, app_upgrader_class] if cls])
 
-        loop = (
-            self.managers.get("job_manager")
-            and self.managers["job_manager"].loop
-            or asyncio.get_event_loop()
-        )
+        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or asyncio.get_event_loop()
 
         @aiocron.crontab(HUB_CHECK_UPGRADE, start=True, loop=loop)
         async def check_code_upgrade():
             _skip_list = getattr(self, "upgrader_skip_folders", [])
-            if (
-                _skip_list
-                and config.biothings_folder in _skip_list
-                and config.app_folder in _skip_list
-            ):
+            if _skip_list and config.biothings_folder in _skip_list and config.app_folder in _skip_list:
                 # both folders cannot be checked for versions, exit now
                 return
 
@@ -983,7 +965,7 @@ class HubServer(object):
             # enrich existing version information with an "upgrade" field.
             # note: we do that on config._module, the actual config.py module,
             # *not* directly on config as it's a wrapper over config._module
-            for (name, new, param) in (
+            for name, new, param in (
                 ("app", app_new, "APP_VERSION"),
                 ("biothings", bt_new, "BIOTHINGS_VERSION"),
             ):
@@ -999,7 +981,6 @@ class HubServer(object):
         asyncio.ensure_future(check_code_upgrade.func())
 
     def get_websocket_urls(self):
-
         if self.ws_urls:
             return self.ws_urls
 
@@ -1014,15 +995,11 @@ class HubServer(object):
         ChangeWatcher.publish()
         self.log_listener = ws.LogListener()
         # push log statements to the webapp
-        root_logger = (
-            logging.getLogger()
-        )  # careful, asyncio logger will trigger log statement while in the handler
+        root_logger = logging.getLogger()  # careful, asyncio logger will trigger log statement while in the handler
         # (ie. infinite loop), root logger not recommended)
         root_logger.addHandler(WSLogHandler(self.log_listener))
         self.ws_listeners.extend([self.db_listener, self.log_listener])
-        ws_router = sockjs.tornado.SockJSRouter(
-            partial(ws.WebSocketConnection, listeners=self.ws_listeners), "/ws"
-        )
+        ws_router = sockjs.tornado.SockJSRouter(partial(ws.WebSocketConnection, listeners=self.ws_listeners), "/ws")
         self.ws_urls = ws_router.urls
         return self.ws_urls
 
@@ -1050,9 +1027,7 @@ class HubServer(object):
 
     def configure_dataupload_feature(self):
         assert "ws" in self.features, "'dataupload' feature requires 'ws'"
-        assert (
-            "ws" in self.remaining_features
-        ), "'dataupload' feature should configured before 'ws'"
+        assert "ws" in self.remaining_features, "'dataupload' feature should configured before 'ws'"
         # this one is not bound to a specific command
         from biothings.hub.api.handlers.upload import UploadHandler
 
@@ -1065,9 +1040,7 @@ class HubServer(object):
             getattr(config, "DATA_PLUGIN_FOLDER", None),
             getattr(config, "HOOKS_FOLDER", "./hooks"),
         ]
-        reload_func = self.reloader_config["reload_func"] or partial(
-            self.shell.restart, force=True
-        )
+        reload_func = self.reloader_config["reload_func"] or partial(self.shell.restart, force=True)
         reloader = get_hub_reloader(monitored_folders, reload_func=reload_func)
         reloader and reloader.monitor()
 
@@ -1076,10 +1049,9 @@ class HubServer(object):
         Define then expose read-only Hub API endpoints
         so Hub can be accessed without any risk of modifying data
         """
-        assert self.api_config is not False, (
-            "api_config (read/write API) is required "
-            + "to defined a read-only API (it's derived from)"
-        )
+        assert (
+            self.api_config is not False
+        ), "api_config (read/write API) is required to defined a read-only API (it's derived from)"
         # first websockets URLs (we only fetch data from websocket, so no
         # risk of write operations there
         ws_urls = self.get_websocket_urls()
@@ -1095,9 +1067,7 @@ class HubServer(object):
                 self.remaining_features.remove(feat)
                 pass  # this is configured after managers but should not produce an error
             else:
-                raise AttributeError(
-                    "Feature '%s' listed but no 'configure_%s_feature' method found" % (feat, feat)
-                )
+                raise AttributeError("Feature '%s' listed but no 'configure_%s_feature' method found" % (feat, feat))
 
     def configure_commands(self):
         """
@@ -1105,9 +1075,7 @@ class HubServer(object):
         """
         assert self.managers, "No managers configured"
         self.commands = HubCommands()
-        self.commands["status"] = CommandDefinition(
-            command=partial(status, self.managers), tracked=False
-        )
+        self.commands["status"] = CommandDefinition(command=partial(status, self.managers), tracked=False)
         self.commands["export_command_documents"] = CommandDefinition(
             command=self.export_command_documents, tracked=False
         )
@@ -1167,9 +1135,7 @@ class HubServer(object):
             self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
         # data release commands
         if self.managers.get("release_manager"):
-            self.commands["create_release_note"] = self.managers[
-                "release_manager"
-            ].create_release_note
+            self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
             self.commands["get_release_note"] = CommandDefinition(
                 command=self.managers["release_manager"].get_release_note, tracked=False
             )
@@ -1181,36 +1147,25 @@ class HubServer(object):
         # inspector
         if self.managers.get("inspect_manager"):
             self.commands["inspect"] = self.managers["inspect_manager"].inspect
+            self.commands["flatten_inspection_data"] = self.managers["inspect_manager"].flatten
         # data plugins
         if self.managers.get("assistant_manager"):
-            self.commands["register_url"] = partial(
-                self.managers["assistant_manager"].register_url
-            )
-            self.commands["unregister_url"] = partial(
-                self.managers["assistant_manager"].unregister_url
-            )
+            self.commands["register_url"] = partial(self.managers["assistant_manager"].register_url)
+            self.commands["unregister_url"] = partial(self.managers["assistant_manager"].unregister_url)
             self.commands["export_plugin"] = partial(self.managers["assistant_manager"].export)
         if self.managers.get("dataplugin_manager"):
             self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
         if "autohub" in self.DEFAULT_FEATURES:
-            self.commands["list"] = CommandDefinition(
-                command=self.autohub_feature.list_biothings, tracked=False
-            )
+            self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
             # dump commands
-            self.commands["versions"] = partial(
-                self.managers["dump_manager"].call, method_name="versions"
-            )
-            self.commands["check"] = partial(
-                self.managers["dump_manager"].dump_src, check_only=True
-            )
+            self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
+            self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
             self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
             self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
             # upload commands
             self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
             self.commands["install"] = partial(self.autohub_feature.install)
-            self.commands["backend"] = partial(
-                self.managers["dump_manager"].call, method_name="get_target_backend"
-            )
+            self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
             self.commands["reset_backend"] = partial(
                 self.managers["dump_manager"].call, method_name="reset_target_backend"
             )
@@ -1224,15 +1179,9 @@ class HubServer(object):
         """
         assert self.managers, "No managers configured"
         self.extra_commands = {}  # unordered since not exposed, we don't care
-        loop = (
-            self.managers.get("job_manager")
-            and self.managers["job_manager"].loop
-            or asyncio.get_event_loop()
-        )
+        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or asyncio.get_event_loop()
         self.extra_commands["g"] = CommandDefinition(command=globals(), tracked=False)
-        self.extra_commands["sch"] = CommandDefinition(
-            command=partial(get_schedule, loop), tracked=False
-        )
+        self.extra_commands["sch"] = CommandDefinition(command=partial(get_schedule, loop), tracked=False)
         # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
         self.extra_commands["pending"] = CommandDefinition(command=pending, tracked=False)
         self.extra_commands["loop"] = CommandDefinition(command=loop, tracked=False)
@@ -1244,12 +1193,8 @@ class HubServer(object):
             self.extra_commands["tqueue"] = CommandDefinition(
                 command=self.managers["job_manager"].thread_queue, tracked=False
             )
-            self.extra_commands["jm"] = CommandDefinition(
-                command=self.managers["job_manager"], tracked=False
-            )
-            self.extra_commands["top"] = CommandDefinition(
-                command=self.managers["job_manager"].top, tracked=False
-            )
+            self.extra_commands["jm"] = CommandDefinition(command=self.managers["job_manager"], tracked=False)
+            self.extra_commands["top"] = CommandDefinition(command=self.managers["job_manager"].top, tracked=False)
             self.extra_commands["job_info"] = CommandDefinition(
                 command=self.managers["job_manager"].job_info, tracked=False
             )
@@ -1257,9 +1202,7 @@ class HubServer(object):
                 command=self.managers["job_manager"].schedule, tracked=False
             )
         if self.managers.get("source_manager"):
-            self.extra_commands["sm"] = CommandDefinition(
-                command=self.managers["source_manager"], tracked=False
-            )
+            self.extra_commands["sm"] = CommandDefinition(command=self.managers["source_manager"], tracked=False)
             self.extra_commands["sources"] = CommandDefinition(
                 command=self.managers["source_manager"].get_sources, tracked=False
             )
@@ -1267,31 +1210,21 @@ class HubServer(object):
                 command=self.managers["source_manager"].save_mapping
             )
         if self.managers.get("dump_manager"):
-            self.extra_commands["dm"] = CommandDefinition(
-                command=self.managers["dump_manager"], tracked=False
-            )
+            self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"], tracked=False)
             self.extra_commands["dump_info"] = CommandDefinition(
                 command=self.managers["dump_manager"].dump_info, tracked=False
             )
         if self.managers.get("dataplugin_manager"):
-            self.extra_commands["dpm"] = CommandDefinition(
-                command=self.managers["dataplugin_manager"], tracked=False
-            )
+            self.extra_commands["dpm"] = CommandDefinition(command=self.managers["dataplugin_manager"], tracked=False)
         if self.managers.get("assistant_manager"):
-            self.extra_commands["am"] = CommandDefinition(
-                command=self.managers["assistant_manager"], tracked=False
-            )
+            self.extra_commands["am"] = CommandDefinition(command=self.managers["assistant_manager"], tracked=False)
         if self.managers.get("upload_manager"):
-            self.extra_commands["um"] = CommandDefinition(
-                command=self.managers["upload_manager"], tracked=False
-            )
+            self.extra_commands["um"] = CommandDefinition(command=self.managers["upload_manager"], tracked=False)
             self.extra_commands["upload_info"] = CommandDefinition(
                 command=self.managers["upload_manager"].upload_info, tracked=False
             )
         if self.managers.get("build_manager"):
-            self.extra_commands["bm"] = CommandDefinition(
-                command=self.managers["build_manager"], tracked=False
-            )
+            self.extra_commands["bm"] = CommandDefinition(command=self.managers["build_manager"], tracked=False)
             self.extra_commands["builds"] = CommandDefinition(
                 command=self.managers["build_manager"].build_info, tracked=False
             )
@@ -1314,21 +1247,15 @@ class HubServer(object):
                 command=self.managers["build_manager"].delete_build_configuration
             )
         if self.managers.get("diff_manager"):
-            self.extra_commands["dim"] = CommandDefinition(
-                command=self.managers["diff_manager"], tracked=False
-            )
+            self.extra_commands["dim"] = CommandDefinition(command=self.managers["diff_manager"], tracked=False)
             self.extra_commands["diff_info"] = CommandDefinition(
                 command=self.managers["diff_manager"].diff_info, tracked=False
             )
             self.extra_commands["jsondiff"] = CommandDefinition(command=jsondiff, tracked=False)
         if self.managers.get("sync_manager"):
-            self.extra_commands["sym"] = CommandDefinition(
-                command=self.managers["sync_manager"], tracked=False
-            )
+            self.extra_commands["sym"] = CommandDefinition(command=self.managers["sync_manager"], tracked=False)
         if self.managers.get("index_manager"):
-            self.extra_commands["im"] = CommandDefinition(
-                command=self.managers["index_manager"], tracked=False
-            )
+            self.extra_commands["im"] = CommandDefinition(command=self.managers["index_manager"], tracked=False)
             self.extra_commands["index_info"] = CommandDefinition(
                 command=self.managers["index_manager"].index_info, tracked=False
             )
@@ -1342,16 +1269,12 @@ class HubServer(object):
                 command=self.managers["index_manager"].update_metadata
             )
         if self.managers.get("snapshot_manager"):
-            self.extra_commands["ssm"] = CommandDefinition(
-                command=self.managers["snapshot_manager"], tracked=False
-            )
+            self.extra_commands["ssm"] = CommandDefinition(command=self.managers["snapshot_manager"], tracked=False)
             self.extra_commands["snapshot_info"] = CommandDefinition(
                 command=self.managers["snapshot_manager"].snapshot_info, tracked=False
             )
         if self.managers.get("release_manager"):
-            self.extra_commands["rm"] = CommandDefinition(
-                command=self.managers["release_manager"], tracked=False
-            )
+            self.extra_commands["rm"] = CommandDefinition(command=self.managers["release_manager"], tracked=False)
             self.extra_commands["release_info"] = CommandDefinition(
                 command=self.managers["release_manager"].release_info, tracked=False
             )
@@ -1359,33 +1282,21 @@ class HubServer(object):
                 command=self.managers["release_manager"].reset_synced, tracked=True
             )
         if self.managers.get("inspect_manager"):
-            self.extra_commands["ism"] = CommandDefinition(
-                command=self.managers["inspect_manager"], tracked=False
-            )
+            self.extra_commands["ism"] = CommandDefinition(command=self.managers["inspect_manager"], tracked=False)
         if self.managers.get("api_manager"):
-            self.extra_commands["api"] = CommandDefinition(
-                command=self.managers["api_manager"], tracked=False
-            )
+            self.extra_commands["api"] = CommandDefinition(command=self.managers["api_manager"], tracked=False)
             self.extra_commands["get_apis"] = CommandDefinition(
                 command=self.managers["api_manager"].get_apis, tracked=False
             )
-            self.extra_commands["delete_api"] = CommandDefinition(
-                command=self.managers["api_manager"].delete_api
-            )
-            self.extra_commands["create_api"] = CommandDefinition(
-                command=self.managers["api_manager"].create_api
-            )
-            self.extra_commands["start_api"] = CommandDefinition(
-                command=self.managers["api_manager"].start_api
-            )
+            self.extra_commands["delete_api"] = CommandDefinition(command=self.managers["api_manager"].delete_api)
+            self.extra_commands["create_api"] = CommandDefinition(command=self.managers["api_manager"].create_api)
+            self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
             self.extra_commands["stop_api"] = self.managers["api_manager"].stop_api
         if "upgrade" in self.DEFAULT_FEATURES:
 
             def upgrade(code_base):  # just a wrapper over dumper
                 """Upgrade (git pull) repository for given code base name ("biothings_sdk" or "application")"""
-                assert code_base in ("application", "biothings_sdk"), (
-                    "Unknown code base '%s'" % code_base
-                )
+                assert code_base in ("application", "biothings_sdk"), "Unknown code base '%s'" % code_base
                 return self.managers["dump_manager"].dump_src("__" + code_base)
 
             self.commands["upgrade"] = CommandDefinition(command=upgrade)
@@ -1420,9 +1331,7 @@ class HubServer(object):
         self.api_endpoints["config"] = []
         if "config" in cmdnames:
             self.api_endpoints["config"].append(EndpointDefinition(name="config", method="get"))
-            self.api_endpoints["config"].append(
-                EndpointDefinition(name="setconf", method="put", force_bodyargs=True)
-            )
+            self.api_endpoints["config"].append(EndpointDefinition(name="setconf", method="put", force_bodyargs=True))
             self.api_endpoints["config"].append(
                 EndpointDefinition(name="resetconf", method="delete", force_bodyargs=True)
             )
@@ -1434,22 +1343,18 @@ class HubServer(object):
         if "build" in cmdnames:
             self.api_endpoints["build"].append(EndpointDefinition(method="get", name="build"))
         if "archive" in cmdnames:
-            self.api_endpoints["build"].append(
-                EndpointDefinition(method="post", name="archive", suffix="archive")
-            )
+            self.api_endpoints["build"].append(EndpointDefinition(method="post", name="archive", suffix="archive"))
         if "rmmerge" in cmdnames:
             self.api_endpoints["build"].append(EndpointDefinition(method="delete", name="rmmerge"))
         if "merge" in cmdnames:
-            self.api_endpoints["build"].append(
-                EndpointDefinition(name="merge", method="put", suffix="new")
-            )
+            self.api_endpoints["build"].append(EndpointDefinition(name="merge", method="put", suffix="new"))
         if "build_save_mapping" in cmdnames:
             self.api_endpoints["build"].append(
                 EndpointDefinition(name="build_save_mapping", method="put", suffix="mapping")
             )
         if not self.api_endpoints["build"]:
             self.api_endpoints.pop("build")
-        
+
         # auto archive
         if "auto_archive" in cmdnames:
             self.api_endpoints["auto_archive"] = EndpointDefinition(
@@ -1459,53 +1364,33 @@ class HubServer(object):
         self.api_endpoints["publish"] = []
         if "publish_diff" in cmdnames:
             self.api_endpoints["publish"].append(
-                EndpointDefinition(
-                    name="publish_diff", method="post", suffix="incremental", force_bodyargs=True
-                )
+                EndpointDefinition(name="publish_diff", method="post", suffix="incremental", force_bodyargs=True)
             )
         if "publish_snapshot" in cmdnames:
             self.api_endpoints["publish"].append(
-                EndpointDefinition(
-                    name="publish_snapshot", method="post", suffix="full", force_bodyargs=True
-                )
+                EndpointDefinition(name="publish_snapshot", method="post", suffix="full", force_bodyargs=True)
             )
         if not self.api_endpoints["publish"]:
             self.api_endpoints.pop("publish")
         if "diff" in cmdnames:
-            self.api_endpoints["diff"] = EndpointDefinition(
-                name="diff", method="put", force_bodyargs=True
-            )
+            self.api_endpoints["diff"] = EndpointDefinition(name="diff", method="put", force_bodyargs=True)
         if "job_info" in cmdnames:
             self.api_endpoints["job_manager"] = EndpointDefinition(name="job_info", method="get")
         if "dump_info" in cmdnames:
             self.api_endpoints["dump_manager"] = EndpointDefinition(name="dump_info", method="get")
         if "upload_info" in cmdnames:
-            self.api_endpoints["upload_manager"] = EndpointDefinition(
-                name="upload_info", method="get"
-            )
+            self.api_endpoints["upload_manager"] = EndpointDefinition(name="upload_info", method="get")
         if "build_config_info" in cmdnames:
-            self.api_endpoints["build_manager"] = EndpointDefinition(
-                name="build_config_info", method="get"
-            )
+            self.api_endpoints["build_manager"] = EndpointDefinition(name="build_config_info", method="get")
         if "index_info" in cmdnames:
-            self.api_endpoints["index_manager"] = EndpointDefinition(
-                name="index_info", method="get"
-            )
-            self.api_endpoints["indexes_by_name"] = EndpointDefinition(
-                name="indexes_by_name", method="get"
-            )
+            self.api_endpoints["index_manager"] = EndpointDefinition(name="index_info", method="get")
+            self.api_endpoints["indexes_by_name"] = EndpointDefinition(name="indexes_by_name", method="get")
         if "snapshot_info" in cmdnames:
-            self.api_endpoints["snapshot_manager"] = EndpointDefinition(
-                name="snapshot_info", method="get"
-            )
+            self.api_endpoints["snapshot_manager"] = EndpointDefinition(name="snapshot_info", method="get")
         if "release_info" in cmdnames:
-            self.api_endpoints["release_manager"] = EndpointDefinition(
-                name="release_info", method="get"
-            )
+            self.api_endpoints["release_manager"] = EndpointDefinition(name="release_info", method="get")
         if "reset_synced" in cmdnames:
-            self.api_endpoints["release_manager/reset_synced"] = EndpointDefinition(
-                name="reset_synced", method="put"
-            )
+            self.api_endpoints["release_manager/reset_synced"] = EndpointDefinition(name="reset_synced", method="put")
         if "diff_info" in cmdnames:
             self.api_endpoints["diff_manager"] = EndpointDefinition(name="diff_info", method="get")
         if "commands" in cmdnames:
@@ -1516,24 +1401,16 @@ class HubServer(object):
             self.api_endpoints["sources"] = EndpointDefinition(name="sources", method="get")
         self.api_endpoints["source"] = []
         if "source_info" in cmdnames:
-            self.api_endpoints["source"].append(
-                EndpointDefinition(name="source_info", method="get")
-            )
+            self.api_endpoints["source"].append(EndpointDefinition(name="source_info", method="get"))
         if "source_reset" in cmdnames:
-            self.api_endpoints["source"].append(
-                EndpointDefinition(name="source_reset", method="post", suffix="reset")
-            )
+            self.api_endpoints["source"].append(EndpointDefinition(name="source_reset", method="post", suffix="reset"))
         if "dump" in cmdnames:
-            self.api_endpoints["source"].append(
-                EndpointDefinition(name="dump", method="put", suffix="dump")
-            )
+            self.api_endpoints["source"].append(EndpointDefinition(name="dump", method="put", suffix="dump"))
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="mark_dump_success", method="put", suffix="mark_dump_success")
             )
         if "upload" in cmdnames:
-            self.api_endpoints["source"].append(
-              EndpointDefinition(name="upload", method="put", suffix="upload")
-            )
+            self.api_endpoints["source"].append(EndpointDefinition(name="upload", method="put", suffix="upload"))
         if "update_source_meta" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="update_source_meta", method="put", suffix="update_source_meta")
@@ -1545,8 +1422,9 @@ class HubServer(object):
         if not self.api_endpoints["source"]:
             self.api_endpoints.pop("source")
         if "inspect" in cmdnames:
-            self.api_endpoints["inspect"] = EndpointDefinition(
-                name="inspect", method="put", force_bodyargs=True
+            self.api_endpoints["inspect"] = EndpointDefinition(name="inspect", method="put", force_bodyargs=True)
+            self.api_endpoints["flatten_inspection_data"] = EndpointDefinition(
+                name="flatten_inspection_data", method="put", force_bodyargs=True
             )
         if "register_url" in cmdnames:
             self.api_endpoints["dataplugin/register_url"] = EndpointDefinition(
@@ -1558,9 +1436,7 @@ class HubServer(object):
             )
         self.api_endpoints["dataplugin"] = []
         if "dump_plugin" in cmdnames:
-            self.api_endpoints["dataplugin"].append(
-                EndpointDefinition(name="dump_plugin", method="put", suffix="dump")
-            )
+            self.api_endpoints["dataplugin"].append(EndpointDefinition(name="dump_plugin", method="put", suffix="dump"))
         if "export_plugin" in cmdnames:
             self.api_endpoints["dataplugin"].append(
                 EndpointDefinition(name="export_plugin", method="put", suffix="export")
@@ -1568,9 +1444,7 @@ class HubServer(object):
         if not self.api_endpoints["dataplugin"]:
             self.api_endpoints.pop("dataplugin")
         if "jsondiff" in cmdnames:
-            self.api_endpoints["jsondiff"] = EndpointDefinition(
-                name="jsondiff", method="post", force_bodyargs=True
-            )
+            self.api_endpoints["jsondiff"] = EndpointDefinition(name="jsondiff", method="post", force_bodyargs=True)
         if "validate_mapping" in cmdnames:
             self.api_endpoints["mapping/validate"] = EndpointDefinition(
                 name="validate_mapping", method="post", force_bodyargs=True
@@ -1590,25 +1464,17 @@ class HubServer(object):
         if not self.api_endpoints["buildconf"]:
             self.api_endpoints.pop("buildconf")
         if "index" in cmdnames:
-            self.api_endpoints["index"] = EndpointDefinition(
-                name="index", method="put", force_bodyargs=True
-            )
+            self.api_endpoints["index"] = EndpointDefinition(name="index", method="put", force_bodyargs=True)
         if "snapshot" in cmdnames:
-            self.api_endpoints["snapshot"] = EndpointDefinition(
-                name="snapshot", method="put", force_bodyargs=True
-            )
+            self.api_endpoints["snapshot"] = EndpointDefinition(name="snapshot", method="put", force_bodyargs=True)
         if "list_snapshots" in cmdnames:
-            self.api_endpoints["list_snapshots"] = EndpointDefinition(
-                name="list_snapshots", method="get"
-            )
+            self.api_endpoints["list_snapshots"] = EndpointDefinition(name="list_snapshots", method="get")
         if "delete_snapshots" in cmdnames:
             self.api_endpoints["delete_snapshots"] = EndpointDefinition(
                 name="delete_snapshots", method="put", force_bodyargs=True
             )
         if "sync" in cmdnames:
-            self.api_endpoints["sync"] = EndpointDefinition(
-                name="sync", method="post", force_bodyargs=True
-            )
+            self.api_endpoints["sync"] = EndpointDefinition(name="sync", method="post", force_bodyargs=True)
         if "whatsnew" in cmdnames:
             self.api_endpoints["whatsnew"] = EndpointDefinition(name="whatsnew", method="get")
         if "status" in cmdnames:
@@ -1616,9 +1482,7 @@ class HubServer(object):
         self.api_endpoints["release_note"] = []
         if "create_release_note" in cmdnames:
             self.api_endpoints["release_note"].append(
-                EndpointDefinition(
-                    name="create_release_note", method="put", suffix="create", force_bodyargs=True
-                )
+                EndpointDefinition(name="create_release_note", method="put", suffix="create", force_bodyargs=True)
             )
         if "get_release_note" in cmdnames:
             self.api_endpoints["release_note"].append(
@@ -1628,21 +1492,15 @@ class HubServer(object):
             self.api_endpoints.pop("release_note")
         self.api_endpoints["api"] = []
         if "start_api" in cmdnames:
-            self.api_endpoints["api"].append(
-                EndpointDefinition(name="start_api", method="put", suffix="start")
-            )
+            self.api_endpoints["api"].append(EndpointDefinition(name="start_api", method="put", suffix="start"))
         if "stop_api" in cmdnames:
-            self.api_endpoints["api"].append(
-                EndpointDefinition(name="stop_api", method="put", suffix="stop")
-            )
+            self.api_endpoints["api"].append(EndpointDefinition(name="stop_api", method="put", suffix="stop"))
         if "delete_api" in cmdnames:
             self.api_endpoints["api"].append(
                 EndpointDefinition(name="delete_api", method="delete", force_bodyargs=True)
             )
         if "create_api" in cmdnames:
-            self.api_endpoints["api"].append(
-                EndpointDefinition(name="create_api", method="post", force_bodyargs=True)
-            )
+            self.api_endpoints["api"].append(EndpointDefinition(name="create_api", method="post", force_bodyargs=True))
         if not self.api_endpoints["api"]:
             self.api_endpoints.pop("api")
         if "get_apis" in cmdnames:
@@ -1653,37 +1511,25 @@ class HubServer(object):
             self.api_endpoints["restart"] = EndpointDefinition(name="restart", method="put")
         self.api_endpoints["standalone"] = []
         if "list" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="list", method="get", suffix="list")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="list", method="get", suffix="list"))
         if "versions" in cmdnames:
             self.api_endpoints["standalone"].append(
                 EndpointDefinition(name="versions", method="get", suffix="versions")
             )
         if "check" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="check", method="get", suffix="check")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="check", method="get", suffix="check"))
         if "info" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="info", method="get", suffix="info")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="info", method="get", suffix="info"))
         if "download" in cmdnames:
             self.api_endpoints["standalone"].append(
                 EndpointDefinition(name="download", method="post", suffix="download")
             )
         if "apply" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="apply", method="post", suffix="apply")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="apply", method="post", suffix="apply"))
         if "install" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="install", method="post", suffix="install")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="install", method="post", suffix="install"))
         if "backend" in cmdnames:
-            self.api_endpoints["standalone"].append(
-                EndpointDefinition(name="backend", method="get", suffix="backend")
-            )
+            self.api_endpoints["standalone"].append(EndpointDefinition(name="backend", method="get", suffix="backend"))
         if "reset_backend" in cmdnames:
             self.api_endpoints["standalone"].append(
                 EndpointDefinition(name="reset_backend", method="delete", suffix="backend")
@@ -1757,9 +1603,7 @@ class HubServer(object):
                 )
 
                 # Wait for merging process to finish
-                await self.managers["index_manager"].index(
-                    indexer_env, build_name, index_name=index_name, **kwargs
-                )
+                await self.managers["index_manager"].index(indexer_env, build_name, index_name=index_name, **kwargs)
             finally:
                 # delete temporary build
                 self.managers["build_manager"].delete_merge(build_name)
@@ -1771,7 +1615,6 @@ class HubServer(object):
 
 
 class HubSSHServer(asyncssh.SSHServer):
-
     PASSWORDS = {}
     SHELL = None
 

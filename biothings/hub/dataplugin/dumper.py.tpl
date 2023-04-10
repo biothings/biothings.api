@@ -12,7 +12,7 @@ import biothings.hub.dataload.dumper
 class $DUMPER_NAME($BASE_CLASSES):
 
     SRC_NAME = "$SRC_NAME"
-    SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, SRC_NAME)
+    SRC_ROOT_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "$SRC_FOLDER_NAME")
     SCHEDULE = $SCHEDULE
     UNCOMPRESS = $UNCOMPRESS
     SRC_URLS = $SRC_URLS

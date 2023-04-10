@@ -1,12 +1,11 @@
 import json
-from os.path import *
+from os.path import dirname, join
 
 import biothings.utils.jsondiff as jsondiff
 import biothings.utils.jsonpatch as jsonpatch
 
 
-class JsonDiffTest():
-
+class JsonDiffTest:
     __test__ = True
 
     def test_scalar(self):
@@ -48,8 +47,8 @@ class JsonDiffTest():
         assert right == new_new_right
 
     def test_smalldoc(self):
-        left = {'a': [9, 8, 3], 'b': 'B', 'c': {'1': 1, '2': 2, '3': 3}}
-        right = {'c': {'5': 5, '4': 4, '1': 1}, 'B': 'capitalB', 'a': [1, 2, 3, 4, 5], 'b': 'bbb'}
+        left = {"a": [9, 8, 3], "b": "B", "c": {"1": 1, "2": 2, "3": 3}}
+        right = {"c": {"5": 5, "4": 4, "1": 1}, "B": "capitalB", "a": [1, 2, 3, 4, 5], "b": "bbb"}
         patch = jsondiff.make(left, right)
         new_right = jsonpatch.apply_patch(left, patch)
         new_new_right = jsonpatch.apply_patch(new_right, patch, ignore_conflicts=True, verify=True)

@@ -1,8 +1,7 @@
-from .dotstring import list_length
-from .dotstring import remove_key
+from .dotstring import list_length, remove_key
 
 
-class ExcludeFieldsById(object):
+class ExcludeFieldsById:
     """
     This class provides a framework to exclude fields for certain
     identifiers. Up to three arguments are passed to this class, an
@@ -30,13 +29,15 @@ class ExcludeFieldsById(object):
         :param f: function to apply to, this function should return documents
         :return:
         """
+
         def wrapped_f(*args):
             input_docs = f(*args)
             for doc in input_docs:
-                if doc['_id'] in self.exclusion_ids:
+                if doc["_id"] in self.exclusion_ids:
                     for field in self.field_lst:
                         # min_list_size check
                         if list_length(doc, field) > self.min_list_size:
                             remove_key(doc, field)
                 yield doc
+
         return wrapped_f

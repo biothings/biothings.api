@@ -6,9 +6,10 @@ DataTransform Module
 # pylint: disable=E0401, E0611
 import re
 from functools import wraps
-from biothings.utils.common import iter_n
-from biothings.utils.common import is_str
+
+from biothings.utils.common import is_str, iter_n
 from biothings.utils.loggers import get_logger
+
 from .histogram import Histogram
 
 
@@ -18,6 +19,7 @@ class IDStruct(object):
     is to provide a structure that provides a list of (original_id, current_id)
     pairs.
     """
+
     def __init__(self, field=None, doc_lst=None):
         """
         Initialize the structure
@@ -74,7 +76,7 @@ class IDStruct(object):
         """object += additional, which combines lists"""
         if not isinstance(other, IDStruct):
             raise TypeError("other is not of type IDStruct")
-        for (left, right) in other:
+        for left, right in other:
             self.add(left, right)
             # retain debug information
             self.transfer_debug(left, other)
@@ -173,11 +175,11 @@ class IDStruct(object):
             key = key.lower()
         # return debug information
         if isinstance(key, list):
-            return 'type(list)'
+            return "type(list)"
         try:
             return self.debug[key]
         except KeyError:
-            return 'not-available'
+            return "not-available"
 
     def import_debug(self, other):
         """
@@ -201,16 +203,26 @@ class DataTransform(object):
     """DataTransform class.  This class is the public interface for
     the DataTransform module.  Much of the core logic is
     in the subclass."""
+
     # pylint: disable=R0902
     # Constants
     batch_size = 1000
     DEFAULT_WEIGHT = 1
-    default_source = '_id'
+    default_source = "_id"
     debug = False
 
-    def __init__(self, input_types, output_types, id_priority_list=[],
-                 skip_on_failure=False, skip_w_regex=None, skip_on_success=False,
-                 idstruct_class=IDStruct, copy_from_doc=False, debug=False):
+    def __init__(
+        self,
+        input_types,
+        output_types,
+        id_priority_list=None,
+        skip_on_failure=False,
+        skip_w_regex=None,
+        skip_on_success=False,
+        idstruct_class=IDStruct,
+        copy_from_doc=False,
+        debug=False,
+    ):
         # pylint: disable=R0913, W0102
         """
         Initialize the keylookup object and precompute paths from the
@@ -239,13 +251,13 @@ class DataTransform(object):
         """
         self.input_types = self._parse_input_types(input_types)
         self.output_types = self._parse_output_types(output_types)
-        self.id_priority_list = id_priority_list
+        self.id_priority_list = id_priority_list or []
 
         self.skip_on_failure = skip_on_failure
         self.skip_on_success = skip_on_success
 
         if skip_w_regex and not isinstance(skip_w_regex, str):
-            raise ValueError('skip_w_regex must be a string')
+            raise ValueError("skip_w_regex must be a string")
         elif not skip_w_regex:
             self.skip_w_regex = None
         else:
@@ -256,7 +268,7 @@ class DataTransform(object):
 
         self.histogram = Histogram()
         # Setup logger and logging level
-        self.logger, _ = get_logger('datatransform')
+        self.logger, _ = get_logger("datatransform")
 
         self.debug = debug
 
@@ -272,18 +284,16 @@ class DataTransform(object):
             for input_type in input_types:
                 if isinstance(input_type, (tuple, list)):
                     if not self._valid_input_type(input_type[0]):
-                        raise ValueError("input_type '%s' is not a node in the key_lookup graph"
-                                         % repr(input_type[0]))
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" % repr(input_type[0]))
                     res_input_types.append((input_type[0].lower(), input_type[1]))
                 elif isinstance(input_type, str):
                     if not self._valid_input_type(input_type.lower()):
-                        raise ValueError("input_type '%s' is not a node in the key_lookup graph"
-                                         % repr(input_type))
+                        raise ValueError("input_type '%s' is not a node in the key_lookup graph" % repr(input_type))
                     res_input_types.append((input_type, self.default_source))
                 else:
-                    raise ValueError('Provided input_types is not of the correct type')
+                    raise ValueError("Provided input_types is not of the correct type")
         else:
-            raise ValueError('Provided input_types is not of the correct type')
+            raise ValueError("Provided input_types is not of the correct type")
         return res_input_types
 
     def _valid_input_type(self, input_type):
@@ -342,12 +352,9 @@ class DataTransform(object):
                 output_docs = self.key_lookup_batch(batchiter)
                 for odoc in output_docs:
                     # print debug information if the original id is the in the debug list
-                    if 'dt_debug' in odoc:
-                        if isinstance(self.debug, list) and \
-                                odoc['dt_debug']['orig_id'] in self.debug:
-                            self.logger.debug(
-                                "DataTransform Debug doc['dt_debug']:  {}"
-                                .format(odoc['dt_debug']))
+                    if "dt_debug" in odoc:
+                        if isinstance(self.debug, list) and odoc["dt_debug"]["orig_id"] in self.debug:
+                            self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc["dt_debug"]))
                     output_doc_cnt += 1
                     yield odoc
             self.logger.info("wrapped_f Num. output_docs:  {}".format(output_doc_cnt))
@@ -369,14 +376,13 @@ class DataTransform(object):
         decorator on a document iterator.
         """
         # special handling for the debug option
-        self.debug = [doc['_id']]
+        self.debug = [doc["_id"]]
 
         output_docs = self.key_lookup_batch([doc])
         for odoc in output_docs:
             # print debug information if available
-            if self.debug and 'dt_debug' in odoc:
-                self.logger.debug("DataTransform Debug doc['dt_debug']:  {}"
-                                  .format(odoc['dt_debug']))
+            if self.debug and "dt_debug" in odoc:
+                self.logger.debug("DataTransform Debug doc['dt_debug']:  {}".format(odoc["dt_debug"]))
             yield odoc
         self.logger.info("DataTransform.histogram:  {}".format(self.histogram))
 
@@ -390,7 +396,7 @@ class DataTransform(object):
         :return:
         """
         value = doc
-        keys = field.split('.')
+        keys = field.split(".")
         try:
             for k in keys:
                 value = value[k]
@@ -420,8 +426,7 @@ class DataTransform(object):
         """
         # construct temporary id_priority_list with extra elements at the end
         id_priority_list = self._expand_priority_order([x[0] for x in input_types])
-        input_types = sorted(input_types,
-                             key=lambda e: self._priority_order(id_priority_list, e[0]))
+        input_types = sorted(input_types, key=lambda e: self._priority_order(id_priority_list, e[0]))
         return input_types
 
     def sort_output_by_priority_list(self, output_types):
@@ -474,6 +479,7 @@ class DataTransformEdge(object):
     DataTransformEdge.  This class contains information needed to
     transform one key to another.
     """
+
     def __init__(self, label=None):
         """
         Initialize the class
@@ -497,9 +503,7 @@ class DataTransformEdge(object):
 
     def init_state(self):
         """initialize the state of pickleable objects"""
-        self._state = {
-            "logger": None
-        }
+        self._state = {"logger": None}
 
     @property
     def logger(self):
@@ -515,11 +519,12 @@ class DataTransformEdge(object):
 
     def setup_log(self):
         """setup the logger member variable"""
-        self.logger, _ = get_logger('datatransform')
+        self.logger, _ = get_logger("datatransform")
 
-    def prepare(self, state={}):
+    def prepare(self, state=None):
         # pylint: disable=W0102
         """Prepare class state objects (pickleable objects)"""
+        state = state or {}
         if self.prepared:
             return
         if state:
@@ -570,7 +575,7 @@ class RegExEdge(DataTransformEdge):
         Transform identifiers using a regular expression substitution.
         """
         res_id_strct = IDStruct()
-        for (left, right) in id_strct:
+        for left, right in id_strct:
             res_id_strct.add(left, re.sub(self.from_regex, self.to_regex, right))
         return res_id_strct
 
@@ -584,7 +589,7 @@ def nested_lookup(doc, field):
     :return:
     """
     value = doc
-    keys = field.split('.')
+    keys = field.split(".")
     try:
         for k in keys:
             if isinstance(value, (list, tuple)):
@@ -592,8 +597,7 @@ def nested_lookup(doc, field):
                 stype = set([type(e) for e in value])
                 if not stype:
                     return None
-                assert len(stype) == 1 and stype == {dict},\
-                    "Expecting a list of dict, found types: %s" % stype
+                assert len(stype) == 1 and stype == {dict}, "Expecting a list of dict, found types: %s" % stype
                 value = [e[k] for e in value if e.get(k)]
                 # can't go further ?
                 return value

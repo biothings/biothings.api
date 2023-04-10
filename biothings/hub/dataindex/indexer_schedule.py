@@ -1,8 +1,7 @@
 import math
 
 
-class Schedule():
-
+class Schedule:
     def __init__(self, total, batch_size):
         self._batch_size = batch_size
         self._state = ""
@@ -25,15 +24,7 @@ class Schedule():
         return "%.1f%%" % _percentage
 
     def suffix(self, string):
-        return " ".join((
-            string,
-            "#%d/%d %s" %
-            (
-                self._batch,
-                self._batches,
-                self._percentage
-            )
-        ))
+        return " ".join((string, "#%d/%d %s" % (self._batch, self._batches, self._percentage)))
 
     def completed(self):
         if self.finished != self.total:
@@ -53,16 +44,20 @@ class Schedule():
         return self._batch
 
     def __str__(self):
-        return " ".join(f"""
+        return " ".join(
+            f"""
             <Schedule {"done" if self.finished >= self.total else self._state}
                 total={self.total} scheduled={self.scheduled} finished={self.finished}>
-            """.split())
+            """.split()
+        )
+
 
 def test_01():
     schedule = Schedule(100, 10)
     for batch in schedule:
         print(batch)
         print(schedule)
+
 
 def test_02():
     schedule = Schedule(25, 10)
@@ -71,12 +66,14 @@ def test_02():
         print(schedule)
         print(schedule.suffix("Task"))
 
+
 def test_03():
     schedule = Schedule(0, 10)
     for batch in schedule:
         print(batch)
         print(schedule)
         print(schedule.suffix("Task"))
+
 
 def test_04():
     schedule = Schedule(1, 10)

@@ -34,28 +34,26 @@ from collections import Counter
 from inspect import iscoroutinefunction
 from types import CoroutineType
 
+from tornado.web import Finish, HTTPError
+
 from biothings.utils import serializer
 from biothings.web.analytics.events import GAEvent
 from biothings.web.handlers.base import BaseAPIHandler
-from biothings.web.query.pipeline import (QueryPipelineException,
-                                          QueryPipelineInterrupt)
-from tornado.web import Finish, HTTPError
+from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
 
 __all__ = [
-    'BaseQueryHandler',
-    'MetadataSourceHandler',
-    'MetadataFieldHandler',
-    'BiothingHandler',
-    'QueryHandler'
+    "BaseQueryHandler",
+    "MetadataSourceHandler",
+    "MetadataFieldHandler",
+    "BiothingHandler",
+    "QueryHandler",
 ]
 
 logger = logging.getLogger(__name__)
 
 
 class BaseQueryHandler(BaseAPIHandler):
-
     def initialize(self, biothing_type=None, *args, **kwargs):
-
         super().initialize(*args, **kwargs)
         self.biothing_type = biothing_type
         self.pipeline = self.biothings.pipeline
@@ -67,30 +65,33 @@ class BaseQueryHandler(BaseAPIHandler):
         # provide convenient access to next stages
         self.args.biothing_type = self.biothing_type
 
-        self.event = GAEvent({
-            '__secondary__': [],  # secondary analytical objective: field tracking
-            'category': '{}_api'.format(self.biothings.config.APP_VERSION),  # eg.'v1_api'
-            'action': '_'.join((self.name, self.request.method.lower())),  # eg.'query_get'
-            # 'label': 'fetch_all', etc.
-            # 'value': 100, # number of queries
-        })
+        self.event = GAEvent(
+            {
+                "__secondary__": [],  # secondary analytical objective: field tracking
+                "category": "{}_api".format(self.biothings.config.APP_VERSION),  # eg.'v1_api'
+                "action": "_".join((self.name, self.request.method.lower())),  # eg.'query_get'
+                # 'label': 'fetch_all', etc.
+                # 'value': 100, # number of queries
+            }
+        )
 
         if self.args._source:
             fields = [str(field) for field in self.args._source]  # in case input is not str
-            fields = [field.split('.', 1)[0] for field in fields]  # only consider root keys
+            fields = [field.split(".", 1)[0] for field in fields]  # only consider root keys
             for field, cnt in Counter(fields).items():
-                self.event['__secondary__'].append(GAEvent({
-                    'category': 'parameter_tracking',
-                    'action': 'field_filter',
-                    'label': field,
-                    'value': cnt
-                }))
+                self.event["__secondary__"].append(
+                    GAEvent({"category": "parameter_tracking", "action": "field_filter", "label": field, "value": cnt})
+                )
         else:
-            self.event['__secondary__'].append(GAEvent({
-                'category': 'parameter_tracking',
-                'action': 'field_filter',
-                'label': 'all'
-            }))
+            self.event["__secondary__"].append(
+                GAEvent(
+                    {
+                        "category": "parameter_tracking",
+                        "action": "field_filter",
+                        "label": "all",
+                    }
+                )
+            )
 
     def write(self, chunk):
         # add an additional header to the JSON formatter
@@ -109,11 +110,12 @@ class BaseQueryHandler(BaseAPIHandler):
             if self.format == "html":
                 config = self.biothings.config
                 chunk = self.render_string(
-                    template_name="api.html", data=serializer.to_json(chunk),
-                    link=serializer.URL(self.request.full_url()).remove('format'),
+                    template_name="api.html",
+                    data=serializer.to_json(chunk),
+                    link=serializer.URL(self.request.full_url()).remove("format"),
                     title_div=getattr(config, "HTML_OUT_TITLE", "") or DEFAULT_TITLE,
                     header_img=getattr(config, "HTML_OUT_HEADER_IMG", "") or DEFAULT_IMG,
-                    learn_more=getattr(config, f"HTML_OUT_{self.name.upper()}_DOCS", "")
+                    learn_more=getattr(config, f"HTML_OUT_{self.name.upper()}_DOCS", ""),
                 )
                 self.set_header("Content-Type", "text/html; charset=utf-8")
                 return super(BaseAPIHandler, self).write(chunk)
@@ -128,11 +130,12 @@ class MetadataSourceHandler(BaseQueryHandler):
     """
     GET /metadata
     """
-    name = 'metadata'
+
+    name = "metadata"
     kwargs = dict(BaseQueryHandler.kwargs)
-    kwargs['GET'] = {
-        'dev': {'type': bool, 'default': False},
-        'raw': {'type': bool, 'default': False}
+    kwargs["GET"] = {
+        "dev": {"type": bool, "default": False},
+        "raw": {"type": bool, "default": False},
     }
 
     async def get(self):
@@ -143,14 +146,14 @@ class MetadataSourceHandler(BaseQueryHandler):
             raise Finish(info)
 
         elif self.args.dev:
-            meta['software'] = self.biothings.devinfo.get()
+            meta["software"] = self.biothings.devinfo.get()
 
         else:  # remove debug info
             for field in list(meta):
-                if field.startswith('_'):
+                if field.startswith("_"):
                     meta.pop(field, None)
 
-        if (iscoroutinefunction(self.extras)):
+        if iscoroutinefunction(self.extras):
             meta = await self.extras(meta)
         else:
             meta = self.extras(meta)
@@ -168,12 +171,13 @@ class MetadataFieldHandler(BaseQueryHandler):
     """
     GET /metadata/fields
     """
-    name = 'fields'
+
+    name = "fields"
     kwargs = dict(BaseQueryHandler.kwargs)
-    kwargs['GET'] = {
-        'raw': {'type': bool, 'default': False},
-        'search': {'type': str, 'default': None},
-        'prefix': {'type': str, 'default': None}
+    kwargs["GET"] = {
+        "raw": {"type": bool, "default": False},
+        "search": {"type": str, "default": None},
+        "prefix": {"type": str, "default": None},
     }
 
     async def get(self):
@@ -183,8 +187,7 @@ class MetadataFieldHandler(BaseQueryHandler):
         if self.args.raw:
             raise Finish(mapping)
 
-        result = self.pipeline.formatter.transform_mapping(
-            mapping, self.args.prefix, self.args.search)
+        result = self.pipeline.formatter.transform_mapping(mapping, self.args.prefix, self.args.search)
 
         self.finish(result)
 
@@ -203,6 +206,7 @@ def capture_exceptions(coro):
             raise Finish(itr.details)
         except QueryPipelineException as exc:
             raise HTTPError(exc.code, None, exc.details, reason=exc.summary)
+
     return _method
 
 
@@ -221,27 +225,25 @@ class BiothingHandler(BaseQueryHandler):
         GET -> {...} or [{...}, ...]
         POST -> [{...}, ...]
     """
-    name = 'annotation'
+    name = "annotation"
 
     @capture_exceptions
     async def post(self, *args, **kwargs):
-        self.event['value'] = len(self.args['id'])
+        self.event["value"] = len(self.args["id"])
 
-        result = await ensure_awaitable(
-            self.pipeline.fetch(**self.args))
+        result = await ensure_awaitable(self.pipeline.fetch(**self.args))
         self.finish(result)
 
     @capture_exceptions
     async def get(self, *args, **kwargs):
-        self.event['value'] = 1
+        self.event["value"] = 1
 
-        result = await ensure_awaitable(
-            self.pipeline.fetch(**self.args))
+        result = await ensure_awaitable(self.pipeline.fetch(**self.args))
         self.finish(result)
 
 
 class QueryHandler(BaseQueryHandler):
-    '''
+    """
     Biothings Query Endpoint
 
     URL pattern examples:
@@ -251,28 +253,25 @@ class QueryHandler(BaseQueryHandler):
 
         GET -> {...}
         POST -> [{...}, ...]
-    '''
-    name = 'query'
+    """
+
+    name = "query"
 
     @capture_exceptions
     async def post(self, *args, **kwargs):
-        self.event['value'] = len(self.args['q'])
+        self.event["value"] = len(self.args["q"])
 
-        result = await ensure_awaitable(
-            self.pipeline.search(**self.args))
+        result = await ensure_awaitable(self.pipeline.search(**self.args))
         self.finish(result)
 
     @capture_exceptions
     async def get(self, *args, **kwargs):
-        self.event['value'] = 1
-        if self.args.get('fetch_all'):
-            self.event['label'] = 'fetch_all'
+        self.event["value"] = 1
+        if self.args.get("fetch_all"):
+            self.event["label"] = "fetch_all"
 
-        if self.args.get('fetch_all') or \
-                self.args.get('scroll_id') or \
-                self.args.get('q') == '__any__':
-            self.clear_header('Cache-Control')
+        if self.args.get("fetch_all") or self.args.get("scroll_id") or self.args.get("q") == "__any__":
+            self.clear_header("Cache-Control")
 
-        response = await ensure_awaitable(
-            self.pipeline.search(**self.args))
+        response = await ensure_awaitable(self.pipeline.search(**self.args))
         self.finish(response)

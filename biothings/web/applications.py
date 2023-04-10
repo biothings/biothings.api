@@ -36,9 +36,10 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.log
 import tornado.web
+
 from biothings.web.handlers import BaseAPIHandler, BaseQueryHandler
-from biothings.web.settings import configs
 from biothings.web.services.namespace import BiothingsNamespace
+from biothings.web.settings import configs
 
 try:
     import sentry_sdk
@@ -58,8 +59,8 @@ def load_class(kls):
         return locate(kls)
     raise ValueError()
 
-class TornadoBiothingsAPI(tornado.web.Application):
 
+class TornadoBiothingsAPI(tornado.web.Application):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.biothings = SimpleNamespace()
@@ -71,22 +72,27 @@ class TornadoBiothingsAPI(tornado.web.Application):
         method below can define a tornado application to start a web server.
         """
         settings = {
-            'biothings': biothings.config,
-            'autoreload': False,
-            'debug': False,
+            "biothings": biothings.config,
+            "autoreload": False,
+            "debug": False,
         }
         settings.update(override or {})
         supported_keywords = (
-            'default_handler_class', 'default_handler_args', 'template_path',
-            'log_function', 'compress_response', 'cookie_secret',
-            'login_url', 'static_path', 'static_url_prefix')
+            "default_handler_class",
+            "default_handler_args",
+            "template_path",
+            "log_function",
+            "compress_response",
+            "cookie_secret",
+            "login_url",
+            "static_path",
+            "static_url_prefix",
+        )
 
         for setting in supported_keywords:
             if hasattr(biothings.config, setting.upper()):
                 if setting in settings:
-                    logging.warning(
-                        "Override config setting %s to %s.",
-                        setting, settings[setting])
+                    logging.warning("Override config setting %s to %s.", setting, settings[setting])
                     continue
                 settings[setting] = getattr(biothings.config, setting.upper())
 
@@ -96,17 +102,17 @@ class TornadoBiothingsAPI(tornado.web.Application):
                 # adjust this value to allow sentry to trace transactions:
                 #   https://docs.sentry.io/platforms/python/guides/starlette/configuration/options/#traces-sample-rate
                 traces_sample_rate=0.2,
-                integrations=[TornadoIntegration()]
+                integrations=[TornadoIntegration()],
             )
 
         return settings
 
     @staticmethod
     def _get_handlers(biothings, addons=None):
-        '''
+        """
         Generates the tornado.web.Application `(regex, handler_class, options) tuples
         <http://www.tornadoweb.org/en/stable/web.html#application-configuration>`_.
-        '''
+        """
         handlers = {}
         addons = addons or []
         for rule in biothings.config.APP_LIST + addons:
@@ -115,31 +121,32 @@ class TornadoBiothingsAPI(tornado.web.Application):
             setting = rule[2] if len(rule) == 3 else {}
             assert handler, rule[1]
 
-            if '{typ}' in pattern or '{tps}' in pattern:
+            if "{typ}" in pattern or "{tps}" in pattern:
                 if not issubclass(handler, BaseQueryHandler):
                     raise TypeError("Not a biothing_type-aware handler.")
-                if '{tps}' in pattern and len(biothings.metadata.types) <= 1:
+                if "{tps}" in pattern and len(biothings.metadata.types) <= 1:
                     continue  # '{tps}' routes only valid for multi-type apps
                 for biothing_type in biothings.metadata.types:
                     _pattern = pattern.format(
                         pre=biothings.config.APP_PREFIX,
                         ver=biothings.config.APP_VERSION,
-                        typ=biothing_type, tps=biothing_type
-                    ).replace('//', '/')
+                        typ=biothing_type,
+                        tps=biothing_type,
+                    ).replace("//", "/")
                     _setting = dict(setting)
-                    _setting['biothing_type'] = biothing_type
+                    _setting["biothing_type"] = biothing_type
                     handlers[_pattern] = (_pattern, handler, _setting)
-            elif '{pre}' in pattern or '{ver}' in pattern:
-                pattern = pattern.format(
-                    pre=biothings.config.APP_PREFIX,
-                    ver=biothings.config.APP_VERSION).replace('//', '/')
-                if '()' not in pattern:
+            elif "{pre}" in pattern or "{ver}" in pattern:
+                pattern = pattern.format(pre=biothings.config.APP_PREFIX, ver=biothings.config.APP_VERSION).replace(
+                    "//", "/"
+                )
+                if "()" not in pattern:
                     handlers[pattern] = (pattern, handler, setting)
             else:  # no pattern translation
                 handlers[pattern] = (pattern, handler, setting)
 
         handlers = list(handlers.values())
-        logger.info('API Handlers:\n%s', pformat(handlers, width=200))
+        logger.info("API Handlers:\n%s", pformat(handlers, width=200))
         return handlers
 
     @classmethod
@@ -159,22 +166,24 @@ class TornadoBiothingsAPI(tornado.web.Application):
             return app
         if isinstance(config, configs.ConfigPackage):
             biothings = BiothingsNamespace(config.root)
-            _handlers = [(f'/{c.APP_PREFIX}/.*', cls.get_app(c, settings)) for c in config.modules]
+            _handlers = [(f"/{c.APP_PREFIX}/.*", cls.get_app(c, settings)) for c in config.modules]
             _settings = BiothingsAPI._get_settings(biothings, settings)
             app = cls(_handlers + handlers or [], **_settings)
             app.biothings = biothings
-            app._populate_optionsets(config, handlers or [])
-            app._populate_handlers(handlers or [])
+            # app._populate_optionsets(config, handlers or [])
+            # app._populate_handlers(handlers or [])
+            app._populate_optionsets(config, _handlers + handlers or [])
+            app._populate_handlers(_handlers + handlers or [])
             return app
         raise TypeError()
 
     def _populate_optionsets(self, config, handlers):
         for handler in handlers:
             handler = handler[1]  # handler[0] is a matching pattern
-            if issubclass(handler, BaseAPIHandler) and handler.name:
+            if inspect.isclass(handler) and issubclass(handler, BaseAPIHandler) and handler.name:
                 handler_name = handler.name
                 handler_options = handler.kwargs
-                setting_attr = '_'.join((handler_name, 'kwargs')).upper()
+                setting_attr = "_".join((handler_name, "kwargs")).upper()
                 setting_options = getattr(config, setting_attr, {})
                 self.biothings.optionsets.add(handler_name, setting_options)
                 self.biothings.optionsets.add(handler_name, handler_options)
@@ -191,33 +200,35 @@ try:
         @classmethod
         def get_app(cls, config):
             app = cls(__name__)
-            app.config['JSON_SORT_KEYS'] = False
+            app.config["JSON_SORT_KEYS"] = False
             app.url_map.strict_slashes = False
             app.biothings = BiothingsNamespace(config)
             from biothings.web.handlers._flask import routes
+
             for route in routes:
-                setting_attr = '_'.join((route.name, 'kwargs')).upper()
+                setting_attr = "_".join((route.name, "kwargs")).upper()
                 setting_options = getattr(config, setting_attr, {})
                 app.biothings.optionsets.add(route.name, setting_options)
                 if isinstance(route.pattern, str):
                     route.pattern = [route.pattern]
                 for pattern in route.pattern:
-                    if '{typ}' in pattern:
+                    if "{typ}" in pattern:
                         assert len(app.biothings.metadata.types) == 1, (
-                            "Currently Biothings API on Flask only "
-                            "supports single biothings_type configuration."
+                            "Currently Biothings API on Flask only " "supports single biothings_type configuration."
                         )
-                    pattern = pattern.replace('{typ}', app.biothings.metadata.types[0])
-                    pattern = pattern.replace('{ver}', app.biothings.config.APP_VERSION)
+                    pattern = pattern.replace("{typ}", app.biothings.metadata.types[0])
+                    pattern = pattern.replace("{ver}", app.biothings.config.APP_VERSION)
                     app.add_url_rule(pattern, route.name, route, methods=route.methods)
                     app.biothings.handlers[pattern] = route
             return app
 
-except Exception as exc:
-    class FlaskBiothingsAPI():
+except Exception as exc:  # noqa F841
+
+    class FlaskBiothingsAPI:
         @classmethod
         def get_app(cls, config):
             raise exc
+
 
 try:
     from fastapi import FastAPI
@@ -245,10 +256,12 @@ try:
     #             app.get(*route.args, **route.kwargs)(route)
     #         return app
 
-except Exception as exc:
-    class FastAPIBiothingsAPI():
+except Exception as exc:  # noqa F841
+
+    class FastAPIBiothingsAPI:
         @classmethod
         def get_app(cls, config):
             raise exc
+
 
 BiothingsAPI = TornadoBiothingsAPI  # default

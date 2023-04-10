@@ -75,39 +75,38 @@ HUB_API_PORT = 7080
 """
 
 import importlib
+
 # logging is needed for evaluating default logger value below
-import logging     # pylint: disable=unused-import      # noqa
+import logging  # pylint: disable=unused-import      # noqa
 import os
 
 import biothings.utils.jsondiff
+
 # set_default_folder is needed for evaluating some default values below
-from biothings.utils.configuration import set_default_folder     # pylint: disable=unused-import      # noqa
-from biothings.utils.configuration import (
-    ConfigurationDefault, ConfigurationValue, ConfigurationError
-)
+from biothings.utils.configuration import set_default_folder  # pylint: disable=unused-import      # noqa
+from biothings.utils.configuration import ConfigurationDefault, ConfigurationError, ConfigurationValue
 
-
-#* 1. General *#
+# * 1. General *#
 # Hub name/icon url/version, for display purpose
 HUB_NAME = "Biothings Hub"
 HUB_ICON = None
 
 # SSH port for hub console
-#- readonly -#
+# - readonly -#
 HUB_SSH_PORT = 7022
 # API port
-#- readonly -#
+# - readonly -#
 HUB_API_PORT = 7080
 # Readonly API port
-#- readonly -#
+# - readonly -#
 READONLY_HUB_API_PORT = ConfigurationDefault(
-    default=ConfigurationValue('HUB_API_PORT+1'),
-    desc='Readonly API port when "readonly" feature is enabled')
+    default=ConfigurationValue("HUB_API_PORT+1"), desc='Readonly API port when "readonly" feature is enabled'
+)
 
 # The format is a dictionary of 'username': 'cryptedpassword'
 # Generate crypted passwords with 'openssl passwd -crypt'
-#- hide -#
-#- readonly -#
+# - hide -#
+# - readonly -#
 HUB_PASSWD = {"guest": "9RKfd8gDuNf0Q"}
 
 # Webhook to publish notifications to a Slack channel
@@ -117,10 +116,8 @@ SLACK_WEBHOOK = None
 # to reflect those changes
 USE_RELOADER = True
 
-#* 2. Datasources *#
-ACTIVE_DATASOURCES = ConfigurationDefault(
-    default=[],
-    desc="List of package paths for active datasources")
+# * 2. Datasources *#
+ACTIVE_DATASOURCES = ConfigurationDefault(default=[], desc="List of package paths for active datasources")
 
 # Skip all scheduled dumper jobs
 SKIP_DUMPER_SCHEDULE = False
@@ -141,43 +138,61 @@ AUTO_ARCHIVE_CONFIG = {
 }
 """
 
-#* 3. Folders *#
+# Docker connection configuration
+# client_url should match the following formats:
+# ssh://ubuntu@remote_ip:port
+# unix://var/run/docker.sock
+# http://remote_ip:port
+# https://remote_ip:port
+DOCKER_CONFIG = {
+    "docker1": {"tls_cert_path": None, "tls_key_path": None, "client_url": ""},
+    "localhost": {"client_url": "unix://var/run/docker.sock"},
+}
+
+# * 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
-DATA_ARCHIVE_ROOT = ConfigurationError("Define path to folder which will contain all downloaded data, cache files, etc...")
+DATA_ARCHIVE_ROOT = ConfigurationError(
+    "Define path to folder which will contain all downloaded data, cache files, etc..."
+)
 
 # where to store info about processes launched by the hub
 RUN_DIR = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"run")"""),
-    desc="Define path to folder which will store info about processes launched by the hub")
+    desc="Define path to folder which will store info about processes launched by the hub",
+)
 
 # cached data (it None, caches won't be used at all)
 CACHE_FOLDER = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"cache")"""),
-    desc="Define path to folder which will contain cache files, set to None to disable")
+    desc="Define path to folder which will contain cache files, set to None to disable",
+)
 
 # Path to a folder to store all 3rd party parsers, dumpers, etc...
 DATA_PLUGIN_FOLDER = ConfigurationDefault(
-    default="./plugins",
-    desc="Define path to folder which will contain all 3rd party parsers, dumpers, etc...")
+    default="./plugins", desc="Define path to folder which will contain all 3rd party parsers, dumpers, etc..."
+)
 
 # Path to folder containing diff files
 # Usually inside DATA_ARCHIVE_ROOT
 DIFF_PATH = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"diff")"""),
-    desc="Define path to folder which will contain output files from diff")
+    desc="Define path to folder which will contain output files from diff",
+)
 
 # Path to folder containing release note files
 # Usually inside DATA_ARCHIVE_ROOT
 RELEASE_PATH = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"release")"""),
-    desc="Define path to folder which will contain release files")
+    desc="Define path to folder which will contain release files",
+)
 
 
 # Define a folder to store uploaded files via biothings.hub.api.handlder.UploadHandler
 # It's enabled with "upload" feature for HubServer
 DATA_UPLOAD_FOLDER = ConfigurationDefault(
     default=ConfigurationValue("""set_default_folder(DATA_ARCHIVE_ROOT,"dataupload")"""),
-    desc="Define path to folder which will store uploaded files via upload handler")
+    desc="Define path to folder which will store uploaded files via upload handler",
+)
 
 
 # Root folder containing ElasticSearch backups, created
@@ -187,22 +202,25 @@ DATA_UPLOAD_FOLDER = ConfigurationDefault(
 # this folder must have permissions set for user/group running the hub
 ES_BACKUPS_FOLDER = ConfigurationDefault(
     default=ConfigurationValue('set_default_folder(DATA_ARCHIVE_ROOT,"es_backups")'),
-    desc="Define path to folder which will contain containing ElasticSearch snapshot backups")
+    desc="Define path to folder which will contain containing ElasticSearch snapshot backups",
+)
 
 # this dir must be created manually
 # Usually inside DATA_ARCHIVE_ROOT
 LOG_FOLDER = ConfigurationDefault(
     default=ConfigurationValue('set_default_folder(DATA_ARCHIVE_ROOT,"logs")'),
-    desc="Define path to folder which will contain log files")
+    desc="Define path to folder which will contain log files",
+)
 
 # hub logger name
 LOGGER_NAME = "hub"
 
 logger = ConfigurationDefault(
     default=ConfigurationValue("""logging.getLogger(LOGGER_NAME)"""),
-    desc="Provide a default hub logger instance (use setup_default_log(name,log_folder)")
+    desc="Provide a default hub logger instance (use setup_default_log(name,log_folder)",
+)
 
-#* 4. Index & Diff *#
+# * 4. Index & Diff *#
 # Pre-prod/test ES definitions
 INDEX_CONFIG = {
     "indexer_select": {
@@ -211,15 +229,9 @@ INDEX_CONFIG = {
     "env": {
         "localhub": {
             "host": "localhost:9200",
-            "indexer": {
-                "args": {
-                    "timeout": 300,
-                    "retry_on_timeout": True,
-                    "max_retries": 10
-                }
-            }
+            "indexer": {"args": {"timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
         }
-    }
+    },
 }
 
 # Snapshot environment configuration
@@ -247,14 +259,14 @@ MAX_RANDOMLY_PICKED = 10
 MAX_DIFF_SIZE = 50 * 1024**2  # 50MiB (~1MiB on disk when compressed)
 
 
-#* 5. Release *#
+# * 5. Release *#
 # Release configuration
 # Each root keys define a release environment (test, prod, ...)
 RELEASE_CONFIG = {
     "env": {
         "tests3": {
             "cloud": {
-                "type": "aws",     # default, only one supported by now
+                "type": "aws",  # default, only one supported by now
                 "access_key": None,
                 "secret_key": None,
             },
@@ -262,48 +274,44 @@ RELEASE_CONFIG = {
                 "bucket": None,
                 "region": None,
                 "folder": "%(build_config.name)s",
-                "auto": True,      # automatically generate release-note ?
+                "auto": True,  # automatically generate release-note ?
             },
             "diff": {
                 "bucket": None,
                 "region": None,
                 "folder": "%(build_config.name)s",
-                "auto": True,      # automatically generate diff ? Careful if lots of changes
+                "auto": True,  # automatically generate diff ? Careful if lots of changes
             },
             "publish": {
                 "pre": {
-                    "snapshot":
-                        [
-                            {
-                                "action": "archive",
-                                "format": "tar.xz",
-                                "name": "%(build_config.name)s_snapshot_%(_meta.build_version)s.tar.xz",
-                                "es_backups_folder": ConfigurationValue("""ES_BACKUPS_FOLDER"""),
-                            },
-                            {
-                                "action": "upload",
-                                "type": "s3",
-                                "bucket": ConfigurationValue("""S3_SNAPSHOT_BUCKET"""),
-                                "region": ConfigurationValue("""S3_REGION"""),
-                                "base_path": "%(build_config.name)s/$(Y)",
-                                "file": "%(build_config.name)s_snapshot_%(_meta.build_version)s.tar.xz",
-                                "acl": "private",
-                                "es_backups_folder": ConfigurationValue("""ES_BACKUPS_FOLDER"""),
-                                "overwrite": True
-                            }
-                        ],
-                    "diff": []
+                    "snapshot": [
+                        {
+                            "action": "archive",
+                            "format": "tar.xz",
+                            "name": "%(build_config.name)s_snapshot_%(_meta.build_version)s.tar.xz",
+                            "es_backups_folder": ConfigurationValue("""ES_BACKUPS_FOLDER"""),
+                        },
+                        {
+                            "action": "upload",
+                            "type": "s3",
+                            "bucket": ConfigurationValue("""S3_SNAPSHOT_BUCKET"""),
+                            "region": ConfigurationValue("""S3_REGION"""),
+                            "base_path": "%(build_config.name)s/$(Y)",
+                            "file": "%(build_config.name)s_snapshot_%(_meta.build_version)s.tar.xz",
+                            "acl": "private",
+                            "es_backups_folder": ConfigurationValue("""ES_BACKUPS_FOLDER"""),
+                            "overwrite": True,
+                        },
+                    ],
+                    "diff": [],
                 }
-            }
+            },
         }
     }
 }
 
 # Specify AWS credentials to access snapshots stored in S3 bucket
-STANDALONE_AWS_CREDENTIALS = {
-    "AWS_ACCESS_KEY_ID": "",
-    "AWS_SECRET_ACCESS_KEY": ""
-}
+STANDALONE_AWS_CREDENTIALS = {"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}
 
 # Standalone configuration, relates to how the Hub
 # install data releases. You can specify, per data release name,
@@ -342,6 +350,10 @@ STANDALONE_VERSION = {"branch": "standalone_v2", "commit": None, "date": None}
 # A list of URLs to the versions.json files, which contain data release metadata
 VERSION_URLS = []
 
+# Use this configuration to customize validation logic of the auto hub feature.
+# the AutoHubValidator will be use as default. Any customize class must be extended from it.
+AUTOHUB_VALIDATOR_CLASS = None
+
 # Set to True to skip checking application/biothings version matching, before installing
 # a data release, in version settings like "app_version", "standalone_version", "biothings_version"
 SKIP_CHECK_COMPAT = True
@@ -375,7 +387,7 @@ RELEASE_KEEP_N_RECENT_INDICES = 0
 # Set to a lower value if the sync job puts too much load to the server.
 SYNC_BATCH_SIZE = 10000
 
-#* 6. Job Manager *#
+# * 6. Job Manager *#
 # How much memory hub is allowed to use:
 # "auto" will let hub decides (will use 50%-60% of available RAM)
 # while None won't put any limits. Number of bytes can also be
@@ -394,64 +406,70 @@ MAX_SYNC_WORKERS = HUB_MAX_WORKERS
 # as any pending job will consume some memory).
 MAX_QUEUED_JOBS = os.cpu_count() * 4
 
-#* 7. Hub Internals *#
+# * 7. Hub Internals *#
 DATA_SRC_SERVER = ConfigurationError("Define hostname for source database")
 DATA_SRC_PORT = ConfigurationDefault(default=27017, desc="Define port for source database")
 DATA_SRC_DATABASE = ConfigurationError("Define name for source database")
-DATA_SRC_SERVER_USERNAME = ConfigurationDefault(default=None, desc="Define username for source database connection (or None if not needed)")
-DATA_SRC_SERVER_PASSWORD = ConfigurationDefault(default=None, desc="Define password for source database connection (or None if not needed)")
+DATA_SRC_SERVER_USERNAME = ConfigurationDefault(
+    default=None, desc="Define username for source database connection (or None if not needed)"
+)
+DATA_SRC_SERVER_PASSWORD = ConfigurationDefault(
+    default=None, desc="Define password for source database connection (or None if not needed)"
+)
 
 # Target (merged collection) database connection
 DATA_TARGET_SERVER = ConfigurationError("Define hostname for target database (merged collections)")
 DATA_TARGET_PORT = ConfigurationDefault(default=27017, desc="Define port for source database")
 DATA_TARGET_DATABASE = ConfigurationError("Define name for target database (merged collections)")
-DATA_TARGET_SERVER_USERNAME = ConfigurationDefault(default=None, desc="Define username for target database connection (or None if not needed)")
-DATA_TARGET_SERVER_PASSWORD = ConfigurationDefault(default=None, desc="Define password for target database connection (or None if not needed)")
+DATA_TARGET_SERVER_USERNAME = ConfigurationDefault(
+    default=None, desc="Define username for target database connection (or None if not needed)"
+)
+DATA_TARGET_SERVER_PASSWORD = ConfigurationDefault(
+    default=None, desc="Define password for target database connection (or None if not needed)"
+)
 
 DATA_HUB_DB_DATABASE = ConfigurationDefault(
-    default=ConfigurationValue("""'gene_hubdb'"""),
-    desc="db containing the following (internal use)")
+    default=ConfigurationValue("""'gene_hubdb'"""), desc="db containing the following (internal use)"
+)
 DATA_SRC_MASTER_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'src_master'"""),
-    desc="for metadata of each src collections")
+    default=ConfigurationValue("""'src_master'"""), desc="for metadata of each src collections"
+)
 DATA_SRC_DUMP_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'src_dump'"""),
-    desc="for src data download information")
+    default=ConfigurationValue("""'src_dump'"""), desc="for src data download information"
+)
 DATA_SRC_BUILD_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'src_build'"""),
-    desc="for src data build information")
+    default=ConfigurationValue("""'src_build'"""), desc="for src data build information"
+)
 DATA_PLUGIN_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'data_plugin'"""),
-    desc="for data plugins information")
+    default=ConfigurationValue("""'data_plugin'"""), desc="for data plugins information"
+)
 API_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'api'"""),
-    desc="for api information (running under hub control)")
+    default=ConfigurationValue("""'api'"""), desc="for api information (running under hub control)"
+)
 CMD_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'cmd'"""),
-    desc="for launched/running commands in shell")
+    default=ConfigurationValue("""'cmd'"""), desc="for launched/running commands in shell"
+)
 EVENT_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'event'"""),
-    desc="for launched/running commands in shell")
+    default=ConfigurationValue("""'event'"""), desc="for launched/running commands in shell"
+)
 HUB_CONFIG_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'hub_config'"""),
-    desc="for values overrifing config files")
-DATA_TARGET_MASTER_COLLECTION = ConfigurationDefault(
-    default=ConfigurationValue("""'db_master'"""),
-    desc="")
+    default=ConfigurationValue("""'hub_config'"""), desc="for values overrifing config files"
+)
+DATA_TARGET_MASTER_COLLECTION = ConfigurationDefault(default=ConfigurationValue("""'db_master'"""), desc="")
 
 # Internal backend. Default to mongodb
 # For now, other options are: mongodb, sqlite3, elasticsearch
 HUB_DB_BACKEND = ConfigurationError("Define Hub DB connection")
-#HUB_DB_BACKEND = {
+# HUB_DB_BACKEND = {
 #        "module" : "biothings.utils.sqlite3",
 #        "sqlite_db_foder" : "./db",
 #        }
-#HUB_DB_BACKEND = {
+# HUB_DB_BACKEND = {
 #        "module" : "biothings.utils.mongo",
 #        "uri" : "mongodb://localhost:27017",
 #        #"uri" : "mongodb://user:passwd@localhost:27017", # mongodb std URI
 #        }
-#HUB_DB_BACKEND = {
+# HUB_DB_BACKEND = {
 #        "module" : "biothings.utils.es",
 #        "host" : "localhost:9200",
 #        }
@@ -488,10 +506,10 @@ BIOTHINGS_ROLE = "slave"
 
 # Pass any optional tornado settings to tornado.httpserver.HTTPServer
 # see biothings.hub.api.start_api
-#TORNADO_SETTINGS = {
+# TORNADO_SETTINGS = {
 #    # max 10GiB upload
 #    "max_buffer_size" : 10*1024*1024*1024,
-#}
+# }
 
 # don't bother with elements order in a list when diffing,
 # mygene optmized uploaders can't produce different results

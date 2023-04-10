@@ -1,12 +1,12 @@
 import inspect
 import json
-from json.decoder import JSONDecodeError
-import re
 import os
+import re
 from collections import UserList, UserString, deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from importlib import import_module
+from json import JSONDecodeError
 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
@@ -53,6 +53,7 @@ class ConfigurationDefault:
         self.default = default
         self.desc = desc
 
+
 # the above dynamic value types must be evaluated at runtime
 # and not cached, because they may contain reference to the
 # current time, which is commonly used in hub operations.
@@ -72,18 +73,20 @@ def set_default_folder(data_archive_root, sub_folder):
     # trim off "datasources" to get the data_root folder, otherwise, use it as is.
     # '/data/mydisease/datasources' --> '/data/mydisease/'
     # "datasources" was reserved for downloaded data sources files
-    _data_root = data_archive_root[:-len("datasources")] if data_archive_root.endswith("datasources") else data_archive_root
+    _data_root = (
+        data_archive_root[: -len("datasources")] if data_archive_root.endswith("datasources") else data_archive_root
+    )
     return os.path.join(_data_root, sub_folder)
 
 
-class ConfigurationWrapper():
+class ConfigurationWrapper:
     """
-        Wraps and manages configuration access and edit. A singleton
-        instance is available throughout all hub apps using biothings.config
-        or biothings.hub.config after calling import biothings.hub.
-        In addition to providing config value access, either from config files
-        or database, config manager can supersede attributes of a class with values
-        coming from the database, allowing dynamic configuration of hub's elements.
+    Wraps and manages configuration access and edit. A singleton
+    instance is available throughout all hub apps using biothings.config
+    or biothings.hub.config after calling import biothings.hub.
+    In addition to providing config value access, either from config files
+    or database, config manager can supersede attributes of a class with values
+    coming from the database, allowing dynamic configuration of hub's elements.
     """
 
     # This class contains some of Sebastien's original design
@@ -122,9 +125,9 @@ class ConfigurationWrapper():
         # This will save repeated code evaluation.
         for attr in dir(self._module):
             if attr == "logger":
-                continue             # config.logger will be handled specifically later
+                continue  # config.logger will be handled specifically later
             if isinstance(getattr(self._module, attr), ConfigurationDefault):
-                if self._readonly or self._annotations.get(attr, {}).get('readonly', False):
+                if self._readonly or self._annotations.get(attr, {}).get("readonly", False):
                     setattr(self._module, attr, self.get_value_from_file(attr))
 
         # setup config.logger if not set yet
@@ -134,7 +137,7 @@ class ConfigurationWrapper():
                 # set logger if LOG_FOLDER is set
                 self._module.logger = setup_default_log(
                     getattr(self._module, "LOGGER_NAME", "hub"),
-                    self._module.LOG_FOLDER
+                    self._module.LOG_FOLDER,
                 )
             elif isinstance(logger, ConfigurationDefault):
                 # set logger based on default value from default_config
@@ -233,14 +236,13 @@ class ConfigurationWrapper():
         return {
             "scope": {
                 "config": _config,
-                "class": _class
+                "class": _class,
             },
             "_dirty": self.modified,
-            "allow_edits": not self.readonly
+            "allow_edits": not self.readonly,
         }
 
     def reset(self, name=None):
-
         if not name:  # global reset
             self._modified = False
             return self._db.remove({})
@@ -269,7 +271,8 @@ class ConfigurationWrapper():
         res = self._db.update_one(
             {"_id": name},
             {"$set": {"json": value}},
-            upsert=True)
+            upsert=True,
+        )
 
         self._modified = True
         try:  # serializable result for mongo
@@ -297,7 +300,6 @@ class ConfigurationWrapper():
         return val
 
     def get_value_from_file(self, name):
-
         # raw value might require eval
         val = getattr(self._module, name)
 
@@ -328,7 +330,7 @@ class ConfigurationWrapper():
         return val
 
     def supersede(self, klass):
-        """ supersede class variable with db values """
+        """supersede class variable with db values"""
 
         if not isinstance(klass, type):
             raise TypeError("Don't know how to supersede type '%s'" % type(klass))
@@ -442,7 +444,7 @@ def _parse_comments(default_conf_mod, conf_mod):
         return dict.fromkeys(attrs, {})
 
 
-class MetaField():
+class MetaField:
     default = type(None)
 
     def __init__(self, value=None):
@@ -460,7 +462,6 @@ class MetaField():
 
 
 class Text(MetaField):
-
     def feed(self, value):
         assert isinstance(value, str)
         self._value = value.strip() or None
@@ -479,7 +480,7 @@ class Paragraph(MetaField):
 
     @property
     def value(self):
-        _value = ' '.join(self._value)
+        _value = " ".join(self._value)
         return _value or None
 
     def feed(self, value):
@@ -494,9 +495,9 @@ class Paragraph(MetaField):
 # But it seems that it wasn't processed
 # in the previous version either
 
-@dataclass
-class ConfigAttrMeta():
 
+@dataclass
+class ConfigAttrMeta:
     confmod: MetaField = field(default_factory=MetaField)
     section: Text = field(default_factory=Text)  # persistent
     description: Paragraph = field(default_factory=Paragraph)
@@ -512,7 +513,7 @@ class ConfigAttrMeta():
     def asdict(self):
         confmod, self.confmod = self.confmod, MetaField()
         result = {k: v.value for k, v in asdict(self).items()}
-        result['confmod'] = confmod.value  # cannot pickle in asdict
+        result["confmod"] = confmod.value  # cannot pickle in asdict
         return result
 
     # ------------------------------------
@@ -534,21 +535,18 @@ class ConfigAttrMeta():
 
 
 class ConfigLines(UserList):
-
     def parse(self, attrs=()):
-
         result = {}
         attrs = set(attrs)
         current = ConfigAttrMeta()
 
         for line in self.data:
-
             # feed
             field, value = line.match()
             current.feed(field, value)
 
             # commit
-            if '=' in line:
+            if "=" in line:
                 attr = line.split("=")[0].strip()
                 if attr in attrs:
                     result[attr] = current.commit()
@@ -561,12 +559,11 @@ class ConfigLines(UserList):
 
 
 class ConfigLine(UserString):
-
     PATTERNS = (
-        ("hidden", re.compile(r"^#-\s*hide\s*-#\s*$"), lambda m: bool(m)),
-        ("invisible", re.compile(r"^#-\s*invisible\s*-#\s*$"), lambda m: bool(m)),
-        ("readonly", re.compile(r"^#-\s*readonly\s*-#\s*$"), lambda m: bool(m)),
-        ("section", re.compile(r"^#\*\s*(.*)\s*\*#\s*$"), lambda m: m.groups()[0]),
+        ("hidden", re.compile(r"^#\s?-\s*hide\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("invisible", re.compile(r"^#\s?-\s*invisible\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("readonly", re.compile(r"^#\s?-\s*readonly\s*-\s?#\s*$"), lambda m: bool(m)),
+        ("section", re.compile(r"^#\s?\*\s*(.*)\s*\*\s?#\s*$"), lambda m: m.groups()[0]),
         ("description", re.compile(r".*\s*#\s+(.*)$"), lambda m: m.groups()[0]),
     )
 

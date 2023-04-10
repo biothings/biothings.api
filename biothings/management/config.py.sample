@@ -1,0 +1,26 @@
+########################################
+# DATA PLUGIN CONFIGURATION VARIABLES #
+########################################
+# This is a minimal config.py file that will be used when developing a new data plugin without run a Biothing Hub instance.
+# This file should be place at the same directory with developed data plugin:
+# $ ls -al
+#  config.py
+#  data_archive_root
+#  hub_db_folder
+#  your_data_plugin
+
+import os
+
+from biothings.utils.loggers import setup_default_log
+from biothings.web.settings.default import *
+
+DATA_SRC_DATABASE = 'data_src_database'
+DATA_SRC_DUMP_COLLECTION = 'data_src_dump_collection'
+DATA_HUB_DB_DATABASE = 'data_hub_db_database'
+HUB_DB_BACKEND = {
+    "module": "biothings.utils.sqlite3",
+    "sqlite_db_folder": "./hub_db_folder"
+}
+DATA_ARCHIVE_ROOT = "./data_archive_root"
+LOG_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "logs")
+logger = setup_default_log("hub", LOG_FOLDER)

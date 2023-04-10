@@ -1,12 +1,8 @@
-import os
-import subprocess
-
 import biothings.hub.dataload.dumper as dumper
 from biothings.utils.hub_db import get_data_plugin
 
 
 class GitDataPlugin(dumper.GitDumper):
-
     # override to point to "data_plugin" collection instead of src_dump
     # so we don't mix data sources and plugins
     def prepare_src_dump(self):
@@ -15,7 +11,6 @@ class GitDataPlugin(dumper.GitDumper):
 
 
 class ManualDataPlugin(dumper.ManualDumper):
-
     # override to point to "data_plugin" collection instead of src_dump
     # so we don't mix data sources and plugins
     def prepare_src_dump(self):

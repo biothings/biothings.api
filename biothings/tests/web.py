@@ -100,7 +100,7 @@ class BiothingsWebTestBase:
     prefix = "v1"
     host = ""
 
-    def request(self, path, method='GET', expect=200, **kwargs):
+    def request(self, path, method="GET", expect=200, **kwargs):
         """
         Use requests library to make an HTTP request.
         Ensure path is translated to an absolute path.
@@ -123,10 +123,10 @@ class BiothingsWebTestBase:
             return path
 
         # path standardization
-        if not path.startswith('/'):
+        if not path.startswith("/"):
             if self.prefix:  # append prefix
-                path = '/'.join((self.prefix, path))
-            path = '/' + path
+                path = "/".join((self.prefix, path))
+            path = "/" + path
 
         # host standardization
         if self.host:
@@ -134,25 +134,20 @@ class BiothingsWebTestBase:
 
         return path
 
-    def query(self, method='GET', endpoint='query', hits=True, data=None, json=None, **kwargs):
+    def query(self, method="GET", endpoint="query", hits=True, data=None, json=None, **kwargs):
         """
         Make a query and assert positive hits by default.
         Assert zero hit when hits is set to False.
         """
 
-        if method == 'GET':
-            res = self.request(
-                endpoint, params=kwargs,
-                data=data, json=json).json()
+        if method == "GET":
+            res = self.request(endpoint, params=kwargs, data=data, json=json).json()
 
-            assert bool(res.get('hits')) == hits
+            assert bool(res.get("hits")) == hits
             return res
 
-        if method == 'POST':
-            res = self.request(
-                endpoint, method=method,
-                params=kwargs, data=data,
-                json=json).json()
+        if method == "POST":
+            res = self.request(endpoint, method=method, params=kwargs, data=data, json=json).json()
 
             for item in res:  # list
                 if "_id" not in item:
@@ -163,24 +158,24 @@ class BiothingsWebTestBase:
             assert _hits is hits
             return res
 
-        raise ValueError('Invalid Request Method.')
+        raise ValueError("Invalid Request Method.")
 
     @staticmethod
     def msgpack_ok(packed_bytes):
-        """ Load msgpack into a dict """
+        """Load msgpack into a dict"""
         try:
             import msgpack
         except ImportError:
-            pytest.skip('Msgpack is not installed.')
+            pytest.skip("Msgpack is not installed.")
         try:
             dic = msgpack.unpackb(packed_bytes)
         except BaseException:  # pylint: disable=bare-except
-            assert False, 'Not a valid Msgpack binary.'
+            # assert False, "Not a valid Msgpack binary."
+            raise ValueError("Not a valid Msgpack binary.")
         return dic
 
     @staticmethod
-    def value_in_result(value, result: Union[dict, list], key: str,
-                        case_insensitive: bool = False) -> bool:
+    def value_in_result(value, result: Union[dict, list], key: str, case_insensitive: bool = False) -> bool:
         """
         Check if value is in result at specific key
 
@@ -226,15 +221,15 @@ class BiothingsWebTestBase:
 
 
 class BiothingsWebTest(BiothingsWebTestBase):
-    """
-    """
+    """ """
+
     @classmethod
     def setup_class(cls):
         """this is the setup method when pytest run tests from this class"""
         cls.scheme = os.getenv("TEST_SCHEME", cls.scheme)
-        cls.prefix = os.getenv("TEST_PREFIX", cls.prefix).strip('/')
-        cls.host = os.getenv("TEST_HOST", cls.host).strip('/')
-        base_url = f"{cls.scheme}://{cls.host}/{cls.prefix}"
+        cls.prefix = os.getenv("TEST_PREFIX", cls.prefix).strip("/")
+        cls.host = os.getenv("TEST_HOST", cls.host).strip("/")
+        base_url = f"{cls.scheme}://{cls.host}/{cls.prefix}" if cls.host else f"/{cls.prefix}"
         msg = f"\n\tTest URL: {base_url}"
         msg += f"\n\tBioThings SDK Version: {biothings.__version__}"
         msg += f"\n\tBioThings SDK path: {biothings.__file__}\n"
@@ -246,9 +241,10 @@ class BiothingsWebTest(BiothingsWebTestBase):
 
 class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
     """
-        Starts the tornado application to run tests locally.
-        Need a config.py under the test class folder.
+    Starts the tornado application to run tests locally.
+    Need a config.py under the test class folder.
     """
+
     TEST_DATA_DIR_NAME: Optional[str] = None  # set sub-dir name
 
     @pytest.fixture(scope="class", autouse=True)
@@ -261,23 +257,21 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
             return
 
         s = requests.Session()
-        s.mount('http://',
-                adapter=requests.adapters.HTTPAdapter(
-                    max_retries=urllib3.Retry(total=5, backoff_factor=3.0)
-                ))  # values seem reasonable
-        es_host = 'http://' + self.config.ES_HOST
+        s.mount(
+            "http://", adapter=requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=5, backoff_factor=3.0))
+        )  # values seem reasonable
+        es_host = "http://" + self.config.ES_HOST
 
         server_info = s.get(es_host).json()
-        version_info = tuple(int(v) for v
-                             in server_info['version']['number'].split('.'))
+        version_info = tuple(int(v) for v in server_info["version"]["number"].split("."))
         if version_info[0] < 6 or version_info[0] == 6 and version_info[1] < 8:
             pytest.exit("Tests need to be running on ES6.8+")
 
         indices = []  # for cleanup later
         data_dir_path = os.path.dirname(inspect.getfile(type(self)))
-        data_dir_path = os.path.join(data_dir_path, 'test_data')
+        data_dir_path = os.path.join(data_dir_path, "test_data")
         data_dir_path = os.path.join(data_dir_path, self.TEST_DATA_DIR_NAME)
-        glob_json_pattern = os.path.join(data_dir_path, '*.json')
+        glob_json_pattern = os.path.join(data_dir_path, "*.json")
         # wrap around in try-finally so the index is guaranteed to be
         err_flag = False
         try:
@@ -286,51 +280,54 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
                 index_name = os.path.basename(index_mapping_path)
                 index_name = os.path.splitext(index_name)[0]
                 indices.append(index_name)
-                r = s.head(f'{es_host}/{index_name}')
+                r = s.head(f"{es_host}/{index_name}")
                 if r.status_code != 404:
-                    if os.environ.get('TEST_KEEPDATA'):
+                    if os.environ.get("TEST_KEEPDATA"):
                         continue
                     raise RuntimeError(f"{index_name} already exists!")
-                with open(index_mapping_path, 'r') as f:
+                with open(index_mapping_path, "r") as f:
                     mapping = json.load(f)
-                data_path = os.path.join(data_dir_path, index_name + '.ndjson')
-                with open(data_path, 'r') as f:
+                data_path = os.path.join(data_dir_path, index_name + ".ndjson")
+                with open(data_path, "r") as f:
                     bulk_data = f.read()
                 if version_info[0] == 6:
-                    r = s.put(f'{es_host}/{index_name}', json=mapping,
-                              params={'include_type_name': 'false'})
+                    r = s.put(f"{es_host}/{index_name}", json=mapping, params={"include_type_name": "false"})
                 elif version_info[0] > 6:
-                    r = s.put(f'{es_host}/{index_name}', json=mapping)
+                    r = s.put(f"{es_host}/{index_name}", json=mapping)
                 else:
                     raise RuntimeError("This shouldn't have happened")
                 r.raise_for_status()
                 if version_info[0] < 8:
-                    r = s.post(f'{es_host}/{index_name}/_doc/_bulk',
-                            data=bulk_data,
-                            headers={'Content-type': 'application/x-ndjson'})
+                    r = s.post(
+                        f"{es_host}/{index_name}/_doc/_bulk",
+                        data=bulk_data,
+                        headers={"Content-type": "application/x-ndjson"},
+                    )
                 elif version_info[0] >= 8:
-                    r = s.post(f'{es_host}/{index_name}/_bulk',
-                            data=bulk_data,
-                            headers={'Content-type': 'application/x-ndjson'})
+                    r = s.post(
+                        f"{es_host}/{index_name}/_bulk",
+                        data=bulk_data,
+                        headers={"Content-type": "application/x-ndjson"},
+                    )
                 else:
                     raise RuntimeError("This shouldn't have happened")
                 r.raise_for_status()
-                s.post(f'{es_host}/{index_name}/_refresh')
+                s.post(f"{es_host}/{index_name}/_refresh")
             yield
         except Exception as e:
             err_msg = str(e)
             err_flag = True
         finally:
-            if not os.environ.get('TEST_KEEPDATA'):
+            if not os.environ.get("TEST_KEEPDATA"):
                 for index_name in indices:
-                    s.delete(f'{es_host}/{index_name}')
+                    s.delete(f"{es_host}/{index_name}")
             if err_flag:
                 pytest.exit("Error setting up ES for tests:", err_msg)
 
     @property
     def config(self):
-        if not hasattr(self, '_config'):
-            conf = os.getenv("TEST_CONF", 'config.py')
+        if not hasattr(self, "_config"):
+            conf = os.getenv("TEST_CONF", "config.py")
             base = os.path.dirname(inspect.getfile(type(self)))
             file = os.path.join(base, conf)
             self._config = configs.load(file)
@@ -344,24 +341,21 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
     def get_app(self):
         prefix = self.config.APP_PREFIX
         version = self.config.APP_VERSION
-        self.prefix = f'{prefix}/{version}'
+        self.prefix = f"{prefix}/{version}".strip("/")
         return BiothingsAPI.get_app(self.config)
 
     # override
     def request(self, path, method="GET", expect=200, **kwargs):
-
         url = self.get_url(path)
 
         func = partial(requests.request, method, url, **kwargs)
-        res = self.io_loop.run_sync(
-            lambda: self.io_loop.run_in_executor(None, func))
+        res = self.io_loop.run_sync(lambda: self.io_loop.run_in_executor(None, func))
 
         assert res.status_code == expect, res.text
         return res
 
     # override
     def get_url(self, path):
-
         path = BiothingsWebTestBase.get_url(self, path)
         return AsyncHTTPTestCase.get_url(self, path)
 

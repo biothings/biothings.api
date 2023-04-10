@@ -1,6 +1,7 @@
-import pytest
-import os
 import importlib
+import os
+
+import pytest
 
 # What's changed
 #
@@ -17,6 +18,7 @@ import importlib
 def config():
     os.environ["HUB_CONFIG"] = "conf_deep"
     from biothings import hub
+
     importlib.reload(hub)
     config = hub.config
     config.reset()
@@ -25,14 +27,17 @@ def config():
 
 def test_01_override_value(config):
     assert config["RUN_DIR"]["value"] == "run_dir"  # new value
-    assert config["RUN_DIR"]["desc"] == "where to store info about processes launched by the hub"  # but description hasn't changed, taken from default_config
+    assert (
+        config["RUN_DIR"]["desc"] == "where to store info about processes launched by the hub"
+    )  # but description hasn't changed, taken from default_config
     assert config["RUN_DIR"]["section"] == "3. Folders"  # same for section, from base
 
 
 def test_02_override_desc(config):
     assert config["E"]["value"] == "heu"  # new value
-    assert config["E"]["desc"] == None  # E not in default_config, skipping override metadata
-    assert config["E"]["section"] == None  # E not in default_config, skipping override metadata
+    assert config["E"]["desc"] is None  # E not in default_config, skipping override metadata
+    assert config["E"]["section"] is None  # E not in default_config, skipping override metadata
+
 
 #
 # def test_03_override_desc_of_readonly(config):
@@ -43,6 +48,7 @@ def test_02_override_desc(config):
 
 def test_04_only_in_base(config):
     assert config["G"]["value"] == "G"
+
 
 #
 # def test_05_add_readonly(config):

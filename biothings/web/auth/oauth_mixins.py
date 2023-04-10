@@ -1,13 +1,13 @@
 import urllib.parse
-from typing import Union, Optional, Dict, Any
+from typing import Any, Union
 
 from tornado.auth import OAuth2Mixin
 from tornado.escape import json_decode
 from tornado.httputil import HTTPHeaders
 
 __all__ = [
-    'GithubOAuth2Mixin',
-    'OrcidOAuth2Mixin'
+    "GithubOAuth2Mixin",
+    "OrcidOAuth2Mixin",
 ]
 
 
@@ -23,16 +23,17 @@ class GithubOAuth2Mixin(OAuth2Mixin):
     TODO: if anyone adds any new features in the future, make a dedicated
           OAuth2 request method, similar to the one for ORCID below.
     """
-    _OAUTH_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
-    _OAUTH_ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 
-    _GITHUB_API_URL_BASE = 'https://api.github.com/'
+    _OAUTH_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+    _OAUTH_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
+
+    _GITHUB_API_URL_BASE = "https://api.github.com/"
 
     async def github_get_oauth2_token(
-            self,
-            client_id: str,
-            client_secret: str,
-            code: str,
+        self,
+        client_id: str,
+        client_secret: str,
+        code: str,
     ) -> dict:
         """
         Get Github OAuth2 Token
@@ -51,11 +52,11 @@ class GithubOAuth2Mixin(OAuth2Mixin):
             "client_secret": client_secret,
         }
         headers = HTTPHeaders()
-        headers.add('Accept', 'application/json')
+        headers.add("Accept", "application/json")
         response = await http.fetch(
             self._OAUTH_ACCESS_TOKEN_URL,
             raise_error=True,
-            method='POST',
+            method="POST",
             body=urllib.parse.urlencode(args),
             headers=headers,
         )
@@ -108,21 +109,15 @@ class GithubOAuth2Mixin(OAuth2Mixin):
         if isinstance(token, str):
             token_str = token
         elif isinstance(token, dict):
-            if 'token_type' not in token \
-                    or token['token_type'] != 'bearer' \
-                    or 'access_token' not in token:
+            if "token_type" not in token or token["token_type"] != "bearer" or "access_token" not in token:
                 raise RuntimeError("Token seems invalid")
             else:
-                token_str = token['access_token']
+                token_str = token["access_token"]
         else:
             raise RuntimeError("Token seems invalid")
-        headers.add('Authorization', f'token {token_str}')
-        headers.add('Accept', 'application/vnd.github.v3+json')
-        resp = await http.fetch(
-            urllib.parse.urljoin(self._GITHUB_API_URL_BASE, 'user'),
-            method='GET',
-            headers=headers
-        )
+        headers.add("Authorization", f"token {token_str}")
+        headers.add("Accept", "application/vnd.github.v3+json")
+        resp = await http.fetch(urllib.parse.urljoin(self._GITHUB_API_URL_BASE, "user"), method="GET", headers=headers)
         ret = json_decode(resp.body)
         return ret
 
@@ -138,15 +133,16 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
         the token returned with these two scopes can be used to read
         public data.
     """
+
     _OAUTH_AUTHORIZE_URL = "https://orcid.org/oauth/authorize"
     _OAUTH_ACCESS_TOKEN_URL = "https://orcid.org/oauth/token"
-    _ORCID_API_URL_BASE = 'https://pub.orcid.org/v2.0/'
+    _ORCID_API_URL_BASE = "https://pub.orcid.org/v2.0/"
 
     async def orcid_get_oauth2_token(
-            self,
-            client_id: str,
-            client_secret: str,
-            code: str,
+        self,
+        client_id: str,
+        client_secret: str,
+        code: str,
     ) -> dict:
         """
         Get OAuth2 Token from ORCID
@@ -169,11 +165,11 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
             "grant_type": "authorization_code",
         }
         headers = HTTPHeaders()
-        headers.add('Accept', 'application/json')
+        headers.add("Accept", "application/json")
         response = await http.fetch(
             self._OAUTH_ACCESS_TOKEN_URL,
             raise_error=True,
-            method='POST',
+            method="POST",
             body=urllib.parse.urlencode(args),
             headers=headers,
         )
@@ -181,11 +177,11 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
         return ret
 
     async def orcid_oauth2_request(
-            self,
-            url: str,
-            access_token: Union[dict, str],
-            method: str = 'GET',
-            **kwargs: Any,
+        self,
+        url: str,
+        access_token: Union[dict, str],
+        method: str = "GET",
+        **kwargs: Any,
     ):
         """
         Make Request to ORCID API With OAuth2 Token
@@ -208,22 +204,23 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
         if isinstance(access_token, str):
             token_str = access_token
         elif isinstance(access_token, dict):
-            if 'token_type' not in access_token \
-                    or access_token['token_type'] != 'bearer' \
-                    or 'access_token' not in access_token:
+            if (
+                "token_type" not in access_token
+                or access_token["token_type"] != "bearer"
+                or "access_token" not in access_token
+            ):
                 raise ValueError("Token seems invalid")
             else:
-                token_str = access_token['access_token']
+                token_str = access_token["access_token"]
         else:
             raise ValueError("Token seems invalid")
-        headers.add('Authorization', f'Bearer {token_str}')
-        headers.add('Accept', 'application/json')
+        headers.add("Authorization", f"Bearer {token_str}")
+        headers.add("Accept", "application/json")
         resp = await http.fetch(url, method=method, headers=headers, **kwargs)
         ret = json_decode(resp.body)
         return ret
 
-    async def orcid_get_authenticated_user_oidc(self, access_token: Union[dict, str])\
-            -> dict:
+    async def orcid_get_authenticated_user_oidc(self, access_token: Union[dict, str]) -> dict:
         """
         Get ORCID User OpenID Connect information
 
@@ -240,15 +237,14 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
             Dictionary with OIDC User Details
         """
         ret = await self.orcid_oauth2_request(
-            urllib.parse.urljoin(self._OAUTH_ACCESS_TOKEN_URL, 'userinfo'),
-            access_token, 'GET'
+            urllib.parse.urljoin(self._OAUTH_ACCESS_TOKEN_URL, "userinfo"), access_token, "GET"
         )
         return ret
 
     async def orcid_get_authenticated_user_record(
-            self,
-            access_token: Union[dict, str],
-            orcid: str,
+        self,
+        access_token: Union[dict, str],
+        orcid: str,
     ) -> dict:
         """
         Get ORCID User Record
@@ -265,7 +261,6 @@ class OrcidOAuth2Mixin(OAuth2Mixin):
             Dictionary with ORCID Record
         """
         ret = await self.orcid_oauth2_request(
-            urllib.parse.urljoin(self._ORCID_API_URL_BASE, f'{orcid}/record'),
-            access_token, 'GET'
+            urllib.parse.urljoin(self._ORCID_API_URL_BASE, f"{orcid}/record"), access_token, "GET"
         )
         return ret

@@ -16,21 +16,35 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
+from urllib import parse as urlparse
+
+try:
+    import docker
+    from docker.errors import NotFound, NullResource
+
+    docker_avail = True
+except ImportError:
+    docker_avail = False
 
 import orjson
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
 from biothings.hub.dataload.uploader import set_pending_to_upload
-from biothings.utils.common import rmdashfr, timesofar
+from biothings.utils.common import rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceError
+from biothings.utils.parsers import docker_source_info_parser
 
 logging = btconfig.logger
 
 
 class DumperException(Exception):
+    pass
+
+
+class DockerContainerException(Exception):
     pass
 
 
@@ -69,7 +83,7 @@ class BaseDumper(object):
         self.t0 = time.time()
         self.logfile = None
         self.prev_data_folder = None
-        self.timestamp = time.strftime('%Y%m%d')
+        self.timestamp = time.strftime("%Y%m%d")
         self.prepared = False
         self.steps = ["dump", "post"]
 
@@ -154,8 +168,8 @@ class BaseDumper(object):
         raise NotImplementedError("Define in subclass")
 
     def remote_is_better(self, remotefile, localfile):
-        '''Compared to local file, check if remote file is worth downloading.
-        (like either bigger or newer for instance)'''
+        """Compared to local file, check if remote file is worth downloading.
+        (like either bigger or newer for instance)"""
         raise NotImplementedError("Define in subclass")
 
     def download(self, remotefile, localfile):
@@ -185,23 +199,17 @@ class BaseDumper(object):
         self.logger.debug("Only delete files under %s", base_dir)
         # assume this path is good
         for rel_file_name in self.to_delete:
-            delete_path = os.path.realpath(
-                os.path.join(base_dir, rel_file_name)
-            )  # figure out the full path
+            delete_path = os.path.realpath(os.path.join(base_dir, rel_file_name))  # figure out the full path
             self.logger.debug("%s is %s", rel_file_name, delete_path)
             common_path = os.path.commonpath((base_dir, delete_path))
             self.logger.debug("Calculated common prefix path: %s", common_path)
             if common_path != base_dir or delete_path == base_dir:
-                raise RuntimeError(
-                    "Attempting to delete something outside the download " "directory"
-                )
+                raise RuntimeError("Attempting to delete something outside the download " "directory")
             try:
                 s = os.stat(delete_path)
                 self.logger.debug("stat(%s): %s", delete_path, s)
             except FileNotFoundError:
-                self.logger.warning(
-                    "Cannot delete %s (%s), does not exist", rel_file_name, delete_path
-                )
+                self.logger.warning("Cannot delete %s (%s), does not exist", rel_file_name, delete_path)
                 continue
             # there is a race condition but the effects are limited
             if stat.S_ISREG(s.st_mode):
@@ -220,8 +228,7 @@ class BaseDumper(object):
                     raise e
             else:
                 raise RuntimeError(
-                    f"{rel_file_name} ({delete_path}) is not "
-                    "a regular file or directory, cannot delete"
+                    f"{rel_file_name} ({delete_path}) is not " "a regular file or directory, cannot delete"
                 )
         self.to_delete = []  # reset the list in case
 
@@ -233,7 +240,7 @@ class BaseDumper(object):
         pass
 
     def setup_log(self):
-        log_folder = os.path.join(btconfig.LOG_FOLDER, 'dataload')
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload")
         self.logger, self.logfile = get_logger("dump_%s" % self.src_name, log_folder=log_folder)
 
     def prepare(self, state={}):  # noqa: B006
@@ -267,7 +274,7 @@ class BaseDumper(object):
     def prepare_src_dump(self):
         # Mongo side
         self.src_dump = get_src_dump()
-        self.src_doc = self.src_dump.find_one({'_id': self.src_name}) or {}
+        self.src_doc = self.src_dump.find_one({"_id": self.src_name}) or {}
 
     def register_status(self, status, transient=False, dry_run=False, **extra):
         src_doc = deepcopy(self.src_doc)
@@ -284,27 +291,22 @@ class BaseDumper(object):
             # remote site. maybe we're just running post step ?
             # back-compatibility; use "release" at root level if not found under "download"
             release = src_doc.get("download", {}).get("release") or src_doc.get("release")
-            self.logger.error(
-                "No release set, assuming: data_folder: %s, release: %s" % (data_folder, release)
-            )
+            self.logger.error("No release set, assuming: data_folder: %s, release: %s" % (data_folder, release))
         # make sure to remove old "release" field to get back on track
         for field in ["release", "data_folder"]:
             if src_doc.get(field):
-                self.logger.warning(
-                    "Found '%s'='%s' at root level, convert to new format"
-                    % (field, src_doc[field])
-                )
+                self.logger.warning("Found '%s'='%s' at root level, convert to new format" % (field, src_doc[field]))
                 src_doc.pop(field)
 
         current_download_info = {
-            '_id': self.src_name,
-            'download': {
-                'release': release,
-                'data_folder': data_folder,
-                'logfile': self.logfile,
-                'started_at': datetime.now().astimezone(),
-                'status': status
-            }
+            "_id": self.src_name,
+            "download": {
+                "release": release,
+                "data_folder": data_folder,
+                "logfile": self.logfile,
+                "started_at": datetime.now().astimezone(),
+                "status": status,
+            },
         }
         # Update last success download time.
         if status == "success":
@@ -314,7 +316,7 @@ class BaseDumper(object):
             # If failed, we will get the last_success from the last download instead.
             last_download_info = src_doc.setdefault("download", {})
             last_success = last_download_info.get("last_success", None)
-            if not last_success and last_download_info.get("status") == 'success':
+            if not last_success and last_download_info.get("status") == "success":
                 # If last_success from the last download doesn't exist or is None, and last
                 # download's status is success, the last download's started_at will be used.
                 last_success = last_download_info.get("started_at")
@@ -339,12 +341,12 @@ class BaseDumper(object):
             self.src_dump.save(src_doc)
 
     async def dump(self, steps=None, force=False, job_manager=None, check_only=False, **kwargs):
-        '''
+        """
         Dump (ie. download) resource as needed
         this should be called after instance creation
         'force' argument will force dump, passing this to
         create_todump_list() method.
-        '''
+        """
         # signature says it's optional but for now it's not...
         assert job_manager
         # check what to do
@@ -359,9 +361,7 @@ class BaseDumper(object):
                 # if last download failed (or was interrupted), we want to force the dump again
                 try:
                     if self.src_doc["download"]["status"] in ["failed", "downloading"]:
-                        self.logger.info(
-                            "Forcing dump because previous failed (so let's try again)"
-                        )
+                        self.logger.info("Forcing dump because previous failed (so let's try again)")
                         force = True
                 except (AttributeError, KeyError):
                     # no src_doc or no download info
@@ -374,8 +374,7 @@ class BaseDumper(object):
                 if self.to_dump:
                     if check_only:
                         self.logger.info(
-                            "New release available, '%s', %s file(s) to download"
-                            % (self.release, len(self.to_dump)),
+                            "New release available, '%s', %s file(s) to download" % (self.release, len(self.to_dump)),
                             extra={"notify": True},
                         )
                         return self.release
@@ -397,9 +396,7 @@ class BaseDumper(object):
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                job = await job_manager.defer_to_thread(
-                    pinfo, partial(self.post_dump, job_manager=job_manager)
-                )
+                job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
 
                 def postdumped(f):
                     nonlocal got_error
@@ -428,10 +425,10 @@ class BaseDumper(object):
                 self.release_client()
 
     def mark_success(self, dry_run=True):
-        '''
+        """
         Mark the datasource as successful dumped.
         It's useful in case the datasource is unstable, and need to be manually downloaded.
-        '''
+        """
         self.register_status("success", dry_run=dry_run)
         self.logger.info("Done!")
         result = {
@@ -455,8 +452,7 @@ class BaseDumper(object):
                     [
                         j
                         for j in job_manager.jobs.values()
-                        if j["source"].split(".")[0] == self.src_name
-                        and j["category"] == UPLOADER_CATEGORY
+                        if j["source"].split(".")[0] == self.src_name and j["category"] == UPLOADER_CATEGORY
                     ]
                 )
                 == 0
@@ -503,7 +499,7 @@ class BaseDumper(object):
             suffix = getattr(self, self.__class__.SUFFIX_ATTR)
             return os.path.join(self.src_root_folder, suffix)
         else:
-            return os.path.join(self.src_root_folder, 'latest')
+            return os.path.join(self.src_root_folder, "latest")
 
     @property
     def current_data_folder(self):
@@ -520,9 +516,7 @@ class BaseDumper(object):
     async def do_dump(self, job_manager=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         # should downloads be throttled ?
-        max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(
-            self.__class__.MAX_PARALLEL_DUMP
-        )
+        max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
         courtesy_wait = self.__class__.SLEEP_BETWEEN_DOWNLOAD
         got_error = None
         jobs = []
@@ -541,7 +535,7 @@ class BaseDumper(object):
                         max_dump.release()
                     self.post_download(remote, local)
                 except Exception as e:
-                    self.logger.exception("Error downloading '%s': %s" % (remote, e))
+                    self.logger.exception("Error downloading '%s': %s", remote, e)
                     got_error = e
 
             pinfo = self.get_pinfo()
@@ -580,10 +574,10 @@ from ftplib import FTP
 
 
 class FTPDumper(BaseDumper):
-    FTP_HOST = ''
-    CWD_DIR = ''
-    FTP_USER = ''
-    FTP_PASSWD = ''
+    FTP_HOST = ""
+    CWD_DIR = ""
+    FTP_USER = ""
+    FTP_PASSWD = ""
     FTP_TIMEOUT = 10 * 60.0  # we want dumper to timout if necessary
     BLOCK_SIZE: Optional[int] = None  # default is still kept at 8KB
 
@@ -595,16 +589,16 @@ class FTPDumper(BaseDumper):
             return self.BLOCK_SIZE
         # else:
         known_optimal_sizes = {
-            'ftp.ncbi.nlm.nih.gov': 33554432,
+            "ftp.ncbi.nlm.nih.gov": 33554432,
             # see https://ftp.ncbi.nlm.nih.gov/README.ftp for reason
             # add new ones above
-            'DEFAULT': 8192,
+            "DEFAULT": 8192,
         }
         normalized_host = self.FTP_HOST.lower()
         if normalized_host in known_optimal_sizes:
             return known_optimal_sizes[normalized_host]
         else:
-            return known_optimal_sizes['DEFAULT']
+            return known_optimal_sizes["DEFAULT"]
 
     def prepare_client(self):
         # FTP side
@@ -629,14 +623,12 @@ class FTPDumper(BaseDumper):
             self.prepare_client()
         try:
             with open(localfile, "wb") as out_f:
-                self.client.retrbinary(
-                    cmd='RETR %s' % remotefile, callback=out_f.write, blocksize=block_size
-                )
+                self.client.retrbinary(cmd="RETR %s" % remotefile, callback=out_f.write, blocksize=block_size)
             # set the mtime to match remote ftp server
-            response = self.client.sendcmd('MDTM ' + remotefile)
+            response = self.client.sendcmd("MDTM " + remotefile)
             code, lastmodified = response.split()
             # an example: 'last-modified': '20121128150000'
-            lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
+            lastmodified = time.mktime(datetime.strptime(lastmodified, "%Y%m%d%H%M%S").timetuple())
             os.utime(localfile, (lastmodified, lastmodified))
             return code
         except Exception as e:
@@ -656,11 +648,9 @@ class FTPDumper(BaseDumper):
             return True
         local_lastmodified = int(res.st_mtime)
         self.logger.info("Getting modification time for '%s'" % remotefile)
-        response = self.client.sendcmd('MDTM ' + remotefile)
+        response = self.client.sendcmd("MDTM " + remotefile)
         code, remote_lastmodified = response.split()
-        remote_lastmodified = int(
-            time.mktime(datetime.strptime(remote_lastmodified, '%Y%m%d%H%M%S').timetuple())
-        )
+        remote_lastmodified = int(time.mktime(datetime.strptime(remote_lastmodified, "%Y%m%d%H%M%S").timetuple()))
 
         if remote_lastmodified > local_lastmodified:
             self.logger.debug(
@@ -670,12 +660,11 @@ class FTPDumper(BaseDumper):
             return True
         local_size = res.st_size
         self.client.sendcmd("TYPE I")
-        response = self.client.sendcmd('SIZE ' + remotefile)
+        response = self.client.sendcmd("SIZE " + remotefile)
         code, remote_size = map(int, response.split())
         if remote_size > local_size:
             self.logger.debug(
-                "Remote file '%s' is bigger (remote: %s, local: %s)"
-                % (remotefile, remote_size, local_size)
+                "Remote file '%s' is bigger (remote: %s, local: %s)" % (remotefile, remote_size, local_size)
             )
             return True
         self.logger.debug("'%s' is up-to-date, no need to download" % remotefile)
@@ -683,12 +672,12 @@ class FTPDumper(BaseDumper):
 
 
 class LastModifiedBaseDumper(BaseDumper):
-    '''
+    """
     Use SRC_URLS as a list of URLs to download and
     implement create_todump_list() according to that list.
     Shoud be used in parallel with a dumper talking the
     actual underlying protocol
-    '''
+    """
 
     SRC_URLS = []  # must be overridden in subclass
 
@@ -747,8 +736,8 @@ class LastModifiedFTPDumper(LastModifiedBaseDumper):
             {
                 "FTP_HOST": split.hostname,
                 "CWD_DIR": "/".join(split.path.split("/")[:-1]),
-                "FTP_USER": split.username or '',
-                "FTP_PASSWD": split.password or '',
+                "FTP_USER": split.username or "",
+                "FTP_PASSWD": split.password or "",
                 "SRC_NAME": self.__class__.SRC_NAME,
                 "SRC_ROOT_FOLDER": self.__class__.SRC_ROOT_FOLDER,
             },
@@ -766,9 +755,9 @@ class LastModifiedFTPDumper(LastModifiedBaseDumper):
         url = self.__class__.SRC_URLS[-1]
         ftpdumper = self.get_client_for_url(url)
         remotefile = self.get_remote_file(url)
-        response = ftpdumper.client.sendcmd('MDTM ' + remotefile)
+        response = ftpdumper.client.sendcmd("MDTM " + remotefile)
         code, lastmodified = response.split()
-        lastmodified = time.mktime(datetime.strptime(lastmodified, '%Y%m%d%H%M%S').timetuple())
+        lastmodified = time.mktime(datetime.strptime(lastmodified, "%Y%m%d%H%M%S").timetuple())
         dt = datetime.fromtimestamp(lastmodified)
         self.release = dt.strftime(self.__class__.RELEASE_FORMAT)
         ftpdumper.release_client()
@@ -822,14 +811,11 @@ class HTTPDumper(BaseDumper):
         res = self.client.get(remoteurl, stream=True, headers=headers)
         if not res.status_code == 200:
             if res.status_code in self.__class__.IGNORE_HTTP_CODE:
-                self.logger.info(
-                    "Remote URL %s gave http code %s, ignored" % (remoteurl, res.status_code)
-                )
+                self.logger.info("Remote URL %s gave http code %s, ignored" % (remoteurl, res.status_code))
                 return
             else:
                 raise DumperException(
-                    "Error while downloading '%s' (status: %s, reason: %s)"
-                    % (remoteurl, res.status_code, res.reason)
+                    "Error while downloading '%s' (status: %s, reason: %s)" % (remoteurl, res.status_code, res.reason)
                 )
         # issue biothings.api #3: take filename from header if specified
         # note: this has to explicit, either on a globa (class) level or per file to dump
@@ -840,7 +826,7 @@ class HTTPDumper(BaseDumper):
                 # localfile is an absolute path, replace last part
                 localfile = os.path.join(os.path.dirname(localfile), parsed[1]["filename"])
         self.logger.debug("Downloading '%s' as '%s'" % (remoteurl, localfile))
-        fout = open(localfile, 'wb')
+        fout = open(localfile, "wb")
         for chunk in res.iter_content(chunk_size=512 * 1024):
             if chunk:
                 fout.write(chunk)
@@ -905,9 +891,7 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
         res = self.client.head(url, allow_redirects=True)
         for _ in self.__class__.LAST_MODIFIED:
             try:
-                remote_dt = datetime.strptime(
-                    res.headers[self.__class__.LAST_MODIFIED], '%a, %d %b %Y %H:%M:%S GMT'
-                )
+                remote_dt = datetime.strptime(res.headers[self.__class__.LAST_MODIFIED], "%a, %d %b %Y %H:%M:%S GMT")
                 # also set release attr
                 self.release = remote_dt.strftime(self.__class__.RELEASE_FORMAT)
             except KeyError:
@@ -917,7 +901,7 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
                 etag = res.headers[self.__class__.ETAG]
                 if etag.startswith("W/"):
                     etag = etag[2:]
-                self.release = etag.replace('"', '')
+                self.release = etag.replace('"', "")
 
 
 class WgetDumper(BaseDumper):
@@ -1020,9 +1004,7 @@ class DummyDumper(BaseDumper):
         # this is the only interesting thing happening here
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
-        job = await job_manager.defer_to_thread(
-            pinfo, partial(self.post_dump, job_manager=job_manager)
-        )
+        job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
         await asyncio.gather(job)  # consume future
         self.logger.info("Registering success")
         self.register_status("success")
@@ -1032,12 +1014,12 @@ class DummyDumper(BaseDumper):
 
 
 class ManualDumper(BaseDumper):
-    '''
+    """
     This dumper will assist user to dump a resource. It will usually expect the files
     to be downloaded first (sometimes there's no easy way to automate this process).
     Once downloaded, a call to dump() will make sure everything is fine in terms of
     files and metadata
-    '''
+    """
 
     def __init__(self, *args, **kwargs):
         super(ManualDumper, self).__init__(*args, **kwargs)
@@ -1082,20 +1064,14 @@ class ManualDumper(BaseDumper):
             self.release = release
         # sanity check
         if not os.path.exists(self.new_data_folder):
-            raise DumperException(
-                "Can't find folder '%s' (did you download data first ?)" % self.new_data_folder
-            )
+            raise DumperException("Can't find folder '%s' (did you download data first ?)" % self.new_data_folder)
         if not os.listdir(self.new_data_folder):
-            raise DumperException(
-                "Directory '%s' is empty (did you download data first ?)" % self.new_data_folder
-            )
+            raise DumperException("Directory '%s' is empty (did you download data first ?)" % self.new_data_folder)
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder, self.release)
-        job = await job_manager.defer_to_thread(
-            pinfo, partial(self.post_dump, job_manager=job_manager)
-        )
+        job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
         await asyncio.gather(job)  # consume future
         # ok, good to go
         self.register_status("success")
@@ -1103,11 +1079,6 @@ class ManualDumper(BaseDumper):
             set_pending_to_upload(self.src_name)
         self.logger.info("success %s" % strargs, extra={"notify": True})
         self.logger.info("Manually dumped resource (data_folder: '%s')" % self.new_data_folder)
-
-
-from urllib import parse as urlparse
-
-from bs4 import BeautifulSoup
 
 
 class GoogleDriveDumper(HTTPDumper):
@@ -1133,20 +1104,22 @@ class GoogleDriveDumper(HTTPDumper):
                 doc_id = frags[-2]
                 return doc_id
             else:
-                raise DumperException(
-                    "URL '%s' doesn't end with %s, can't extract document ID" % (url, ends)
-                )
+                raise DumperException("URL '%s' doesn't end with %s, can't extract document ID" % (url, ends))
 
         raise DumperException("Don't know how to extract document ID from URL '%s'" % url)
 
     def download(self, remoteurl, localfile):
-        '''
+        """
         remoteurl is a google drive link containing a document ID, such as:
             - https://drive.google.com/open?id=<1234567890ABCDEF>
             - https://drive.google.com/file/d/<1234567890ABCDEF>/view
 
         It can also be just a document ID
-        '''
+        """
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            raise ImportError('"BeautifulSoup4" is required for GoogleDriveDumper class: pip install beautifulsoup4')
         self.prepare_local_folders(localfile)
         if remoteurl.startswith("http"):
             doc_id = self.get_document_id(remoteurl)
@@ -1184,13 +1157,11 @@ class GitDumper(BaseDumper):
         # git doesn't really care about the encoding of refnames, it only
         # seems to be limited by the underlying filesystem
         # (don't count on the above statement, it's just an educated guess)
-        cmd = ['git', 'ls-remote', '--symref', self.GIT_REPO_URL, 'HEAD']
+        cmd = ["git", "ls-remote", "--symref", self.GIT_REPO_URL, "HEAD"]
         try:
             # set locale to C so the output may have more reliable format
-            result = subprocess.run(
-                cmd, stdout=subprocess.PIPE, timeout=5, check=True, env={'LC_ALL': 'C'}  # nosec
-            )
-            r = re.compile(rb'^ref:\s+refs\/heads\/(.*)\s+HEAD$', flags=re.MULTILINE)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5, check=True, env={"LC_ALL": "C"})  # nosec
+            r = re.compile(rb"^ref:\s+refs\/heads\/(.*)\s+HEAD$", flags=re.MULTILINE)
             m = r.match(result.stdout)
             if m is not None:
                 return m[1]
@@ -1199,16 +1170,14 @@ class GitDumper(BaseDumper):
         return None
 
     def _get_remote_branches(self) -> List[bytes]:
-        cmd = ['git', 'ls-remote', '--heads', self.GIT_REPO_URL]
+        cmd = ["git", "ls-remote", "--heads", self.GIT_REPO_URL]
         ret = []
         try:
             # set locale to C so the output may have more reliable format
-            result = subprocess.run(
-                cmd, stdout=subprocess.PIPE, timeout=5, check=True, env={'LC_ALL': 'C'}  # nosec
-            )
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=5, check=True, env={"LC_ALL": "C"})  # nosec
             # user controls the URL anyways, and we don't use a shell
             # so it is safe
-            r = re.compile(rb'^[0-9a-f]{40}\s+refs\/heads\/(.*)$', flags=re.MULTILINE)
+            r = re.compile(rb"^[0-9a-f]{40}\s+refs\/heads\/(.*)$", flags=re.MULTILINE)
             for m in re.findall(r, result.stdout):
                 ret.append(m)
         except (TimeoutError, subprocess.CalledProcessError):
@@ -1229,13 +1198,13 @@ class GitDumper(BaseDumper):
                 return branch
             # Case 3, 'main' exists but not 'master'
             branches = self._get_remote_branches()
-            if b'main' in branches and b'master' not in branches:
-                return 'main'
+            if b"main" in branches and b"master" not in branches:
+                return "main"
         except:  # nosec  # noqa
             # fallback anything goes wrong
             pass
         # Case 4, use 'master' for compatibility reasons
-        return 'master'
+        return "master"
 
     def _clone(self, repourl, localdir):
         self.logger.info("git clone '%s' into '%s'" % (repourl, localdir))
@@ -1349,7 +1318,6 @@ class GitDumper(BaseDumper):
 
 
 class DumperManager(BaseSourceManager):
-
     SOURCE_CLASS = BaseDumper
 
     def get_source_ids(self):
@@ -1382,10 +1350,7 @@ class DumperManager(BaseSourceManager):
         srcs = src_dump.find()
         for src in srcs:
             if src.get("download", {}).get("status", None) == "downloading":
-                logging.warning(
-                    "Found stale datasource '%s', marking download status as 'canceled'"
-                    % src["_id"]
-                )
+                logging.warning("Found stale datasource '%s', marking download status as 'canceled'" % src["_id"])
                 src["download"]["status"] = "canceled"
                 src_dump.replace_one({"_id": src["_id"]}, src)
 
@@ -1422,15 +1387,11 @@ class DumperManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def dump_src(
-        self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs
-    ):
+    def dump_src(self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs):
         if src in self.register:
             klasses = self.register[src]
         else:
-            raise DumperException(
-                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
-            )
+            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
@@ -1466,9 +1427,7 @@ class DumperManager(BaseSourceManager):
         if src in self.register:
             klasses = self.register[src]
         else:
-            raise DumperException(
-                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
-            )
+            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
         for _, klass in enumerate(klasses):
             inst = self.create_instance(klass)
             result.append(inst.mark_success(dry_run=dry_run))
@@ -1483,9 +1442,7 @@ class DumperManager(BaseSourceManager):
         if src in self.register:
             klasses = self.register[src]
         else:
-            raise DumperException(
-                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
-            )
+            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
@@ -1525,13 +1482,13 @@ class DumperManager(BaseSourceManager):
             return errors
 
     def get_schedule(self, dumper_name):
-        '''Return the corresponding schedule for dumper_name
+        """Return the corresponding schedule for dumper_name
         Example result:
         {
             "cron": "0 9 * * *",
             "strdelta": "15h:20m:33s",
         }
-        '''
+        """
         info = None
         for sch in self.job_manager.loop._scheduled:
             if not isinstance(sch, asyncio.TimerHandle):
@@ -1554,15 +1511,14 @@ class DumperManager(BaseSourceManager):
         res = []
         for _id in src_ids:
             src = src_dump.find_one({"_id": _id}) or {}
-            assert (
-                len(self.register[_id]) == 1
-            ), "Found more than one dumper for source '%s': %s" % (_id, self.register[_id])
+            assert len(self.register[_id]) == 1, "Found more than one dumper for source '%s': %s" % (
+                _id,
+                self.register[_id],
+            )
             dumper = self.register[_id][0]
             name = "%s.%s" % (inspect.getmodule(dumper).__name__, dumper.__name__)
             bases = [
-                "%s.%s" % (inspect.getmodule(k).__name__, k.__name__)
-                for k in dumper.__bases__
-                if inspect.getmodule(k)
+                "%s.%s" % (inspect.getmodule(k).__name__, k.__name__) for k in dumper.__bases__ if inspect.getmodule(k)
             ]
             schedule = self.get_schedule(name)
             src.setdefault("download", {})
@@ -1611,7 +1567,7 @@ class APIDumper(BaseDumper):
         """
         This gets called by method `dump`, to populate self.to_dump
         """
-        self.to_dump = [{'remote': 'remote', 'local': 'local'}]
+        self.to_dump = [{"remote": "remote", "local": "local"}]
         # TODO: we can have get_release in another process as well
         #  but I don't think it is worth it.
         self.release = self.get_release()
@@ -1643,12 +1599,12 @@ class APIDumper(BaseDumper):
         Caveats: the existing job manager will not know how much memory
         the actual worker process is using.
         """
-        if not (remotefile == 'remote') and (localfile == 'local'):
+        if not (remotefile == "remote") and (localfile == "local"):
             raise RuntimeError("This method is not supposed to be" "called outside dump/do_dump")
         wd = os.path.abspath(os.path.realpath(self.new_data_folder))
         os.makedirs(wd, exist_ok=True)
         self.to_dump = []
-        mp_context = multiprocessing.get_context('spawn')
+        mp_context = multiprocessing.get_context("spawn")
         # specifying mp_context is Python 3.7+ only
         executor = ProcessPoolExecutor(
             max_workers=1,
@@ -1751,22 +1707,16 @@ class APIDumper(BaseDumper):
         # and eliminate its threads.
         # The best way to do it is to run spawn a new process and run the client
         # there. Or do some kind of IPC and have the client in one process only.
-        raise RuntimeError(
-            "prepare_client method of APIDumper and its " "descendents must not be called"
-        )
+        raise RuntimeError("prepare_client method of APIDumper and its " "descendents must not be called")
 
     def release_client(self):
         # dump will always call this method so we have to allow it
-        if inspect.stack()[1].function == 'dump':
+        if inspect.stack()[1].function == "dump":
             return
-        raise RuntimeError(
-            "release_client method of APIDumper and its " "descendents must not be called"
-        )
+        raise RuntimeError("release_client method of APIDumper and its " "descendents must not be called")
 
     def need_prepare(self):
-        raise RuntimeError(
-            "need_prepare method of APIDumper and its " "descendents must not be called"
-        )
+        raise RuntimeError("need_prepare method of APIDumper and its " "descendents must not be called")
 
 
 def _run_api_and_store_to_disk(
@@ -1807,20 +1757,362 @@ def _run_api_and_store_to_disk(
     try:
         for filename, obj in fn():
             fn_byte_arr = buffer.setdefault(filename, bytearray())
-            fn_byte_arr.extend(orjson.dumps(obj) + b'\n')
+            fn_byte_arr.extend(orjson.dumps(obj) + b"\n")
             if len(fn_byte_arr) >= buffer_size:
-                with open(f'{filename}.{pid}', 'ab') as f:
+                with open(f"{filename}.{pid}", "ab") as f:
                     f.write(fn_byte_arr)
                 buffer[filename].clear()
     except Exception as e:
         # cleanup
         for filename in buffer.keys():
             if os.path.exists(filename):
-                os.unlink(f'{filename}.{pid}')
+                os.unlink(f"{filename}.{pid}")
         buffer.clear()
         raise e
     for filename, fn_byte_arr in buffer.items():
-        with open(f'{filename}.{pid}', 'ab') as f:
+        with open(f"{filename}.{pid}", "ab") as f:
             f.write(fn_byte_arr)
     for filename in buffer.keys():
-        os.rename(src=f'{filename}.{pid}', dst=filename)
+        os.rename(src=f"{filename}.{pid}", dst=filename)
+
+
+class DockerContainerDumper(BaseDumper):
+    """
+    Start a docker container (typically runs on a different server) to prepare the data file on the remote container,
+    and then download this file to the local data source folder.
+    This dumper will do the following steps:
+    - Booting up a container from provided parameters: image, tag, container_name.
+    - The container entrypoint will be override by this long running command: "tail -f /dev/null"
+    - When the container_name and image is provided together, the dumper will try to run the container_name.
+        If the container with container_name does not exist, the dumper will start a new container from image param,
+        and set its name as container_name.
+    - Run the dump_command inside this container. This command MUST block the dumper until the data file is completely prepare.
+        It will guarantees that the remote file is ready for downloading.
+    - Run the get_version_cmd inside this container - if it provided. Set this command out put as self.release.
+    - Download the remote file via Docker API, extract the downloaded .tar file.
+    - When the downloading is complete:
+        - if keep_container=false: Remove the above container after.
+        - if keep_container=true: leave this container running.
+    - If there are any execption when dump data, the remote container won't be removed, it will help us address the problem.
+
+
+    These are supported connection types from the Hub server to the remote Docker host server:
+        - ssh: Prerequisite: the SSH Key-Based Authentication is configured
+        - unix: Local connection
+        - http: Use an insecure HTTP connection over a TCP socket
+        - https:  Use a secured HTTPS connection using TLS. Prerequisite:
+            - The Docker API on the remote server MUST BE secured with TLS
+            - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
+
+    All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG key, Ex:
+        DOCKER_CONFIG = {
+            "CONNECTION_NAME_1": {
+                "tls_cert_path": "/path/to/cert.pem",
+                "tls_key_path": "/path/to/key.pem",
+                "client_url": "https://remote-docker-host:port"
+            },
+            "CONNECTION_NAME_2": {
+                "client_url": "ssh://user@remote-docker-host"
+            },
+            "localhost": {
+                "client_url": "unix://var/run/docker.sock"
+            }
+        }
+
+    The data_url should match the following format:
+        docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&dump_command="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"  # NOQA
+
+    Supported params:
+        - image: (Optional) the Docker image name
+        - tag: (Optional) the image tag
+        - container_name: (Optional) If this param is provided, the `image` param will be discard when dumper run.
+        - path: (Required) path to the remote file inside the Docker container.
+        - dump_command: (Required) This command will be run inside the Docker container in order to create the remote file.
+        - keep_container: (Optional) accepted values: true/false, default: false.
+            - If keep_container=true, the remote container will be persisted.
+            - If keep_container=false, the remote container will be removed in the end of dump step.
+        - get_version_cmd: (Optional) The custom command for checking release version of local and remote file. Note that:
+            - This command must run-able in both local Hub (for checking local file) and remote container (for checking remote file).
+            - "{}" MUST exists in the command, it will be replace by the data file path when dumper runs,
+                ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
+    Ex:
+      - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)"  # NOQA
+      - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
+      - docker://localhost?image=dockstore_dumper&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&keep_container=1
+      - docker://localhost?image=dockstore_dumper&tag=latest&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&keep_container=True  # NOQA
+      - docker://localhost?image=praqma/network-multitool&tag=latest&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
+      - docker://localhost?container_name=<YOUR CONTAINER NAME>&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
+
+    Container metadata:
+    - All above params in the data_url can be pre-config in the Dockerfile by adding LABELs. This config will be used as the fallback of the data_url params:
+        The dumper will find those params from both data_url and container metadata.
+        If a param does not exist in data_url, dumper will use its value from container metadata (of course if it exist).
+    For example:
+        ... Dockerfile
+        LABEL "path"="/tmp/annotations.zip"
+        LABEL "dump_command"="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"
+        LABEL keep_container="true"
+        LABEL desc=test
+        LABEL container_name=mydocker
+    """
+
+    DOCKER_CLIENT_URL = None
+    DOCKER_IMAGE = None
+    CONTAINER_NAME = None
+    DUMP_COMMAND = None
+    MAX_PARALLEL_DUMP = 1
+    TIMEOUT = 300
+
+    def __init__(self, *args, **kwargs):
+        if not docker_avail:
+            raise ImportError('"docker" package is required for "DockerContainerDumper" class.')
+        super().__init__(*args, **kwargs)
+        self.container = None
+        self.keep_container = False
+        self._source_info = {}
+        self.image_metadata = {}
+        self.custom_get_version_cmd = None
+        self._data_path = None
+
+    @property
+    def source_config(self):
+        if not self._source_info:
+            url = self.__class__.SRC_URLS[0]
+            self._source_info = docker_source_info_parser(url)
+        return self._source_info
+
+    def prepare_client(self):
+        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
+        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
+        if not self._state["client"]:
+            docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
+            self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
+            parsed = urlparse.urlparse(docker_connection.get("client_url"))
+            scheme = parsed.scheme
+            self.logger.info(f"Prepare the connection to Docker server {self.DOCKER_CLIENT_URL}")
+            use_ssh_client = False
+            tls_config = None
+            if scheme not in ["tcp", "unix", "http", "https", "ssh"]:
+                raise DumperException(f"Connection scheme {scheme} is not supported")
+            if scheme == "ssh":
+                use_ssh_client = True
+            if scheme == "https":
+                cert_path = docker_connection.get("tls_cert_path")
+                key_path = docker_connection.get("tls_key_path")
+                if not cert_path or not key_path:
+                    raise DumperException("Can not connect to the Docker server, missing cert info")
+                tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
+
+            client = docker.DockerClient(base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config)
+            if not client.ping():
+                raise DumperException("Can not connect to the Docker server!")
+            self.logger.info("Connected to Docker server")
+            self._state["client"] = client
+        return self._state["client"]
+
+    def need_prepare(self):
+        if not self.client:
+            return True
+
+    def set_release(self):
+        self.release = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    def release_client(self):
+        if self.client:
+            self.client.close()
+            self.client = None
+            self._state["client"] = None
+
+    def post_dump(self, *args, **kwargs):
+        super().post_dump(*args, **kwargs)
+        self.release_client()
+
+    def remote_is_better(self, remote_file, local_file):
+        try:
+            os.stat(local_file)
+        except (FileNotFoundError, TypeError):
+            return True
+        if not self.CONTAINER_NAME:
+            return True  # new fresh container, remote is always better
+        try:
+            container = self.client.containers.get(self.CONTAINER_NAME)
+        except Exception:
+            return True  # exception will be caught in the download step
+        if self.custom_get_version_cmd:
+            if container.status != "running":
+                return True  # we can't execute the cmd in a stop container
+            current_version = os.popen(self.custom_get_version_cmd.replace("{}", local_file, 1)).read().strip()
+            exit_code, remote_version = container.exec_run(
+                ["sh", "-c", self.custom_get_version_cmd.replace("{}", remote_file, 1)]
+            )
+            if exit_code != 0:
+                return True  # failed when run cmd check on the remote
+            remote_version = remote_version.decode().strip()
+            self.release = (
+                remote_version  # the output of get_version_cmd should be the value returned from set_release method
+            )
+            if current_version != remote_version:
+                return True
+        else:
+            # Always dump unless get_version_cmd is provided to check whether or not there is a new version.
+            # Prevent double click dump button
+            # So there is a bit trick by check file is already exist on the new_data_folder
+            return not os.path.isfile(f"{self.new_data_folder}/{os.path.basename(remote_file)}")
+        return False
+
+    def set_dump_command(self):
+        if self.source_config.get("dump_command"):
+            self.DUMP_COMMAND = self.source_config["dump_command"]
+        else:
+            self.DUMP_COMMAND = self.image_metadata.get("dump_command")
+        if not self.DUMP_COMMAND:
+            raise DumperException("Missing the require parameter (DUMP_COMMAND/dump_command)")
+
+    def set_keep_container(self):
+        if self.source_config.get("keep_container") is not None:
+            self.keep_container = self.source_config["keep_container"]
+        elif "keep_container" in self.image_metadata:
+            self.keep_container = self.image_metadata["keep_container"]
+
+    def set_version_cmd(self):
+        if self.source_config.get("get_version_cmd"):
+            self.custom_get_version_cmd = self.source_config["get_version_cmd"]
+        else:
+            self.custom_get_version_cmd = self.image_metadata.get("get_version_cmd")
+
+    def get_remote_file(self, url=None):
+        if self._data_path:
+            return self._data_path
+        if self.source_config.get("path"):
+            self._data_path = self.source_config.get("path")
+        else:
+            self._data_path = self.image_metadata.get("path")
+        if not self._data_path:
+            raise DumperException("Missing the require parameter: path")
+        return self._data_path
+
+    def create_todump_list(self, force=False, **kwargs):
+        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
+        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
+        self.set_release()  # so we can generate new_data_folder
+        self.prepare_client()
+        self.prepare_dumper_params()
+        for src_url in self.__class__.SRC_URLS:
+            remote_file = self.get_remote_file()
+            file_name = os.path.basename(remote_file)
+            new_localfile = os.path.join(self.new_data_folder, file_name)
+            try:
+                current_local_file = os.path.join(self.current_data_folder, file_name)
+            except TypeError:
+                # current data folder doesn't even exist
+                current_local_file = new_localfile
+            remote_better = self.remote_is_better(remote_file, current_local_file)
+            if force or current_local_file is None or remote_better:
+                new_localfile = os.path.join(self.new_data_folder, file_name)
+                self.to_dump.append({"remote": src_url, "local": new_localfile})
+
+    def prepare_local_folders(self, localfile):
+        super().prepare_local_folders(localfile)
+        if os.path.isfile(localfile):
+            os.unlink(localfile)
+
+    def prepare_dumper_params(self):
+        self.DOCKER_IMAGE = self.source_config["docker_image"]
+        self.CONTAINER_NAME = self.source_config["container_name"]
+        if not self.DOCKER_IMAGE and not self.CONTAINER_NAME:
+            raise DumperException("Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin")
+        if self.DOCKER_IMAGE:
+            image = self.client.images.get(self.DOCKER_IMAGE)
+            self.image_metadata = image.labels
+        elif self.CONTAINER_NAME:
+            container = self.client.containers.get(self.CONTAINER_NAME)
+            self.image_metadata = container.labels
+        else:
+            self.image_metadata = {}
+        # Fill dumper parameters if they aren't provided in the data plugin manifest.
+        self.set_dump_command()
+        self.set_keep_container()
+        self.set_version_cmd()
+        if not self.CONTAINER_NAME:
+            self.CONTAINER_NAME = self.image_metadata.get("container_name")
+
+    def prepare_remote_container(self):
+        if not self.container:
+            try:
+                self.container = self.client.containers.get(self.CONTAINER_NAME)
+            except (NotFound, NullResource):
+                if self.DOCKER_IMAGE:
+                    if self.CONTAINER_NAME:
+                        self.logger.info(
+                            f"Can not find container name {self.CONTAINER_NAME}, try to start a new one with this name."
+                        )
+                        self.logger.info("Start a docker container with the ENTRYPOINT: tail -f /dev/null")
+                        self.container = self.client.containers.run(
+                            image=self.DOCKER_IMAGE,
+                            name=self.CONTAINER_NAME,
+                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
+                            detach=True,
+                            auto_remove=False,
+                        )
+                    else:
+                        self.logger.info("Start a docker container with the ENTRYPOINT: tail -f /dev/null")
+                        self.container = self.client.containers.run(
+                            image=self.DOCKER_IMAGE,
+                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
+                            detach=True,
+                            auto_remove=False,
+                        )
+                        self.CONTAINER_NAME = self.container.name
+
+            except Exception as err:
+                self.logger.exception(err)
+                raise DockerContainerException("Docker APIError")
+
+            if self.container.status != "running":
+                self.logger.info("Waiting for the container ...")
+                self.container.start()
+                self.logger.info(f"The container {self.container.name} is creating ...")
+                count = 0
+                while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
+                    count += 1
+                    self.container.reload()  # Load this object from the server again and update attrs with the new data
+                    time.sleep(1)
+            self.logger.info(f"The container {self.container.name} is now running!")
+            self.container.reload()
+            if self.container.status == "exited":
+                raise DockerContainerException("Container is exited")
+
+    def download(self, remote_file_url, local_file):
+        self.prepare_client()
+        self.prepare_remote_container()
+        self.prepare_local_folders(local_file)
+        remote_file = self.get_remote_file(remote_file_url)
+        if self.DUMP_COMMAND:
+            self.logger.info(f"Exec the command: sh -c {self.DUMP_COMMAND}")
+            exit_code, output = self.container.exec_run(["sh", "-c", self.DUMP_COMMAND])
+            self.logger.debug(output.decode())
+            if exit_code != 0:
+                self.logger.error(f"Failed to download {remote_file}, non-zero exit code from custom cmd: {exit_code}")
+                self.logger.error(output)
+                raise DumperException(f"Can not execute the command: {self.DUMP_COMMAND}")
+        else:
+            raise DockerContainerException("The dump_command parameter is must be defined")
+        try:
+            bits, stat = self.container.get_archive(remote_file, encode_stream=True)
+            if stat.get("size", 0) > 0:
+                tmp_file = f"{local_file}.tar"
+                with open(tmp_file, "wb") as fp:
+                    for chunk in bits:
+                        fp.write(chunk)
+                untarall(folder=os.path.dirname(local_file), pattern="*.tar")
+            self.logger.info(f"Successfully download file {remote_file} to {local_file}")
+        except Exception as ex:
+            self.logger.error(f"Failed to download {remote_file} with exception: {ex}", exc_info=True)
+            raise DumperException("Can not download the data file")
+
+        if self.container:
+            if not self.keep_container:
+                self.logger.debug(f"Removing container: {self.container.name}")
+                self.container.stop()
+                self.container.wait(timeout=self.TIMEOUT)
+                self.container.remove()

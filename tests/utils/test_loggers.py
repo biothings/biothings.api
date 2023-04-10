@@ -1,18 +1,10 @@
 import logging
 import os
-from datetime import datetime
 
 import pytest
 
 from biothings import config
-from biothings.utils.loggers import (
-    get_logger,
-    setup_default_log,
-    GZipRotator,
-    LOG_FORMAT_STRING,
-    DATEFMT,
-)
-
+from biothings.utils.loggers import DATEFMT, LOG_FORMAT_STRING, GZipRotator, get_logger, setup_default_log
 
 LOGGER_NAME = "test_logger"
 
@@ -72,7 +64,7 @@ class TestGetLogger:
             new_callable=mocker.PropertyMock,
             create=True,
             SLACK_WEBHOOK=mocker.DEFAULT,
-            SLACK_MENTIONS=mocker.DEFAULT
+            SLACK_MENTIONS=mocker.DEFAULT,
         )
         mock_objects["SLACK_WEBHOOK"].return_value = "https://slack/webhook"
         mock_objects["SLACK_MENTIONS"].return_value = {logging.ERROR: ["admin@admin.com"]}

@@ -8,13 +8,15 @@ class _version_info(NamedTuple):
     micro: int
 
 
-version_info = _version_info(0, 12, 'dev')
-__version__ = '.'.join(map(str, version_info))
+version_info = _version_info(0, 12, "dev")
+__version__ = ".".join(map(str, version_info))
 
 
 def config_for_app(config):
     import warnings
-    warnings.warn((
-        "It is safe to remove this function call now. "
-        "import biothings.hub will take care of it."
-    ), DeprecationWarning)
+
+    warnings.warn(
+        'It is safe to remove this function call now, just "import biothings.hub" will take care of it.',
+        DeprecationWarning,
+        stacklevel=2,
+    )

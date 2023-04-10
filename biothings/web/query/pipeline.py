@@ -1,10 +1,10 @@
-
 import asyncio
 import logging
 from collections import Counter
 from dataclasses import dataclass
 
 import elasticsearch
+
 from biothings.web.query.builder import RawQueryInterrupt
 from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
 
@@ -38,11 +38,13 @@ class QueryPipelineException(Exception):
     # so that error translation from the upper layers
     # is also convenient and straightforward.
 
+
 class QueryPipelineInterrupt(QueryPipelineException):
     def __init__(self, data):
         super().__init__(200, None, data)
 
-class QueryPipeline():
+
+class QueryPipeline:
     def __init__(self, builder, backend, formatter, **settings):
         self.builder = builder
         self.backend = backend
@@ -55,7 +57,7 @@ class QueryPipeline():
         return self.formatter.transform(result, **options)
 
     def fetch(self, id, **options):
-        assert options.get('scopes') is None
+        assert options.get("scopes") is None
         result = self.search(id, **options)
         return result
 
@@ -63,33 +65,38 @@ class QueryPipeline():
 def _simplify_ES_exception(exc, debug=False):
     result = {}
     try:
-        root_cause = exc.info.get('error', exc.info)
-        root_cause = root_cause['root_cause'][0]['reason']
-        root_cause = root_cause.replace('\"', '\'').split('\n')
+        root_cause = exc.info.get("error", exc.info)
+        root_cause = root_cause["root_cause"][0]["reason"]
+        root_cause = root_cause.replace('"', "'").split("\n")
         for index, cause in enumerate(root_cause):
-            result['root_cuase_line_'+f'{index:02}'] = cause
+            result["root_cuase_line_" + f"{index:02}"] = cause
     except IndexError:
         pass  # no root cause
     except Exception:
-        logger.exception(' '.join((
-            "Unexpected error in _simplify_ES_exception.",
-            "Caused by incompatible version, build, etc.",
-            "Update ES exception parsing logic here."
-        )))
+        logger.exception(
+            " ".join(
+                (
+                    "Unexpected error in _simplify_ES_exception.",
+                    "Caused by incompatible version, build, etc.",
+                    "Update ES exception parsing logic here.",
+                )
+            )
+        )
 
     if debug:  # raw ES error response
         result["debug"] = exc.info
 
     return exc.error, result
 
+
 def capturesESExceptions(func):
     async def _(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except(
+        except (
             RawQueryInterrupt,  # correspond to 'rawquery' option
             RawResultInterrupt,  # correspond to 'raw' option
-            EndScrollInterrupt
+            EndScrollInterrupt,
         ) as exc:
             raise QueryPipelineInterrupt(exc.data)
 
@@ -118,7 +125,7 @@ def capturesESExceptions(func):
         # experience. further documentation in details will be helpful.
 
         except elasticsearch.TransportError as exc:  # >400
-            if exc.error == 'search_phase_execution_exception':
+            if exc.error == "search_phase_execution_exception":
                 reason = exc.info.get("caused_by", {}).get("reason", "")
 
                 if "rejected execution" in reason:
@@ -126,24 +133,24 @@ def capturesESExceptions(func):
                 else:  # unexpected, provide additional information for debug
                     raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
 
-            elif exc.error == 'index_not_found_exception':
+            elif exc.error == "index_not_found_exception":
                 raise QueryPipelineException(500, exc.error)
 
-            elif exc.status_code in (429, 'N/A'):
+            elif exc.status_code in (429, "N/A"):
                 raise QueryPipelineException(503)
             else:  # unexpected
                 raise
+
     return _
 
-class AsyncESQueryPipeline(QueryPipeline):
 
+class AsyncESQueryPipeline(QueryPipeline):
     @capturesESExceptions
     async def search(self, q, **options):
-
         if isinstance(q, list):  # multisearch
-            options['templates'] = (dict(query=_q) for _q in q)
-            options['template_miss'] = dict(notfound=True)
-            options['template_hit'] = dict()
+            options["templates"] = (dict(query=_q) for _q in q)
+            options["template_miss"] = dict(notfound=True)
+            options["template_hit"] = dict()
 
         query = self.builder.build(q, **options)
         response = await self.backend.execute(query, **options)
@@ -152,15 +159,15 @@ class AsyncESQueryPipeline(QueryPipeline):
 
     @capturesESExceptions
     async def fetch(self, id, **options):
-        if options.get('scopes'):
+        if options.get("scopes"):
             raise ValueError("Scopes Not Allowed.")
 
         # for builder
-        options['autoscope'] = True
+        options["autoscope"] = True
         # for formatter
-        options['version'] = True
-        options['score'] = False
-        options['one'] = True
+        options["version"] = True
+        options["score"] = False
+        options["one"] = True
 
         # annotation endpoint should work on fields with reasonable
         # uniqueness of values, like id and symbol fields. because
@@ -171,12 +178,12 @@ class AsyncESQueryPipeline(QueryPipeline):
         # it indicates bad choices of values as the default fields.
 
         MAX_MATCH = self.settings.get("fetch_max_match", 1000)
-        options['size'] = MAX_MATCH + 1  # err when len(res) > MAX
+        options["size"] = MAX_MATCH + 1  # err when len(res) > MAX
 
         # "fetch" is a wrapper over "search".
-        #----------------------------------------
+        # ----------------------------------------
         result = await self.search(id, **options)
-        #----------------------------------------
+        # ----------------------------------------
 
         if isinstance(id, list):  # batch
             counter = Counter(x["query"] for x in result)
@@ -192,8 +199,8 @@ class AsyncESQueryPipeline(QueryPipeline):
 
         return result
 
-class ESQueryPipeline(QueryPipeline):  # over async client
 
+class ESQueryPipeline(QueryPipeline):  # over async client
     # These implementations may not be performance optimized
     # It is used as a proof of concept and helps the design
     # of upper layer constructs, it also simplifies testing
@@ -219,42 +226,41 @@ class ESQueryPipeline(QueryPipeline):  # over async client
     #   ]
     # }
 
-    def __init__(
-        self, builder=None, backend=None, formatter=None, *args, **kwargs
-    ):
+    def __init__(self, builder=None, backend=None, formatter=None, *args, **kwargs):
         if not builder:
             from biothings.web.query.builder import ESQueryBuilder
+
             builder = ESQueryBuilder()
 
         if not backend:
             from biothings.web.connections import get_es_client
             from biothings.web.query.engine import ESQueryBackend
+
             client = get_es_client(async_=True)
             backend = ESQueryBackend(client)
 
         if not formatter:
             from biothings.web.query.formatter import ESResultFormatter
+
             formatter = ESResultFormatter()
 
         super().__init__(builder, backend, formatter, *args, **kwargs)
 
     def _run_coroutine(self, coro, *args, **kwargs):
         loop = asyncio.get_event_loop()
-        pipeline = AsyncESQueryPipeline(
-            self.builder, self.backend, self.formatter)
-        return loop.run_until_complete(
-            coro(pipeline, *args, **kwargs))
+        pipeline = AsyncESQueryPipeline(self.builder, self.backend, self.formatter)
+        return loop.run_until_complete(coro(pipeline, *args, **kwargs))
 
     def search(self, q, **options):
-        return self._run_coroutine(
-            AsyncESQueryPipeline.search, q, **options)
+        return self._run_coroutine(AsyncESQueryPipeline.search, q, **options)
 
     def fetch(self, id, **options):
-        return self._run_coroutine(
-            AsyncESQueryPipeline.fetch, id, **options)
+        return self._run_coroutine(AsyncESQueryPipeline.fetch, id, **options)
+
 
 class MongoQueryPipeline(QueryPipeline):
     pass
+
 
 class SQLQueryPipeline(QueryPipeline):
     pass

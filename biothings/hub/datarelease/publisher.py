@@ -1,30 +1,32 @@
-import re
-import os
-import time
-import glob
-import copy
-from datetime import datetime
-from dateutil.parser import parse as dtparse
-import json
 import asyncio
-from functools import partial
+import copy
+import glob
+import json
+import os
+import re
 import subprocess
+import time
+from datetime import datetime
+from functools import partial
 
-from .releasenote import ReleaseNoteSrcBuildReader, ReleaseNoteSource
+from dateutil.parser import parse as dtparse
 
-from biothings.utils.mongo import get_previous_collection
-from biothings.utils.hub_db import get_src_build
 import biothings.utils.aws as aws
+from biothings import config as btconfig
+from biothings.hub import RELEASEMANAGER_CATEGORY, RELEASER_CATEGORY
+from biothings.hub.databuild.backend import create_backend, generate_folder
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.hub.datarelease import set_pending_to_publish
+from biothings.hub.datarelease.releasenote import ReleaseNoteTxt
+from biothings.utils.backend import DocMongoBackend
+from biothings.utils.hub import publish_data_version, template_out
+from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager, BaseStatusRegisterer
-from biothings.utils.backend import DocMongoBackend
-from biothings import config as btconfig
-from biothings.utils.hub import publish_data_version, template_out
-from biothings.hub.databuild.backend import generate_folder, create_backend
-from biothings.hub import RELEASEMANAGER_CATEGORY, RELEASER_CATEGORY
-from biothings.hub.datarelease.releasenote import ReleaseNoteTxt
-from biothings.hub.datarelease import set_pending_to_publish
-from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.utils.mongo import get_previous_collection
+
+from .releasenote import ReleaseNoteSource, ReleaseNoteSrcBuildReader
+
 # default from config
 logging = btconfig.logger
 
@@ -34,8 +36,7 @@ class PublisherException(Exception):
 
 
 class BasePublisher(BaseManager, BaseStatusRegisterer):
-    def __init__(self, envconf, log_folder, es_backups_folder, *args,
-                 **kwargs):
+    def __init__(self, envconf, log_folder, es_backups_folder, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.envconf = envconf
         self.log_folder = log_folder
@@ -49,9 +50,7 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
             dirty = False
             for job in build.get("jobs", []):
                 if job.get("status", "").endswith("publishing"):
-                    logging.warning(
-                        "Found stale build '%s', marking publish status as 'canceled'"
-                        % build["_id"])
+                    logging.warning("Found stale build '%s', marking publish status as 'canceled'", build["_id"])
                     job["status"] = "canceled"
                     dirty = True
             if dirty:
@@ -86,32 +85,35 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
             "category": self.category,
             "source": "",
             "step": "",
-            "description": ""
+            "description": "",
         }
         preds = self.get_predicates()
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
 
-    def register_status(self,
-                        bdoc,
-                        status,
-                        transient=False,
-                        init=False,
-                        **extra):
-        BaseStatusRegisterer.register_status(self,
-                                             bdoc,
-                                             "publish",
-                                             status,
-                                             transient=transient,
-                                             init=init,
-                                             **extra)
+    def register_status(
+        self,
+        bdoc,
+        status,
+        transient=False,
+        init=False,
+        **extra,
+    ):
+        BaseStatusRegisterer.register_status(
+            self,
+            bdoc,
+            "publish",
+            status,
+            transient=transient,
+            init=init,
+            **extra,
+        )
 
     def load_build(self, key_name, stage=None):
         if stage is None:
             # picke build doc searching for snapshot then diff key if not found
-            return self.load_doc(key_name, "snapshot") or self.load_doc(
-                key_name, "diff")
+            return self.load_doc(key_name, "snapshot") or self.load_doc(key_name, "diff")
         else:
             return self.load_doc(key_name, stage)
 
@@ -129,16 +131,20 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
         aws_key = credentials.get("access_key")
         aws_secret = credentials.get("secret_key")
         # create bucket if needed
-        aws.create_bucket(name=bucket_conf["bucket"],
-                          region=bucket_conf["region"],
-                          aws_key=aws_key,
-                          aws_secret=aws_secret,
-                          acl=bucket_conf.get("acl"),
-                          ignore_already_exists=True)
+        aws.create_bucket(
+            name=bucket_conf["bucket"],
+            region=bucket_conf["region"],
+            aws_key=aws_key,
+            aws_secret=aws_secret,
+            acl=bucket_conf.get("acl"),
+            ignore_already_exists=True,
+        )
         if bucket_conf.get("website"):
-            aws.set_static_website(bucket_conf["bucket"],
-                                   aws_key=aws_key,
-                                   aws_secret=aws_secret)
+            aws.set_static_website(
+                bucket_conf["bucket"],
+                aws_key=aws_key,
+                aws_secret=aws_secret,
+            )
 
     def trigger_release_note(self, doc, **kwargs):
         """
@@ -167,45 +173,36 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
         """
         # determine previous result as the starting point of the pipeline,
         # depending on the type of publishing (key)
-        previous_result = self.get_pre_post_previous_result(
-            build_doc, key_value)
-        steps = repo_conf.get("publish", {}).get(stage, {}).get(
-            key, [])  # publish[pre|post][snapshot|diff]
-        assert isinstance(
-            steps,
-            list), "'%s' stage must be a list, got: %s" % (stage, repr(steps))
+        previous_result = self.get_pre_post_previous_result(build_doc, key_value)
+        steps = repo_conf.get("publish", {}).get(stage, {}).get(key, [])  # publish[pre|post][snapshot|diff]
+        assert isinstance(steps, list), "'%s' stage must be a list, got: %s" % (stage, repr(steps))
         action_done = []
         for step_conf in steps:
             try:
                 action = step_conf["action"]
-                self.logger.info("Processing stage '%s-%s-publish': %s" %
-                                 (stage, key, action))
+                self.logger.info("Processing stage '%s-%s-publish': %s", stage, key, action)
                 # first try user-defined methods
                 # it can be named (first to match is picked):
                 # see list below
                 found = False
                 for tpl in [
-                        "step_%(stage)s_publish_%(action)s",
-                        "step_publish_%(action)s", "step_%(stage)s_%(action)s"
+                    "step_%(stage)s_publish_%(action)s",
+                    "step_publish_%(action)s",
+                    "step_%(stage)s_%(action)s",
                 ]:
                     methname = tpl % {"stage": stage, "action": action}
                     if hasattr(self, methname):
                         found = True
-                        previous_result = getattr(self,
-                                                  methname)(step_conf,
-                                                            build_doc,
-                                                            previous_result)
+                        previous_result = getattr(self, methname)(step_conf, build_doc, previous_result)
                         break
                 if not found:
                     # default to generic one
-                    previous_result = getattr(self, "step_%s" % action)(
-                        step_conf, build_doc, previous_result)
+                    previous_result = getattr(self, "step_%s" % action)(step_conf, build_doc, previous_result)
 
                 action_done.append({"name": action, "result": previous_result})
 
             except AttributeError:
-                raise ValueError("No such %s-%s-publish step '%s'" %
-                                 (stage, key, action))
+                raise ValueError(f"No such {stage}-{key}-publish step '{action}'")
 
         return action_done
 
@@ -230,49 +227,44 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
                 ps = subprocess.Popen(splitcmd, stdin=tarps.stdin)
                 ret_code = ps.wait()
                 if ret_code != 0:
-                    raise PublisherException("Archiving failed, code: %s" %
-                                             ret_code)
+                    raise PublisherException(f"Archiving failed, code: {ret_code}")
                 else:
                     flist = glob.glob("%s.*" % part)
                     if len(flist) == 1:
                         # no even split, go back to single archive file
                         os.rename(flist[0], archive_file)
-                        self.logger.info("Tried to split archive, but only one part was produced,"
-                                         + "returning single archive file: %s" % archive_file)
+                        self.logger.info(
+                            "Tried to split archive, but only one part was produced, returning single archive file: %s",
+                            archive_file,
+                        )
                         return archive_file
                     else:
                         # produce a json file with metadata about the splits
                         jsonfile = "%s.json" % archive_file
-                        json.dump({
-                            "filename": archive_file,
-                            "parts": flist
-                        }, open(jsonfile, "w"))
-                        self.logger.info(
-                            "Archive split into %d parts, metadata stored in: %s"
-                            % (len(flist), jsonfile))
+                        json.dump({"filename": archive_file, "parts": flist}, open(jsonfile, "w"))
+                        self.logger.info("Archive split into %d parts, metadata stored in: %s", len(flist), jsonfile)
                         return jsonfile
             else:
                 subprocess.check_output(tarcmd)
                 self.logger.info("Archive: %s" % archive_file)
                 return archive_file
         else:
-            raise ValueError("Only 'tar.xz' format supported for now, got %s" %
-                             repr(step_conf["format"]))
+            raise ValueError("Only 'tar.xz' format supported for now, got %s" % repr(step_conf["format"]))
 
     def step_upload(self, step_conf, build_doc, previous):
         if step_conf["type"] == "s3":
             return self.step_upload_s3(step_conf, build_doc, previous)
         else:
-            raise ValueError(
-                "Only 's3' upload type supported for now, got %s" %
-                repr(step_conf["type"]))
+            raise ValueError("Only 's3' upload type supported for now, got %s" % repr(step_conf["type"]))
 
     def step_upload_s3(self, step_conf, build_doc, previous):
         aws_key = self.envconf.get("cloud", {}).get("access_key")
         aws_secret = self.envconf.get("cloud", {}).get("secret_key")
         # create bucket if needed
-        self.create_bucket(bucket_conf=step_conf,
-                           credentials=self.envconf.get("cloud", {}))
+        self.create_bucket(
+            bucket_conf=step_conf,
+            credentials=self.envconf.get("cloud", {}),
+        )
         if step_conf.get("file"):
             basename = step_conf["file"]
             uploadfunc = aws.send_s3_big_file
@@ -280,40 +272,41 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
             basename = step_conf["folder"]
             uploadfunc = aws.send_s3_folder
         else:
-            raise ValueError(
-                "Can't find 'file' or 'folder' key, don't know what to upload")
+            raise ValueError("Can't find 'file' or 'folder' key, don't know what to upload")
         archive_path = os.path.join(self.es_backups_folder, basename)
         self.logger.info("Uploading: %s" % archive_path)
-        uploadfunc(archive_path,
-                   os.path.join(step_conf["base_path"], basename),
-                   overwrite=step_conf.get("overwrite", False),
-                   aws_key=aws_key,
-                   aws_secret=aws_secret,
-                   s3_bucket=step_conf["bucket"])
+        uploadfunc(
+            archive_path,
+            os.path.join(step_conf["base_path"], basename),
+            overwrite=step_conf.get("overwrite", False),
+            aws_key=aws_key,
+            aws_secret=aws_secret,
+            s3_bucket=step_conf["bucket"],
+        )
         return {
             "type": "s3",
             "key": basename,
             "base_path": step_conf["base_path"],
-            "bucket": step_conf["bucket"]
+            "bucket": step_conf["bucket"],
         }
 
     def get_release_note_filename(self, build_version):
         return "release_%s" % build_version
 
-    def publish_release_notes(self,
-                              release_folder,
-                              build_version,
-                              s3_release_folder,
-                              s3_release_bucket,
-                              aws_key,
-                              aws_secret,
-                              prefix="release_"):
+    def publish_release_notes(
+        self,
+        release_folder,
+        build_version,
+        s3_release_folder,
+        s3_release_bucket,
+        aws_key,
+        aws_secret,
+        prefix="release_",
+    ):
         release_note = self.get_release_note_filename(build_version)
         s3basedir = os.path.join(s3_release_folder, build_version)
         notes = glob.glob(os.path.join(release_folder, "%s.*" % release_note))
-        self.logger.info(
-            "Uploading release notes from '%s' to s3 folder '%s'" %
-            (notes, s3basedir))
+        self.logger.info("Uploading release notes from '%s' to s3 folder '%s'", notes, s3basedir)
         for note in notes:
             if os.path.exists(note):
                 s3key = os.path.join(s3basedir, os.path.basename(note))
@@ -323,18 +316,21 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
                     aws_key=self.envconf.get("cloud", {}).get("access_key"),
                     aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
                     s3_bucket=s3_release_bucket,
-                    overwrite=True)
+                    overwrite=True,
+                )
         # specify release note URLs in metadata
         rel_txt_url = aws.get_s3_url(
             os.path.join(s3basedir, "%s.txt" % release_note),
             aws_key=self.envconf.get("cloud", {}).get("access_key"),
             aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
-            s3_bucket=s3_release_bucket)
+            s3_bucket=s3_release_bucket,
+        )
         rel_json_url = aws.get_s3_url(
             os.path.join(s3basedir, "%s.json" % release_note),
             aws_key=self.envconf.get("cloud", {}).get("access_key"),
             aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
-            s3_bucket=s3_release_bucket)
+            s3_bucket=s3_release_bucket,
+        )
         urls = {}
         if rel_txt_url:
             urls["txt"] = {"url": rel_txt_url}
@@ -359,11 +355,7 @@ class SnapshotPublisher(BasePublisher):
     def run_pre_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
         return self.run_pre_post("snapshot", "pre", snapshot_name, repo_conf, build_doc)
 
-    def publish(self,
-                snapshot,
-                build_name=None,
-                previous_build=None,
-                steps=["pre", "meta", "post"]):
+    def publish(self, snapshot, build_name=None, previous_build=None, steps=("pre", "meta", "post")):
         """
         Publish snapshot metadata to S3. If snapshot repository is of type "s3", data isn't actually
         uploaded/published since it's already there on s3. If type "fs", some "pre" steps can be added
@@ -381,24 +373,23 @@ class SnapshotPublisher(BasePublisher):
             else:
                 bdoc = self.load_build(snapshot, "snapshot")
         except Exception as e:
-            self.exception(
-                "Error loading build document using snapshot named '%s': %s" %
-                (snapshot, e))
+            self.exception("Error loading build document using snapshot named '%s': %s", snapshot, e)
             raise
 
         self.setup_log(bdoc["_id"])
 
         if isinstance(bdoc, list):
             raise PublisherException(
-                "Snapshot '%s' found in more than one builds: %s." %
-                (snapshot, [d["_id"] for d in bdoc])
-                + " Specify which one with 'build_name'")
-        if type(steps) == str:
+                "Snapshot '%s' found in more than one builds: %s." % (snapshot, [d["_id"] for d in bdoc])
+                + " Specify which one with 'build_name'"
+            )
+
+        if isinstance(steps, tuple):
+            steps = list(steps)    # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif type(steps) == str:
             steps = [steps]
         if not bdoc:
-            raise PublisherException(
-                "No build document found with a snapshot name '%s' associated to it"
-                % snapshot)
+            raise PublisherException(f"No build document found with a snapshot name '{snapshot}' associated to it")
 
         # instantiate publishing environment
         self.envconf = self.template_out_conf(bdoc)
@@ -408,21 +399,23 @@ class SnapshotPublisher(BasePublisher):
         if previous_build is None and "release_note" in bdoc:
             previous_build = list(bdoc["release_note"].keys())
             if len(previous_build) != 1:
-                raise PublisherException("More than one release note found, "
-                                         + "generated with following builds: %s" % previous_build)
+                raise PublisherException(
+                    f"More than one release note found, generated with following builds: {previous_build}"
+                )
             else:
                 previous_build = previous_build.pop()
 
         assert previous_build, "Couldn't find previous build %s" % bdoc.keys()
-        release_folder = generate_folder(btconfig.RELEASE_PATH, previous_build,
-                                         bdoc["_id"])
+        release_folder = generate_folder(btconfig.RELEASE_PATH, previous_build, bdoc["_id"])
 
         assert release_folder, "No release folder found, can't publish"
 
         s3_release_folder = self.envconf["release"]["folder"]
         s3_release_bucket = self.envconf["release"]["bucket"]
-        self.create_bucket(bucket_conf=self.envconf["release"],
-                           credentials=self.envconf.get("cloud", {}))
+        self.create_bucket(
+            bucket_conf=self.envconf["release"],
+            credentials=self.envconf.get("cloud", {}),
+        )
 
         # hold error/exception on each step
         got_error = None
@@ -436,61 +429,53 @@ class SnapshotPublisher(BasePublisher):
             def done(f, step):
                 try:
                     res = f.result()
-                    self.register_status(bdoc,
-                                         "success",
-                                         job={
-                                             "step": step,
-                                             "result": res
-                                         },
-                                         publish={
-                                             "full": {
-                                                 snapshot: {
-                                                     "conf": self.envconf,
-                                                     step: res
-                                                 }
-                                             }
-                                         })
+                    self.register_status(
+                        bdoc,
+                        "success",
+                        job={"step": step, "result": res},
+                        publish={
+                            "full": {
+                                snapshot: {"conf": self.envconf, step: res},
+                            }
+                        },
+                    )
                 except Exception as e:
                     nonlocal got_error
                     got_error = e
-                    self.register_status(bdoc,
-                                         "failed",
-                                         job={
-                                             "step": step,
-                                             "err": str(e)
-                                         },
-                                         publish={
-                                             "full": {
-                                                 snapshot: {
-                                                     "conf": self.envconf,
-                                                     step: {
-                                                         "err": str(e)
-                                                     }
-                                                 }
-                                             }
-                                         })
-                    self.logger.exception(
-                        "Error while running pre-publish: %s" % got_error)
+                    self.register_status(
+                        bdoc,
+                        "failed",
+                        job={"step": step, "err": str(e)},
+                        publish={
+                            "full": {
+                                snapshot: {
+                                    "conf": self.envconf,
+                                    step: {"err": str(e)},
+                                }
+                            }
+                        },
+                    )
+                    self.logger.exception("Error while running pre-publish: %s", got_error)
 
             if "_meta" not in bdoc:
-                raise PublisherException(
-                    "No metadata (_meta) found in build document")
+                raise PublisherException("No metadata (_meta) found in build document")
 
             if "pre" in steps:
                 # then we upload all the folder content
                 pinfo["step"] = "pre"
                 self.logger.info("Running pre-publish step")
-                self.register_status(bdoc,
-                                     "pre",
-                                     transient=True,
-                                     init=True,
-                                     job={"step": "pre"},
-                                     publish={"full": {
-                                         snapshot: {}
-                                     }})
+                self.register_status(
+                    bdoc,
+                    "pre",
+                    transient=True,
+                    init=True,
+                    job={"step": "pre"},
+                    publish={"full": {snapshot: {}}},
+                )
                 job = await self.job_manager.defer_to_thread(
                     pinfo,
-                    partial(self.pre_publish, snapshot, self.envconf, bdoc))
+                    partial(self.pre_publish, snapshot, self.envconf, bdoc),
+                )
                 job.add_done_callback(partial(done, step="pre"))
                 await job
                 if got_error:
@@ -504,24 +489,22 @@ class SnapshotPublisher(BasePublisher):
                 # (anyway, it's just to access some snapshot info so default indexer
                 # will work)
                 build_version = bdoc["_meta"]["build_version"]
-                self.logger.info(
-                    "Generating JSON metadata for full release '%s'" %
-                    build_version)
+                self.logger.info("Generating JSON metadata for full release '%s'", build_version)
                 # generate json metadata about this diff release
                 assert snapshot, "Missing snapshot name information"
                 if getattr(btconfig, "SKIP_CHECK_VERSIONS", None):
                     self.logger.info(
-                        "SKIP_CHECK_VERSIONS %s, no version check will be performed on full metadata"
-                        % repr(btconfig.SKIP_CHECK_VERSIONS))
+                        "SKIP_CHECK_VERSIONS %s, no version check will be performed on full metadata",
+                        repr(btconfig.SKIP_CHECK_VERSIONS),
+                    )
                 else:
-                    assert getattr(
-                        btconfig, "BIOTHINGS_VERSION", "master"
-                    ) != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
-                    assert getattr(
-                        btconfig, "APP_VERSION", "master"
-                    ) != "master", "I won't publish data refering APP_VERSION='master'"
-                    assert getattr(btconfig, "STANDALONE_VERSION",
-                                   None), "STANDALONE_VERSION not defined"
+                    assert (
+                        getattr(btconfig, "BIOTHINGS_VERSION", "master") != "master"
+                    ), "I won't publish data refering BIOTHINGS_VERSION='master'"
+                    assert (
+                        getattr(btconfig, "APP_VERSION", "master") != "master"
+                    ), "I won't publish data refering APP_VERSION='master'"
+                    assert getattr(btconfig, "STANDALONE_VERSION", None), "STANDALONE_VERSION not defined"
                 full_meta = {
                     "type": "full",
                     "build_version": build_version,
@@ -533,41 +516,32 @@ class SnapshotPublisher(BasePublisher):
                     "metadata": {
                         "repository": bdoc["snapshot"][snapshot]["conf"]["repository"],
                         "snapshot_name": snapshot,
-                    }
+                    },
                 }
                 # if snapshot tyoe is "fs" (so it means it's stored locally) and we publish (so it means we want it to
                 # be available remotely) it means we should have an pre-"upload" step in the publish pipeline
                 # let's try to get the archive url
                 if bdoc["snapshot"][snapshot]["conf"]["repository"]["type"] == "fs":
-                    pre_steps = bdoc.get("publish",
-                                         {}).get("full",
-                                                 {}).get(snapshot,
-                                                         {}).get("pre", [])
+                    pre_steps = bdoc.get("publish", {}).get("full", {}).get(snapshot, {}).get("pre", [])
                     try:
                         assert pre_steps, "No pre-steps found, expecting pre-upload step"
-                        upload_step = [
-                            step for step in pre_steps
-                            if step["name"] == "upload"
-                        ]
-                        assert len(
-                            upload_step
-                        ) == 1, "Expecting one pre-upload step, got %s" % repr(
-                            upload_step)
+                        upload_step = [step for step in pre_steps if step["name"] == "upload"]
+                        assert len(upload_step) == 1, "Expecting one pre-upload step, got %s" % repr(upload_step)
                         upload_step = upload_step.pop()
                         res = upload_step["result"]
-                        assert res[
-                            "type"] == "s3", "Only archived uploaded to S3 are currently supported"
+                        assert res["type"] == "s3", "Only archived uploaded to S3 are currently supported"
                         url = aws.get_s3_url(
                             s3key=os.path.join(res["base_path"], res["key"]),
-                            aws_key=self.envconf.get("cloud",
-                                                     {}).get("access_key"),
-                            aws_secret=self.envconf.get("cloud",
-                                                        {}).get("secret_key"),
-                            s3_bucket=res["bucket"])
+                            aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                            aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                            s3_bucket=res["bucket"],
+                        )
                         full_meta["metadata"]["archive_url"] = url
                     except Exception as e:
-                        raise PublisherException("Repository for snapshot '%s' is type 'fs' but " % snapshot
-                                                 + "coudln't determine archive URL to publish: %s" % e)
+                        raise PublisherException(
+                            "Repository for snapshot '%s' is type 'fs' but " % snapshot
+                            + "coudln't determine archive URL to publish: %s" % e
+                        )
 
                 if release_folder:
                     if os.path.exists(release_folder):
@@ -578,9 +552,8 @@ class SnapshotPublisher(BasePublisher):
                                 transient=True,
                                 init=True,
                                 job={"step": "release-note"},
-                                publish={"full": {
-                                    snapshot: {}
-                                }})
+                                publish={"full": {snapshot: {}}},
+                            )
                             # ok, we have something in that folder, just pick the release note files
                             # (we can generate diff + snaphost at the same time, so there could be diff files in that folder
                             # from a diff process done before. release notes will be the same though)
@@ -589,14 +562,12 @@ class SnapshotPublisher(BasePublisher):
                                 build_version,
                                 s3_release_folder,
                                 s3_release_bucket,
-                                aws_key=self.envconf.get("cloud",
-                                                         {}).get("access_key"),
-                                aws_secret=self.envconf.get(
-                                    "cloud", {}).get("secret_key"))
+                                aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                                aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                            )
                             full_meta.setdefault("changes", {})
                             full_meta["changes"].update(urls)
-                            s3basedir = os.path.join(s3_release_folder,
-                                                     build_version)
+                            s3basedir = os.path.join(s3_release_folder, build_version)
                             self.register_status(
                                 bdoc,
                                 "success",
@@ -608,21 +579,18 @@ class SnapshotPublisher(BasePublisher):
                                             "release-note": {
                                                 "base_dir": s3basedir,
                                                 "bucket": s3_release_bucket,
-                                                "url": urls
-                                            }
+                                                "url": urls,
+                                            },
                                         }
                                     }
-                                })
+                                },
+                            )
                         except Exception as e:
-                            self.logger.exception(
-                                "Failed to upload release notes: %s" % e)
+                            self.logger.exception("Failed to upload release notes: %s" % e)
                             self.register_status(
                                 bdoc,
                                 "failed",
-                                job={
-                                    "step": "release-note",
-                                    "err": str(e)
-                                },
+                                job={"step": "release-note", "err": str(e)},
                                 publish={
                                     "full": {
                                         snapshot: {
@@ -631,33 +599,31 @@ class SnapshotPublisher(BasePublisher):
                                                 "err": str(e),
                                                 # TODO: set value to s3basedir in case it not defined before
                                                 "base_dir": s3basedir,
-                                                "bucket": s3_release_bucket
+                                                "bucket": s3_release_bucket,
                                             },
                                         }
                                     }
-                                })
+                                },
+                            )
                             raise
 
                     else:
-                        self.logger.info(
-                            "No release_folder found, no release notes will be part of the publishing"
-                        )
+                        self.logger.info("No release_folder found, no release notes will be part of the publishing")
                         # yet create the folder so we can dump metadata json file in there later
                         os.makedirs(release_folder)
 
                 try:
-                    self.register_status(bdoc,
-                                         "publishing",
-                                         transient=True,
-                                         init=True,
-                                         job={"step": "metadata"},
-                                         publish={"full": {
-                                             snapshot: {}
-                                         }})
+                    self.register_status(
+                        bdoc,
+                        "publishing",
+                        transient=True,
+                        init=True,
+                        job={"step": "metadata"},
+                        publish={"full": {snapshot: {}}},
+                    )
                     # now dump that metadata
                     build_info = "%s.json" % build_version
-                    build_info_path = os.path.join(btconfig.RELEASE_PATH,
-                                                   build_info)
+                    build_info_path = os.path.join(btconfig.RELEASE_PATH, build_info)
                     json.dump(full_meta, open(build_info_path, "w"))
                     # override lastmodified header with our own timestamp
                     local_ts = dtparse(bdoc["_meta"]["build_date"])
@@ -669,87 +635,79 @@ class SnapshotPublisher(BasePublisher):
                     aws.send_s3_file(
                         build_info_path,
                         s3key,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"),
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
                         s3_bucket=s3_release_bucket,
                         metadata={"lastmodified": str_utc_epoch},
-                        overwrite=True)
+                        overwrite=True,
+                    )
                     url = aws.get_s3_url(
                         s3key,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"),
-                        s3_bucket=s3_release_bucket)
-                    self.logger.info(
-                        "Full release metadata published for version: '%s'" %
-                        url)
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                        s3_bucket=s3_release_bucket,
+                    )
+                    self.logger.info("Full release metadata published for version: '%s'" % url)
                     full_info = {
                         "build_version": full_meta["build_version"],
                         "require_version": None,
                         "target_version": full_meta["target_version"],
                         "type": full_meta["type"],
                         "release_date": full_meta["release_date"],
-                        "url": url
+                        "url": url,
                     }
                     publish_data_version(
                         s3_release_bucket,
                         s3_release_folder,
                         full_info,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"))
-                    self.logger.info("Registered version '%s'" %
-                                     (build_version))
-                    self.register_status(bdoc,
-                                         "success",
-                                         job={"step": "metadata"},
-                                         publish={
-                                             "full": {
-                                                 snapshot: {
-                                                     "conf": self.envconf,
-                                                     "metadata": full_info
-                                                 }
-                                             }
-                                         })
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                    )
+                    self.logger.info("Registered version '%s'" % (build_version))
+                    self.register_status(
+                        bdoc,
+                        "success",
+                        job={"step": "metadata"},
+                        publish={
+                            "full": {
+                                snapshot: {"conf": self.envconf, "metadata": full_info},
+                            }
+                        },
+                    )
                 except Exception as e:
-                    self.logger.exception(
-                        "Failed to upload snapshot metadata: %s" % e)
-                    self.register_status(bdoc,
-                                         "failed",
-                                         job={
-                                             "step": "metadata",
-                                             "err": str(e)
-                                         },
-                                         publish={
-                                             "full": {
-                                                 snapshot: {
-                                                     "conf": self.envconf,
-                                                     "metadata": {
-                                                         "err": str(e)
-                                                     }
-                                                 }
-                                             }
-                                         })
+                    self.logger.exception("Failed to upload snapshot metadata: %s", e)
+                    self.register_status(
+                        bdoc,
+                        "failed",
+                        job={
+                            "step": "metadata",
+                            "err": str(e),
+                        },
+                        publish={
+                            "full": {
+                                snapshot: {
+                                    "conf": self.envconf,
+                                    "metadata": {"err": str(e)},
+                                }
+                            }
+                        },
+                    )
                     raise
 
             if "post" in steps:
                 pinfo["step"] = "post"
                 self.logger.info("Running post-publish step")
-                self.register_status(bdoc,
-                                     "post-publishing",
-                                     transient=True,
-                                     init=True,
-                                     job={"step": "post-publish"},
-                                     publish={"fulle": {
-                                         snapshot: {}
-                                     }})
+                self.register_status(
+                    bdoc,
+                    "post-publishing",
+                    transient=True,
+                    init=True,
+                    job={"step": "post-publish"},
+                    publish={"fulle": {snapshot: {}}},  # FIXME: "fulle" --> typo?
+                )
                 job = await self.job_manager.defer_to_thread(
-                    pinfo,
-                    partial(self.post_publish, snapshot, self.envconf, bdoc))
+                    pinfo, partial(self.post_publish, snapshot, self.envconf, bdoc)
+                )
                 job.add_done_callback(partial(done, step="post"))
                 await job
                 jobs.append(job)
@@ -757,14 +715,11 @@ class SnapshotPublisher(BasePublisher):
             def published(f):
                 try:
                     res = f.result()
-                    self.logger.info("Snapshot '%s' uploaded to S3: %s" %
-                                     (snapshot, res),
-                                     extra={"notify": True})
+                    self.logger.info("Snapshot '%s' uploaded to S3: %s", snapshot, res, extra={"notify": True})
                 except Exception as e:
                     self.logger.exception(
-                        "Failed to upload snapshot '%s' uploaded to S3: %s" %
-                        (snapshot, e),
-                        extra={"notify": True})
+                        "Failed to upload snapshot '%s' uploaded to S3: %s", snapshot, e, extra={"notify": True}
+                    )
 
             if jobs:
                 await asyncio.wait(jobs)
@@ -785,24 +740,21 @@ class SnapshotPublisher(BasePublisher):
         return task
 
     def run_post_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
-        return self.run_pre_post("snapshot", "post", snapshot_name, repo_conf,
-                                 build_doc)
+        return self.run_pre_post("snapshot", "post", snapshot_name, repo_conf, build_doc)
 
     def post_publish(self, snapshot_name, repo_conf, build_doc):
         """
         Post-publish hook, running steps declared in config,
         but also whatever would be defined in a sub-class
         """
-        return self.run_post_publish_snapshot(snapshot_name, repo_conf,
-                                              build_doc)
+        return self.run_post_publish_snapshot(snapshot_name, repo_conf, build_doc)
 
     def pre_publish(self, snapshot_name, repo_conf, build_doc):
         """
         Pre-publish hook, running steps declared in config,
         but also whatever would be defined in a sub-class
         """
-        return self.run_pre_publish_snapshot(snapshot_name, repo_conf,
-                                             build_doc)
+        return self.run_pre_publish_snapshot(snapshot_name, repo_conf, build_doc)
 
 
 class DiffPublisher(BasePublisher):
@@ -814,21 +766,19 @@ class DiffPublisher(BasePublisher):
     def get_pre_post_previous_result(self, build_doc, key_value):
         previous_result = {
             "diff": build_doc["diff"][key_value]["diff"],
-            "diff_folder": build_doc["diff"][key_value]["diff_folder"]
+            "diff_folder": build_doc["diff"][key_value]["diff_folder"],
         }
         return previous_result
 
     def run_pre_publish_diff(self, previous_build_name, repo_conf, build_doc):
-        return self.run_pre_post("diff", "pre", previous_build_name, repo_conf,
-                                 build_doc)
+        return self.run_pre_post("diff", "pre", previous_build_name, repo_conf, build_doc)
 
     def pre_publish(self, previous_build_name, repo_conf, build_doc):
         """
         Pre-publish hook, running steps declared in config,
         but also whatever would be defined in a sub-class
         """
-        return self.run_pre_publish_diff(previous_build_name, repo_conf,
-                                         build_doc)
+        return self.run_pre_publish_diff(previous_build_name, repo_conf, build_doc)
 
     def reset_synced(self, diff_folder, backend=None):
         """
@@ -844,10 +794,12 @@ class DiffPublisher(BasePublisher):
         _, tgt = build_version.split(".")
         return "release_%s" % tgt
 
-    def publish(self,
-                build_name,
-                previous_build=None,
-                steps=["pre", "reset", "upload", "meta", "post"]):
+    def publish(
+        self,
+        build_name,
+        previous_build=None,
+        steps=("pre", "reset", "upload", "meta", "post"),
+    ):
         """
         Publish diff files and metadata about the diff files, release note, etc... on s3.
         Using build_name, a src_build document is fetched, and a diff release is searched. If more
@@ -866,12 +818,15 @@ class DiffPublisher(BasePublisher):
         assert "diff" in bdoc, "No diff release found in build document named '%s'" % build_name
         if previous_build is None:
             dkeys = list(bdoc["diff"].keys())
-            assert len(dkeys) == 1, "'previous_build' parameter is required because " \
-                                    + "more than one diff release found: %s" % dkeys
+            assert (
+                len(dkeys) == 1
+            ), f"'previous_build' parameter is required because more than one diff release found: {dkeys}"
             previous_build = dkeys.pop()
         assert previous_build, "No previous build could be found in order to pick correct diff release"
         # check what to do
-        if type(steps) == str:
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif type(steps) == str:
             steps = [steps]
 
         # instantiate publishing environment
@@ -879,18 +834,21 @@ class DiffPublisher(BasePublisher):
 
         s3_release_folder = self.envconf["release"]["folder"]
         s3_release_bucket = self.envconf["release"]["bucket"]
-        self.create_bucket(bucket_conf=self.envconf["release"],
-                           credentials=self.envconf.get("cloud", {}))
+        self.create_bucket(
+            bucket_conf=self.envconf["release"],
+            credentials=self.envconf.get("cloud", {}),
+        )
         s3_diff_folder = self.envconf["diff"]["folder"]
         s3_diff_bucket = self.envconf["diff"]["bucket"]
-        self.create_bucket(bucket_conf=self.envconf["diff"],
-                           credentials=self.envconf.get("cloud", {}))
+        self.create_bucket(
+            bucket_conf=self.envconf["diff"],
+            credentials=self.envconf.get("cloud", {}),
+        )
 
         # check whether a release note was generated for that (build_name,previous_build) couple
         release_folder = None
         if bdoc.get("release_note", {}).get(previous_build, {}):
-            release_folder = bdoc["release_note"][previous_build][
-                "release_folder"]
+            release_folder = bdoc["release_note"][previous_build]["release_folder"]
 
         diff_folder = bdoc["diff"][previous_build]["diff_folder"]
         try:
@@ -913,42 +871,30 @@ class DiffPublisher(BasePublisher):
             def done(f, step):
                 try:
                     res = f.result()
-                    self.register_status(bdoc,
-                                         "success",
-                                         job={
-                                             "step": step,
-                                             "result": res
-                                         },
-                                         publish={
-                                             "incremental": {
-                                                 previous_build: {
-                                                     "conf": self.envconf,
-                                                     step: res
-                                                 }
-                                             }
-                                         })
+                    self.register_status(
+                        bdoc,
+                        "success",
+                        job={"step": step, "result": res},
+                        publish={
+                            "incremental": {
+                                previous_build: {"conf": self.envconf, step: res},
+                            }
+                        },
+                    )
                 except Exception as e:
                     nonlocal got_error
                     got_error = e
-                    self.register_status(bdoc,
-                                         "failed",
-                                         job={
-                                             "step": step,
-                                             "err": str(e)
-                                         },
-                                         publish={
-                                             "incremental": {
-                                                 previous_build: {
-                                                     "conf": self.envconf,
-                                                     step: {
-                                                         "err": str(e)
-                                                     }
-                                                 }
-                                             }
-                                         })
-                    self.logger.exception(
-                        "Error while running %s-publish: %s" %
-                        (step, got_error))
+                    self.register_status(
+                        bdoc,
+                        "failed",
+                        job={"step": step, "err": str(e)},
+                        publish={
+                            "incremental": {
+                                previous_build: {"conf": self.envconf, step: {"err": str(e)}},
+                            }
+                        },
+                    )
+                    self.logger.exception("Error while running %s-publish: %s", step, got_error)
 
             if "_meta" not in bdoc:
                 raise PublisherException("No metadata (_meta) found in build document")
@@ -963,13 +909,11 @@ class DiffPublisher(BasePublisher):
                     transient=True,
                     init=True,
                     job={"step": "pre"},
-                    publish={"incremental": {
-                        previous_build: {}
-                    }})
+                    publish={"incremental": {previous_build: {}}},
+                )
                 job = await self.job_manager.defer_to_thread(
-                    pinfo,
-                    partial(self.pre_publish, previous_build, self.envconf,
-                            bdoc))
+                    pinfo, partial(self.pre_publish, previous_build, self.envconf, bdoc)
+                )
                 job.add_done_callback(partial(done, step="pre"))
                 await job
                 if got_error:
@@ -980,20 +924,16 @@ class DiffPublisher(BasePublisher):
                 # first we need to reset "synced" flag in diff files to make
                 # sure all of them will be applied by client
                 pinfo["step"] = "reset synced"
-                self.logger.info(
-                    "Resetting 'synced' flag in pyobj files located in folder '%s'"
-                    % diff_folder)
+                self.logger.info("Resetting 'synced' flag in pyobj files located in folder '%s'", diff_folder)
                 self.register_status(
                     bdoc,
                     "reset-synced",
                     transient=True,
                     init=True,
                     job={"step": "reset-synced"},
-                    publish={"incremental": {
-                        previous_build: {}
-                    }})
-                job = await self.job_manager.defer_to_thread(
-                    pinfo, partial(self.reset_synced, diff_folder))
+                    publish={"incremental": {previous_build: {}}},
+                )
+                job = await self.job_manager.defer_to_thread(pinfo, partial(self.reset_synced, diff_folder))
                 job.add_done_callback(partial(done, step="reset"))
                 await job
                 if got_error:
@@ -1004,28 +944,28 @@ class DiffPublisher(BasePublisher):
                 # then we upload all the folder content
                 pinfo["step"] = "upload"
                 self.logger.info(
-                    "Uploading files from '%s' to s3 (%s/%s)" %
-                    (diff_folder, s3_diff_bucket, s3_diff_basedir))
+                    "Uploading files from '%s' to s3 (%s/%s)", diff_folder, s3_diff_bucket, s3_diff_basedir
+                )
                 self.register_status(
                     bdoc,
                     "upload",
                     transient=True,
                     init=True,
                     job={"step": "upload"},
-                    publish={"incremental": {
-                        previous_build: {}
-                    }})
+                    publish={"incremental": {previous_build: {}}},
+                )
                 job = await self.job_manager.defer_to_thread(
                     pinfo,
-                    partial(aws.send_s3_folder,
-                            diff_folder,
-                            s3basedir=s3_diff_basedir,
-                            aws_key=self.envconf.get("cloud",
-                                                     {}).get("access_key"),
-                            aws_secret=self.envconf.get("cloud",
-                                                        {}).get("secret_key"),
-                            s3_bucket=s3_diff_bucket,
-                            overwrite=True))
+                    partial(
+                        aws.send_s3_folder,
+                        diff_folder,
+                        s3basedir=s3_diff_basedir,
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                        s3_bucket=s3_diff_bucket,
+                        overwrite=True,
+                    ),
+                )
                 job.add_done_callback(partial(done, step="upload"))
                 await job
                 jobs.append(job)
@@ -1039,33 +979,32 @@ class DiffPublisher(BasePublisher):
                         transient=True,
                         init=True,
                         job={"step": "metadata"},
-                        publish={"incremental": {
-                            previous_build: {}
-                        }})
+                        publish={"incremental": {previous_build: {}}},
+                    )
                     pinfo["step"] = "generate meta"
-                    self.logger.info(
-                        "Generating JSON metadata for incremental release '%s'"
-                        % diff_version)
+                    self.logger.info("Generating JSON metadata for incremental release '%s'", diff_version)
                     # if the same, this would create an infinite loop in autoupdate hub
                     # (X requires X, where to find X ? there, but X requires X, where to find X ?...)
                     if meta["old"]["version"] == meta["new"]["version"]:
-                        raise PublisherException("Required version is the same as target version "
-                                                 + "('%s'), prevent publishing to avoid infinite loop " % meta["new"]["version"]
-                                                 + "while resolving updates in auto-update hub")
+                        raise PublisherException(
+                            "Required version is the same as target version "
+                            + "('%s'), prevent publishing to avoid infinite loop " % meta["new"]["version"]
+                            + "while resolving updates in auto-update hub"
+                        )
                     # generate json metadata about this diff release
                     if getattr(btconfig, "SKIP_CHECK_VERSIONS", None):
                         self.logger.info(
                             "SKIP_CHECK_VERSIONS %s, no version check will be performed on diff metadata"
-                            % repr(btconfig.SKIP_CHECK_VERSIONS))
+                            % repr(btconfig.SKIP_CHECK_VERSIONS)
+                        )
                     else:
-                        assert getattr(
-                            btconfig, "BIOTHINGS_VERSION", "master"
-                        ) != "master", "I won't publish data refering BIOTHINGS_VERSION='master'"
-                        assert getattr(
-                            btconfig, "APP_VERSION", "master"
-                        ) != "master", "I won't publish data refering APP_VERSION='master'"
-                        assert getattr(btconfig, "STANDALONE_VERSION",
-                                       None), "STANDALONE_VERSION not defined"
+                        assert (
+                            getattr(btconfig, "BIOTHINGS_VERSION", "master") != "master"
+                        ), "I won't publish data refering BIOTHINGS_VERSION='master'"
+                        assert (
+                            getattr(btconfig, "APP_VERSION", "master") != "master"
+                        ), "I won't publish data refering APP_VERSION='master'"
+                        assert getattr(btconfig, "STANDALONE_VERSION", None), "STANDALONE_VERSION not defined"
                     diff_meta = {
                         "type": "incremental",
                         "build_version": diff_version,
@@ -1076,14 +1015,12 @@ class DiffPublisher(BasePublisher):
                         "biothings_version": btconfig.BIOTHINGS_VERSION,
                         "standalone_version": btconfig.STANDALONE_VERSION,
                         "metadata": {
-                            "url":
-                            aws.get_s3_url(
+                            "url": aws.get_s3_url(
                                 os.path.join(s3_diff_basedir, "metadata.json"),
-                                aws_key=self.envconf.get("cloud",
-                                                         {}).get("access_key"),
-                                aws_secret=self.envconf.get(
-                                    "cloud", {}).get("secret_key"),
-                                s3_bucket=s3_diff_bucket)
+                                aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                                aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                                s3_bucket=s3_diff_bucket,
+                            )
                         },
                     }
                     # upload release notes
@@ -1093,19 +1030,15 @@ class DiffPublisher(BasePublisher):
                             diff_version,
                             s3_release_folder,
                             s3_release_bucket,
-                            aws_key=self.envconf.get("cloud",
-                                                     {}).get("access_key"),
-                            aws_secret=self.envconf.get("cloud",
-                                                        {}).get("secret_key"))
+                            aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                            aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                        )
                         diff_meta.setdefault("changes", {})
                         diff_meta["changes"].update(urls)
                     # and then upload diff metadataf files
                     diff_file = "%s.json" % diff_version
-                    diff_meta_path = os.path.join(btconfig.RELEASE_PATH,
-                                                  diff_file)
-                    json.dump(diff_meta,
-                              open(diff_meta_path, "w"),
-                              indent=True)
+                    diff_meta_path = os.path.join(btconfig.RELEASE_PATH, diff_file)
+                    json.dump(diff_meta, open(diff_meta_path, "w"), indent=True)
                     # get a timestamp from metadata to force lastdmodifed header
                     # timestamp is when the new collection was built (not when the diff
                     # was generated, as diff can be generated way after). New collection's
@@ -1117,73 +1050,65 @@ class DiffPublisher(BasePublisher):
                     aws.send_s3_file(
                         diff_meta_path,
                         s3key,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"),
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
                         s3_bucket=s3_release_bucket,
                         metadata={"lastmodified": str_utc_epoch},
-                        overwrite=True)
+                        overwrite=True,
+                    )
                     url = aws.get_s3_url(
                         s3key,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"),
-                        s3_bucket=s3_release_bucket)
-                    self.logger.info(
-                        "Incremental release metadata published for version: '%s'"
-                        % url)
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                        s3_bucket=s3_release_bucket,
+                    )
+                    self.logger.info("Incremental release metadata published for version: '%s'", url)
                     diff_info = {
                         "build_version": diff_meta["build_version"],
                         "require_version": diff_meta["require_version"],
                         "target_version": diff_meta["target_version"],
                         "type": diff_meta["type"],
                         "release_date": diff_meta["release_date"],
-                        "url": url
+                        "url": url,
                     }
                     publish_data_version(
                         s3_release_bucket,
                         s3_release_folder,
                         diff_info,
-                        aws_key=self.envconf.get("cloud",
-                                                 {}).get("access_key"),
-                        aws_secret=self.envconf.get("cloud",
-                                                    {}).get("secret_key"))
-                    self.logger.info("Registered version '%s'" %
-                                     (diff_version))
+                        aws_key=self.envconf.get("cloud", {}).get("access_key"),
+                        aws_secret=self.envconf.get("cloud", {}).get("secret_key"),
+                    )
+                    self.logger.info("Registered version '%s'" % (diff_version))
 
-                    self.register_status(bdoc,
-                                         "success",
-                                         job={"step": "metadata"},
-                                         publish={
-                                             "incremental": {
-                                                 previous_build: {
-                                                     "conf": self.envconf,
-                                                     "metadata": diff_info
-                                                 }
-                                             }
-                                         })
+                    self.register_status(
+                        bdoc,
+                        "success",
+                        job={"step": "metadata"},
+                        publish={
+                            "incremental": {
+                                previous_build: {
+                                    "conf": self.envconf,
+                                    "metadata": diff_info,
+                                }
+                            }
+                        },
+                    )
 
                 except Exception as e:
-                    self.logger.exception(
-                        "Failed to upload snapshot metadata: %s" % e)
-                    self.register_status(bdoc,
-                                         "failed",
-                                         job={
-                                             "step": "metadata",
-                                             "err": str(e)
-                                         },
-                                         publish={
-                                             "incremental": {
-                                                 previous_build: {
-                                                     "conf": self.envconf,
-                                                     "metadata": {
-                                                         "err": str(e)
-                                                     }
-                                                 }
-                                             }
-                                         })
+                    self.logger.exception("Failed to upload snapshot metadata: %s", e)
+                    self.register_status(
+                        bdoc,
+                        "failed",
+                        job={"step": "metadata", "err": str(e)},
+                        publish={
+                            "incremental": {
+                                previous_build: {
+                                    "conf": self.envconf,
+                                    "metadata": {"err": str(e)},
+                                }
+                            }
+                        },
+                    )
                     raise
 
                 jobs.append(job)
@@ -1197,13 +1122,11 @@ class DiffPublisher(BasePublisher):
                     transient=True,
                     init=True,
                     job={"step": "post"},
-                    publish={"incremental": {
-                        previous_build: {}
-                    }})
+                    publish={"incremental": {previous_build: {}}},
+                )
                 job = await self.job_manager.defer_to_thread(
-                    pinfo,
-                    partial(self.post_publish, previous_build, self.envconf,
-                            bdoc))
+                    pinfo, partial(self.post_publish, previous_build, self.envconf, bdoc)
+                )
                 job.add_done_callback(partial(done, step="post"))
                 await job
                 if got_error:
@@ -1213,14 +1136,14 @@ class DiffPublisher(BasePublisher):
             def uploaded(f):
                 try:
                     res = f.result()
-                    self.logger.info("Diff folder '%s' uploaded to S3: %s" %
-                                     (diff_folder, res),
-                                     extra={"notify": True})
+                    self.logger.info("Diff folder '%s' uploaded to S3: %s", diff_folder, res, extra={"notify": True})
                 except Exception as e:
                     self.logger.exception(
-                        "Failed to upload diff folder '%s' uploaded to S3: %s"
-                        % (diff_folder, e),
-                        extra={"notify": True})
+                        "Failed to upload diff folder '%s' uploaded to S3: %s",
+                        diff_folder,
+                        e,
+                        extra={"notify": True},
+                    )
 
             await asyncio.wait(jobs)
             task = asyncio.gather(*jobs)
@@ -1240,8 +1163,7 @@ class DiffPublisher(BasePublisher):
         return task
 
     def run_post_publish_diff(self, build_name, repo_conf, build_doc):
-        return self.run_pre_post("diff", "post", build_name, repo_conf,
-                                 build_doc)
+        return self.run_pre_post("diff", "post", build_name, repo_conf, build_doc)
 
     def post_publish(self, build_name, repo_conf, build_doc):
         """
@@ -1252,16 +1174,17 @@ class DiffPublisher(BasePublisher):
 
 
 class ReleaseManager(BaseManager, BaseStatusRegisterer):
-
     DEFAULT_SNAPSHOT_PUBLISHER_CLASS = SnapshotPublisher
     DEFAULT_DIFF_PUBLISHER_CLASS = DiffPublisher
 
-    def __init__(self,
-                 diff_manager,
-                 snapshot_manager,
-                 poll_schedule=None,
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        diff_manager,
+        snapshot_manager,
+        poll_schedule=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.diff_manager = diff_manager
         self.snapshot_manager = snapshot_manager
@@ -1279,9 +1202,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             dirty = False
             for job in build.get("jobs", []):
                 if job.get("status") == "generating":
-                    logging.warning(
-                        "Found stale build '%s', marking release-note status as 'canceled'"
-                        % build["_id"])
+                    logging.warning("Found stale build '%s', marking release-note status as 'canceled'", build["_id"])
                     job["status"] = "canceled"
                     dirty = True
             if dirty:
@@ -1318,8 +1239,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         for env, envconf in self.release_config.get("env", {}).items():
             try:
                 if envconf.get("cloud"):
-                    assert envconf["cloud"]["type"] == "aws", \
-                        "Only Amazon AWS cloud is supported at the moment"
+                    assert envconf["cloud"]["type"] == "aws", "Only Amazon AWS cloud is supported at the moment"
                 # here we register publisher class and args passed during init
                 # which are common to the manager
                 self.register[("snapshot", env)] = {
@@ -1339,9 +1259,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     "es_backups_folder": self.es_backups_folder,
                 }
             except Exception as e:
-                self.logger.exception(
-                    "Couldn't setup release environment '%s' because: %s" %
-                    (env, e))
+                self.logger.exception("Couldn't setup release environment '%s' because: %s", env, e)
 
     def get_predicates(self):
         return []
@@ -1355,7 +1273,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             "category": RELEASEMANAGER_CATEGORY,
             "source": "",
             "step": "",
-            "description": ""
+            "description": "",
         }
         preds = self.get_predicates()
         if preds:
@@ -1366,20 +1284,24 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def collection(self):
         return get_src_build()
 
-    def register_status(self,
-                        bdoc,
-                        stage,
-                        status,
-                        transient=False,
-                        init=False,
-                        **extra):
-        BaseStatusRegisterer.register_status(self,
-                                             bdoc,
-                                             stage,
-                                             status,
-                                             transient=transient,
-                                             init=init,
-                                             **extra)
+    def register_status(
+        self,
+        bdoc,
+        stage,
+        status,
+        transient=False,
+        init=False,
+        **extra,
+    ):
+        BaseStatusRegisterer.register_status(
+            self,
+            bdoc,
+            stage,
+            status,
+            transient=transient,
+            init=init,
+            **extra,
+        )
 
     def reset_synced(self, old, new):
         """
@@ -1391,9 +1313,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         """
         # we need a diff publisher to do that, whatever the target (s3, filesystem,...)
         dtypes = [pub for pub in self.register if pub[0] == "diff"]
-        assert len(
-            dtypes
-        ), "Can't reset synced diff files, no diff publisher registered"
+        assert len(dtypes), "Can't reset synced diff files, no diff publisher registered"
         # get one, all are able to reset synced files
         dtype = dtypes[0]
         diff_folder = generate_folder(btconfig.DIFF_PATH, old, new)
@@ -1407,41 +1327,46 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         else:
             return self.load_doc(key_name, stage)
 
-    def publish_diff(self,
-                     publisher_env,
-                     build_name,
-                     previous_build=None,
-                     steps=["pre", "reset", "upload", "meta", "post"]):
+    def publish_diff(
+        self,
+        publisher_env,
+        build_name,
+        previous_build=None,
+        steps=("pre", "reset", "upload", "meta", "post"),
+    ):
         if publisher_env not in self.release_config.get("env", {}):
-            raise ValueError("Unknonw release environment '%s'" %
-                             publisher_env)
+            raise ValueError(f"Unknonw release environment '{publisher_env}'")
         publisher = self[("diff", publisher_env)]
-        return publisher.publish(build_name=build_name,
-                                 previous_build=previous_build,
-                                 steps=steps)
+        return publisher.publish(
+            build_name=build_name,
+            previous_build=previous_build,
+            steps=steps,
+        )
 
-    def publish_snapshot(self,
-                         publisher_env,
-                         snapshot,
-                         build_name=None,
-                         previous_build=None,
-                         steps=["pre", "meta", "post"]):
+    def publish_snapshot(
+        self,
+        publisher_env,
+        snapshot,
+        build_name=None,
+        previous_build=None,
+        steps=("pre", "meta", "post"),
+    ):
         if publisher_env not in self.release_config.get("env", {}):
-            raise ValueError("Unknonw release environment '%s'" %
-                             publisher_env)
+            raise ValueError(f"Unknonw release environment '{publisher_env}'")
         publisher = self[("snapshot", publisher_env)]
-        return publisher.publish(snapshot=snapshot,
-                                 build_name=build_name,
-                                 previous_build=previous_build,
-                                 steps=steps)
+        return publisher.publish(
+            snapshot=snapshot,
+            build_name=build_name,
+            previous_build=previous_build,
+            steps=steps,
+        )
 
     def publish(self, publisher_env, snapshot_or_build_name, *args, **kwargs):
-
         if not publisher_env:
             build_doc = self.load_build(snapshot_or_build_name)
-            build_conf = build_doc['build_config']
+            build_conf = build_doc["build_config"]
             try:
-                publisher_env = build_conf['autopublish']['env']
+                publisher_env = build_conf["autopublish"]["env"]
             except KeyError:
                 raise PublisherException("Cannot infer publish environment.")
 
@@ -1450,51 +1375,52 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         try:
             snapshot_doc = self.load_doc(snapshot_or_build_name, "snapshot")
             if isinstance(snapshot_doc, list):
-                raise PublisherException("More than one build_doc associated to snapshot '%s', " % snapshot_or_build_name + "use publish_snapshot()")
+                raise PublisherException(
+                    "More than one build_doc associated to snapshot '{snapshot_or_build_name}', use publish_snapshot()"
+                )
         except AssertionError:
             # no doc at all
             pass
         try:
             diff_doc = self.load_doc(snapshot_or_build_name, "diff")
             if isinstance(diff_doc, list):
-                raise PublisherException("More than one build_doc associated to diff '%s', " % snapshot_or_build_name + "use explicetely publish_diff()")
+                raise PublisherException(
+                    "More than one build_doc associated to diff '%s', use explicetely publish_diff()",
+                    snapshot_or_build_name,
+                )
         except AssertionError:
             # no doc at all
             pass
         # check returned doc contains what we think it does and load_doc hasn't use snapshot_or_build_name as _id
-        if snapshot_doc and snapshot_or_build_name not in snapshot_doc.get(
-                "snapshot", {}):
+        if snapshot_doc and snapshot_or_build_name not in snapshot_doc.get("snapshot", {}):
             # doc was returend with snapshot_or_build_name matching _id, not snapshot name, invalidate
             snapshot_doc = None
         # TODO
         # diff is wrt another diff, maybe should be this way?
-        #--------------------------------------
+        # --------------------------------------
         # if diff_doc and snapshot_or_build_name not in diff_doc.get("diff", {}):
         if diff_doc and not diff_doc.get("diff", {}):
             diff_doc = None
-        #--------------------------------------
+        # --------------------------------------
         # do we still have something ambiguous ?
         if snapshot_doc and diff_doc:
             # so we have 2 releases associated, we can't know which one user wants
-            raise PublisherException("'%s' is associated to 2 different releases " % snapshot_or_build_name
-                                     + "(document _id '%s' and '%s'" % (snapshot_doc["_id"], diff_doc["_id"])
-                                     + "use publish_snapshot() or publish_diff()")
+            raise PublisherException(
+                "'%s' is associated to 2 different releases " % snapshot_or_build_name
+                + "(document _id '%s' and '%s'" % (snapshot_doc["_id"], diff_doc["_id"])
+                + "use publish_snapshot() or publish_diff()"
+            )
         elif snapshot_doc:
-            self.logger.info("'%s' associated to a snapshot/full release" %
-                             snapshot_or_build_name)
-            return self.publish_snapshot(publisher_env, snapshot_or_build_name,
-                                         *args, **kwargs)
+            self.logger.info("'%s' associated to a snapshot/full release" % snapshot_or_build_name)
+            return self.publish_snapshot(publisher_env, snapshot_or_build_name, *args, **kwargs)
         elif diff_doc:
-            self.logger.info("'%s' associated to a diff/incremental release" %
-                             snapshot_or_build_name)
-            return self.publish_diff(publisher_env, snapshot_or_build_name,
-                                     *args, **kwargs)
+            self.logger.info("'%s' associated to a diff/incremental release" % snapshot_or_build_name)
+            return self.publish_diff(publisher_env, snapshot_or_build_name, *args, **kwargs)
         else:
-            raise PublisherException("No release associated to '%s'" %
-                                     snapshot_or_build_name)
+            raise PublisherException("No release associated to '%s'" % snapshot_or_build_name)
 
     def publish_build(self, build_doc):
-        build_conf = AutoBuildConfig(build_doc['build_config'])
+        build_conf = AutoBuildConfig(build_doc["build_config"])
         if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
             # differentiate TODO
             logging.info("Publish new build.")
@@ -1507,14 +1433,13 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         release_folder = generate_folder(btconfig.RELEASE_PATH, old, new)
         if not os.path.exists(release_folder):
             raise PublisherException("No release note folder found")
-        notes = glob.glob(
-            os.path.join(release_folder, "%s.%s" % (prefix, format)))
+        notes = glob.glob(os.path.join(release_folder, "%s.%s" % (prefix, format)))
         if not notes:
             raise PublisherException("No release notes found in folder")
         if len(notes) != 1:
             raise PublisherException(
-                "Found %d notes (%s), expected only one" %
-                (len(notes), [os.path.basename(n) for n in notes]))
+                "Found %d notes (%s), expected only one" % (len(notes), [os.path.basename(n) for n in notes])
+            )
         content = open(notes[0]).read()
         if format == "json":
             content = json.loads(content)
@@ -1523,38 +1448,35 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
     def create_release_note_from_build(self, build_doc):
         async def _():
             if build_doc.get("release_note"):
-                self.logger.info(
-                    "Not a brand-new build. "
-                    "Skip release note automation.")
+                self.logger.info("Not a brand-new build. " "Skip release note automation.")
                 return
             try:
                 old = get_previous_collection(build_doc["_id"])
             except AssertionError:
-                self.logger.warning(
-                    "Cannot find the previous build. "
-                    "Create a fresh release note.")
+                self.logger.warning("Cannot find the previous build. " "Create a fresh release note.")
                 old = "none"
 
             if old == build_doc["_id"]:
-                self.logger.error(
-                    "Error finding the previous build. "
-                    "Skip release note automation. ")
+                self.logger.error("Error finding the previous build. " "Skip release note automation. ")
                 return
             await self.create_release_note(old=old, new=build_doc["_id"])
 
-            build_conf = AutoBuildConfig(build_doc['build_config'])
+            build_conf = AutoBuildConfig(build_doc["build_config"])
             if build_conf.should_publish_new_diff() or build_conf.should_publish_new_snapshot():
                 # TODO differentiate at some level
-                logging.info("Set pending publish for %s.", build_doc['_id'])
-                set_pending_to_publish(build_doc['_id'])
+                logging.info("Set pending publish for %s.", build_doc["_id"])
+                set_pending_to_publish(build_doc["_id"])
+
         return asyncio.ensure_future(_())
 
-    def create_release_note(self,
-                            old,
-                            new,
-                            filename=None,
-                            note=None,
-                            format="txt"):
+    def create_release_note(
+        self,
+        old,
+        new,
+        filename=None,
+        note=None,
+        format="txt",
+    ):
         """
         Generate release note files, in TXT and JSON format, containing significant changes
         summary between target collections old and new. Output files
@@ -1605,31 +1527,36 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             pinfo["step"] = "release_note"
             pinfo["source"] = release_folder
             pinfo["description"] = filename
-            self.register_status(build_doc,
-                                 "release_note",
-                                 "generating",
-                                 transient=True,
-                                 init=True,
-                                 job={"step": "release_note"},
-                                 release_note={old: {}})
+            self.register_status(
+                build_doc,
+                "release_note",
+                "generating",
+                transient=True,
+                init=True,
+                job={"step": "release_note"},
+                release_note={old: {}},
+            )
             job = await self.job_manager.defer_to_thread(pinfo, do)
 
             def reported(f):
                 nonlocal got_error
                 try:
                     res = f.result()
-                    self.register_status(build_doc,
-                                         "release_note",
-                                         "success",
-                                         job={"step": "release_note"},
-                                         release_note={
-                                             old: {
-                                                 "changes": res["changes"],
-                                                 "release_folder": release_folder
-                                             }
-                                         })
-                    self.logger.info("Release note ready, saved in %s: %s" % (release_folder, res["txt"]),
-                                     extra={"notify": True})
+                    self.register_status(
+                        build_doc,
+                        "release_note",
+                        "success",
+                        job={"step": "release_note"},
+                        release_note={
+                            old: {
+                                "changes": res["changes"],
+                                "release_folder": release_folder,
+                            }
+                        },
+                    )
+                    self.logger.info(
+                        "Release note ready, saved in %s: %s", release_folder, res["txt"], extra={"notify": True}
+                    )
                     set_pending_to_publish(new)
                 except Exception as e:
                     self.logger.exception(e)
@@ -1638,13 +1565,14 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             job.add_done_callback(reported)
             await job
             if got_error:
-                self.logger.exception("Failed to create release note: %s" % got_error,
-                                      extra={"notify": True})
-                self.register_status(build_doc,
-                                     "release_note",
-                                     "failed",
-                                     job={"step": "release_note", "err": str(got_error)},
-                                     release_note={old: {}})
+                self.logger.exception("Failed to create release note: %s", got_error, extra={"notify": True})
+                self.register_status(
+                    build_doc,
+                    "release_note",
+                    "failed",
+                    job={"step": "release_note", "err": str(got_error)},
+                    release_note={old: {}},
+                )
                 raise got_error
 
         job = asyncio.ensure_future(main(release_folder))
@@ -1657,12 +1585,15 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
         Return a dictionary containing significant changes.
         """
+
         def get_backend_from_colname(colname):
             backend = create_backend(colname)
-            assert isinstance(backend, DocMongoBackend), \
-                "Only MongoDB backend types are allowed when generating a release note"
-            assert backend.target_collection.database.name == btconfig.DATA_TARGET_DATABASE, \
-                "Target databases must match current DATA_TARGET_DATABASE setting"
+            assert isinstance(
+                backend, DocMongoBackend
+            ), "Only MongoDB backend types are allowed when generating a release note"
+            assert (
+                backend.target_collection.database.name == btconfig.DATA_TARGET_DATABASE
+            ), "Target databases must match current DATA_TARGET_DATABASE setting"
             return backend
 
         def check_cold_collection(src_build_reader: ReleaseNoteSrcBuildReader):
@@ -1695,8 +1626,9 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
         new_src_build_doc = get_src_build().find_one({"_id": new_backend.target_collection.name})
         if not new_src_build_doc:
-            raise PublisherException("Collection '%s' has no corresponding build document" %
-                                     new_backend.target_collection.name)
+            raise PublisherException(
+                "Collection '%s' has no corresponding build document" % new_backend.target_collection.name
+            )
         # old_doc doesn't have to exist (but new_src_build_doc has) in case we build a initial release note
         # compared against nothing
         old_src_build_doc = get_src_build().find_one({"_id": old_backend.target_collection.name}) or {}
@@ -1706,8 +1638,12 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         old_src_build_reader = ReleaseNoteSrcBuildReader(old_src_build_doc)
         old_src_build_reader = check_cold_collection(old_src_build_reader)
 
-        release_note_source = ReleaseNoteSource(old_src_build_reader, new_src_build_reader,
-                                                diff_stats_from_metadata_file=diff_stats, addon_note=note)
+        release_note_source = ReleaseNoteSource(
+            old_src_build_reader,
+            new_src_build_reader,
+            diff_stats_from_metadata_file=diff_stats,
+            addon_note=note,
+        )
 
         changes = release_note_source.to_dict()
         self.logger.debug(f"old_colname={old_colname}, new_colname={new_colname}, changes={changes}")

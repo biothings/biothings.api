@@ -1,13 +1,12 @@
+import socket
 import types
 from datetime import datetime
-import socket
 
+from biothings import config as btconfig
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
-
-from biothings import config as btconfig
 
 
 class APIManagerException(Exception):
@@ -27,7 +26,7 @@ class APIManager(BaseManager):
         self.setup_log()
 
     def setup_log(self):
-        self.logger, _ = get_logger('apimanager')
+        self.logger, _ = get_logger("apimanager")
 
     def restore_running_apis(self):
         """
@@ -60,8 +59,9 @@ class APIManager(BaseManager):
         if not apidoc:
             raise APIManagerException("No such API with ID '%s'" % api_id)
         if "entry_point" in apidoc:
-            raise NotImplementedError("Custom entry point not implemented yet, "
-                                      + "only basic generated APIs are currently supported")
+            raise NotImplementedError(
+                "Custom entry point not implemented yet, " + "only basic generated APIs are currently supported"
+            )
 
         config_mod = types.ModuleType("config_mod")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
@@ -98,19 +98,20 @@ class APIManager(BaseManager):
         try:
             self.stop_api(api_id)
         except Exception as e:
-            self.logger.warning("While trying to stop API '%s': %s" %
-                                (api_id, e))
+            self.logger.warning("While trying to stop API '%s': %s" % (api_id, e))
         finally:
             self.api.remove({"_id": api_id})
 
-    def create_api(self,
-                   api_id,
-                   es_host,
-                   index,
-                   doc_type,
-                   port,
-                   description=None,
-                   **kwargs):
+    def create_api(
+        self,
+        api_id,
+        es_host,
+        index,
+        doc_type,
+        port,
+        description=None,
+        **kwargs,
+    ):
         apidoc = {
             "_id": api_id,
             "config": {

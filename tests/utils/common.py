@@ -9,12 +9,13 @@ def test_merge_0():
     merge(x, y)
     print(x)
 
+
 def test_merge_1():
     x = {
         "index": {
             "name1": {
                 "doc_type": "news",
-                "happy": False
+                "happy": False,
             }
         }
     }
@@ -22,24 +23,28 @@ def test_merge_1():
         "index": {
             "name1": {
                 "happy": True,
-                "count": 100
+                "count": 100,
             }
         }
     }
     merge(x, y)
     print(x)
 
+
 def test_merge_2():
     x = {"a": {"b": "c"}}
-    y = {"a": {
-        "__REPLACE__": True,
-        "B": {
-            "__REPLACE__": False,
-            "c": "d"
+    y = {
+        "a": {
+            "__REPLACE__": True,
+            "B": {
+                "__REPLACE__": False,
+                "c": "d",
+            },
         }
-    }}
+    }
     merge(x, y)
     print(x)
+
 
 def test_merge_3():
     x = {"a": "b"}
@@ -47,11 +52,13 @@ def test_merge_3():
     merge(x, y)
     print(x)
 
+
 def test_merge_4():
     x = {"a": {"__REPLACE__": True, "b": "c"}, "__REPLACE__": True}
     y = {"a": {"b": "d"}}
     merge(x, y)
     print(x)
+
 
 def test_merge_5():
     x = {"index": {"X": {"env": "local"}, "Y": {"env": "local"}}}
@@ -72,7 +79,7 @@ def test_get_loop():
     assert loop._default_executor._max_workers == max_workers
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_merge_0()
     test_merge_1()
     test_merge_2()

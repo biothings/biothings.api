@@ -8,12 +8,12 @@
 
 """
 
-from collections import defaultdict, UserDict
+from collections import UserDict, defaultdict
 
 from biothings.utils.common import dotdict, traverse
 
-class FormatterDict(UserDict):
 
+class FormatterDict(UserDict):
     def collapse(self, key):
         self.update(self.pop(key))
 
@@ -55,40 +55,40 @@ class Doc(FormatterDict):
     }
     """
 
+
 class ResultFormatterException(Exception):
     pass
 
-class ResultFormatter():
 
+class ResultFormatter:
     def transform(self, response):
         return response
 
     def transform_mapping(self, mapping, prefix=None, search=None):
         return mapping
 
+
 class ESResultFormatter(ResultFormatter):
-    ''' Class to transform the results of the Elasticsearch query generated prior in the pipeline.
+    """Class to transform the results of the Elasticsearch query generated prior in the pipeline.
     This contains the functions to extract the final document from the elasticsearch query result
     in `Elasticsearch Query`_.  This also contains the code to flatten a document etc.
-    '''
+    """
+
     class _Hits(Hits):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             # make sure the document is coming from
             # elasticsearch at initialization time
-            assert 'hits' in self.data
-            assert 'total' in self.data['hits']
-            assert 'hits' in self.data['hits']
-            for hit in self.data['hits']['hits']:
-                assert '_source' in hit
+            assert "hits" in self.data
+            assert "total" in self.data["hits"]
+            assert "hits" in self.data["hits"]
+            for hit in self.data["hits"]["hits"]:
+                assert "_source" in hit
 
     class _Doc(Doc):
         pass
 
-    def __init__(
-            self, licenses=None, license_transform=None,
-            field_notes=None, excluded_keys=()):
-
+    def __init__(self, licenses=None, license_transform=None, field_notes=None, excluded_keys=()):
         # do not directly use the "or" syntax
         # to turn a None object to a {}, that
         # would also replace external empty {}
@@ -181,15 +181,15 @@ class ESResultFormatter(ResultFormatter):
             max_size = options.size or 10
 
             responses_ = []
-            options.pop('one', None)  # ignore
-            template = options.pop('template', {})
-            templates = options.pop('templates', [template]*len(response))
-            template_hit = options.pop('template_hit', dict(found=True))
-            template_miss = options.pop('template_miss', dict(found=False))
+            options.pop("one", None)  # ignore
+            template = options.pop("template", {})
+            templates = options.pop("templates", [template] * len(response))
+            template_hit = options.pop("template_hit", dict(found=True))
+            template_miss = options.pop("template_miss", dict(found=False))
             responses = [self.transform(res, **options) for res in response]
             for tpl, res in zip(templates, responses):
                 if options.with_total:
-                    total = res.get('total', {}).get('value') or 0
+                    total = res.get("total", {}).get("value") or 0
                     if total > max_total:
                         max_total = total
                     if total > max_size:
@@ -197,17 +197,17 @@ class ESResultFormatter(ResultFormatter):
 
                 for _res in res if isinstance(res, list) else [res]:
                     assert isinstance(_res, dict)
-                    if _res and 'hits' not in _res:
+                    if _res and "hits" not in _res:
                         hit_ = dict(tpl)
                         hit_.update(template_hit)
                         hit_.update(_res)
                         responses_.append(hit_)
                         continue
-                    if not _res or not _res['hits']:
+                    if not _res or not _res["hits"]:
                         tpl.update(template_miss)
                         responses_.append(tpl)
                         continue
-                    for hit in _res['hits']:
+                    for hit in _res["hits"]:
                         hit_ = dict(tpl)
                         hit_.update(template_hit)
                         hit_.update(hit)
@@ -216,50 +216,50 @@ class ESResultFormatter(ResultFormatter):
 
             if options.with_total:
                 response_ = {
-                    'max_total': max_total,
-                    'hits': response_,
+                    "max_total": max_total,
+                    "hits": response_,
                 }
                 if count_query_exceed_max_size > 0:
-                    _from = (options.get('from') or 0) + max_size
-                    response_['msg'] = (
-                        f'{count_query_exceed_max_size} query terms return > {max_size} hits, '
-                        f'using from={_from} to retrieve the remaining hits'
+                    _from = (options.get("from") or 0) + max_size
+                    response_["msg"] = (
+                        f"{count_query_exceed_max_size} query terms return > {max_size} hits, "
+                        f"using from={_from} to retrieve the remaining hits"
                     )
 
             return response_
 
         if isinstance(response, dict):
             response = self._Hits(response)
-            response.collapse('hits')
-            response.exclude(('_shards', '_node', 'timed_out'))
-            response.wrap('hits', self._Doc)
+            response.collapse("hits")
+            response.exclude(("_shards", "_node", "timed_out"))
+            response.wrap("hits", self._Doc)
 
-            for hit in response['hits']:
-                hit.collapse('_source')
+            for hit in response["hits"]:
+                hit.collapse("_source")
                 # 'sort' is introduced when sorting
-                hit.exclude(('_index', '_type', 'sort'))
+                hit.exclude(("_index", "_type", "sort"))
                 self._transform_hit(hit, options)
 
-            if options.get('native', True):
-                response['hits'] = [hit.data for hit in response['hits']]
+            if options.get("native", True):
+                response["hits"] = [hit.data for hit in response["hits"]]
                 response = response.data
 
-            if 'aggregations' in response:
-                self.transform_aggs(response['aggregations'])
-                response['facets'] = response.pop('aggregations')
-                hits = response.pop('hits')  # move key order
+            if "aggregations" in response:
+                self.transform_aggs(response["aggregations"])
+                response["facets"] = response.pop("aggregations")
+                hits = response.pop("hits")  # move key order
                 if hits:  # hide "hits" field when size=0
-                    response['hits'] = hits
+                    response["hits"] = hits
 
-            elif options.get('one'):
+            elif options.get("one"):
                 # prefer one-level presentation
                 # or structures as simple as possible
-                if len(response['hits']) == 1:
-                    response = response['hits'][0]
-                elif len(response['hits']) == 0:
+                if len(response["hits"]) == 1:
+                    response = response["hits"][0]
+                elif len(response["hits"]) == 0:
                     response = None
                 else:  # show a list of docs
-                    response = response['hits']
+                    response = response["hits"]
 
             return response
 
@@ -274,10 +274,10 @@ class ESResultFormatter(ResultFormatter):
             ...
         }
         """
-        if not options.get('version', False):
-            doc.pop('_version', None)
-        if not options.get('score', True):
-            doc.pop('_score', None)
+        if not options.get("version", False):
+            doc.pop("_version", None)
+        if not options.get("score", True):
+            doc.pop("_score", None)
         for path, obj in self.traverse(doc):
             self.transform_hit(path, obj, options)
             if options.allow_null:
@@ -298,8 +298,8 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(obj, (dict, Doc)):
             for field in fields or []:
                 if field.startswith(path):
-                    key = field[len(path):].lstrip('.')
-                    if '.' not in key and key not in obj:
+                    key = field[len(path) :].lstrip(".")  # noqa: E203
+                    if "." not in key and key not in obj:
                         obj[key] = None
 
     @staticmethod
@@ -311,7 +311,7 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(obj, (dict, Doc)):
             for field in fields:
                 if field.startswith(path):
-                    key = field[len(path):].lstrip('.')
+                    key = field[len(path) :].lstrip(".")  # noqa: E203
                     if key in obj and not isinstance(obj[key], list):
                         obj[key] = [obj[key]] if obj[key] is not None else []
 
@@ -392,7 +392,7 @@ class ESResultFormatter(ResultFormatter):
         if path in self.license_transform:
             path = self.license_transform[path]
         if path in licenses and isinstance(doc, dict):
-            doc['_license'] = licenses[path]
+            doc["_license"] = licenses[path]
 
     def transform_aggs(self, res):
         """
@@ -420,27 +420,26 @@ class ESResultFormatter(ResultFormatter):
         """
 
         for facet in res:
-
-            res[facet]['_type'] = 'terms'  # a type of ES Bucket Aggs
-            res[facet]['terms'] = res[facet].pop('buckets')
-            res[facet]['other'] = res[facet].pop('sum_other_doc_count', 0)
-            res[facet]['missing'] = res[facet].pop('doc_count_error_upper_bound', 0)
+            res[facet]["_type"] = "terms"  # a type of ES Bucket Aggs
+            res[facet]["terms"] = res[facet].pop("buckets")
+            res[facet]["other"] = res[facet].pop("sum_other_doc_count", 0)
+            res[facet]["missing"] = res[facet].pop("doc_count_error_upper_bound", 0)
 
             count = 0
 
-            for bucket in res[facet]['terms']:
-                bucket['count'] = bucket.pop('doc_count')
-                bucket['term'] = bucket.pop('key')
-                if 'key_as_string' in bucket:
-                    bucket['term'] = bucket.pop('key_as_string')
-                count += bucket['count']
+            for bucket in res[facet]["terms"]:
+                bucket["count"] = bucket.pop("doc_count")
+                bucket["term"] = bucket.pop("key")
+                if "key_as_string" in bucket:
+                    bucket["term"] = bucket.pop("key_as_string")
+                count += bucket["count"]
 
                 # nested aggs
                 for agg_k in list(bucket.keys()):
                     if isinstance(bucket[agg_k], dict):
                         bucket.update(self.transform_aggs(dict({agg_k: bucket[agg_k]})))
 
-            res[facet]['total'] = count
+            res[facet]["total"] = count
 
         return res
 
@@ -460,58 +459,50 @@ class ESResultFormatter(ResultFormatter):
         while items:
             key, dic = items.pop()
             dic = dict(dic)
-            dic.pop('dynamic', None)
-            dic.pop('normalizer', None)
+            dic.pop("dynamic", None)
+            dic.pop("normalizer", None)
 
             if key in self.field_notes:
-                result['notes'] = self.field_notes[key]
+                result["notes"] = self.field_notes[key]
 
-            if 'copy_to' in dic:
-                if 'all' in dic['copy_to']:
-                    dic['searched_by_default'] = True
-                del dic['copy_to']
+            if "copy_to" in dic:
+                if "all" in dic["copy_to"]:
+                    dic["searched_by_default"] = True
+                del dic["copy_to"]
 
-            if 'index' not in dic:
-                if 'enabled' in dic:
-                    dic['index'] = dic.pop('enabled')
+            if "index" not in dic:
+                if "enabled" in dic:
+                    dic["index"] = dic.pop("enabled")
                 else:  # true by default
-                    dic['index'] = True
+                    dic["index"] = True
 
-            if 'properties' in dic:
-                dic['type'] = 'object'
-                subs = (('.'.join((key, k)), v) for k, v in dic['properties'].items())
+            if "properties" in dic:
+                dic["type"] = "object"
+                subs = ((".".join((key, k)), v) for k, v in dic["properties"].items())
                 items.extend(reversed(list(subs)))
-                del dic['properties']
+                del dic["properties"]
 
-            if all((not self.excluded_keys or key not in self.excluded_keys,
+            if all(
+                (
+                    not self.excluded_keys or key not in self.excluded_keys,
                     not prefix or key.startswith(prefix),
-                    not search or search in key)):
+                    not search or search in key,
+                )
+            ):
                 result[key] = dict(sorted(dic.items()))
 
         return result
 
-class MongoResultFormatter(ResultFormatter):
 
+class MongoResultFormatter(ResultFormatter):
     def transform(self, result, **options):
-        return {
-            "total": {
-                "value": len(result),
-                "relation": "gte"
-            },
-            "hits": result
-        }
+        return {"total": {"value": len(result), "relation": "gte"}, "hits": result}
+
 
 class SQLResultFormatter(ResultFormatter):
-
     def transform(self, result, **options):
         header, content = result
         return {
-            "total": {
-                "value": len(content),
-                "relation": "gte"
-            },
-            "hits": [
-                dict(zip(header, row))
-                for row in content
-            ]
+            "total": {"value": len(content), "relation": "gte"},
+            "hits": [dict(zip(header, row)) for row in content],
         }

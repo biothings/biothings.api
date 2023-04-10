@@ -13,8 +13,9 @@ import warnings
 import elasticsearch
 import pytest
 
-TEST_INDEX = 'bts_test'
-TEST_DOC_TYPE = 'gene'
+TEST_INDEX = "bts_test"
+TEST_DOC_TYPE = "gene"
+
 
 def prepare():
     """
@@ -27,25 +28,26 @@ def prepare():
 
         Envs: ES_SOURCE Assume source cluster has only one index.
     """
-    client = elasticsearch.Elasticsearch(os.environ['ES_SOURCE'])
+    client = elasticsearch.Elasticsearch(os.environ["ES_SOURCE"])
     dirname = os.path.dirname(__file__)
 
-    mapping = client.indices.get('_all')
-    with open(os.path.join(dirname, 'test_data_index.json'), 'w') as file:
+    mapping = client.indices.get("_all")
+    with open(os.path.join(dirname, "test_data_index.json"), "w") as file:
         setting = next(iter(mapping.values()))
         setting["settings"]["index"] = {"analysis": setting["settings"]["index"]["analysis"]}
         json.dump(setting, file, indent=2)
 
-    with open(os.path.join(dirname, 'test_data_query.json'), 'r') as file:
+    with open(os.path.join(dirname, "test_data_query.json"), "r") as file:
         query = json.load(file)
         docs = client.search(body=query, size=100)
 
-    with open(os.path.join(dirname, 'test_data.ndjson'), 'w') as file:
-        for hit in docs['hits']['hits']:
-            json.dump({"index": {"_id": hit['_id']}}, file)
-            file.write('\n')
-            json.dump(hit['_source'], file)
-            file.write('\n')
+    with open(os.path.join(dirname, "test_data.ndjson"), "w") as file:
+        for hit in docs["hits"]["hits"]:
+            json.dump({"index": {"_id": hit["_id"]}}, file)
+            file.write("\n")
+            json.dump(hit["_source"], file)
+            file.write("\n")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_es():
@@ -56,25 +58,23 @@ def setup_es():
     client = elasticsearch.Elasticsearch()
     dirname = os.path.dirname(__file__)
 
-    server_major_version = client.info()['version']['number'].split('.')[0]
-    client_major_version = str(elasticsearch.__version__[0])
+    server_major_version = client.info()["version"]["number"].split(".")[0]
 
     # NOTE: Temporary comment to bypass this check.
     # Because we still use elasticsearch library ver under 8
+    # client_major_version = str(elasticsearch.__version__[0])
     # if server_major_version != client_major_version:
     #     pytest.exit('ES version does not match its python library.')
 
     try:
         if not client.indices.exists(index=TEST_INDEX):
-
-
-            mapping_file = 'test_data_index.json'
+            mapping_file = "test_data_index.json"
             if int(server_major_version) >= 8:
-                mapping_file = 'test_data_index_for_es8.json'
-            with open(os.path.join(dirname, mapping_file), 'r') as file:
+                mapping_file = "test_data_index_for_es8.json"
+            with open(os.path.join(dirname, mapping_file), "r") as file:
                 mapping = json.load(file)
 
-            with open(os.path.join(dirname, 'test_data.ndjson'), 'r') as file:
+            with open(os.path.join(dirname, "test_data.ndjson"), "r") as file:
                 ndjson = file.read()
 
             if int(server_major_version) >= 8:
@@ -97,11 +97,11 @@ def setup_es():
             yield
 
     except FileNotFoundError:
-        pytest.exit('Error Loading Testing Data')
+        pytest.exit("Error Loading Testing Data")
     except elasticsearch.exceptions.ImproperlyConfigured:
-        pytest.exit('ES Configuration Error')
+        pytest.exit("ES Configuration Error")
     except elasticsearch.exceptions.ElasticsearchException:
-        pytest.exit('ES Setup Error')
+        pytest.exit("ES Setup Error")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """
     Biothings API
-    
+
     Support running biothings.web as a module
 
     >> python -m biothings.web

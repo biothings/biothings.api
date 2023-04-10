@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -8,27 +7,25 @@ from biothings.utils.version import get_software_info
 
 logger = logging.getLogger(__name__)
 
+
 class FieldNote:
-
     def __init__(self, path):
-
         try:  # populate field notes if exist
-            inf = open(path, 'r')
+            inf = open(path, "r")
             self._fields_notes = json.load(inf)
             inf.close()
         except Exception:
             self._fields_notes = {}
 
     def get_field_notes(self):
-        '''
+        """
         Return the cached field notes associated with this instance.
-        '''
+        """
         return self._fields_notes
 
+
 class DevInfo:
-
     def __init__(self):
-
         # the path can be a sub-folder of a git repository
         # as long as it responds to "git" command line call
 
@@ -38,7 +35,6 @@ class DevInfo:
             self._repo = os.getcwd()
 
     def get(self):
-
         # {
         #     "python-package-info": [
         #         "aiocron                 1.6",

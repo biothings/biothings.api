@@ -45,7 +45,6 @@ class Converter:
     """
 
     def __init__(self, **kwargs):
-
         self.type_ = kwargs.get("type", str)
         self.strict = kwargs.get("strict", True)
         translations = kwargs.get("translations", ())
@@ -87,7 +86,6 @@ class Converter:
         return self.convert_to(value, self.type_)
 
     def convert_to(self, value, to_type):
-
         # default implementation
         # only works for strings
         assert isinstance(value, str)
@@ -111,7 +109,6 @@ class Converter:
         return self.to_type(value, to_type)
 
     def translate(self, value):
-
         if isinstance(value, (tuple, list, set)):
             return (type(value))(self.translate(item) for item in value)
 
@@ -260,7 +257,6 @@ class JsonArgCvter(Converter):
     """
 
     def convert_to(self, value, to_type):
-
         if isinstance(value, to_type):
             return value  # type matches
 
@@ -277,7 +273,6 @@ class JsonArgCvter(Converter):
         return self.to_type(value, to_type)
 
     def to_type(self, val, type_):
-
         if issubclass(type_, (list, tuple, set)) and not self.strict:
             val = (val,)  # "abc" -> ["abc"] instead of ["a", "b", "c"]
 
@@ -285,7 +280,6 @@ class JsonArgCvter(Converter):
 
 
 class ReqResult(dotdict):
-
     # besides multi-level attribute(dot)
     # read and write access, this class
     # also returns None value for missing
@@ -327,7 +321,6 @@ class ReqArgs:
             return "Path(" + ", ".join(lines) + (")")
 
     def __init__(self, path=None, query=None, form=None, json_=None):
-
         assert isinstance(query, (dict, type(None)))
         assert isinstance(form, (dict, type(None)))
 
@@ -340,7 +333,6 @@ class ReqArgs:
         self.json = json_ if isinstance(json_, dict) else {}  # type application/json
 
     def lookup(self, locator, order=None, src=False):
-
         if isinstance(locator, str):
             locator = Locator(dict(keyword=locator))
         elif isinstance(locator, dict):
@@ -387,7 +379,6 @@ class Locator:
     """
 
     def __init__(self, defdict):
-
         self.keyword = defdict.get("keyword")
         self.path = defdict.get("path")
         aliases = defdict.get("alias", [])
@@ -436,7 +427,6 @@ class Existentialist:
     """
 
     def __init__(self, defdict):
-
         self._defdict = MappingProxyType(defdict)
         self.keyword = defdict.get("keyword")
         self.required = bool(defdict.get("required"))
@@ -453,7 +443,6 @@ class Existentialist:
             )
 
     def inquire(self, obj):
-
         if obj is None:
             if self.required:
                 raise OptionError(
@@ -480,7 +469,6 @@ class Validator:
     """
 
     def __init__(self, defdict):
-
         self._defdict = MappingProxyType(defdict)
         self.keyword = defdict.get("keyword")
         self.strict = defdict.get("strict", True)
@@ -495,10 +483,11 @@ class Validator:
         assert isinstance(self.date_format, (str, type(None)))
 
     def validate(self, obj):
-
         if self.enum and not self._in_enum(obj):
             raise OptionError(
-                keyword=self.keyword, allowed=self.enum, alias=self._defdict.get("alias")
+                keyword=self.keyword,
+                allowed=self.enum,
+                alias=self._defdict.get("alias"),
             )
 
         if self.max:
@@ -518,7 +507,6 @@ class Validator:
         return obj
 
     def _in_enum(self, value):
-
         if isinstance(value, (list, tuple, set)):
             for val in value:
                 if not self._in_enum(val):
@@ -528,12 +516,10 @@ class Validator:
         return value in self.enum
 
     def _check_list_max(self, container):
-
         if len(container) > self.max:
             raise OptionError(keyword=self.keyword, max=self.max, size=len(container))
 
     def _check_num_max(self, num):
-
         if isinstance(num, bool):
             return
 
@@ -615,7 +601,6 @@ class Option(UserDict):
             self.order = ("form", "json")
 
     def parse(self, reqargs):
-
         if not isinstance(reqargs, ReqArgs):
             reqargs = ReqArgs(*reqargs)
 
@@ -653,7 +638,6 @@ class OptionSet(UserDict):
     """
 
     def __init__(self, *args, **kwargs):
-
         super().__init__(*args, **kwargs)
         self.groups = set()  # explicit result access groups
         self.setup()  # populate self.optset variable

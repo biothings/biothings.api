@@ -1,7 +1,7 @@
 import biothings.utils.redis as redis
 
-class IDCache(object):
 
+class IDCache(object):
     def mark_done(self, _ids):
         raise NotImplementedError()
 
@@ -15,7 +15,6 @@ class IDCache(object):
 
 
 class RedisIDCache(IDCache):
-
     def __init__(self, name, connection_params):
         self.name = name
         self.redis_client = redis.RedisClient(connection_params)

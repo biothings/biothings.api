@@ -4,10 +4,9 @@ from typing import Iterable, Optional, Tuple, Type
 
 from biothings.web.handlers import BaseAPIHandler
 
-
 __all__ = [
-    'BioThingsAuthenticationProviderInterface',
-    'BioThingsAuthnMixin'
+    "BioThingsAuthenticationProviderInterface",
+    "BioThingsAuthnMixin",
 ]
 
 
@@ -31,6 +30,7 @@ class BioThingsAuthenticationProviderInterface(abc.ABC):
             'WWW-Authenticate' Header. It should be None or one from the list
             https://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml
     """
+
     WWW_AUTHENTICATE_HEADER: Optional[str] = None
 
     def __init__(self, handler: BaseAPIHandler, **kwargs):
@@ -101,13 +101,9 @@ class BioThingsAuthnMixin(BaseAPIHandler):
         """
         # Support pluggable authentication.
         # Compare to PAM in Linux. Sample logic below
-        authenticators: \
-            Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict]] = \
-            getattr(
-                self,
-                'AUTHN_PROVIDERS',
-                self.biothings.config.AUTHN_PROVIDERS
-            )
+        authenticators: Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict]] = getattr(
+            self, "AUTHN_PROVIDERS", self.biothings.config.AUTHN_PROVIDERS
+        )
 
         # loop through the list in order and initialize the provider using
         # self & configured options (like how handlers are configured for routing)
@@ -130,13 +126,9 @@ class BioThingsAuthnMixin(BaseAPIHandler):
         According to RFC 7235 https://datatracker.ietf.org/doc/html/rfc7235#section-3.1
         "the server generating a 401 response MUST send a WWW-Authenticate header field".
         """
-        authenticators: \
-            Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict], ...] = \
-            getattr(
-                self,
-                'AUTHN_PROVIDERS',
-                self.biothings.config.AUTHN_PROVIDERS
-            )
+        authenticators: Iterable[Tuple[Type[BioThingsAuthenticationProviderInterface], dict], ...] = getattr(
+            self, "AUTHN_PROVIDERS", self.biothings.config.AUTHN_PROVIDERS
+        )
         for authenticator_cls, _ in authenticators:
             header = authenticator_cls.WWW_AUTHENTICATE_HEADER
             if header is not None:
@@ -145,9 +137,9 @@ class BioThingsAuthnMixin(BaseAPIHandler):
 
 
 class DefaultCookieAuthnProvider(BioThingsAuthenticationProviderInterface):
-    WWW_AUTHENTICATE_HEADER = 'None'
+    WWW_AUTHENTICATE_HEADER = "None"
 
-    def __init__(self, handler, cookie_name='user'):
+    def __init__(self, handler, cookie_name="user"):
         super(DefaultCookieAuthnProvider, self).__init__(handler)
         self.cookie_name = cookie_name
 

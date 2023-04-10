@@ -1,20 +1,20 @@
-
-
 # DatabaseCollectionTesting
 
 # Author: Amiteshk Sharma
 # https://github.com/amiteshksharma/Database-Testing
 
 import pymongo
-from jsonpath_ng import jsonpath, parse
+
+# from jsonpath_ng import jsonpath, parse
+
 
 class DatabaseCollectionTesting:
 
     """
-        Constructor that takes in three items
-        db_url      - string - the mongoDB url to connect to
-        db          - string - name of DB to use
-        collection  - string - name of collection in db
+    Constructor that takes in three items
+    db_url      - string - the mongoDB url to connect to
+    db          - string - name of DB to use
+    collection  - string - name of collection in db
     """
 
     def __init__(self, db_url, db, collection):
@@ -45,7 +45,7 @@ class DatabaseCollectionTesting:
         get_documents = self.collection.find({"taxid": taxid})
         doc_list = list(get_documents)
 
-        sub_list = ['_id', 'taxid', 'name', 'ensembl', 'symbol']
+        sub_list = ["_id", "taxid", "name", "ensembl", "symbol"]
 
         for doc in doc_list:
             keys = doc.keys()
@@ -60,7 +60,8 @@ class DatabaseCollectionTesting:
                 elif "symbol" not in keys:
                     pass
                 else:
-                    assert False
+                    # assert False
+                    raise AssertionError()
 
         assert True
 
@@ -86,7 +87,7 @@ class DatabaseCollectionTesting:
 
         # if only size 1, then it only has _id_ index
         if size == 1:
-            assert all(x in indices_list for x in ['_id_'])
+            assert all(x in indices_list for x in ["_id_"])
         elif size == 3:
             assert all(x in indices_list for x in ["_id_", "taxid_1", "entrezgene_1"])
 
@@ -104,6 +105,6 @@ class DatabaseCollectionTesting:
         assert count == 10
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     c = DatabaseCollectionTesting("mongodb://su05:27017", "genedoc", "mygene_allspecies_20191111_eeesndlz")
     c.test_documents_taxid(29302)

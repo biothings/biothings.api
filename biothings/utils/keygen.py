@@ -22,9 +22,7 @@ def generate_ssh_key(path):
                 serialization.NoEncryption(),
             )
         )
-    pubkey = privkey.public_key().public_bytes(
-        serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
-    )
+    pubkey = privkey.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
     with open(ssh_pubkey_filename, "wb") as f:
         f.write(pubkey)
     print("SSH Key has been generated, Public Key:\n")
@@ -119,9 +117,7 @@ def generate_self_signed_cert_file(dir_path, **cert_info: CertificateInformation
             + datetime.timedelta(days=10)
         )
         .add_extension(
-            x509.SubjectAlternativeName(
-                [x509.DNSName(dns_name) for dns_name in cert_info.dns_names or ["localhost"]]
-            ),
+            x509.SubjectAlternativeName([x509.DNSName(dns_name) for dns_name in cert_info.dns_names or ["localhost"]]),
             critical=False,
             # Sign our certificate with our private key
         )
@@ -135,9 +131,7 @@ def generate_self_signed_cert_file(dir_path, **cert_info: CertificateInformation
 
     # Generate PKCS12 to import to browser.
     print("Generate PKCS12 ...")
-    pkcs12 = serialization.pkcs12.serialize_key_and_certificates(
-        b"", key, cert, None, serialization.NoEncryption()
-    )
+    pkcs12 = serialization.pkcs12.serialize_key_and_certificates(b"", key, cert, None, serialization.NoEncryption())
 
     # Write PKCS12 file to import to browser.
     print("Writing PKCS12 to file ...")

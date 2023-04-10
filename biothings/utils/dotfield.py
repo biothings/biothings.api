@@ -2,16 +2,16 @@ import json
 
 
 def make_object(attr, value):
-    '''
+    """
     Create dictionary following the input dot notation and the value
     Example::
 
         make_object('a.b.c', 100) -->
         or make_object(['a','b','c'], 100) -->
         {a:{b:{c:100}}}
-    '''
-    attr_list = attr.split('.')
-    s = ''
+    """
+    attr_list = attr.split(".")
+    s = ""
     for k in attr_list:
         s += '{"' + k + '":'
     s += json.dumps(value)
@@ -26,7 +26,7 @@ def merge_object(obj1, obj2):
                 obj1[k] = merge_object(obj1[k], obj2[k])
             else:
                 obj1[k] = obj2[k]
-        except:
+        except Exception:
             obj1[k] = obj2[k]
     return obj1
 
@@ -40,7 +40,7 @@ def parse_dot_fields(genedoc):
     dot_fields = []
     expanded_doc = {}
     for key in genedoc:
-        if key.find('.') != -1:
+        if key.find(".") != -1:
             dot_fields.append(key)
             expanded_doc = merge_object(expanded_doc, make_object(key, genedoc[key]))
     genedoc.update(expanded_doc)
@@ -56,11 +56,12 @@ def compose_dot_fields_by_fields(genedoc, fields):
     res = None
     to_del = set()
     for k in fields:
-        if k.find('.') != -1:
+        if k.find(".") != -1:
             if not res:
                 import copy
+
                 res = copy.deepcopy(genedoc)
-            ks = k.split('.')
+            ks = k.split(".")
             broke = False
             if ks[0] in genedoc:
                 t = genedoc[ks[0]]

@@ -11,12 +11,13 @@
 
 from types import SimpleNamespace
 
-from biothings.web.query.pipeline import (QueryPipelineException,
-                                          QueryPipelineInterrupt)
 from fastapi import HTTPException
+
+from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
 
 routes = []
 biothings = SimpleNamespace()
+
 
 def route(*args, **kwargs):
     def _(f):
@@ -25,7 +26,9 @@ def route(*args, **kwargs):
         f.kwargs = kwargs
         routes.append(f)
         return f
+
     return _
+
 
 async def _capture_exc(coro):
     try:
@@ -38,24 +41,27 @@ async def _capture_exc(coro):
         kwargs["reason"] = exc.summary
         raise HTTPException(exc.code, kwargs)
 
+
 @route("/")
 async def root():
     return {"message": "Hello World"}
 
+
 @route("/v1/query")
 async def query(q="__all__"):
-    return await _capture_exc(
-        biothings.db.pipeline.search(q))
+    return await _capture_exc(biothings.db.pipeline.search(q))
+
 
 @route("/v1/doc/{id}")
 async def annotation(id):
-    return await _capture_exc(
-        biothings.db.pipeline.fetch(id))
+    return await _capture_exc(biothings.db.pipeline.fetch(id))
+
 
 @route("/v1/metadata")
 async def metadata():
     await biothings.metadata.refresh(None)
     return biothings.metadata.get_metadata(None)
+
 
 @route("/v1/metadata/fields")
 async def fields():

@@ -2,7 +2,6 @@ import asyncio
 import copy
 import datetime
 import inspect
-import logging as loggingmod
 import os
 import time
 from functools import partial
@@ -10,19 +9,18 @@ from functools import partial
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
-from biothings.utils.hub_db import get_src_dump, get_src_master
+from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceNotFound
-from biothings.utils.mongo import get_src_conn
-from biothings.utils.version import get_source_code_info
-
-from .storage import (
+from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
     MergerStorage,
     NoBatchIgnoreDuplicatedStorage,
     NoStorage,
 )
+from biothings.utils.version import get_source_code_info
+from biothings.utils.workers import upload_worker
 
 logging = config.logger
 
@@ -33,52 +31,6 @@ class ResourceNotReady(Exception):
 
 class ResourceError(Exception):
     pass
-
-
-def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batch_num, *args):
-    """
-    Pickable job launcher, typically running from multiprocessing.
-    storage_class will instanciate with col_name, the destination
-    collection name. loaddata_func is the parsing/loading function,
-    called with `*args`.
-    """
-    data = []
-    try:
-        data = loaddata_func(*args)
-        if type(storage_class) is tuple:
-            klass_name = "_".join([k.__class__.__name__ for k in storage_class])
-            storage = type(klass_name, storage_class, {})(None, col_name, loggingmod)
-        else:
-            storage = storage_class(None, col_name, loggingmod)
-        return storage.process(data, batch_size)
-    except Exception as e:
-        logger_name = "%s_batch_%s" % (name, batch_num)
-        logger, logfile = get_logger(logger_name, config.LOG_FOLDER)
-        logger.exception(e)
-        logger.error(
-            "Parameters:\nname=%s\nstorage_class=%s\n" % (name, storage_class)
-            + "loaddata_func=%s\ncol_name=%s\nbatch_size=%s\n"
-            % (loaddata_func, col_name, batch_size)
-            + "args=%s" % repr(args)
-        )
-        import pickle
-
-        pickfile = os.path.join(os.path.dirname(logfile), "%s.pick" % logger_name)
-        try:
-            pickle.dump(
-                {
-                    "exc": e,
-                    "params": {"name": name, "storage_class": storage_class},
-                    "loaddata_func": loaddata_func,
-                    "col_name": col_name,
-                    "batch_size": batch_size,
-                    "args": args,
-                },
-                open(pickfile, "wb"),
-            )
-        except TypeError as ie:
-            logger.warning("Could not pickle batch errors: %s" % ie)
-        raise e
 
 
 class BaseSourceUploader(object):
@@ -177,9 +129,7 @@ class BaseSourceUploader(object):
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
         self._state["logger"], self.logfile = self.setup_log()
-        self.data_folder = self.src_doc.get("download", {}).get("data_folder") or self.src_doc.get(
-            "data_folder"
-        )
+        self.data_folder = self.src_doc.get("download", {}).get("data_folder") or self.src_doc.get("data_folder")
         # flag ready
         self.prepared = True
 
@@ -217,8 +167,7 @@ class BaseSourceUploader(object):
                     [
                         j
                         for j in job_manager.jobs.values()
-                        if j["source"] == self.fullname.split(".")[0]
-                        and j["category"] == DUMPER_CATEGORY
+                        if j["source"] == self.fullname.split(".")[0] and j["category"] == DUMPER_CATEGORY
                     ]
                 )
                 == 0
@@ -229,10 +178,7 @@ class BaseSourceUploader(object):
             Builders (mergers) read data from single datasource under control of uploader
             don't change the data while it's being used
             """
-            return (
-                len([j for j in job_manager.jobs.values() if j["category"] == BUILDER_CATEGORY])
-                == 0
-            )
+            return len([j for j in job_manager.jobs.values() if j["category"] == BUILDER_CATEGORY]) == 0
 
         # TODO: can't use this one below for parallized uploader
         # def no_same_uploader_running(job_manager):
@@ -261,22 +207,16 @@ class BaseSourceUploader(object):
 
     def check_ready(self, force=False):
         if not self.src_doc:
-            raise ResourceNotReady(
-                "Missing information for source '%s' to start upload" % self.main_source
-            )
+            raise ResourceNotReady(f"Missing information for source '{self.main_source}' to start upload")
         if not self.src_doc.get("download", {}).get("data_folder"):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
         if not force and not self.src_doc.get("download", {}).get("status") == "success":
             raise ResourceNotReady("No successful download found for resource '%s'" % self.name)
         if not os.path.exists(self.data_folder):
-            raise ResourceNotReady(
-                "Data folder '%s' doesn't exist for resource '%s'" % (self.data_folder, self.name)
-            )
+            raise ResourceNotReady(f"Data folder '{self.data_folder}' doesn't exist for resource '{self.name}'")
         job = self.src_doc.get("upload", {}).get("job", {}).get(self.name)
         if not force and job:
-            raise ResourceNotReady(
-                "Resource '%s' is already being uploaded (job: %s)" % (self.name, job)
-            )
+            raise ResourceNotReady(f"Resource '{self.name}' is already being uploaded (job: {job})")
 
     def load_data(self, data_path):
         """
@@ -321,14 +261,12 @@ class BaseSourceUploader(object):
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
-                new_name = "_".join(
-                    [self.collection_name, "archive", get_timestamp(), get_random_string()]
+                new_name = "_".join([self.collection_name, "archive", get_timestamp(), get_random_string()])
+                self.logger.info(
+                    "Renaming collection '%s' to '%s' for archiving purpose." % (self.collection_name, new_name)
                 )
                 self.collection.rename(new_name, dropTarget=True)
-            self.logger.info(
-                "Renaming collection '%s' to '%s'"
-                % (self.temp_collection_name, self.collection_name)
-            )
+            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
         else:
             raise ResourceError("No temp collection (or it's empty)")
@@ -363,9 +301,7 @@ class BaseSourceUploader(object):
         def uploaded(f):
             nonlocal got_error
             if type(f.result()) != int:
-                got_error = Exception(
-                    "upload error (should have a int as returned value got %s" % repr(f.result())
-                )
+                got_error = Exception(f"upload error (should have a int as returned value got {repr(f.result())}")
 
         job.add_done_callback(uploaded)
         await job
@@ -444,9 +380,7 @@ class BaseSourceUploader(object):
             # We should use the last_success from the last upload time as a default value for the current's last_success
             # If last_success from the last upload doesn't exist or is None, and last upload's status is success,
             # the last upload's started_at will be used.
-            last_upload_info = (
-                self.src_doc.get(subkey, {}).get("jobs", {}).setdefault(self.name, {})
-            )
+            last_upload_info = self.src_doc.get(subkey, {}).get("jobs", {}).setdefault(self.name, {})
             last_success = last_upload_info.get("last_success")
             last_status = last_upload_info.get("status")
             if not last_success and last_status == "success":
@@ -460,9 +394,7 @@ class BaseSourceUploader(object):
             src_doc = self.src_dump.find_one({"_id": self.main_source}) or {}
             # back-compatibility while searching for release
             release = src_doc.get("download", {}).get("release") or src_doc.get("release")
-            data_folder = src_doc.get("download", {}).get("data_folder") or src_doc.get(
-                "data_folder"
-            )
+            data_folder = src_doc.get("download", {}).get("data_folder") or src_doc.get("data_folder")
             # only register time when it's a final state
             # also, keep previous uploading information
             upd = {}
@@ -477,14 +409,12 @@ class BaseSourceUploader(object):
             upd["%s.data_folder" % job_key] = data_folder
             # Update last success upload time only when the success
             if status == "success":
-                upd["%s.last_success" % job_key] = (
-                    src_doc["upload"]["jobs"].get(self.name) or {}
-                ).get("started_at")
+                upd["%s.last_success" % job_key] = (src_doc["upload"]["jobs"].get(self.name) or {}).get("started_at")
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
     async def load(
         self,
-        steps=["data", "post", "master", "clean"],  # noqa: B006
+        steps=("data", "post", "master", "clean"),
         force=False,
         batch_size=10000,
         job_manager=None,
@@ -499,8 +429,13 @@ class BaseSourceUploader(object):
         """
         try:
             # check what to do
-            if type(steps) == str:
+            if isinstance(steps, tuple):
+                steps = list(
+                    steps
+                )  # may not be necessary, but previous steps default is a list, so let's be consistent
+            elif isinstance(steps, str):
                 steps = steps.split(",")
+
             update_data = "data" in steps
             update_master = "master" in steps
             post_update_data = "post" in steps
@@ -510,9 +445,7 @@ class BaseSourceUploader(object):
             if not self.temp_collection_name:
                 self.make_temp_collection()
             if self.db[self.temp_collection_name]:
-                self.db[
-                    self.temp_collection_name
-                ].drop()  # drop all existing records just in case.
+                self.db[self.temp_collection_name].drop()  # drop all existing records just in case.
             # sanity check before running
             self.check_ready(force)
             self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
@@ -531,9 +464,7 @@ class BaseSourceUploader(object):
                 pinfo["step"] = "post_update_data"
                 f2 = await job_manager.defer_to_thread(
                     pinfo,
-                    partial(
-                        self.post_update_data, steps, force, batch_size, job_manager, **kwargs
-                    ),
+                    partial(self.post_update_data, steps, force, batch_size, job_manager, **kwargs),
                 )
 
                 def postupdated(f):
@@ -608,7 +539,6 @@ class IgnoreDuplicatedSourceUploader(BaseSourceUploader):
 
 
 class MergerSourceUploader(BaseSourceUploader):
-
     storage_class = MergerStorage
 
 
@@ -637,13 +567,9 @@ class DummySourceUploader(BaseSourceUploader):
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
         # so fill minimum information so register_status() can set the proper release
-        self.src_dump.update_one(
-            {"_id": self.main_source}, {"$set": {"download.release": release}}
-        )
+        self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
         # sanity check, dummy uploader, yes, but make sure data is there
-        assert self.collection.count() > 0, (
-            "No data found in collection '%s' !!!" % self.collection_name
-        )
+        assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
@@ -709,8 +635,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                 try:
                     if type(f.result()) != int:
                         got_error = Exception(
-                            "Batch #%s failed while uploading source '%s' [%s]"
-                            % (batch_num, name, f.result())
+                            "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
                         )
                 except Exception as e:
                     got_error = e
@@ -781,10 +706,7 @@ class UploaderManager(BaseSourceManager):
             dirty = False
             for subsrc in jobs:
                 if jobs[subsrc].get("status") == "uploading":
-                    logging.warning(
-                        "Found stale datasource '%s', marking upload status as 'canceled'"
-                        % src["_id"]
-                    )
+                    logging.warning("Found stale datasource '%s', marking upload status as 'canceled'", src["_id"])
                     jobs[subsrc]["status"] = "canceled"
                     dirty = True
             if dirty:
@@ -830,17 +752,15 @@ class UploaderManager(BaseSourceManager):
         try:
             klasses = self[src]
         except KeyError:
-            raise ResourceNotFound(
-                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
-            )
+            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
 
         jobs = []
         try:
             for _, klass in enumerate(klasses):
+                kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
-                    partial(
-                        self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs
-                    )
+                    # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
+                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -867,16 +787,12 @@ class UploaderManager(BaseSourceManager):
         try:
             klasses = self[src]
         except KeyError:
-            raise ResourceNotFound(
-                "Can't find '%s' in registered sources (whether as main or sub-source)" % src
-            )
+            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)" % src)
 
         jobs = []
         try:
             for _, klass in enumerate(klasses):
-                job = self.job_manager.submit(
-                    partial(self.create_and_update_master, klass, dry=dry)
-                )
+                job = self.job_manager.submit(partial(self.create_and_update_master, klass, dry=dry))
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
 
@@ -892,9 +808,7 @@ class UploaderManager(BaseSourceManager):
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
-            logging.exception(
-                "Error while update src meta '%s': %s" % (src, e), extra={"notify": True}
-            )
+            logging.exception("Error while update src meta '%s': %s" % (src, e), extra={"notify": True})
             raise
 
     async def create_and_update_master(self, klass, dry=False):

@@ -12,20 +12,33 @@ Any hub db backend implementation must implement the functions and
 classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
-import os
 import asyncio
-from functools import wraps, partial
+import logging
+import os
+from functools import partial, wraps
 
-from biothings.utils.common import (dump as dumpobj, loadobj,
-                                    get_random_string, get_timestamp)
+from biothings.utils.common import dump as dumpobj, get_random_string, get_timestamp, loadobj
+
 
 def get_hub_db_conn():
-    """Return a Database instance (connection to hub db)"""
+    """Return a DatabaseClient instance (connection to hub db)"""
     raise NotImplementedError()
+
+
+def get_src_conn():
+    """Return a DatabaseClient instance (connection to source db)"""
+    raise NotImplementedError()
+
+
+def get_src_db():
+    """Return a Database instance (connection to source db)"""
+    raise NotImplementedError()
+
 
 def get_src_dump():
     """Return a Collection instance for src_dump collection/table"""
     raise NotImplementedError()
+
 
 def get_src_master():
     """Return a Collection instance for src_master collection/table"""
@@ -46,25 +59,31 @@ def get_data_plugin():
     """Return a Collection instance for data_plugin collection/table"""
     raise NotImplementedError()
 
+
 def get_api():
     """Return a Collection instance for api collection/table"""
     raise NotImplementedError()
+
 
 def get_cmd():
     """Return a Collection instance for commands collection/table"""
     raise NotImplementedError()
 
+
 def get_event():
     """Return a Collection instance for events collection/table"""
     raise NotImplementedError()
+
 
 def get_hub_config():
     """Return a Collection instance storing configuration values"""
     raise NotImplementedError()
 
+
 def get_last_command():
     """Return the latest cmd document (according to _id)"""
     raise NotImplementedError()
+
 
 def get_source_fullname(col_name):
     """
@@ -72,6 +91,7 @@ def get_source_fullname(col_name):
     find the main source & sub_source associated.
     """
     raise NotImplementedError()
+
 
 class IDatabase(object):
     """
@@ -82,7 +102,7 @@ class IDatabase(object):
 
     def __init__(self):
         super(IDatabase, self).__init__()
-        self.name = None   # should be set from config module
+        self.name = None  # should be set from config module
         # any other initialization can be done here,
         # depending on the backend specifics
 
@@ -93,7 +113,7 @@ class IDatabase(object):
         and depends on the actual backend"""
         raise NotImplementedError()
 
-    #TODO: really needed ? on is it for src_db only ?
+    # TODO: really needed ? on is it for src_db only ?
     def collection_names(self):
         """Return a list of all collections (or tables) found in this database"""
         raise NotImplementedError()
@@ -122,7 +142,7 @@ class Collection(object):
 
     def __init__(self, colname, db):
         """Init args can differ depending on the backend requirements.
-           colname is the only one required."""
+        colname is the only one required."""
         self.colname = colname
         raise NotImplementedError()
 
@@ -188,6 +208,7 @@ class Collection(object):
         """Shortcut to find_one({"_id":_id})"""
         raise NotImplementedError()
 
+
 def backup(folder=".", archive=None):
     """
     Dump the whole hub_db database in given folder. "archive" can be pass
@@ -199,18 +220,27 @@ def backup(folder=".", archive=None):
     # get database name (ie. hub_db internal database)
     db_name = get_src_dump().database.name
     dump = {}
-    for getter in [get_src_dump, get_src_master, get_src_build,
-                   get_src_build_config, get_data_plugin, get_api,
-                   get_cmd, get_event, get_hub_config]:
+    for getter in [
+        get_src_dump,
+        get_src_master,
+        get_src_build,
+        get_src_build_config,
+        get_data_plugin,
+        get_api,
+        get_cmd,
+        get_event,
+        get_hub_config,
+    ]:
         col = getter()
         dump[col.name] = []
         for doc in col.find():
             dump[col.name].append(doc)
     if not archive:
-        archive = "backup_%s_%s.pyobj" % (get_timestamp(), get_random_string())
+        archive = "%s_backup_%s_%s.pyobj" % (db_name, get_timestamp(), get_random_string())
     path = os.path.join(folder, archive)
     dumpobj(dump, path)
     return path
+
 
 def restore(archive, drop=False):
     """Restore database from given archive. If drop is True, then delete existing collections"""
@@ -226,19 +256,18 @@ def restore(archive, drop=False):
         for doc in docs:
             col.save(doc)
 
+
 #########################################################################
 # small pubsub framework to track changes in hub db internal collection #
 #########################################################################
 
 
 class ChangeListener(object):
-
     def read(self):
         raise NotImplementedError("Implement me")
 
 
 class ChangeWatcher(object):
-
     listeners = set()
     event_queue = asyncio.Queue()
     do_publish = False
@@ -255,6 +284,7 @@ class ChangeWatcher(object):
     @classmethod
     def publish(cls):
         cls.do_publish = True
+
         async def do():
             while cls.do_publish:
                 evt = await cls.event_queue.get()
@@ -262,8 +292,10 @@ class ChangeWatcher(object):
                     try:
                         listener.read(evt)
                     except Exception as e:
-                        pass
-                        #logging.error("Can't publish %s to %s: %s" % (evt,listener,e))
+                        # pass
+                        # TODO: the log line below was commented out, uncomment it to see it causes any issue
+                        logging.error("Can't publish %s to %s: %s", evt, listener, e)
+
         return asyncio.ensure_future(do())
 
     @classmethod
@@ -295,28 +327,27 @@ class ChangeWatcher(object):
                     cls.event_queue.put_nowait(event)
 
             return func(*args, **kwargs)
+
         return func_wrapper
 
     @classmethod
     def wrap(cls, getfunc):
         def decorate():
             col = getfunc()
-            for method in ["insert_one", "update_one", "update",
-                           "save", "replace_one", "remove"]:
+            for method in ["insert_one", "update_one", "update", "save", "replace_one", "remove"]:
                 colmethod = getattr(col, method)
                 colname = getfunc.__name__.replace("get_", "")
-                colmethod = cls.monitor(
-                    colmethod,
-                    entity=cls.col_entity.get(colname, colname),
-                    op=method
-                )
+                colmethod = cls.monitor(colmethod, entity=cls.col_entity.get(colname, colname), op=method)
                 setattr(col, method, colmethod)
             return col
+
         return partial(decorate)
 
 
 def setup(config):
     global get_hub_db_conn
+    global get_src_conn
+    global get_src_db
     global get_src_dump
     global get_src_master
     global get_src_build
@@ -329,6 +360,9 @@ def setup(config):
     global get_source_fullname
     global get_last_command
     get_hub_db_conn = config.hub_db.get_hub_db_conn
+    get_src_conn = config.hub_db.get_src_conn
+    get_src_db = config.hub_db.get_src_db
+
     # use ChangeWatcher on internal collections so we can publish changes in real-time
     get_src_dump = ChangeWatcher.wrap(config.hub_db.get_src_dump)
     get_src_master = ChangeWatcher.wrap(config.hub_db.get_src_master)

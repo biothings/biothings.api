@@ -1,5 +1,5 @@
-import random
 import logging
+import random
 
 try:
     import redis
@@ -10,8 +10,8 @@ except ImportError:
 class RedisClientError(Exception):
     pass
 
-class RedisClient(object):
 
+class RedisClient(object):
     client = None
 
     @classmethod
@@ -53,7 +53,7 @@ class RedisClient(object):
         """
         db_max_num = int(self.mapdb.config_get("databases")["databases"] or 16)
         # -1: we always keep db=0 (meta db)
-        avail = dict(zip(range(1, db_max_num), [True]*(db_max_num-1)))
+        avail = dict(zip(range(1, db_max_num), [True] * (db_max_num - 1)))
         for info in self.mapdb.info("keyspace"):
             if not info.startswith("db"):
                 continue
@@ -62,14 +62,14 @@ class RedisClient(object):
                 continue
             avail.pop(num)
         if not avail:
-            db_num = random.randint(1, db_max_num-1)
+            db_num = random.randint(1, db_max_num - 1)
         else:
             db_num = random.choice(list(avail.keys()))
 
         return db_num
 
     def check(self):
-        if not self.mapdb.get("__META__") == b'0':
+        if not self.mapdb.get("__META__") == b"0":
             raise RedisClientError("Can't find database metadata, you may want to use initialize()")
 
     def initialize(self, deep=False):

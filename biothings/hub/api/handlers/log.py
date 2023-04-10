@@ -1,16 +1,15 @@
-import os
 import gzip
 from os import listdir
-from os.path import isfile, join, isdir
+from os.path import isdir, isfile, join
 from tempfile import TemporaryDirectory, mkstemp
 
-from tornado.web import RequestHandler, StaticFileHandler
 from tornado.template import Template
+from tornado.web import RequestHandler, StaticFileHandler
 
 from biothings.utils.serializer import to_json
 
-
-catalog = Template("""
+catalog = Template(
+    """
     <html>
         <head>
             <title> Biothings Hub Logs </title>
@@ -28,9 +27,11 @@ catalog = Template("""
             </ul>
         </body>
     </html>
-""")
+"""
+)
 
-logfile = Template("""
+logfile = Template(
+    """
     <html>
         <head>
             <title> {{ "Log " + name }} </title>
@@ -44,7 +45,8 @@ logfile = Template("""
             </p>
         </body>
     </html>
-""")
+"""
+)
 
 
 def get_log_content(file_path, **kwargs):
@@ -53,7 +55,7 @@ def get_log_content(file_path, **kwargs):
         with gzip.open(file_path, "rb") as f:
             lines = f.read().decode().splitlines()
     else:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             lines = file.readlines()
 
     if lines and "lines" in kwargs:
@@ -83,21 +85,16 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
     def get(self, filename):
         fullname = join(self.path, filename)
         if isdir(fullname):
-            logs = [
-                f"{f}/"
-                if isdir(join(fullname, f))
-                else f
-                for f in listdir(fullname)
-            ]
+            logs = [f"{f}/" if isdir(join(fullname, f)) else f for f in listdir(fullname)]
 
-            if 'filter' in self.request.arguments:
-                filters = self.get_argument('filter') or ''
-                filters = filters.split(',')
+            if "filter" in self.request.arguments:
+                filters = self.get_argument("filter") or ""
+                filters = filters.split(",")
                 logs = set([f for keyword in filters for f in logs if keyword in f])
 
             logs = sorted(logs)
 
-            if 'json' in self.request.arguments:
+            if "json" in self.request.arguments:
                 self.finish(to_json(list(logs)))
             else:
                 self.finish(catalog.generate(logs=logs))
@@ -108,20 +105,15 @@ class HubLogDirHandler(DefaultCORSHeaderMixin, RequestHandler):
             return
 
         lines = get_log_content(fullname, **self.request.arguments)
-        self.finish(logfile.generate(
-            name=filename,
-            lines=lines
-        ))
+        self.finish(logfile.generate(name=filename, lines=lines))
 
 
 class HubLogFileHandler(DefaultCORSHeaderMixin, StaticFileHandler):
-
     def options(self, *args, **kwargs):
         self.set_status(204)
 
     async def get(self, path: str, include_body: bool = True) -> None:
-        """If request path is a gz file, we will uncompress it first, then return get with the uncompress file path
-        """
+        """If request path is a gz file, we will uncompress it first, then return get with the uncompress file path"""
 
         self.path = self.parse_url_path(path)
         absolute_path = self.get_absolute_path(self.root, self.path)

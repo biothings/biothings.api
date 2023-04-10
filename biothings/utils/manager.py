@@ -13,14 +13,23 @@ from collections import OrderedDict
 from functools import partial, wraps
 from pprint import pformat
 
-import aiocron
-import dill as pickle
-import psutil
+try:
+    import aiocron
+except ImportError:
+    # Suppress import error when we just run CLI
+    pass
+
+try:
+    import dill as pickle
+    import psutil
+except ImportError:
+    # Suppress import error when we just run CLI
+    pass
 
 import biothings.hub  # noqa
 from biothings import config
 from biothings.utils.common import get_random_string, sizeof_fmt, timesofar
-from biothings.utils.mongo import get_src_conn
+from biothings.utils.hub_db import get_src_conn
 
 logger = config.logger
 
@@ -389,15 +398,12 @@ class BaseSourceManager(BaseManager):
                 klass = something
                 if not self.filter_class(klass):
                     continue
-                logger.debug(
-                    "Found a class based on %s: '%s'", self.__class__.SOURCE_CLASS.__name__, klass
-                )
+                logger.debug("Found a class based on %s: '%s'", self.__class__.SOURCE_CLASS.__name__, klass)
                 klasses.append(klass)
         if not klasses:
             if fail_on_notfound:
                 raise UnknownResource(
-                    "Can't find a class based on %s in module '%s'"
-                    % (self.__class__.SOURCE_CLASS.__name__, src_module)
+                    "Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__, src_module)
                 )
         return klasses
 
@@ -438,11 +444,7 @@ class BaseSourceManager(BaseManager):
                 for d in os.listdir(src_m_path):
                     if d.endswith("__pycache__"):
                         continue
-                    modpath = (
-                        os.path.join(src_m.__name__, d)
-                        .replace(".py", "")
-                        .replace(os.path.sep, ".")
-                    )
+                    modpath = os.path.join(src_m.__name__, d).replace(".py", "").replace(os.path.sep, ".")
                     try:
                         m = importlib.import_module(modpath)
                         klasses.extend(self.find_classes(m, fail_on_notfound))
@@ -453,9 +455,7 @@ class BaseSourceManager(BaseManager):
                         logger.debug("Couldn't import %s: %s", modpath, e)
                         continue
             except TypeError as e:
-                logger.warning(
-                    "Can't register source '%s', something's wrong with path: %s", src_m, e
-                )
+                logger.warning("Can't register source '%s', something's wrong with path: %s", src_m, e)
         logger.debug("Found classes to register: %s", repr(klasses))
 
         self.register_classes(klasses)
@@ -510,17 +510,13 @@ class JobManager(object):
             logger.debug("Adjusting number of worker to 1")
             self.num_workers = 1
         self.num_threads = num_threads or self.num_workers
-        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(
-            max_workers=self.num_workers
-        )
+        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # notes on fixing BPE (BrokenProcessPool Exception):
         # whenever a process exits unexpectedly, BPE is raised, and while that
         # all the processes in the pool gets a SIGTERM from the management
         # thread (see _queue_management_worker in concurrent.futures.process)
         # TODO: limit the number of threads (as argument) ?
-        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.num_threads
-        )
+        self.thread_queue = thread_queue or concurrent.futures.ThreadPoolExecutor(max_workers=self.num_threads)
 
         #  In Py38 using an executor that is not a ThreadPoolExecutor is
         #  deprecated. And it seems in Py39 , it must be a ThreadPoolExecutor,
@@ -551,9 +547,7 @@ class JobManager(object):
         self._phub = None
         # Process obj. for hub (process which JobManager is in)
         self.auto_recycle = auto_recycle  # active
-        self.auto_recycle_setting = (
-            auto_recycle  # keep setting if we need to restore it its orig value
-        )
+        self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
         self.jobs = {}  # all active jobs (thread/process)
         # _process_job_ids is for storing Job IDs of calls deferred in process
         # executor, so that when Executor is recreated, staled Job IDs can
@@ -586,9 +580,7 @@ class JobManager(object):
                 if recycling:
                     # now replace
                     logger.info("Replacing process queue with new one")
-                    self.process_queue = concurrent.futures.ProcessPoolExecutor(
-                        max_workers=self.num_workers
-                    )
+                    self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
                 else:
                     self.process_queue = None
             except Exception as e:
@@ -802,9 +794,7 @@ class JobManager(object):
                 # we don't need to care about the remaining tasks because
                 # they'd all be SIGTERM'd anyways. But ...
                 logger.warning("Broken Process Pool: %s, restarting.", e)
-                self.process_queue = concurrent.futures.ProcessPoolExecutor(
-                    max_workers=self.num_workers
-                )
+                self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
                 for stale_id in self._process_job_ids:
                     self.jobs.pop(stale_id, None)  # in the rare case that
                     # somehow they de-sync
@@ -858,7 +848,6 @@ class JobManager(object):
         return f
 
     async def defer_to_thread(self, pinfo=None, func=None, *args):
-
         skip_check = pinfo.get("__skip_check__", False)
 
         async def run(future, job_id):
@@ -866,9 +855,7 @@ class JobManager(object):
                 await self.check_constraints(pinfo)
                 self.ok_to_run.release()
             self.jobs[job_id] = pinfo
-            res = self.loop.run_in_executor(
-                self.thread_queue, partial(do_work, job_id, "thread", pinfo, func, *args)
-            )
+            res = self.loop.run_in_executor(self.thread_queue, partial(do_work, job_id, "thread", pinfo, func, *args))
 
             def ran(f):
                 try:
@@ -996,8 +983,9 @@ async def %s():
                 except IndexError:
                     # weird though... should have only pid files there...
                     pass
-        finally:
-            return pids
+        except Exception:
+            pass
+        return pids
 
     def get_thread_files(self):
         tids = {}
@@ -1015,8 +1003,9 @@ async def %s():
                 except IndexError:
                     # weird though... should have only pid files there...
                     pass
-        finally:
-            return tids
+        except Exception:
+            pass
+        return tids
 
     def extract_pending_info(self, pending):
         info = pending.fn.args[2]
@@ -1267,16 +1256,8 @@ async def %s():
             # TODO: delete the follow two lines
             # pworkers = dict([(pid, proc) for pid, proc in res["process"]["all"].items() if pid in res["process"]["running"]])
             # tworkers = dict([(tid, thread) for tid, thread in res["thread"]["all"].items() if tid in res["thread"]["running"]])
-            pworkers = {
-                pid: proc
-                for pid, proc in res["process"]["all"].items()
-                if pid in res["process"]["running"]
-            }
-            tworkers = {
-                tid: thread
-                for tid, thread in res["thread"]["all"].items()
-                if tid in res["thread"]["running"]
-            }
+            pworkers = {pid: proc for pid, proc in res["process"]["all"].items() if pid in res["process"]["running"]}
+            tworkers = {tid: thread for tid, thread in res["thread"]["all"].items() if tid in res["thread"]["running"]}
 
             out.append(self.print_workers(pworkers))
             out.append(self.print_workers(tworkers))

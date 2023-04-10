@@ -2,32 +2,33 @@
     This standalone module is originally located at "biothings/standalone" repo.
     It's used for Standalone/Autohub instance.
 """
-import os
-import logging
-import sys
 import asyncio
+import importlib
+import logging
+import os
+import sys
 from copy import deepcopy
 from functools import partial
 
 from biothings import config as btconfig
 from biothings.hub import HubServer
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
-from biothings.utils.es import ESIndexer
+from biothings.hub.standalone.validators import AutoHubValidator
 from biothings.utils.backend import DocESBackend
+from biothings.utils.es import ESIndexer
 from biothings.utils.loggers import get_logger
 
 
 class AutoHubServer(HubServer):
-
     DEFAULT_FEATURES = ["job", "autohub", "terminal", "config", "ws"]
 
 
 class AutoHubFeature(object):
-
     DEFAULT_DUMPER_CLASS = BiothingsDumper
     DEFAULT_UPLOADER_CLASS = BiothingsUploader
+    DEFAULT_VALIDATOR_CLASS = AutoHubValidator
 
-    def __init__(self, managers, version_urls, indexer_factory=None, *args, **kwargs):
+    def __init__(self, managers, version_urls, indexer_factory=None, validator_class=None, *args, **kwargs):
         """
         version_urls is a list of URLs pointing to versions.json file. The name
         of the data release is taken from the URL (http://...s3.amazon.com/<the_name>/versions.json)
@@ -48,12 +49,29 @@ class AutoHubFeature(object):
 
         When a data release named (from URL) matches an entry, it's used to configured
         which ES backend to target, otherwise the default one is used.
+
+        If validator_class is passed, it'll be used to provide validation methods for installing step.
+        If validator_class is None, the AutoHubValidator will be used as fallback.
+
         """
         super().__init__(*args, **kwargs)
         self.version_urls = self.extract(version_urls)
         self.indexer_factory = indexer_factory
         self.managers = managers
         self.logger, _ = get_logger("autohub")
+
+        if validator_class:
+            if isinstance(validator_class, str):
+                parts = validator_class.split(".")
+                validator_module = ".".join(parts[:-1])
+                validator_class = parts[-1]
+                validator_class = getattr(importlib.import_module(validator_module), validator_class)
+            assert issubclass(
+                validator_class, AutoHubValidator
+            ), "validator_class must be a subclass of biothings.hub.standalone.AutoHubValidator"
+            self.validator = validator_class(self)
+        else:
+            self.validator = self.DEFAULT_VALIDATOR_CLASS(self)
 
     def extract(self, urls):
         vurls = []
@@ -66,18 +84,15 @@ class AutoHubFeature(object):
 
         return vurls
 
-    def validate_release(self, version_path, force=False):
-        """Check if the release is valid to install. If not, it should raise an Exception to stop the progress"""
-        pass
-
     def install(self, src_name, version="latest", dry=False, force=False, use_no_downtime_method=True):
         """
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
         """
+
         async def do(version):
             try:
-                dklass = self.managers["dump_manager"][src_name][0]   # only one dumper allowed / source
+                dklass = self.managers["dump_manager"][src_name][0]  # only one dumper allowed / source
                 dobj = self.managers["dump_manager"].create_instance(dklass)
                 update_path = dobj.find_update_path(version, backend_version=dobj.target_backend.version)
                 version_path = [v["build_version"] for v in update_path]
@@ -87,11 +102,14 @@ class AutoHubFeature(object):
 
                 logging.info(
                     "Found path for updating from version '%s' to version '%s': %s",
-                    dobj.target_backend.version, version, version_path)
+                    dobj.target_backend.version,
+                    version,
+                    version_path,
+                )
                 if dry:
                     return version_path
 
-                self.validate_release(version_path=version_path, force=force)
+                self.validator.validate(version_path=version_path, force=force)
 
                 for step_version in version_path:
                     logging.info("Downloading data for version '%s'", step_version)
@@ -112,6 +130,7 @@ class AutoHubFeature(object):
             except Exception:
                 self.logger.exception("data install failed")
                 raise
+
         return asyncio.ensure_future(do(version))
 
     def get_folder_name(self, url):
@@ -135,10 +154,7 @@ class AutoHubFeature(object):
                     break
                 if name.startswith(f"{version['name']}__"):
                     dumper = dumpers[0]
-                    environments.append({
-                        'name': name,
-                        'es_host': dumper.ES_HOST
-                    })
+                    environments.append({"name": name, "es_host": dumper.ES_HOST})
             if environments:
                 version["environments"] = environments
         return versions
@@ -159,13 +175,15 @@ class AutoHubFeature(object):
             version_url = info["url"]
             if self.indexer_factory:
                 pidxr, actual_conf = self.indexer_factory.create(info["name"])
-                indexer_configs.append({
-                    "src_name": info["name"],
-                    "pidxr": pidxr,
-                    "es_host": actual_conf["es_host"],
-                    "index": actual_conf["index"],
-                    "version_url": version_url,
-                })
+                indexer_configs.append(
+                    {
+                        "src_name": info["name"],
+                        "pidxr": pidxr,
+                        "es_host": actual_conf["es_host"],
+                        "index": actual_conf["index"],
+                        "version_url": version_url,
+                    }
+                )
                 self.logger.info("Autohub configured for %s (dynamic): %s" % (info["name"], actual_conf))
             else:
                 actual_conf = btconfig.STANDALONE_CONFIG.get(info["name"], default_standalone_conf)
@@ -190,18 +208,17 @@ class AutoHubFeature(object):
                         for es_host_environment, es_host_url in actual_conf["es_host"].items()
                     ]
                 else:
-                    indexer_configs.append({
-                        "src_name": info["name"],
-                        "pidxr": partial(
-                            ESIndexer,
-                            index=actual_conf["index"],
-                            doc_type=None,
-                            es_host=actual_conf["es_host"]
-                        ),
-                        "es_host": actual_conf["es_host"],
-                        "index": actual_conf["index"],
-                        "version_url": version_url,
-                    })
+                    indexer_configs.append(
+                        {
+                            "src_name": info["name"],
+                            "pidxr": partial(
+                                ESIndexer, index=actual_conf["index"], doc_type=None, es_host=actual_conf["es_host"]
+                            ),
+                            "es_host": actual_conf["es_host"],
+                            "index": actual_conf["index"],
+                            "version_url": version_url,
+                        }
+                    )
 
         for indexer_config in indexer_configs:
             partial_backend = partial(DocESBackend, indexer_config["pidxr"])
@@ -215,7 +232,8 @@ class AutoHubFeature(object):
             dump_class_name = "%sDumper" % self.get_class_name(SRC_NAME_BY_ENVIRONMENT)
             # dumper
             dumper_klass = type(
-                dump_class_name, (self.__class__.DEFAULT_DUMPER_CLASS,),
+                dump_class_name,
+                (self.__class__.DEFAULT_DUMPER_CLASS,),
                 {
                     "TARGET_BACKEND": partial_backend,
                     "SRC_NAME": SRC_NAME_BY_ENVIRONMENT,
@@ -224,7 +242,7 @@ class AutoHubFeature(object):
                     "AWS_ACCESS_KEY_ID": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_ACCESS_KEY_ID"),
                     "AWS_SECRET_ACCESS_KEY": btconfig.STANDALONE_AWS_CREDENTIALS.get("AWS_SECRET_ACCESS_KEY"),
                     "ES_HOST": indexer_config["es_host"],
-                }
+                },
             )
             sys.modules["biothings.hub.standalone"].__dict__[dump_class_name] = dumper_klass
             self.managers["dump_manager"].register_classes([dumper_klass])
@@ -236,13 +254,14 @@ class AutoHubFeature(object):
             # this uploader will use dumped data to update an ES index
             uploader_class_name = "%sUploader" % self.get_class_name(SRC_NAME_BY_ENVIRONMENT)
             uploader_klass = type(
-                uploader_class_name, (self.__class__.DEFAULT_UPLOADER_CLASS,),
+                uploader_class_name,
+                (self.__class__.DEFAULT_UPLOADER_CLASS,),
                 {
                     "TARGET_BACKEND": partial_backend,
                     "SYNCER_FUNC": partial_syncer,
-                    "AUTO_PURGE_INDEX": True,   # because we believe
-                    "name": SRC_NAME_BY_ENVIRONMENT
-                }
+                    "AUTO_PURGE_INDEX": True,  # because we believe
+                    "name": SRC_NAME_BY_ENVIRONMENT,
+                },
             )
             sys.modules["biothings.hub.standalone"].__dict__[uploader_class_name] = uploader_klass
             self.managers["upload_manager"].register_classes([uploader_klass])
@@ -252,9 +271,7 @@ class AutoHubFeature(object):
             if isinstance(config.AUTO_RELEASE_CONFIG, dict):
                 for src, src_config in config.AUTO_RELEASE_CONFIG.items():
                     schedule = src_config
-                    install_args = {
-                        "src_name": src
-                    }
+                    install_args = {"src_name": src}
                     if isinstance(src_config, dict):
                         schedule = src_config["schedule"]
                         install_args.update(src_config.get("extra") or {})

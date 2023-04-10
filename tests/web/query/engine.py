@@ -1,9 +1,8 @@
-from biothings.web.query.engine import *
 from biothings.web import connections
-from pprint import pprint as print
+from biothings.web.query.engine import ESQueryBackend
+
 
 def test_adjust_index_overrided():
-
     class MyESQueryBackend(ESQueryBackend):
         def adjust_index(self, original_index, query, **options):
             return "any_index"
@@ -13,7 +12,8 @@ def test_adjust_index_overrided():
     query = None
     index = "original_index"
     index = backend.adjust_index(index, query)
-    assert index == 'any_index'
+    assert index == "any_index"
+
 
 if __name__ == "__main__":
     test_adjust_index_overrided()

@@ -1,22 +1,22 @@
+import asyncio
+import math
+import random
 import time
 from datetime import datetime
-import asyncio
 from functools import partial
-import random
-import math
 
-from biothings.utils.hub_db import get_src_dump, get_source_fullname
-from biothings.utils.common import timesofar
-from biothings.utils.dataload import dict_traverse
-from biothings.utils.mongo import id_feeder, doc_feeder
-from biothings.utils.loggers import get_logger
+import biothings.utils.es as es
+import biothings.utils.inspect as btinspect
+from biothings import config
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
-import biothings.utils.inspect as btinspect
-import biothings.utils.es as es
-
+from biothings.utils.common import timesofar
+from biothings.utils.dataload import dict_traverse
+from biothings.utils.hub_db import get_source_fullname, get_src_build, get_src_dump
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from biothings import config
+from biothings.utils.mongo import doc_feeder, id_feeder
+
 logging = config.logger
 
 
@@ -27,14 +27,12 @@ class InspectorError(Exception):
 # commong function used to call inspector
 def inspect_data(backend_provider, ids, mode, pre_mapping, **kwargs):
     col = create_backend(backend_provider).target_collection
-    cur = doc_feeder(col, step=len(ids), inbatch=False, query={'_id': {'$in': ids}})
-    res = btinspect.inspect_docs(cur, mode=mode, pre_mapping=pre_mapping,
-                                 metadata=False, auto_convert=False, **kwargs)
+    cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
+    res = btinspect.inspect_docs(cur, mode=mode, pre_mapping=pre_mapping, metadata=False, auto_convert=False, **kwargs)
     return res
 
 
 class InspectorManager(BaseManager):
-
     def __init__(self, upload_manager, build_manager, *args, **kwargs):
         super(InspectorManager, self).__init__(*args, **kwargs)
         self.upload_manager = upload_manager
@@ -58,10 +56,55 @@ class InspectorManager(BaseManager):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        self.logger, self.logfile = get_logger('inspect')
+        self.logger, self.logfile = get_logger("inspect")
 
-    def inspect(self, data_provider, mode="type", batch_size=10000,
-                limit=None, sample=None, **kwargs):
+    def get_backend_provider_info(self, data_provider):
+        data_provider_type, registerer_obj, backend_provider, ups = (None,) * 4
+
+        if data_provider[0] == "src":
+            data_provider_type = "source"
+            # find src_dump doc
+            # is it a full source name (dot notation) ?
+            fullname = get_source_fullname(data_provider[1])
+            if fullname:
+                # it's a dot-notation
+                src_name = fullname.split(".")[0]
+            else:
+                # no subsource, full source name is the passed name
+                src_name = data_provider[1]
+                fullname = src_name
+            doc = get_src_dump().find_one({"_id": src_name})  # query by main source
+            if not doc:
+                raise InspectorError("Can't find document associated to '%s'" % src_name)
+            # get an uploader instance (used to get the data if type is "uploader"
+            # but also used to update status of the datasource via register_status()
+            ups = self.upload_manager[fullname]  # potentially using dot notation
+            # create uploader
+            registerer_obj = self.upload_manager.create_instance(ups[0])
+            registerer_obj.src_doc = doc
+            backend_provider = data_provider
+        else:
+            try:
+                data_provider_type = "build"
+                registerer_obj = self.build_manager.get_builder(data_provider)
+                registerer_obj.src_build = get_src_build().find_one({"_id": data_provider})
+                if not registerer_obj.src_build:
+                    raise InspectorError("Can't find build associated to '%s'" % data_provider)
+                backend_provider = data_provider
+            except Exception as e:
+                raise InspectorError("Unable to create backend from '%s': %s" % (repr(data_provider), e))
+
+        return data_provider_type, registerer_obj, backend_provider, ups
+
+    def inspect(
+        self,
+        data_provider,
+        mode="type",
+        batch_size=10000,
+        limit=None,
+        sample=None,
+        **kwargs,
+    ):
         """
         Inspect given data provider:
         - backend definition, see bt.hub.dababuild.create_backend for
@@ -96,64 +139,55 @@ class InspectorManager(BaseManager):
         if callable(data_provider):
             raise NotImplementedError("data_provider as callable untested...")
         else:
-            if data_provider[0] == "src":
-                data_provider_type = "source"
-                # find src_dump doc
-                # is it a full source name (dot notation) ?
-                fullname = get_source_fullname(data_provider[1])
-                if fullname:
-                    # it's a dot-notation
-                    src_name = fullname.split(".")[0]
-                else:
-                    # no subsource, full source name is the passed name
-                    src_name = data_provider[1]
-                    fullname = src_name
-                doc = get_src_dump().find_one({"_id": src_name})  # query by main source
-                if not doc:
-                    raise InspectorError("Can't find document associated to '%s'" % src_name)
-                # get an uploader instance (used to get the data if type is "uploader"
-                # but also used to update status of the datasource via register_status()
-                ups = self.upload_manager[fullname]  # potentially using dot notation
+            data_provider_type, registerer_obj, backend_provider, ups = self.get_backend_provider_info(data_provider)
+            if data_provider_type == "source":
                 if len(ups) > 1:
                     # recursively call inspect(), collect and return corresponding tasks
                     self.logger.debug("Multiple uploaders found, running inspector for each of them: %s" % ups)
                     res = []
                     for up in ups:
-                        r = self.inspect((data_provider[0], "%s" % up.name), mode=mode, batch_size=batch_size,
-                                         limit=limit, sample=sample, **kwargs)
+                        r = self.inspect(
+                            (data_provider[0], "%s" % up.name),
+                            mode=mode,
+                            batch_size=batch_size,
+                            limit=limit,
+                            sample=sample,
+                            **kwargs,
+                        )
                         res.append(r)
                     return res
 
-                assert len(ups) == 1, "More than one uploader found for '%s', not supported (yet), use main_source.source notation" % data_provider[1]
-                # create uploader
-                registerer_obj = self.upload_manager.create_instance(ups[0])
-                backend_provider = data_provider
-            else:
-                try:
-                    data_provider_type = "build"
-                    registerer_obj = self.build_manager.get_builder(data_provider)
-                    backend_provider = data_provider
-                except Exception as e:
-                    raise InspectorError("Unable to create backend from '%s': %s" % (repr(data_provider), e))
+                assert len(ups) == 1, (
+                    "More than one uploader found for '%s', "
+                    "not supported (yet), use main_source.source notation" % data_provider[1]
+                )
 
         got_error = None
         try:
+
             async def do():
                 await asyncio.sleep(0.0)
                 nonlocal mode
 
-                pinfo = {"category": INSPECTOR_CATEGORY,
-                         "source": "%s" % repr(data_provider),
-                         "step": "",
-                         "description": ""}
+                pinfo = {
+                    "category": INSPECTOR_CATEGORY,
+                    "source": "%s" % repr(data_provider),
+                    "step": "",
+                    "description": "",
+                }
                 # register begin of inspection (differ slightly depending on type)
                 if data_provider_type == "source":
                     registerer_obj.register_status("inspecting", subkey="inspect")
                 elif data_provider_type == "build":
                     registerer_obj.register_status("inspecting", transient=True, init=True, job={"step": "inspect"})
 
-                self.logger.info("Running inspector on %s (type:%s,data_provider:%s)" %
-                                 (repr(data_provider), data_provider_type, backend_provider))
+                self.logger.info(
+                    "Running inspector on %s (type:%s,data_provider:%s)",
+                    repr(data_provider),
+                    data_provider_type,
+                    backend_provider,
+                )
+
                 if sample is not None:
                     self.logger.info("Sample set to %s, inspect only a subset of data", sample)
                 if limit is None:
@@ -213,9 +247,10 @@ class InspectorManager(BaseManager):
                     pre_mapping = "mapping" in mode  # we want to generate intermediate mapping so we can merge
                     # all maps later and then generate the ES mapping from there
                     self.logger.info("Creating inspect worker for batch #%s" % cnt)
-                    job = await self.job_manager.defer_to_process(pinfo,
-                                                                       partial(inspect_data, backend_provider,
-                                                                               ids, mode=mode, pre_mapping=pre_mapping, **kwargs))
+                    job = await self.job_manager.defer_to_process(
+                        pinfo,
+                        partial(inspect_data, backend_provider, ids, mode=mode, pre_mapping=pre_mapping, **kwargs),
+                    )
                     job.add_done_callback(partial(batch_inspected, cnt, ids))
                     jobs.append(job)
 
@@ -263,8 +298,9 @@ class InspectorManager(BaseManager):
                             if data_provider_type == "source":
                                 registerer_obj.register_status("success", subkey="inspect", inspect=_map)
                             elif data_provider_type == "build":
-                                registerer_obj.register_status("success", job={"step": "inspect"},
-                                                               build={"inspect": _map})
+                                registerer_obj.register_status(
+                                    "success", job={"step": "inspect"}, build={"inspect": _map}
+                                )
                     except Exception as e:
                         self.logger.exception("Error while inspecting data: %s" % e)
                         got_error = e
@@ -272,13 +308,41 @@ class InspectorManager(BaseManager):
                             registerer_obj.register_status("failed", subkey="inspect", err=repr(e))
                         elif data_provider_type == "build":
                             registerer_obj.register_status("failed", job={"err": repr(e)})
+
                 fully_inspected(inspected)
                 if data_provider_type is None:
                     return
                 if got_error:
                     raise got_error
+
             task = asyncio.ensure_future(do())
             return task
         except Exception as e:
             self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider), e))
             raise
+
+    def flatten(self, data_provider, mode=("type", "stats"), do_validate=True):
+        if isinstance(mode, tuple):
+            mode = list(mode)  # may not be necessary, but previous mode default is a list, so let's be consistent
+        elif isinstance(mode, str):
+            mode = [mode]
+
+        data_provider_type, registerer_obj, backend_provider, _ = self.get_backend_provider_info(data_provider)
+
+        results = {}
+        if data_provider_type == "source":
+            src_sources_inspect_data = registerer_obj.src_doc["inspect"]["jobs"]
+            for src_source_name, inspect_data in src_sources_inspect_data.items():
+                results[src_source_name] = {
+                    _mode: btinspect.flatten_and_validate(
+                        inspect_data["inspect"]["results"].get(_mode) or {}, do_validate
+                    )
+                    for _mode in mode
+                }
+        else:
+            inspect_data = registerer_obj.src_build["inspect"]["results"]
+            results[backend_provider] = {
+                _mode: btinspect.flatten_and_validate(inspect_data.get(_mode) or {}, do_validate) for _mode in mode
+            }
+
+        return results

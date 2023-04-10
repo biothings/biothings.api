@@ -1,10 +1,10 @@
-import logging
 import asyncio
 import json
-
-from biothings.utils.hub_db import ChangeListener
+import logging
 
 import sockjs.tornado
+
+from biothings.utils.hub_db import ChangeListener
 
 
 class WebSocketConnection(sockjs.tornado.SockJSConnection):
@@ -73,6 +73,7 @@ class HubDBListener(ChangeListener):
     Get events from Hub DB and propagate them through the
     websocket instance
     """
+
     def read(self, event):
         # self.socket is set while initalizing the websocket connection
         self.socket.publish(event)

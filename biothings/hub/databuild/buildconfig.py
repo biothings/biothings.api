@@ -2,7 +2,7 @@
     A build config contains autobuild configs and other information.
 
     TODO: not all features already supported in the code
-    
+
     For exmaple:
     {
         "_id": "mynews",
@@ -15,7 +15,7 @@
         "autopublish": { ... },
         "build_version": "%Y%m%d%H%M"
     }
-    
+
     Autobuild:
     - build
     - diff/snapshot
@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 class AutoBuildConfigError(Exception):
     pass
 
+
 class AutoBuildConfig:
     """
     Parse automation configurations after each steps following 'build'.
@@ -52,7 +53,7 @@ class AutoBuildConfig:
             "schedule": "0 8 * * 7", // Make a build every 08:00 on Sunday.
             "type": "diff",          // Auto create a "diff" w/previous version.
                                      // The other option is "snapshot".
-            "env": "local",          // ES env to create an index and snapshot, 
+            "env": "local",          // ES env to create an index and snapshot,
                                      // not required when type above is diff.
                                      // Setting the env also implies auto snapshot.
                                      // It could be in addition to auto diff.
@@ -76,29 +77,24 @@ class AutoBuildConfig:
     }
     The terms below are used interchangeably.
     """
-    BUILD_TYPES = ('diff', 'snapshot')
-    RELEASE_TYPES = ('incremental', 'full')
+
+    BUILD_TYPES = ("diff", "snapshot")
+    RELEASE_TYPES = ("incremental", "full")
     RELEASE_TO_BUILD = dict(zip(RELEASE_TYPES, BUILD_TYPES))
 
     def __init__(self, confdict):
-
         try:
-            self.auto_build = confdict.get('autobuild', {})
-            self.auto_build['type'] = self._types_as_set(
-                self.auto_build.get('type'))
+            self.auto_build = confdict.get("autobuild", {})
+            self.auto_build["type"] = self._types_as_set(self.auto_build.get("type"))
 
-            self.auto_publish = confdict.get('autopublish', {})
-            self.auto_publish['type'] = self._types_as_set(
-                self.auto_publish.get('type'))
+            self.auto_publish = confdict.get("autopublish", {})
+            self.auto_publish["type"] = self._types_as_set(self.auto_publish.get("type"))
 
-            self.auto_release = confdict.get('autorelease', {})
-            self.auto_release['type'] = self._types_as_set(
-                self.auto_release.get('type'))
+            self.auto_release = confdict.get("autorelease", {})
+            self.auto_release["type"] = self._types_as_set(self.auto_release.get("type"))
 
         except AttributeError as exc:
-            raise AutoBuildConfigError(
-                "Autobuild config entries should be dicts."
-            ) from exc
+            raise AutoBuildConfigError("Autobuild config entries should be dicts.") from exc
 
     @classmethod
     def _standardize_type(cls, type_str):
@@ -110,8 +106,7 @@ class AutoBuildConfig:
             return type_str
         elif type_str in cls.RELEASE_TYPES:
             return cls.RELEASE_TO_BUILD[type_str]
-        raise AutoBuildConfigError(
-            f"Unsupported type: {type_str}")
+        raise AutoBuildConfigError(f"Unsupported type: {type_str}")
 
     @singledispatchmethod
     @classmethod
@@ -121,9 +116,7 @@ class AutoBuildConfig:
         "diff" or "incremental", "snapshot" or "full",
         or a list of the values mentioned above.
         """
-        raise AutoBuildConfigError(
-            "Auto build type must be a list or string."
-        )
+        raise AutoBuildConfigError("Auto build type must be a list or string.")
 
     @_types_as_set.register(type(None))
     @classmethod
@@ -133,7 +126,7 @@ class AutoBuildConfig:
     @_types_as_set.register(str)
     @classmethod
     def _(cls, type_str):
-        return set((cls._standardize_type(type_str), ))
+        return set((cls._standardize_type(type_str),))
 
     @_types_as_set.register(list)
     @classmethod
@@ -144,25 +137,20 @@ class AutoBuildConfig:
         autoconf = {
             "autobuild": dict(self.auto_build),
             "autopublish": dict(self.auto_publish),
-            "autorelease": dict(self.auto_release)
+            "autorelease": dict(self.auto_release),
         }
-        autoconf["autobuild"]["type"] = list(
-            autoconf["autobuild"]["type"])
-        autoconf["autopublish"]["type"] = list(
-            autoconf["autopublish"]["type"])
-        autoconf["autorelease"]["type"] = list(
-            autoconf["autorelease"]["type"])
+        autoconf["autobuild"]["type"] = list(autoconf["autobuild"]["type"])
+        autoconf["autopublish"]["type"] = list(autoconf["autopublish"]["type"])
+        autoconf["autorelease"]["type"] = list(autoconf["autorelease"]["type"])
         return autoconf
 
     # after build
 
     def should_diff_new_build(self):
-
-        if 'diff' in self.auto_build['type']:
+        if "diff" in self.auto_build["type"]:
             return True
 
-        if not self.auto_build['type'] and \
-                self.auto_build.get('schedule'):
+        if not self.auto_build["type"] and self.auto_build.get("schedule"):
             return True  # implicit
 
         # other implied relationships can be specified
@@ -177,11 +165,9 @@ class AutoBuildConfig:
         return False
 
     def should_snapshot_new_build(self):
-
-        if 'snapshot' in self.auto_build['type'] \
-                or self.auto_build.get('env'):
+        if "snapshot" in self.auto_build["type"] or self.auto_build.get("env"):
             # env indicates snapshot, diff doesn't need it
-            if not self.auto_build.get('env'):
+            if not self.auto_build.get("env"):
                 logger.error("Auto snapshot env not set.")
             return True
 
@@ -190,39 +176,34 @@ class AutoBuildConfig:
     # after diff/snapshot
 
     def should_publish_new_diff(self):
-        return 'diff' in self.auto_publish['type']
+        return "diff" in self.auto_publish["type"]
 
     def should_publish_new_snapshot(self):
-        return 'snapshot' in self.auto_publish['type']
+        return "snapshot" in self.auto_publish["type"]
 
     # after publish
 
     def should_install_new_diff(self):
-        return 'diff' in self.auto_release['type']
+        return "diff" in self.auto_release["type"]
 
     def should_install_new_snapshot(self):
-        return 'snapshot' in self.auto_release['type']
+        return "snapshot" in self.auto_release["type"]
 
     def should_install_new_release(self):
         """
         Install the latest version regardless of update type/path.
         """
-        if len(self.auto_release['type']) == 2:
+        if len(self.auto_release["type"]) == 2:
             return True
 
-        if not self.auto_release['type'] and \
-                self.auto_release.get('schedule'):
+        if not self.auto_release["type"] and self.auto_release.get("schedule"):
             return True
 
         return False
 
-def test():
 
-    mygene = AutoBuildConfig({
-        "autobuild": {
-            "schedule": "0 8 * * 7"
-        }
-    })
+def test():
+    mygene = AutoBuildConfig({"autobuild": {"schedule": "0 8 * * 7"}})
     print(mygene.export())
     assert mygene.should_diff_new_build()
     assert not mygene.should_snapshot_new_build()
@@ -232,20 +213,17 @@ def test():
     assert not mygene.should_install_new_snapshot()
     assert not mygene.should_install_new_release()
 
-    outbreak = AutoBuildConfig({
-        "autobuild": {
-            "schedule": "0 8 * * *",
-            "type": "snapshot",
-            "env": "auto"  # snapshot location, indexing ES.
-        },
-        "autopublish": {
-            "type": "snapshot",
-            "env": "auto"
-        },
-        "autorelease": {
-            "schedule": "0 10 * * *"
+    outbreak = AutoBuildConfig(
+        {
+            "autobuild": {
+                "schedule": "0 8 * * *",
+                "type": "snapshot",
+                "env": "auto",  # snapshot location, indexing ES.
+            },
+            "autopublish": {"type": "snapshot", "env": "auto"},
+            "autorelease": {"schedule": "0 10 * * *"},
         }
-    })
+    )
     print(outbreak.export())
     assert not outbreak.should_diff_new_build()
     assert outbreak.should_snapshot_new_build()
@@ -256,5 +234,5 @@ def test():
     assert outbreak.should_install_new_release()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test()

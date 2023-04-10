@@ -2,26 +2,29 @@
     Biothings API Launcher
 
     In this module, we have three framework-specific launchers
-    and a command-line utility to provide both programmatic and 
+    and a command-line utility to provide both programmatic and
     command-line access to start Biothings APIs.
 
 """
 import logging
 import os
 import sys
+from pprint import pformat
 
 import tornado.httpserver
 import tornado.ioloop
 import tornado.log
 import tornado.web
+from tornado.options import define, options
+
 from biothings import __version__
 from biothings.web.applications import BiothingsAPI
 from biothings.web.settings import configs
-from tornado.options import define, options
 
 logger = logging.getLogger(__name__)
 
-class BiothingsAPIBaseLauncher():
+
+class BiothingsAPIBaseLauncher:
     def __init__(self, config=None):
         # see biothings.web.settings.configs.load_module
         # for all supported ways to specify a config module
@@ -40,7 +43,6 @@ class BiothingsAPIBaseLauncher():
 
 
 class TornadoAPILauncher(BiothingsAPIBaseLauncher):
-
     # tornado uses its own event loop which is
     # a wrapper around the asyncio event loop
 
@@ -65,10 +67,10 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
                 if isinstance(handler.formatter, tornado.log.LogFormatter):
                     handler.formatter._fmt = config.LOGGING_FORMAT
 
-        logging.getLogger('urllib3').setLevel(logging.ERROR)
-        logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.ERROR)
+        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
 
-        if self.settings['debug']:
+        if self.settings["debug"]:
             root_logger.setLevel(logging.DEBUG)
         else:
             root_logger.setLevel(logging.INFO)
@@ -79,8 +81,7 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
         Use curl implementation for tornado http clients.
         More on https://www.tornadoweb.org/en/stable/httpclient.html
         """
-        tornado.httpclient.AsyncHTTPClient.configure(
-            "tornado.curl_httpclient.CurlAsyncHTTPClient")
+        tornado.httpclient.AsyncHTTPClient.configure("tornado.curl_httpclient.CurlAsyncHTTPClient")
 
     def get_app(self):
         return BiothingsAPI.get_app(self.config, self.settings, self.handlers)
@@ -88,7 +89,9 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
     def get_server(self):
         # Use case example:
         # Run API in an external event loop.
-        return tornado.httpserver.HTTPServer(self.get_app(), xheaders=True)
+        app = self.get_app()
+        logger.info("All Handlers:\n%s", pformat(app.biothings.handlers, width=200))
+        return tornado.httpserver.HTTPServer(app, xheaders=True)
 
     def start(self, port=8000):
         self._configure_logging()
@@ -96,16 +99,13 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
         http_server = self.get_server()
         http_server.listen(port, self.host)
 
-        logger.info(
-            'Server is running on "%s:%s"...',
-            self.host or '0.0.0.0', port
-        )
+        logger.info('Server is running on "%s:%s"...', self.host or "0.0.0.0", port)
         loop = tornado.ioloop.IOLoop.instance()
         loop.start()
 
+
 # WSGI
 class FlaskAPILauncher(BiothingsAPIBaseLauncher):
-
     # Proof of concept
     # Not fully implemented
 
@@ -117,10 +117,11 @@ class FlaskAPILauncher(BiothingsAPIBaseLauncher):
     # from biothings.web.launcher import FlaskAPILauncher
     # application = FlaskAPILauncher("config").get_app()
 
-    #* https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-apps.html
+    # * https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-apps.html
 
     def get_app(self):
         from biothings.web.applications import FlaskBiothingsAPI
+
         return FlaskBiothingsAPI.get_app(self.config)
 
     def get_server(self):
@@ -143,7 +144,6 @@ class FlaskAPILauncher(BiothingsAPIBaseLauncher):
 
 # ASGI
 class FastAPILauncher(BiothingsAPIBaseLauncher):
-
     # Proof of concept
     # Not fully implemented
 
@@ -155,6 +155,7 @@ class FastAPILauncher(BiothingsAPIBaseLauncher):
 
     def get_app(self):
         from biothings.web.applications import FastAPIBiothingsAPI
+
         return FastAPIBiothingsAPI.get_app(self.config)
 
 
@@ -169,12 +170,12 @@ define("debug", default=False, help="debug settings like logging preferences")
 define("address", default=None, help="host address to listen to, default to all interfaces")
 define("autoreload", default=False, help="auto reload the web server when file change detected")
 define("framework", default="tornado", help="the web freamework to start a web server")
-define("conf", default='config', help="specify a config module name to import")
+define("conf", default="config", help="specify a config module name to import")
 define("dir", default=os.getcwd(), help="path to app directory that includes config.py")
 
 
 def main(app_handlers=None, app_settings=None, use_curl=False):
-    """ Start a Biothings API Server """
+    """Start a Biothings API Server"""
 
     options.parse_command_line()
     _path = os.path.abspath(options.dir)
@@ -205,11 +206,11 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
         launcher.host = options.address
         launcher.settings.update(debug=options.debug)
         launcher.settings.update(autoreload=options.autoreload)
-    except:
+    except Exception:
         pass
 
     launcher.start(options.port)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

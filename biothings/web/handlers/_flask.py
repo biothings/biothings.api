@@ -2,13 +2,14 @@ from functools import wraps
 from types import CoroutineType
 
 import flask
-from biothings.web import templates
-from biothings.web.options import OptionError
-from biothings.web.query.pipeline import (QueryPipelineException,
-                                          QueryPipelineInterrupt)
 from tornado.template import Loader
 
+from biothings.web import templates
+from biothings.web.options import OptionError
+from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
+
 routes = []
+
 
 def route(pattern, methods=("GET", "POST")):
     def A(f):
@@ -18,12 +19,15 @@ def route(pattern, methods=("GET", "POST")):
             optionset = optionsets.get(f.__name__)
             if optionset:
                 try:
-                    _args = optionset.parse(flask.request.method, (
-                        (tuple(kwargs.values()), {}),
-                        flask.request.args,
-                        flask.request.form,
-                        flask.request.get_json()
-                    ))
+                    _args = optionset.parse(
+                        flask.request.method,
+                        (
+                            (tuple(kwargs.values()), {}),
+                            flask.request.args,
+                            flask.request.form,
+                            flask.request.get_json(),
+                        ),
+                    )
                 except OptionError as err:
                     return err.info, 400
             else:
@@ -32,24 +36,28 @@ def route(pattern, methods=("GET", "POST")):
             if isinstance(result, CoroutineType):
                 return await result
             return result
+
         B.pattern = pattern
         B.methods = methods
         B.name = f.__name__
         routes.append(B)
         return B
+
     return A
+
 
 @route("/")
 def homepage(biothings, args):
     loader = Loader(templates.__path__[0])
     template = loader.load("home.html")
     return template.generate(
-        alert='Front Page Not Configured.',
-        title='Biothings API',
+        alert="Front Page Not Configured.",
+        title="Biothings API",
         contents=biothings.handlers.keys(),
         support=biothings.metadata.types,
-        url='http://biothings.io/'
+        url="http://biothings.io/",
     )
+
 
 def handle_es_conn(f):
     @wraps(f)
@@ -74,20 +82,22 @@ def handle_es_conn(f):
         finally:
             await client.close()
         return response
+
     return _
+
 
 @route("/{ver}/query")
 @handle_es_conn
 async def query(biothings, args):
     return await biothings.pipeline.search(**args)
 
-@route([
-    "/{ver}/{typ}/",
-    "/{ver}/{typ}/<id>"])
+
+@route(["/{ver}/{typ}/", "/{ver}/{typ}/<id>"])
 @handle_es_conn
 async def annotation(biothings, args):
     # could be a list, in which case we need jsonify.
     return flask.jsonify(await biothings.pipeline.fetch(**args))
+
 
 @route("/{ver}/metadata")
 @handle_es_conn
@@ -95,12 +105,14 @@ async def metadata(biothings, args):
     await biothings.metadata.refresh(None)
     return biothings.metadata.get_metadata(None)
 
+
 @route("/{ver}/metadata/fields")
 @handle_es_conn
 async def fields(biothings, args):
     await biothings.metadata.refresh(None)
     mappings = biothings.metadata.get_mappings(None)
     return biothings.pipeline.formatter.transform_mapping(mappings)
+
 
 @route("/status")
 @handle_es_conn

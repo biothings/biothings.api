@@ -1,34 +1,34 @@
 import asyncio
 import json
-import time
 import os
+import time
 from collections import UserDict, UserString
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 
 import boto3
+from config import logger as logging
+from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import TransportError
+
 from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.utils.common import merge
+from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
-from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
-from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import TransportError
 
-from config import logger as logging
-
-from . import snapshot_cleanup as cleaner
-from . import snapshot_registrar as registrar
+from . import snapshot_cleanup as cleaner, snapshot_registrar as registrar
 from .snapshot_repo import Repository
 from .snapshot_task import Snapshot
 
-class ProcessInfo():
+
+class ProcessInfo:
     """
     JobManager Process Info.
     Reported in Biothings Studio.
@@ -46,13 +46,13 @@ class ProcessInfo():
             "category": SNAPSHOOTER_CATEGORY,
             "step": f"{step}:{snapshot}",
             "description": description,
-            "source": self.env_name
+            "source": self.env_name,
         }
         return pinfo
 
 
 @dataclass
-class CloudStorage():
+class CloudStorage:
     type: str
     access_key: str
     secret_key: str
@@ -63,12 +63,13 @@ class CloudStorage():
             session = boto3.Session(
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
-                region_name=self.region)
+                region_name=self.region,
+            )
             return session.resource("s3")  # [X]
         raise ValueError(self.type)
 
-class Bucket():
 
+class Bucket:
     def __init__(self, client, bucket, region=None):
         self.client = client  # boto3.S3.Client [X]
         self.bucket = bucket  # bucket name
@@ -79,34 +80,28 @@ class Bucket():
         return bool(bucket.creation_date)
 
     def create(self, acl="private"):
-
         # https://boto3.amazonaws.com/v1/documentation/api
         # /latest/reference/services/s3.html
         # #S3.Client.create_bucket
 
         return self.client.create_bucket(
-            ACL=acl, Bucket=self.bucket,
-            CreateBucketConfiguration={
-                'LocationConstraint': self.region
-            }
+            ACL=acl,
+            Bucket=self.bucket,
+            CreateBucketConfiguration={"LocationConstraint": self.region},
         )
 
     def __str__(self):
-        return (
-            f"<Bucket {'READY' if self.exists() else 'MISSING'}"
-            f" name='{self.bucket}'"
-            f" client={self.client}"
-            f">"
-        )
+        return f"<Bucket {'READY' if self.exists() else 'MISSING'} name='{self.bucket}' client={self.client}>"
 
 
 class _UserString(UserString):
-
     def __str__(self):
         return f"{type(self).__name__}({self.data})"
 
+
 class TemplateStr(_UserString):
     ...
+
 
 class RenderedStr(_UserString):
     ...
@@ -123,6 +118,7 @@ class RepositoryConfig(UserDict):
         }
     }
     """
+
     @property
     def repo(self):
         return self["name"]
@@ -134,9 +130,9 @@ class RepositoryConfig(UserDict):
     @property
     def region(self):
         return self["settings"]["region"]
-    
+
     def format(self, doc=None):
-        """ Template special values in this config.
+        """Template special values in this config.
 
         For example:
         {
@@ -162,19 +158,19 @@ class RepositoryConfig(UserDict):
 
 
 class _SnapshotResult(UserDict):
-
     def __str__(self):
         return f"{type(self).__name__}({str(self.data)})"
 
+
 class CumulativeResult(_SnapshotResult):
     ...
+
 
 class StepResult(_SnapshotResult):
     ...
 
 
-class SnapshotEnv():
-
+class SnapshotEnv:
     def __init__(self, job_manager, cloud, repository, indexer, **kwargs):
         self.job_manager = job_manager
 
@@ -189,16 +185,15 @@ class SnapshotEnv():
         self.wtime = kwargs.get("monitor_delay", 15)
 
     def _doc(self, index):
-        doc = get_src_build().find_one({
-            f"index.{index}.environment": self.idxenv})
+        doc = get_src_build().find_one({f"index.{index}.environment": self.idxenv})
         if not doc:  # not asso. with a build
             raise ValueError("Not a hub-managed index.")
         return doc  # TODO UNIQUENESS
 
     def setup_log(self, index):
         build_doc = self._doc(index)
-        log_name = build_doc['target_name'] or build_doc['_id']
-        log_folder = os.path.join(btconfig.LOG_FOLDER, 'build', log_name, "snapshot")
+        log_name = build_doc["target_name"] or build_doc["_id"]
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", log_name, "snapshot")
         self.logger, _ = get_logger(index, log_folder=log_folder, force=True)
 
     def snapshot(self, index, snapshot=None, recreate_repo=False):
@@ -216,10 +211,8 @@ class SnapshotEnv():
 
                 job = await self.job_manager.defer_to_thread(
                     self.pinfo.get_pinfo(step, snapshot),
-                    partial(
-                        getattr(self, state.func),
-                        cfg, index, snapshot, recreate_repo=recreate_repo
-                    ))
+                    partial(getattr(self, state.func), cfg, index, snapshot, recreate_repo=recreate_repo),
+                )
                 try:
                     dx = await job
                     dx = StepResult(dx)
@@ -235,11 +228,9 @@ class SnapshotEnv():
                     merge(x.data, dx.data)
                     self.logger.info(dx)
                     self.logger.info(x)
-                    state.succeed(
-                        {snapshot: x.data},
-                        res=dx.data
-                    )
+                    state.succeed({snapshot: x.data}, res=dx.data)
             return x
+
         future = asyncio.ensure_future(_snapshot(snapshot or index))
         future.add_done_callback(self.logger.debug)
         return future
@@ -265,21 +256,17 @@ class SnapshotEnv():
         try:
             repo.verify(config=cfg)
         except TransportError as tex:
-            raise RepositoryVerificationFailed({"error": tex.error, "detail": tex.info['error']})
+            raise RepositoryVerificationFailed({"error": tex.error, "detail": tex.info["error"]})
 
         return {
             "__REPLACE__": True,
             "conf": {"repository": cfg.data},
             "indexer_env": self.idxenv,
-            "environment": self.name
+            "environment": self.name,
         }
 
     def _snapshot(self, cfg, index, snapshot, **kwargs):
-
-        snapshot = Snapshot(
-            self.client,
-            cfg.repo,
-            snapshot)
+        snapshot = Snapshot(self.client, cfg.repo, snapshot)
         self.logger.info(snapshot)
 
         _replace = False
@@ -308,11 +295,11 @@ class SnapshotEnv():
         return {
             "index_name": index,
             "replaced": _replace,
-            "created_at": datetime.now().astimezone()
+            "created_at": datetime.now().astimezone(),
         }
 
     def post_snapshot(self, cfg, index, snapshot, **kwargs):
-        build_id = self._doc(index)['_id']
+        build_id = self._doc(index)["_id"]
         set_pending_to_release_note(build_id)
         return {}
 
@@ -348,7 +335,7 @@ class SnapshotManager(BaseManager):
             }
         },
         "monitor_delay": 15,
-    }    
+    }
     """
 
     def __init__(self, index_manager, *args, **kwargs):
@@ -361,7 +348,7 @@ class SnapshotManager(BaseManager):
         src_build = get_src_build()
         src_build.update(
             {"_id": build_name},
-            {"$addToSet": {"pending": "snapshot"}}
+            {"$addToSet": {"pending": "snapshot"}},
         )
 
     # Object Lifecycle Calls
@@ -376,7 +363,6 @@ class SnapshotManager(BaseManager):
     def configure(self, conf):
         self.snapshot_config = conf
         for name, envdict in conf.get("env", {}).items():
-
             # Merge Indexer Config
             # ----------------------------------------
             dx = envdict["indexer"]
@@ -426,9 +412,10 @@ class SnapshotManager(BaseManager):
         }
         Attempt to make a snapshot for this build on the specified es env "local".
         """
+
         async def _():
-            autoconf = AutoBuildConfig(build_doc['build_config'])
-            env = autoconf.auto_build.get('env')
+            autoconf = AutoBuildConfig(build_doc["build_config"])
+            env = autoconf.auto_build.get("env")
             assert env, "Unknown autobuild env."
 
             if isinstance(env, str):
@@ -438,13 +425,14 @@ class SnapshotManager(BaseManager):
                 indexer_env, snapshot_env = env
 
             try:  # find the index (latest) to snapshot
-                latest_index = list(build_doc['index'].keys())[-1]
+                latest_index = list(build_doc["index"].keys())[-1]
 
             except Exception:  # no existing indices, need to create one
-                await self.index_manager.index(indexer_env, build_doc['_id'])
-                latest_index = build_doc['_id']  # index_name is build name
+                await self.index_manager.index(indexer_env, build_doc["_id"])
+                latest_index = build_doc["_id"]  # index_name is build name
 
             return self.snapshot(snapshot_env, latest_index)
+
         return asyncio.ensure_future(_())
 
     def snapshot_info(self, env=None, remote=False):
@@ -452,17 +440,22 @@ class SnapshotManager(BaseManager):
 
     def list_snapshots(self, env=None, **filters):
         return cleaner.find(  # filters support dotfield.
-            get_src_build(), env=env, group_by="build_config", return_db_cols=True, **filters,
+            get_src_build(),
+            env=env,
+            group_by="build_config",
+            return_db_cols=True,
+            **filters,
         )
 
     def cleanup(
-        self, env=None,  # a snapshot environment describing a repository
+        self,
+        env=None,  # a snapshot environment describing a repository
         keep=3,  # the number of most recent snapshots to keep in one group
         group_by="build_config",  # the attr of which its values form groups
         dryrun=True,  # display the snapshots to be deleted without deleting them
-        **filters  # a set of criterions to limit which snapshots are to be cleaned
+        **filters,  # a set of criterions to limit which snapshots are to be cleaned
     ):
-        """ Delete past snapshots and keep only the most recent ones.
+        """Delete past snapshots and keep only the most recent ones.
 
         Examples:
             >>> snapshot_cleanup()
@@ -470,15 +463,18 @@ class SnapshotManager(BaseManager):
             >>> snapshot_cleanup("s3_outbreak", keep=0)
         """
 
-        snapshots = cleaner.find(  # filters support dotfield.
-            get_src_build(), env, keep, group_by, **filters)
+        snapshots = cleaner.find(get_src_build(), env, keep, group_by, **filters)  # filters support dotfield.
 
         if dryrun:
-            return '\n'.join((
-                "-" * 75, cleaner.plain_text(snapshots), "-" * 75,
-                "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
-                "   > snapshot_cleanup(..., dryrun=False)"
-            ))
+            return "\n".join(
+                (
+                    "-" * 75,
+                    cleaner.plain_text(snapshots),
+                    "-" * 75,
+                    "DRYRUN ONLY - APPLY THE ACTIONS WITH:",
+                    "   > snapshot_cleanup(..., dryrun=False)",
+                )
+            )
 
         # return the number of snapshots successfully deleted
         return cleaner.delete(get_src_build(), snapshots, self)
@@ -504,8 +500,5 @@ class SnapshotManager(BaseManager):
             tasks = asyncio.gather(*jobs)
             tasks.add_done_callback(done)
         except Exception as ex:
-            logging.exception(
-                f"Error while deleting snapshots. error: {ex}",
-                extra={"notify": True}
-            )
+            logging.exception("Error while deleting snapshots. error: %s", ex, extra={"notify": True})
         return jobs
