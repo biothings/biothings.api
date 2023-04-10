@@ -9,6 +9,7 @@
 import logging
 import os
 import sys
+from pprint import pformat
 
 import tornado.httpserver
 import tornado.ioloop
@@ -88,7 +89,9 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
     def get_server(self):
         # Use case example:
         # Run API in an external event loop.
-        return tornado.httpserver.HTTPServer(self.get_app(), xheaders=True)
+        app = self.get_app()
+        logger.info("All Handlers:\n%s", pformat(app.biothings.handlers, width=200))
+        return tornado.httpserver.HTTPServer(app, xheaders=True)
 
     def start(self, port=8000):
         self._configure_logging()

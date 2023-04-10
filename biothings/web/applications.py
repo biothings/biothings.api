@@ -170,15 +170,17 @@ class TornadoBiothingsAPI(tornado.web.Application):
             _settings = BiothingsAPI._get_settings(biothings, settings)
             app = cls(_handlers + handlers or [], **_settings)
             app.biothings = biothings
-            app._populate_optionsets(config, handlers or [])
-            app._populate_handlers(handlers or [])
+            # app._populate_optionsets(config, handlers or [])
+            # app._populate_handlers(handlers or [])
+            app._populate_optionsets(config, _handlers + handlers or [])
+            app._populate_handlers(_handlers + handlers or [])
             return app
         raise TypeError()
 
     def _populate_optionsets(self, config, handlers):
         for handler in handlers:
             handler = handler[1]  # handler[0] is a matching pattern
-            if issubclass(handler, BaseAPIHandler) and handler.name:
+            if inspect.isclass(handler) and issubclass(handler, BaseAPIHandler) and handler.name:
                 handler_name = handler.name
                 handler_options = handler.kwargs
                 setting_attr = "_".join((handler_name, "kwargs")).upper()
