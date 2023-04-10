@@ -351,6 +351,7 @@ class Indexer:
         steps = kwargs.pop("steps", ("pre", "index", "post"))
         batch_size = kwargs.setdefault("batch_size", 10000)
         # mode = kwargs.setdefault("mode", "index")
+        kwargs.setdefault("mode", "index")
         ids = kwargs.setdefault("ids", None)
 
         assert job_manager
