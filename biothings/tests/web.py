@@ -170,7 +170,8 @@ class BiothingsWebTestBase:
         try:
             dic = msgpack.unpackb(packed_bytes)
         except BaseException:  # pylint: disable=bare-except
-            assert False, "Not a valid Msgpack binary."
+            # assert False, "Not a valid Msgpack binary."
+            raise ValueError("Not a valid Msgpack binary.")
         return dic
 
     @staticmethod

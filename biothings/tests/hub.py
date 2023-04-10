@@ -4,7 +4,8 @@
 # https://github.com/amiteshksharma/Database-Testing
 
 import pymongo
-from jsonpath_ng import jsonpath, parse
+
+# from jsonpath_ng import jsonpath, parse
 
 
 class DatabaseCollectionTesting:
@@ -59,7 +60,8 @@ class DatabaseCollectionTesting:
                 elif "symbol" not in keys:
                     pass
                 else:
-                    assert False
+                    # assert False
+                    raise AssertionError()
 
         assert True
 
