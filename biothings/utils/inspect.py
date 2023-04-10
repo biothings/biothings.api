@@ -293,7 +293,7 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
             if mapt and list in mapt:  # and key == k:
                 already_explored_as_list = True
             else:
-                already_explored_as_list = False
+                already_explored_as_list = False  # noqa F841
             if False:  # already_explored_as_list:      # TODO: check this
                 mapt[list].setdefault(k, {})
                 typ = inspect(struct[k], key=k, mapt=mapt[list][k], mode=mode, level=level + 1)

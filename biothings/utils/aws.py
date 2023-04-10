@@ -51,9 +51,9 @@ def send_s3_file(
     """
     metadata = metadata or {}
     try:
-        aws_key = aws_key or getattr(config, "AWS_SECRET")
-        aws_secret = aws_secret or getattr(config, "AWS_SECRET")
-        s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
+        aws_key = aws_key or config.AWS_SECRET
+        aws_secret = aws_secret or config.AWS_SECRET
+        s3_bucket = s3_bucket or config.S3_BUCKET
     except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
         return
@@ -98,9 +98,9 @@ def send_s3_big_file(
     """
     # TODO: maybe merge with send_s3_file() based in file size ? It would need boto3 migration
     try:
-        aws_key = aws_key or getattr(config, "AWS_SECRET")
-        aws_secret = aws_secret or getattr(config, "AWS_SECRET")
-        s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
+        aws_key = aws_key or config.AWS_SECRET
+        aws_secret = aws_secret or config.AWS_SECRET
+        s3_bucket = s3_bucket or config.S3_BUCKET
     except AttributeError:
         logging.info("Skip sending file to S3, missing information in config file: AWS_KEY, AWS_SECRET or S3_BUCKET")
         return
@@ -123,12 +123,17 @@ def send_s3_big_file(
 
 def get_s3_file(s3key, localfile=None, return_what=False, aws_key=None, aws_secret=None, s3_bucket=None):
     # get_s3_file is planned to be deprecated in 0.11 and removed in 0.13
-    warnings.warn(DeprecationWarning("get_s3_file is deprecated, use download_s3_file or get_s3_file_contents instead"))
+    warnings.warn(
+        DeprecationWarning("get_s3_file is deprecated, use download_s3_file or get_s3_file_contents instead"),
+        stacklevel=2,
+    )
 
     if return_what == "content":
         return get_s3_file_contents(s3key, aws_key, aws_secret, s3_bucket)
     elif return_what == "key":
-        warnings.warn(DeprecationWarning("get_s3_file: return_what=key is deprecated, use other ways instead"))
+        warnings.warn(
+            DeprecationWarning("get_s3_file: return_what=key is deprecated, use other ways instead"), stacklevel=2
+        )
         try:
             # pylint:disable=import-outside-toplevel
             # this is so that only those who need return_what="key"
@@ -186,9 +191,9 @@ def get_s3_file_contents(s3key, aws_key=None, aws_secret=None, s3_bucket=None) -
 
 
 def get_s3_folder(s3folder, basedir=None, aws_key=None, aws_secret=None, s3_bucket=None):
-    aws_key = aws_key or getattr(config, "AWS_SECRET")
-    aws_secret = aws_secret or getattr(config, "AWS_SECRET")
-    s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
+    aws_key = aws_key or config.AWS_SECRET
+    aws_secret = aws_secret or config.AWS_SECRET
+    s3_bucket = s3_bucket or config.S3_BUCKET
     s3 = boto3.resource("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
     bucket = s3.Bucket(s3_bucket)
     cwd = os.getcwd()
@@ -214,9 +219,9 @@ def send_s3_folder(
     aws_secret=None,
     s3_bucket=None,
 ):
-    aws_key = aws_key or getattr(config, "AWS_SECRET")
-    aws_secret = aws_secret or getattr(config, "AWS_SECRET")
-    s3_bucket = s3_bucket or getattr(config, "S3_BUCKET")
+    aws_key = aws_key or config.AWS_SECRET
+    aws_secret = aws_secret or config.AWS_SECRET
+    s3_bucket = s3_bucket or config.S3_BUCKET
     s3 = boto3.client("s3", aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)
     s3.head_bucket(Bucket=s3_bucket)  # will raise when not 200
     cwd = os.getcwd()

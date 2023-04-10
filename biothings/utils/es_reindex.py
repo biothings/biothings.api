@@ -84,10 +84,7 @@ def reindex(
 
     # create target index with src settings, mappings
     logger.info("Set target index's settings, mappings")
-    target_index_obj.create_index(
-        mapping=src_mappings,
-        extra_settings=src_settings[src_index_obj._index]["settings"]
-    )
+    target_index_obj.create_index(mapping=src_mappings, extra_settings=src_settings[src_index_obj._index]["settings"])
 
     # Reindex from src index to target index
     logger.info("Reindex from src index to target index")
@@ -105,7 +102,9 @@ def reindex(
         task_status = task_obj.get("task", {}).get("status", {})
         logger.info(
             "\t[Progress] completed: %s, batches: %s, created: %s",
-            task_obj.get("completed"), task_status.get("batches"), task_status.get("created")
+            task_obj.get("completed"),
+            task_status.get("batches"),
+            task_status.get("created"),
         )
         if task_obj.get("completed", False) is True:
             break
@@ -122,11 +121,10 @@ def reindex(
     else:
         count_src_docs = src_index_obj.count()
     count_target_docs = target_index_obj.count()
-    assert count_src_docs == count_target_docs, \
-           "Number of docs in target index not equal to number of docs in src index"
-    logger.info(
-        "Verified number of docs in target index is equal to number of docs in src index"
-    )
+    assert (
+        count_src_docs == count_target_docs
+    ), "Number of docs in target index not equal to number of docs in src index"
+    logger.info("Verified number of docs in target index is equal to number of docs in src index")
 
     # Set target index's alias
     if alias:

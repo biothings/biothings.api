@@ -13,6 +13,7 @@ classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
 import asyncio
+import logging
 import os
 from functools import partial, wraps
 
@@ -235,7 +236,7 @@ def backup(folder=".", archive=None):
         for doc in col.find():
             dump[col.name].append(doc)
     if not archive:
-        archive = "backup_%s_%s.pyobj" % (get_timestamp(), get_random_string())
+        archive = "%s_backup_%s_%s.pyobj" % (db_name, get_timestamp(), get_random_string())
     path = os.path.join(folder, archive)
     dumpobj(dump, path)
     return path
@@ -291,8 +292,9 @@ class ChangeWatcher(object):
                     try:
                         listener.read(evt)
                     except Exception as e:
-                        pass
-                        # logging.error("Can't publish %s to %s: %s" % (evt,listener,e))
+                        # pass
+                        # TODO: the log line below was commented out, uncomment it to see it causes any issue
+                        logging.error("Can't publish %s to %s: %s", evt, listener, e)
 
         return asyncio.ensure_future(do())
 

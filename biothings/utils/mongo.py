@@ -5,7 +5,6 @@ import io
 import logging
 import os
 import time
-from collections import defaultdict
 from collections.abc import Iterable
 from functools import partial, wraps
 
@@ -17,15 +16,14 @@ from pymongo.database import Database as PymongoDatabase
 from pymongo.errors import AutoReconnect
 
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.common import (
+from biothings.utils.common import (  # timesofar,
     dotdict,
     get_compressed_outfile,
     get_random_string,
     iter_n,
     open_compressed_file,
-    timesofar,
 )
-from biothings.utils.hub_db import ChangeWatcher, IDatabase
+from biothings.utils.hub_db import IDatabase
 
 # stub, until set to real config module
 config = None
@@ -52,7 +50,7 @@ def handle_autoreconnect(cls_instance, func):
         while retry < MAX_RETRY:
             try:
                 return func(*args, **kwargs)
-            except AutoReconnect as ex:
+            except AutoReconnect:
                 retry += 1
                 time.sleep(SLEEP_TIME)
 
@@ -181,7 +179,7 @@ def get_conn(server, port):
             uri = "mongodb://{}:{}".format(server, port)
         conn = DatabaseClient(uri)
         return conn
-    except (AttributeError, ValueError) as e:
+    except (AttributeError, ValueError):
         # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
         # (dummy here means there really shouldn't be any call to get_conn()
         # but mongo is too much tied to the code and needs more work to
@@ -344,7 +342,7 @@ def doc_feeder(
     s = s or 0
     e = e or n
     ##logger.info('Retrieving %d documents from database "%s".' % (n, collection.name))
-    t0 = time.time()
+    # t0 = time.time()
     if inbatch:
         doc_li = []
     cnt = 0
@@ -585,7 +583,7 @@ def id_feeder(
             cache_final = os.path.splitext(cache_temp)[0]
             try:
                 os.rename(cache_temp, cache_final)
-            except Exception as e:
+            except Exception:
                 logger.exception("Couldn't set final cache filename, building cache failed")
 
 

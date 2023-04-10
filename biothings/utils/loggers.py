@@ -110,7 +110,8 @@ class EventRecorder(logging.StreamHandler):
     def emit(self, record):
         async def aioemit(msg):
             def recorded(f):
-                res = f.result()
+                # res = f.result()
+                f.result()
 
             fut = loop.run_in_executor(None, partial(self.eventcol.save, msg))
             fut.add_done_callback(recorded)

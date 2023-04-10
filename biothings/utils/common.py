@@ -960,7 +960,6 @@ def run_once():
     has_run = set()
 
     def should_run(identifier=None):
-
         if identifier in has_run:
             return False
 
@@ -1063,7 +1062,7 @@ def get_plugin_name_from_remote_manifest(url):
     try:
         response = requests.get(url=manifest_json_url)
         manifest_json = json.loads(response.text)
-    except Exception as ex:
+    except Exception:
         response = requests.get(url=manifest_yaml_url)
         manifest_json = json.loads(response.text)
     finally:

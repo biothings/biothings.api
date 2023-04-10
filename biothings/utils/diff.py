@@ -5,11 +5,12 @@ import os
 import os.path
 import time
 
-from ..hub.databuild.backend import create_backend
+# from ..hub.databuild.backend import create_backend
 from .backend import DocMongoDBBackend
 from .common import dump, filter_dict, get_timestamp, timesofar
 from .diff_common import full_diff_doc
-from .es import ESIndexer
+
+# from .es import ESIndexer
 from .jsondiff import make as jsondiff
 
 
@@ -66,10 +67,11 @@ def _diff_doc_inner_worker(b1, b2, ids, fastdiff=False, diff_func=full_diff_doc)
     return _updates
 
 
-def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=[]):
+def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=None):
     """if fastdiff is True, only compare the whole doc,
     do not traverse into each attributes.
     """
+    exclude_attrs = exclude_attrs or []
     _updates = []
     for doc1, doc2 in two_docs_iterator(b1, b2, ids):
         assert doc1["_id"] == doc2["_id"], "Different ids: '%s' != '%s'" % (doc1["_id"], doc2["_id"])
@@ -179,6 +181,8 @@ def diff_collections_batches(b1, b2, result_dir, step=10000):
     """
     b2 is new collection, b1 is old collection
     """
+    from biothings.utils.mongo import doc_feeder
+
     DIFFFILE_PATH = "/home/kevinxin/diff_result/"
     DATA_FOLDER = os.path.join(DIFFFILE_PATH, result_dir)
     if not os.path.exists(DATA_FOLDER):

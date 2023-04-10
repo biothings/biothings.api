@@ -89,6 +89,15 @@ class IndexerException(Exception):
     pass
 
 
+@functools.lru_cache()
+def get_doc_type(es_client, index_name):
+    if int(es_client.info()["version"]["number"].split(".")[0]) < 7:
+        mappings = es_client.indices.get_mapping(index_name)
+        mappings = mappings[index_name]["mappings"]
+        return next(iter(mappings.keys()))
+    return None
+
+
 class ESIndex:
     """An Elasticsearch Index Wrapping A Client.
     Counterpart for pymongo.collection.Collection"""
@@ -101,13 +110,14 @@ class ESIndex:
         self.index_name = index_name  # MUST exist
 
     @property
-    @functools.lru_cache()
     def doc_type(self):
-        if int(self.client.info()["version"]["number"].split(".")[0]) < 7:
-            mappings = self.client.indices.get_mapping(self.index_name)
-            mappings = mappings[self.index_name]["mappings"]
-            return next(iter(mappings.keys()))
-        return None
+        return get_doc_type(self.client, self.index_name)
+        # TODO: remove the code block below if the above works
+        # if int(self.client.info()["version"]["number"].split(".")[0]) < 7:
+        #     mappings = self.client.indices.get_mapping(self.index_name)
+        #     mappings = mappings[self.index_name]["mappings"]
+        #     return next(iter(mappings.keys()))
+        # return None
 
     # SUBCLASS NOTE &&
     # BEFORE YOU ADD A METHOD UNDER THIS CLASS:

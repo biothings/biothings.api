@@ -166,11 +166,12 @@ class DocMongoBackend(DocBackendBase):
             return result.matched_count + result.upserted_count
         return 0
 
-    def update_diff(self, diff, extra={}):
+    def update_diff(self, diff, extra=None):
         """update a doc based on the diff returned from diff.diff_doc
         "extra" can be passed (as a dictionary) to add common fields to the
         updated doc, e.g. a timestamp.
         """
+        extra = extra or {}
         _updates = {}
         _add_d = dict(list(diff.get("add", {}).items()) + list(diff.get("update", {}).items()))
         if _add_d or extra:

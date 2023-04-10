@@ -53,7 +53,7 @@ def run_parallel_on_iterable(
     iterable,
     backend_options=None,
     agg_function=agg_by_append,
-    agg_function_init=[],
+    agg_function_init=None,
     chunk_size=1000000,
     num_workers=DEFAULT_THREADS,
     outpath=None,
@@ -115,7 +115,7 @@ def run_parallel_on_iterable(
 
     All other parameters are fed to the backend query.
     """
-
+    agg_function_init = agg_function_init or []
     ret = ParallelResult(agg_function, agg_function_init)
 
     # assert backend_options is correct

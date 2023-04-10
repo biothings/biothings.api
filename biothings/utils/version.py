@@ -186,7 +186,7 @@ def get_version(folder):
         # or if it is tracking anything, or if the alias origin exists
         remote_name = repo.active_branch.tracking_branch().remote_name
         url = repo.remote(remote_name).url
-    except:  # pylint: disable=W0702
+    except Exception:  # pylint: disable=W0702
         # it is possible that the active branch is not tracking anything
         url = None
     try:

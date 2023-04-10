@@ -1,12 +1,30 @@
 [tool.black]
 line-length = 120
 target-version = ['py36', 'py37', 'py38', 'py39', 'py310']
+extend-exclude = [
+    # 3rd party code, don't touch
+    "biothings/utils/jsondiff.py",
+    "biothings/utils/jsonpatch.py",
+    # deprecated code, don't touch
+    "biothings/utils/parallel.py",
+    "biothings/utils/parallel_mp.py",
+    "biothings/utils/shelve.py",
+]
 
 [tool.isort]
 profile = "black"
 combine_as_imports = true
 line_length = 120
 src_paths = ["."]
+extend_skip = [
+    # 3rd party code, don't touch
+    "biothings/utils/jsondiff.py",
+    "biothings/utils/jsonpatch.py",
+    # deprecated code, don't touch
+    "biothings/utils/parallel.py",
+    "biothings/utils/parallel_mp.py",
+    "biothings/utils/shelve.py",
+]
 
 [tool.pytest.ini_options]
 markers = [

@@ -983,8 +983,9 @@ async def %s():
                 except IndexError:
                     # weird though... should have only pid files there...
                     pass
-        finally:
-            return pids
+        except Exception:
+            pass
+        return pids
 
     def get_thread_files(self):
         tids = {}
@@ -1002,8 +1003,9 @@ async def %s():
                 except IndexError:
                     # weird though... should have only pid files there...
                     pass
-        finally:
-            return tids
+        except Exception:
+            pass
+        return tids
 
     def extract_pending_info(self, pending):
         info = pending.fn.args[2]

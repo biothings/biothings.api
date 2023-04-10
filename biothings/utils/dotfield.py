@@ -26,7 +26,7 @@ def merge_object(obj1, obj2):
                 obj1[k] = merge_object(obj1[k], obj2[k])
             else:
                 obj1[k] = obj2[k]
-        except:
+        except Exception:
             obj1[k] = obj2[k]
     return obj1
 
