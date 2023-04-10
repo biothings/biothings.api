@@ -51,7 +51,7 @@ class GAChannel(Channel):
             yield HTTPRequest(
                 "http://www.google-analytics.com/batch",
                 method="POST",
-                body="\n".join(events[i : i + 20]),
+                body="\n".join(events[i : i + 20]),  # noqa: E203
             )
 
 
@@ -78,6 +78,6 @@ class GA4Channel(Channel):
             data = {
                 "client_id": str(payload._cid(self.uid_version)),
                 "user_id": str(payload._cid(1)),
-                "events": events[i : i + 25],
+                "events": events[i : i + 25],  # noqa: E203
             }
             yield HTTPRequest(url, method="POST", body=orjson.dumps(data))

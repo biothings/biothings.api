@@ -203,7 +203,7 @@ def main(app_handlers=None, app_settings=None, use_curl=False):
         launcher.host = options.address
         launcher.settings.update(debug=options.debug)
         launcher.settings.update(autoreload=options.autoreload)
-    except:
+    except Exception:
         pass
 
     launcher.start(options.port)

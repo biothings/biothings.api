@@ -1,3 +1,5 @@
+# flake8: noqa E501
+
 # NOTE
 # This module is referenced by .swagger.py.
 # Currently none of the two files are in use.

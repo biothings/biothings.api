@@ -1,5 +1,3 @@
-from collections import UserDict
-
 from elasticsearch import AsyncElasticsearch, Elasticsearch
 
 

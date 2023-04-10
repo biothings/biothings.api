@@ -3,9 +3,9 @@ class WebAPIValidator:
         # Compatibility
 
         if getattr(config, "API_PREFIX", None) is not None:
-            config.APP_PREFIX = getattr(config, "API_PREFIX")
+            config.APP_PREFIX = config.API_PREFIX
         if getattr(config, "API_VERSION", None) is not None:
-            config.APP_VERSION = getattr(config, "API_VERSION")
+            config.APP_VERSION = config.API_VERSION
 
         assert config.APP_VERSION or config.APP_PREFIX, (
             "Require at least one of the follwing settings:"

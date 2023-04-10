@@ -111,7 +111,7 @@ def get_es_client(hosts=None, async_=False, **settings):
             try:  # assume same-region service access
                 res = requests.get(AWS_META_URL)
                 region = res.json()["region"]
-            except:  # not running in VPC
+            except Exception:  # not running in VPC
                 region = "us-west-2"  # default
 
         # find credentials

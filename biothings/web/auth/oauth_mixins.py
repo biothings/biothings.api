@@ -1,5 +1,5 @@
 import urllib.parse
-from typing import Any, Dict, Optional, Union
+from typing import Any, Union
 
 from tornado.auth import OAuth2Mixin
 from tornado.escape import json_decode

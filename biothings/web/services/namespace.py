@@ -7,12 +7,12 @@ from biothings.utils.info import DevInfo, FieldNote
 from biothings.web import connections
 from biothings.web.analytics.notifiers import Notifier
 from biothings.web.options import OptionsManager as OptionSets
-from biothings.web.query.builder import *
-from biothings.web.query.engine import *
-from biothings.web.query.formatter import *
-from biothings.web.query.pipeline import *
-from biothings.web.services.health import *
-from biothings.web.services.metadata import *
+from biothings.web.query.builder import ESUserQuery, MongoQueryBuilder, SQLQueryBuilder
+from biothings.web.query.engine import MongoQueryBackend, SQLQueryBackend
+from biothings.web.query.formatter import MongoResultFormatter, SQLResultFormatter
+from biothings.web.query.pipeline import MongoQueryPipeline, SQLQueryPipeline
+from biothings.web.services.health import ESHealth, MongoHealth, SQLHealth
+from biothings.web.services.metadata import BiothingsESMetadata, BiothingsMongoMetadata, BiothingsSQLMetadata
 
 logger = logging.getLogger(__name__)
 

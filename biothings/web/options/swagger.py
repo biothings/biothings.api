@@ -34,7 +34,7 @@ def _get_common_parameters(settings, biothing_object, url):
         [("callback", {"type": str, "default": None}), ("email", {"type": str, "default": None})]
     )
     _description_templates = getattr(settings, "KWARG_DESCRIPTIONS", {})
-    for param, description in _common_params_list:
+    for param, _description in _common_params_list:
         _description_template_object = _description_templates.get(param)
         _param_display = _description_template_object.get("name")
         _ret.update(
@@ -139,21 +139,27 @@ def _get_schemas(settings, biothing_object, url):
 
 
 def _schema_types(t):
-    if t == type(bool()):
+    # if t == type(bool()):
+    if issubclass(t, bool):
         return "boolean"
-    if t == type(int()):
+    # if t == type(int()):
+    if issubclass(t, int):
         return "integer"
     return "string"
 
 
 def _string_types(t):
-    if t == type(str()):
+    # if t == type(str()):
+    if issubclass(t, str):
         return " Type: string."
-    elif t == type(int()):
+    # elif t == type(int()):
+    elif issubclass(t, int):
         return " Type: integer."
-    elif t == type([]):
+    # elif t == type([]):
+    elif issubclass(t, list):
         return " Type: string (list)."
-    elif t == type(bool()):
+    # elif t == type(bool()):
+    elif issubclass(t, bool):
         return " Type: boolean."
     return " Type: string."
 
@@ -161,11 +167,14 @@ def _string_types(t):
 def _param_default_values(d):
     if not d:
         return " Default: None."
-    if type(d) == type(int()) or type(d) == type(str()):
+    # if type(d) == type(int()) or type(d) == type(str()):
+    if isinstance(d, (int, str)):
         return " Default: {}.".format(d)
-    elif type(d) == type(True) and d == True:
+    # elif type(d) == type(True) and d:
+    elif isinstance(d, bool) and d:
         return " Default: true."
-    elif type(d) == type(False) and d == False:
+    # elif type(d) == type(False) and not d:
+    elif isinstance(d, bool) and not d:
         return " Default: false."
     return " Default: None."
 

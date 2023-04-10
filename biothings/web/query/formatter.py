@@ -298,7 +298,7 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(obj, (dict, Doc)):
             for field in fields or []:
                 if field.startswith(path):
-                    key = field[len(path) :].lstrip(".")
+                    key = field[len(path) :].lstrip(".")  # noqa: E203
                     if "." not in key and key not in obj:
                         obj[key] = None
 
@@ -311,7 +311,7 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(obj, (dict, Doc)):
             for field in fields:
                 if field.startswith(path):
-                    key = field[len(path) :].lstrip(".")
+                    key = field[len(path) :].lstrip(".")  # noqa: E203
                     if key in obj and not isinstance(obj[key], list):
                         obj[key] = [obj[key]] if obj[key] is not None else []
 

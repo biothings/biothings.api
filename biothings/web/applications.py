@@ -220,7 +220,7 @@ try:
                     app.biothings.handlers[pattern] = route
             return app
 
-except Exception as exc:
+except Exception as exc:  # noqa F841
 
     class FlaskBiothingsAPI:
         @classmethod
@@ -254,7 +254,7 @@ try:
     #             app.get(*route.args, **route.kwargs)(route)
     #         return app
 
-except Exception as exc:
+except Exception as exc:  # noqa F841
 
     class FastAPIBiothingsAPI:
         @classmethod

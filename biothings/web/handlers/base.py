@@ -201,7 +201,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         try:  # merge exception info
             exception = kwargs["exc_info"][1]
             message.update(exception.args[0])  # <-
-        except:
+        except Exception:
             pass
 
         self.finish(message)

@@ -8,4 +8,4 @@ are available in `biothings.web.services.query` namespace via import.
 
 """
 
-from biothings.web.query import *
+from biothings.web.query import *  # noqa F403 F401
