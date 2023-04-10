@@ -41,7 +41,6 @@ from ..databuild.backend import LinkTargetDocMongoBackend, SourceDocMongoBackend
 from ..dataload.uploader import ResourceNotReady
 from .backend import create_backend
 from .buildconfig import AutoBuildConfig
-from .differ import set_pending_to_diff
 from .mapper import TransparentMapper
 
 logging = btconfig.logger
@@ -74,12 +73,13 @@ class DataBuilder(object):
         target_backend,
         log_folder,
         doc_root_key="root",
-        mappers=[],
+        mappers=None,
         default_mapper_class=TransparentMapper,
         sources=None,
         target_name=None,
         **kwargs,
     ):
+        mappers = mappers or []
         self.init_state()
         self.build_name = build_name
         self.sources = sources
@@ -165,7 +165,8 @@ class DataBuilder(object):
     def build_config(self, value):
         self._state["build_config"] = value
 
-    def prepare(self, state={}):
+    def prepare(self, state=None):
+        state = state or {}
         if self.prepared:
             return
         if state:
@@ -530,7 +531,7 @@ class DataBuilder(object):
         target_name=None,
         force=False,
         ids=None,
-        steps=["merge", "post", "metadata"],
+        steps=("merge", "post", "metadata"),
         job_manager=None,
         *args,
         **kwargs,
@@ -550,7 +551,9 @@ class DataBuilder(object):
         """
         assert job_manager
         # check what to do
-        if type(steps) == str:
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
             steps = [steps]
         self.t0 = time.time()
         self.check_ready(force)
@@ -683,7 +686,7 @@ class DataBuilder(object):
         except KeyError:
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
-    async def merge_sources(self, source_names, steps=["merge", "post"], batch_size=100000, ids=None, job_manager=None):
+    async def merge_sources(self, source_names, steps=("merge", "post"), batch_size=100000, ids=None, job_manager=None):
         """
         Merge resources from given source_names or from build config.
         Identify root document sources from the list to first process them.
@@ -691,7 +694,9 @@ class DataBuilder(object):
         """
         assert job_manager
         # check what to do
-        if type(steps) == str:
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
             steps = [steps]
         do_merge = "merge" in steps
         do_post_merge = "post" in steps
@@ -719,7 +724,8 @@ class DataBuilder(object):
 
         async def merge(src_names):
             jobs = []
-            for i, src_name in enumerate(src_names):
+            # for i, src_name in enumerate(src_names):
+            for src_name in src_names:
                 await asyncio.sleep(0.0)
                 job = self.merge_source(src_name, batch_size=batch_size, ids=ids, job_manager=job_manager)
                 job = asyncio.ensure_future(job)
@@ -1535,7 +1541,7 @@ class BuilderManager(BaseManager):
         res = {"build_configs": configs}
         # dict contains an actual class, non-serializable, so adjust:
         bclasses = copy.deepcopy(self.builder_classes)
-        for k, v in bclasses.items():
+        for _k, v in bclasses.items():
             v.pop("class")
         res["builder_classes"] = bclasses
         return res
@@ -1619,11 +1625,13 @@ class BuilderManager(BaseManager):
         name,
         doc_type,
         sources,
-        roots=[],
+        roots=None,
         builder_class=None,
-        params={},
+        params=None,
         archived=False,
     ):
+        roots = roots or []
+        params = params or {}
         col = get_src_build_config()
         # check conf doesn't exist yet
         if [d for d in col.find({"_id": name})]:
@@ -1635,11 +1643,13 @@ class BuilderManager(BaseManager):
         name,
         doc_type,
         sources,
-        roots=[],
+        roots=None,
         builder_class=None,
-        params={},
+        params=None,
         archived=False,
     ):
+        roots = roots or []
+        params = params or {}
         self.upsert_build_conf(name, doc_type, sources, roots, builder_class, params, archived)
 
     def delete_build_configuration(self, name):

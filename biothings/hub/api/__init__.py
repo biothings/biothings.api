@@ -226,7 +226,8 @@ def generate_handler(shell, name, command_defs):
     routes = []
     # when suffix present, it gives a new handler
     # so method don't get mixed (actually overwritten) together with non-suffixed
-    for i, (suffix, by_method) in enumerate(by_suffix.items()):
+    # for i, (suffix, by_method) in enumerate(by_suffix.items()):
+    for suffix, by_method in by_suffix.items():
         confdict = {}
         methods = []
         # merge all method into same handler
@@ -272,12 +273,14 @@ def create_handlers(shell, command_defs):
     return routes
 
 
-def generate_api_routes(shell, commands, settings={}):
+# def generate_api_routes(shell, commands, settings={}):
+def generate_api_routes(shell, commands):
     routes = create_handlers(shell, commands)
     return routes
 
 
-def start_api(app, port, check=True, wait=5, retry=5, settings={}):
+def start_api(app, port, check=True, wait=5, retry=5, settings=None):
+    settings = settings or {}
     if check:
         # check if port is used
         def check_socket(host, port):

@@ -9,6 +9,8 @@ extend-exclude = [
     "biothings/utils/parallel.py",
     "biothings/utils/parallel_mp.py",
     "biothings/utils/shelve.py",
+    "biothings/hub/dataload/sync.py",
+    "biothings/hub/dataload/validator.py",
 ]
 
 [tool.isort]
@@ -24,6 +26,8 @@ extend_skip = [
     "biothings/utils/parallel.py",
     "biothings/utils/parallel_mp.py",
     "biothings/utils/shelve.py",
+    "biothings/hub/dataload/sync.py",
+    "biothings/hub/dataload/validator.py",
 ]
 
 [tool.pytest.ini_options]

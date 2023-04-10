@@ -1,5 +1,4 @@
 import gzip
-import os
 from os import listdir
 from os.path import isdir, isfile, join
 from tempfile import TemporaryDirectory, mkstemp

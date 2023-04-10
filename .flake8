@@ -8,5 +8,7 @@ exclude =
   biothings/utils/parallel.py,     # deprecated code, don't touch
   biothings/utils/parallel_mp.py,  # deprecated code, don't touch
   biothings/utils/shelve.py,       # deprecated code, don't touch
+  biothings/hub/dataload/sync.py,  # deprecated code, don't touch
+  biothings/hub/dataload/validator.py, # deprecated code, don't touch
   tests/snapshots,
   .svn,CVS,.bzr,.hg,.git,__pycache__,.tox,.eggs,*.egg

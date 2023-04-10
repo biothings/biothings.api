@@ -1,4 +1,3 @@
-import asyncio
 from collections import UserDict
 
 __all__ = ["DEFAULT_INDEX_SETTINGS", "DEFAULT_INDEX_MAPPINGS", "IndexMappings", "IndexSettings"]

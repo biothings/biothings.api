@@ -414,7 +414,7 @@ class BaseSourceUploader(object):
 
     async def load(
         self,
-        steps=["data", "post", "master", "clean"],  # noqa: B006
+        steps=("data", "post", "master", "clean"),
         force=False,
         batch_size=10000,
         job_manager=None,
@@ -429,8 +429,13 @@ class BaseSourceUploader(object):
         """
         try:
             # check what to do
-            if type(steps) == str:
+            if isinstance(steps, tuple):
+                steps = list(
+                    steps
+                )  # may not be necessary, but previous steps default is a list, so let's be consistent
+            elif isinstance(steps, str):
                 steps = steps.split(",")
+
             update_data = "data" in steps
             update_master = "master" in steps
             post_update_data = "post" in steps

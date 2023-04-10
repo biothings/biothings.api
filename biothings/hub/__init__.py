@@ -656,7 +656,7 @@ class HubServer(object):
         auto_archive_manager = AutoArchiveManager(
             build_manager=self.managers["build_manager"],
             job_manager=self.managers["job_manager"],
-            auto_archive_config=getattr(config, "AUTO_ARCHIVE_CONFIG"),
+            auto_archive_config=config.AUTO_ARCHIVE_CONFIG,
             **args,
         )
         auto_archive_manager.configure()

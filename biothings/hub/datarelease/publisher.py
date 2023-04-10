@@ -355,7 +355,7 @@ class SnapshotPublisher(BasePublisher):
     def run_pre_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
         return self.run_pre_post("snapshot", "pre", snapshot_name, repo_conf, build_doc)
 
-    def publish(self, snapshot, build_name=None, previous_build=None, steps=["pre", "meta", "post"]):
+    def publish(self, snapshot, build_name=None, previous_build=None, steps=("pre", "meta", "post")):
         """
         Publish snapshot metadata to S3. If snapshot repository is of type "s3", data isn't actually
         uploaded/published since it's already there on s3. If type "fs", some "pre" steps can be added
@@ -383,7 +383,10 @@ class SnapshotPublisher(BasePublisher):
                 "Snapshot '%s' found in more than one builds: %s." % (snapshot, [d["_id"] for d in bdoc])
                 + " Specify which one with 'build_name'"
             )
-        if type(steps) == str:
+
+        if isinstance(steps, tuple):
+            steps = list(steps)    # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif type(steps) == str:
             steps = [steps]
         if not bdoc:
             raise PublisherException(f"No build document found with a snapshot name '{snapshot}' associated to it")
@@ -795,7 +798,7 @@ class DiffPublisher(BasePublisher):
         self,
         build_name,
         previous_build=None,
-        steps=["pre", "reset", "upload", "meta", "post"],
+        steps=("pre", "reset", "upload", "meta", "post"),
     ):
         """
         Publish diff files and metadata about the diff files, release note, etc... on s3.
@@ -821,7 +824,9 @@ class DiffPublisher(BasePublisher):
             previous_build = dkeys.pop()
         assert previous_build, "No previous build could be found in order to pick correct diff release"
         # check what to do
-        if type(steps) == str:
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif type(steps) == str:
             steps = [steps]
 
         # instantiate publishing environment
@@ -1327,7 +1332,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         publisher_env,
         build_name,
         previous_build=None,
-        steps=["pre", "reset", "upload", "meta", "post"],
+        steps=("pre", "reset", "upload", "meta", "post"),
     ):
         if publisher_env not in self.release_config.get("env", {}):
             raise ValueError(f"Unknonw release environment '{publisher_env}'")
@@ -1344,7 +1349,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         snapshot,
         build_name=None,
         previous_build=None,
-        steps=["pre", "meta", "post"],
+        steps=("pre", "meta", "post"),
     ):
         if publisher_env not in self.release_config.get("env", {}):
             raise ValueError(f"Unknonw release environment '{publisher_env}'")

@@ -1,6 +1,3 @@
-import os
-import subprocess
-
 import biothings.hub.dataload.dumper as dumper
 from biothings.utils.hub_db import get_data_plugin
 

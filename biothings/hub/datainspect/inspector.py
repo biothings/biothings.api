@@ -321,8 +321,10 @@ class InspectorManager(BaseManager):
             self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider), e))
             raise
 
-    def flatten(self, data_provider, mode=["type", "stats"], do_validate=True):
-        if isinstance(mode, str):
+    def flatten(self, data_provider, mode=("type", "stats"), do_validate=True):
+        if isinstance(mode, tuple):
+            mode = list(mode)  # may not be necessary, but previous mode default is a list, so let's be consistent
+        elif isinstance(mode, str):
             mode = [mode]
 
         data_provider_type, registerer_obj, backend_provider, _ = self.get_backend_provider_info(data_provider)

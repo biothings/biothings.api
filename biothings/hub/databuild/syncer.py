@@ -165,7 +165,7 @@ class BaseSyncer(object):
         mode=None,
         force=False,
         target_backend=None,
-        steps=["mapping", "content", "meta", "post"],
+        steps=("mapping", "content", "meta", "post"),
         debug=False,
     ):
         """
@@ -175,7 +175,9 @@ class BaseSyncer(object):
         If target_backend (bt.databbuild.backend.create_backend() notation), then it will replace "old" (that is, the one
         being synced)
         """
-        if isinstance(steps, str):
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
             steps = [steps]
         assert self.old and self.new, "'self.old' and 'self.new' must be set to old/new collections"
         self.target_backend = target_backend
@@ -404,7 +406,7 @@ class BaseSyncer(object):
         batch_size=10000,
         mode=None,
         target_backend=None,
-        steps=["mapping", "content", "meta", "post"],
+        steps=("mapping", "content", "meta", "post"),
         debug=False,
     ):
         """wrapper over sync_cols() coroutine, return a task"""
@@ -500,10 +502,11 @@ def sync_mongo_jsondiff_worker(
     cnt,
     force=False,
     selfcontained=False,
-    metadata={},
+    metadata=None,
     debug=False,
 ):
     """Worker to sync data between a new and an old mongo collection"""
+    metadata = metadata or {}
     # check if diff files was already synced
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     synced_file = "%s.synced" % diff_file
@@ -562,9 +565,18 @@ def sync_mongo_jsondiff_worker(
 
 
 def sync_es_jsondiff_worker(
-    diff_file, es_config, new_db_col_names, batch_size, cnt, force=False, selfcontained=False, metadata={}, debug=False
+    diff_file,
+    es_config,
+    new_db_col_names,
+    batch_size,
+    cnt,
+    force=False,
+    selfcontained=False,
+    metadata=None,
+    debug=False,
 ):
     """Worker to sync data between a new mongo collection and an elasticsearch index"""
+    metadata = metadata or {}
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
     synced_file = "%s.synced" % diff_file
@@ -663,9 +675,10 @@ def sync_es_coldhot_jsondiff_worker(
     cnt,
     force=False,
     selfcontained=False,
-    metadata={},
+    metadata=None,
     debug=False,
 ):
+    metadata = metadata or {}
     res = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
     # check if diff files was already synced
     synced_file = "%s.synced" % diff_file
@@ -878,9 +891,13 @@ class SyncerManager(BaseManager):
         batch_size=10000,
         mode=None,
         target_backend=None,
-        steps=["mapping", "content", "meta", "post"],
+        steps=("mapping", "content", "meta", "post"),
         debug=False,
     ):
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
+            steps = [steps]
         if hasattr(btconfig, "SYNC_BATCH_SIZE"):
             batch_size = btconfig.SYNC_BATCH_SIZE
             self.logger.debug("Overriding sync batch_size default to %s" % batch_size)

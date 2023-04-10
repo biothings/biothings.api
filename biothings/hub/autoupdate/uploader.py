@@ -1,24 +1,21 @@
-import datetime
-import os
 import asyncio
+import datetime
 import json
-import random
-import string
-import re
+import os
 from functools import partial
 from typing import Optional
 
-from biothings import config as btconfig
-import biothings.hub.dataload.uploader as uploader
-from biothings.utils.backend import DocESBackend
-from biothings.utils.common import get_random_string
-from biothings.utils.es import IndexerException
 from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
+import biothings.hub.dataload.uploader as uploader
+from biothings import config as btconfig
+from biothings.utils.backend import DocESBackend
+from biothings.utils.common import get_random_string
+from biothings.utils.es import IndexerException
+
 
 class BiothingsUploader(uploader.BaseSourceUploader):
-
     name = None
 
     # Specify the backend this uploader should work with. Must be defined before instantiation
@@ -44,10 +41,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 self._target_backend = self.__class__.TARGET_BACKEND()
             else:
                 self._target_backend = self.__class__.TARGET_BACKEND
-            assert type(
-                self._target_backend
-            ) == DocESBackend, "Only ElasticSearch backend is supported (got %s)" % type(
-                self._target_backend)
+            assert (
+                type(self._target_backend) == DocESBackend
+            ), "Only ElasticSearch backend is supported (got %s)" % type(self._target_backend)
         return self._target_backend
 
     @property
@@ -69,16 +65,11 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         self.prepare_src_dump()  # load infor from src_dump
         release = self.src_doc.get("download", {}).get("release")
         assert release, "Can't find release information in src_dump document"
-        build_meta = json.load(
-            open(os.path.join(self.data_folder, "%s.json" % release)))
+        build_meta = json.load(open(os.path.join(self.data_folder, "%s.json" % release)))
         if build_meta["type"] == "full":
-            res = await self.restore_snapshot(build_meta,
-                                                   job_manager=job_manager,
-                                                   **kwargs)
+            res = await self.restore_snapshot(build_meta, job_manager=job_manager, **kwargs)
         elif build_meta["type"] == "incremental":
-            res = await self.apply_diff(build_meta,
-                                             job_manager=job_manager,
-                                             **kwargs)
+            res = await self.apply_diff(build_meta, job_manager=job_manager, **kwargs)
         return res
 
     def get_snapshot_repository_config(self, build_meta):
@@ -98,27 +89,27 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         Used by self._get_repository, self._create_repository
         """
         es_conf = {
-            'timeout': 120,
-            'max_retries': 3,
-            'retry_on_timeout': False,
+            "timeout": 120,
+            "max_retries": 3,
+            "retry_on_timeout": False,
         }
         if auth:
-            # see https://git.io/JoAE4 on BioThings.API Wiki 
-            if auth['type'] == 'aws':
+            # see https://git.io/JoAE4 on BioThings.API Wiki
+            if auth["type"] == "aws":
                 auth_args = (
-                    auth['properties']['access_id'],
-                    auth['properties']['secret_key'],
-                    auth['properties']['region'],
-                    'es'
+                    auth["properties"]["access_id"],
+                    auth["properties"]["secret_key"],
+                    auth["properties"]["region"],
+                    "es",
                 )
-                es_conf['http_auth'] = AWS4Auth(*auth_args)
-                es_conf['connection_class'] = RequestsHttpConnection
-            elif auth['type'] == 'http':
+                es_conf["http_auth"] = AWS4Auth(*auth_args)
+                es_conf["connection_class"] = RequestsHttpConnection
+            elif auth["type"] == "http":
                 auth_args = (
-                    auth['properties']['username'],
-                    auth['properties']['password'],
+                    auth["properties"]["username"],
+                    auth["properties"]["password"],
                 )
-                es_conf['http_auth'] = auth_args
+                es_conf["http_auth"] = auth_args
             else:
                 raise RuntimeError("Auth settings not recognized")
         es = Elasticsearch(es_host, **es_conf)
@@ -132,8 +123,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             repo = None
         return repo
 
-    def _create_repository(self, es_host: str, repo_name: str, repo_settings: dict,
-                           auth: Optional[dict]):
+    def _create_repository(self, es_host: str, repo_name: str, repo_settings: dict, auth: Optional[dict]):
         """
         Create Elasticsearch Snapshot repository
         """
@@ -145,13 +135,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         idxr = self.target_backend.target_esidxer
         es_host = idxr.es_host
         self.logger.debug("Got ES Host: %s", es_host)
-        repo_name, repo_settings = self.get_snapshot_repository_config(
-            build_meta)
+        repo_name, repo_settings = self.get_snapshot_repository_config(build_meta)
         self.logger.debug("Got repo name: %s", repo_name)
         self.logger.debug("With settings: %s", repo_settings)
         # pull authentication settings from config
         auth = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
-            'auth', btconfig.STANDALONE_CONFIG['_default'].get('auth')
+            "auth", btconfig.STANDALONE_CONFIG["_default"].get("auth")
         )
         if auth:
             self.logger.debug("Obtained Auth settings, using them.")
@@ -163,22 +152,19 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         # populate additional settings
         additional_settings = btconfig.STANDALONE_CONFIG.get(self.name, {}).get(
-            'repo_settings', btconfig.STANDALONE_CONFIG['_default'].get('repo_settings')
+            "repo_settings", btconfig.STANDALONE_CONFIG["_default"].get("repo_settings")
         )
         if additional_settings:
             self.logger.debug("Adding additional settings: %s", additional_settings)
-            repo_settings['settings'].update(additional_settings)
+            repo_settings["settings"].update(additional_settings)
 
-        if 'client' not in repo_settings['settings']:
-            self.logger.warning(
-                "\"client\" not set in repository settings. The 'default' "
-                "client will be used."
-            )
+        if "client" not in repo_settings["settings"]:
+            self.logger.warning("\"client\" not set in repository settings. The 'default' " "client will be used.")
             self.logger.warning(
                 "Make sure keys are in the Elasticsearch keystore. "
                 "If you are trying to work with EOL versions of "
                 "Elasticsearch, or if you intentionally enabled "
-                "allow_insecure_settings, set \"access_key\", \"secret_key\","
+                'allow_insecure_settings, set "access_key", "secret_key",'
                 " and potentially \"region\" in additional 'repo_settings'."
             )
 
@@ -189,9 +175,8 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             if existing_repo_settings[repo_name] != repo_settings:
                 # TODO update comparison logic
                 self.logger.info(
-                    f"Repository '{repo_name}' was found but settings are different, "
-                    "it may need to be created again"
-                    )
+                    f"Repository '{repo_name}' was found but settings are different, " "it may need to be created again"
+                )
                 self.logger.debug("Existing setting: %s", existing_repo_settings[repo_name])
                 self.logger.debug("Required (new) setting: %s" % repo_settings)
             else:
@@ -204,11 +189,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 self._create_repository(es_host, repo_name, repo_settings, auth)
             except Exception as e:
                 self.logger.info("Creation failed: %s", e)
-                if 'url' in repo_settings["settings"]:
-                    raise uploader.ResourceError("Could not create snapshot repository. Check elasticsearch.yml configuration "
-                                                 + "file, you should have a line like this: "
-                                                 + 'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"]
-                                                 + "allowing snapshot to be restored from this URL. Error was: %s" % e)
+                if "url" in repo_settings["settings"]:
+                    raise uploader.ResourceError(
+                        "Could not create snapshot repository. Check elasticsearch.yml configuration "
+                        + "file, you should have a line like this: "
+                        + 'repositories.url.allowed_urls: "%s*" ' % repo_settings["settings"]["url"]
+                        + "allowing snapshot to be restored from this URL. Error was: %s" % e
+                    )
                 else:
                     raise uploader.ResourceError("Could not create snapshot repository: %s" % e)
 
@@ -228,7 +215,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 base_index_name = f"{snapshot_name}_{ts}"
             if len(base_index_name) >= 255:
                 raise RuntimeError("Deterministic part of index name already too long")
-            
+
             index_name = base_index_name
             append_random_str = False
             while True:
@@ -259,27 +246,24 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 self.logger.error("Error while launching %s: %s" % (step, e))
                 raise e
 
-        self.logger.info("Restoring snapshot '%s' to index '%s' on host '%s'" %
-                         (snapshot_name, index_name, idxr.es_host))
+        self.logger.info(
+            "Restoring snapshot '%s' to index '%s' on host '%s'" % (snapshot_name, index_name, idxr.es_host)
+        )
         # ESIndexer.restore is synchronous but should return relatively
         # quickly
         job = await job_manager.defer_to_thread(
-            pinfo,
-            partial(idxr.restore,
-                    repo_name,
-                    snapshot_name,
-                    index_name,
-                    purge=self.__class__.AUTO_PURGE_INDEX))
-        job.add_done_callback(partial(done_callback, step='restore'))
+            pinfo, partial(idxr.restore, repo_name, snapshot_name, index_name, purge=self.__class__.AUTO_PURGE_INDEX)
+        )
+        job.add_done_callback(partial(done_callback, step="restore"))
         await job
 
         def update_alias_and_delete_old_indices():
             # Find indices which starts with snapshot_name, and sort by creation date and order by asc
             old_indices = []
             try:
-                old_indices.extend(idxr.get_indice_names_by_settings(
-                    index=alias_name + "*", sort_by_creation_date=True, reverse=False
-                ))
+                old_indices.extend(
+                    idxr.get_indice_names_by_settings(index=alias_name + "*", sort_by_creation_date=True, reverse=False)
+                )
             except Exception:
                 pass
             self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
@@ -289,8 +273,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 old_indices.remove(index_name)
             try:
                 idxr.update_alias(alias_name, index_name)
-                self.logger.info(f"Alias '{alias_name}' updated to "
-                                 f"associate with index '{index_name}'")
+                self.logger.info(f"Alias '{alias_name}' updated to " f"associate with index '{index_name}'")
             except IndexerException as e:
                 self.logger.warning(f"Alias index swap ran into a problem {e}")
                 self.logger.warning(f"Deleting new index '{index_name}'")
@@ -318,8 +301,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     self.logger.info("Deleted old index '%s'" % rm_idx_name)
             except Exception:  # nosec
                 # just inform the user that deletion failed, not that harmful
-                self.logger.error("Failed to delete old indices, try deleting "
-                                f"{old_indices} manually")
+                self.logger.error("Failed to delete old indices, try deleting " f"{old_indices} manually")
 
             # restore indexer's replica to original value
             idxr.set_internal_number_of_replicas(original_number_of_replicas)
@@ -327,24 +309,25 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         while True:
             status_info = get_status_info()
             status = status_info["status"]
-            self.logger.info("Recovery status for index '%s': %s" %
-                             (index_name, status_info))
+            self.logger.info("Recovery status for index '%s': %s" % (index_name, status_info))
             if status in ["INIT", "IN_PROGRESS"]:
-                await asyncio.sleep(
-                    getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
+                await asyncio.sleep(getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
-                    self.logger.info("Snapshot '%s' successfully restored to index '%s' (host: '%s')" %
-                                     (snapshot_name, index_name, idxr.es_host), extra={"notify": True})
+                    self.logger.info(
+                        "Snapshot '%s' successfully restored to index '%s' (host: '%s')"
+                        % (snapshot_name, index_name, idxr.es_host),
+                        extra={"notify": True},
+                    )
                     if use_no_downtime_method:
-                        job = await job_manager.defer_to_thread(
-                            pinfo={}, func=update_alias_and_delete_old_indices
-                        )
-                        job.add_done_callback(partial(done_callback, step='alias'))
+                        job = await job_manager.defer_to_thread(pinfo={}, func=update_alias_and_delete_old_indices)
+                        job.add_done_callback(partial(done_callback, step="alias"))
                         await job
                 else:
-                    e = uploader.ResourceError("Failed to restore snapshot '%s' on index '%s', status: %s" %
-                                               (snapshot_name, idxr._index, status))
+                    e = uploader.ResourceError(
+                        "Failed to restore snapshot '%s' on index '%s', status: %s"
+                        % (snapshot_name, idxr._index, status)
+                    )
                     self.logger.error(e)
                     raise e
                 break
@@ -352,26 +335,27 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         return self.target_backend.count()
 
     async def apply_diff(self, build_meta, job_manager, **kwargs):
-        self.logger.info("Applying incremental update from diff folder: %s" %
-                         self.data_folder)
+        self.logger.info("Applying incremental update from diff folder: %s" % self.data_folder)
         meta = json.load(open(os.path.join(self.data_folder, "metadata.json")))
         # old: index we want to update
-        old = (self.target_backend.target_esidxer.es_host,
-               meta["old"]["backend"],
-            # TODO 
-            # target name can be release index name, 
+        old = (
+            self.target_backend.target_esidxer.es_host,
+            meta["old"]["backend"],
+            # TODO
+            # target name can be release index name,
             # maybe should refer to old backend name
-            #----------------------------------------
+            # ----------------------------------------
             #  self.target_backend.target_name,
-            #----------------------------------------
-               self.target_backend.target_esidxer._doc_type)
+            # ----------------------------------------
+            self.target_backend.target_esidxer._doc_type,
+        )
         # new: index's data we will reach once updated (just informative)
-        new = (self.target_backend.target_esidxer.es_host,
-               meta["new"]["backend"],
-               self.target_backend.target_esidxer._doc_type)
-        await self.syncer_func(old_db_col_names=old,
-                                    new_db_col_names=new,
-                                    diff_folder=self.data_folder)
+        new = (
+            self.target_backend.target_esidxer.es_host,
+            meta["new"]["backend"],
+            self.target_backend.target_esidxer._doc_type,
+        )
+        await self.syncer_func(old_db_col_names=old, new_db_col_names=new, diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)
         return self.target_backend.count()
 

@@ -20,7 +20,7 @@ from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import get_previous_collection, get_target_db, id_feeder
-from biothings.utils.serializer import to_json, to_json_file
+from biothings.utils.serializer import to_json_file
 
 from .backend import create_backend, merge_src_build_metadata
 
@@ -148,7 +148,7 @@ class BaseDiffer(object):
         batch_size,
         steps,
         mode=None,
-        exclude=[],
+        exclude=None,
     ):
         """
         Compare new with old collections and produce diff files. Root keys can be excluded from
@@ -172,6 +172,7 @@ class BaseDiffer(object):
         mode: 'purge' will remove any existing files for this comparison while 'resume' will happily ignore
               existing data and to whatever it's requested (like running steps="post" on existing diff folder...)
         """
+        exclude = exclude or []
         # these ones are used to point to the build doc, not the underlying backned
         # (ie. if link builder has been used, it refers a colleciton in src_db, but
         # we need the metadata from the build doc too)
@@ -181,7 +182,10 @@ class BaseDiffer(object):
         content_new = create_backend(new_db_col_names, follow_ref=True)
         content_old = create_backend(old_db_col_names, follow_ref=True)
         # check what to do
-        if type(steps) == str:
+
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
             steps = [steps]
 
         diff_folder = generate_folder(btconfig.DIFF_PATH, old_db_col_names, new_db_col_names)
@@ -542,11 +546,18 @@ class BaseDiffer(object):
         old_db_col_names,
         new_db_col_names,
         batch_size=100000,
-        steps=["content", "mapping", "reduce", "post"],
+        steps=("content", "mapping", "reduce", "post"),
         mode=None,
-        exclude=[],
+        exclude=None,
     ):
         """wrapper over diff_cols() coroutine, return a task"""
+        exclude = exclude or []
+
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
+            steps = [steps]
+
         self.setup_log(old_db_col_names, new_db_col_names)
         job = asyncio.ensure_future(
             self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude)
@@ -561,8 +572,9 @@ class BaseDiffer(object):
             )
         return new_doc.get("_meta", {})
 
-    def post_diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=[]):
+    def post_diff_cols(self, old_db_col_names, new_db_col_names, batch_size, steps, mode=None, exclude=None):
         """Post diff process hook. This coroutine will in a dedicated thread"""
+        exclude = exclude or []
         return
 
 
@@ -600,7 +612,7 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
         batch_size,
         steps,
         mode=None,
-        exclude=[],
+        exclude=None,
     ):
         """
         Post-process the diff files by adjusting some jsondiff operation. Here's the process.
@@ -647,6 +659,7 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
             => the deletion must converted into specific "remove" jsondiff operations, for the root keys found in prevd on not in coldd
                (in that case: [{'op':'remove', 'path':'/D'}], and not "C" as C is in premerge)
         """
+        exclude = exclude or []
         # we should be able to find a cold_collection definition in the src_build doc
         # and it should be the same for both old and new
         old_doc = get_src_build().find_one({"_id": old_db_col_names})
@@ -721,7 +734,8 @@ class ColdHotJsonDifferBase(ColdHotDiffer):
                 md5 = md5sum(diff_file)
                 # find info to adjust md5sum
                 found = False
-                for i, df in enumerate(self.metadata["diff"]["files"]):
+                # for i, df in enumerate(self.metadata["diff"]["files"]):
+                for df in self.metadata["diff"]["files"]:
                     if df["name"] == name:
                         found = True
                         break
@@ -765,9 +779,10 @@ def diff_worker_new_vs_old(
     batch_num,
     diff_folder,
     diff_func,
-    exclude=[],
+    exclude=None,
     selfcontained=False,
 ):
+    exclude = exclude or []
     new = create_backend(new_db_col_names, follow_ref=True)
     old = create_backend(old_db_col_names, follow_ref=True)
     docs_common = old.mget_from_ids(id_list_new)
@@ -1000,7 +1015,7 @@ class DifferManager(BaseManager):
             raise DifferException("diff_type must be defined in %s" % klass)
         self.register[klass.diff_type] = partial(klass, log_folder=btconfig.LOG_FOLDER, job_manager=self.job_manager)
 
-    def configure(self, partial_differs=[JsonDiffer, SelfContainedJsonDiffer]):
+    def configure(self, partial_differs=(JsonDiffer, SelfContainedJsonDiffer)):
         for pdiffer in partial_differs:
             self.register_differ(pdiffer)
 
@@ -1044,9 +1059,9 @@ class DifferManager(BaseManager):
         old,
         new,
         batch_size=100000,
-        steps=["content", "mapping", "reduce", "post"],
+        steps=("content", "mapping", "reduce", "post"),
         mode=None,
-        exclude=["_timestamp"],
+        exclude=("_timestamp",),
     ):
         """
         Run a diff to compare old vs. new collections. using differ algorithm diff_type. Results are stored in
@@ -1055,9 +1070,15 @@ class DifferManager(BaseManager):
         - count: will count root keys in new collections and stores them as statistics.
         - content: will diff the content between old and new. Results (diff files) format depends on diff_type
         """
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
+            steps = [steps]
         # Note: _timestamp is excluded by default since it's an internal field (and exists in mongo doc,
         #       but not in ES "_source" document (there's a root timestamp under control of
         #       _timestamp : {enable:true} in mapping
+        if isinstance(exclude, tuple):
+            exclude = list(exclude)
         try:
             differ = self[diff_type]
             old = old or get_previous_collection(new)
@@ -1077,7 +1098,7 @@ class DifferManager(BaseManager):
                     # a release note should be auto generated
                     set_pending_to_release_note(new)
                 except Exception as e:
-                    self.logger.error("Error during diff: %s" % e)
+                    self.logger.error("Error during diff: %s", e)
                     raise
 
             job.add_done_callback(diffed)

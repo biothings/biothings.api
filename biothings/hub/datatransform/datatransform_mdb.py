@@ -5,13 +5,11 @@ using conversions described in a networkx graph.
 # pylint: disable=E0401, E0611
 import copy
 
-from networkx import all_simple_paths, all_shortest_paths, nx
+from networkx import all_shortest_paths, all_simple_paths, nx
 from pymongo.collation import Collation
-from biothings.hub.datatransform import DataTransform
-from biothings.hub.datatransform import DataTransformEdge
-from biothings.hub.datatransform import IDStruct
-from biothings.hub.datatransform import nested_lookup
+
 import biothings.utils.mongo as mongo
+from biothings.hub.datatransform import DataTransform, DataTransformEdge, IDStruct, nested_lookup
 from biothings.utils.loggers import get_logger
 
 

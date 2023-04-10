@@ -14,7 +14,7 @@ from elasticsearch import AsyncElasticsearch
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
-from biothings.utils.common import get_class_from_classpath, get_random_string, iter_n, traverse
+from biothings.utils.common import get_class_from_classpath, get_random_string, iter_n, merge, traverse
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
@@ -22,8 +22,8 @@ from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import DatabaseClient, id_feeder
 
 from .indexer_cleanup import Cleaner
-from .indexer_payload import *
-from .indexer_registrar import *
+from .indexer_payload import DEFAULT_INDEX_MAPPINGS, DEFAULT_INDEX_SETTINGS, IndexMappings, IndexSettings
+from .indexer_registrar import IndexJobStateRegistrar, MainIndexJSR, PostIndexJSR, PreIndexJSR
 from .indexer_schedule import Schedule
 from .indexer_task import dispatch
 
@@ -350,7 +350,7 @@ class Indexer:
 
         steps = kwargs.pop("steps", ("pre", "index", "post"))
         batch_size = kwargs.setdefault("batch_size", 10000)
-        mode = kwargs.setdefault("mode", "index")
+        # mode = kwargs.setdefault("mode", "index")
         ids = kwargs.setdefault("ids", None)
 
         assert job_manager

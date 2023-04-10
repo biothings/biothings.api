@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import re
@@ -139,7 +138,8 @@ class BiothingsDumper(HTTPDumper):
 
         await do()
 
-    def download(self, remoteurl, localfile, headers={}):
+    def download(self, remoteurl, localfile, headers=None):
+        headers = headers or {}
         self.prepare_local_folders(localfile)
         parsed = urlparse(remoteurl)
         if self.__class__.AWS_ACCESS_KEY_ID and self.__class__.AWS_SECRET_ACCESS_KEY:
@@ -157,7 +157,8 @@ class BiothingsDumper(HTTPDumper):
         else:
             return self.anonymous_download(remoteurl, localfile, headers)
 
-    def anonymous_download(self, remoteurl, localfile, headers={}):
+    def anonymous_download(self, remoteurl, localfile, headers=None):
+        headers = headers or {}
         res = super(BiothingsDumper, self).download(remoteurl, localfile, headers=headers)
         # use S3 metadata to set local mtime
         # we add 1 second to make sure we wouldn't download remoteurl again
@@ -166,7 +167,8 @@ class BiothingsDumper(HTTPDumper):
         os.utime(localfile, (lastmodified, lastmodified))
         return res
 
-    def auth_download(self, bucket_name, key, localfile, headers={}):
+    def auth_download(self, bucket_name, key, localfile, headers=None):
+        headers = headers or {}
         session = boto3.Session(
             aws_access_key_id=self.__class__.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=self.__class__.AWS_SECRET_ACCESS_KEY,

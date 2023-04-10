@@ -535,7 +535,7 @@ class BaseDumper(object):
                         max_dump.release()
                     self.post_download(remote, local)
                 except Exception as e:
-                    self.logger.exception("Error downloading '%s': %s" % (remote, e))
+                    self.logger.exception("Error downloading '%s': %s", remote, e)
                     got_error = e
 
             pinfo = self.get_pinfo()

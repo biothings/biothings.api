@@ -18,4 +18,5 @@ def config_for_app(config):
     warnings.warn(
         'It is safe to remove this function call now, just "import biothings.hub" will take care of it.',
         DeprecationWarning,
+        stacklevel=2,
     )
