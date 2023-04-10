@@ -331,7 +331,7 @@ class InspectorManager(BaseManager):
 
         results = {}
         if data_provider_type == "source":
-            src_sources_inspect_data = registerer_obj.src_doc["inspect"]["jobs"]
+            src_sources_inspect_data = registerer_obj.src_doc.get("inspect", {}).get("jobs", {})
             for src_source_name, inspect_data in src_sources_inspect_data.items():
                 results[src_source_name] = {
                     _mode: btinspect.flatten_and_validate(
@@ -340,7 +340,7 @@ class InspectorManager(BaseManager):
                     for _mode in mode
                 }
         else:
-            inspect_data = registerer_obj.src_build["inspect"]["results"]
+            inspect_data = registerer_obj.src_build.get("inspect", {}).get("results", {})
             results[backend_provider] = {
                 _mode: btinspect.flatten_and_validate(inspect_data.get(_mode) or {}, do_validate) for _mode in mode
             }
