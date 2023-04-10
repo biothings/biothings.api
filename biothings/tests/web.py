@@ -229,7 +229,7 @@ class BiothingsWebTest(BiothingsWebTestBase):
         cls.scheme = os.getenv("TEST_SCHEME", cls.scheme)
         cls.prefix = os.getenv("TEST_PREFIX", cls.prefix).strip("/")
         cls.host = os.getenv("TEST_HOST", cls.host).strip("/")
-        base_url = f"{cls.scheme}://{cls.host}/{cls.prefix}"
+        base_url = f"{cls.scheme}://{cls.host}/{cls.prefix}" if cls.host else f"/{cls.prefix}"
         msg = f"\n\tTest URL: {base_url}"
         msg += f"\n\tBioThings SDK Version: {biothings.__version__}"
         msg += f"\n\tBioThings SDK path: {biothings.__file__}\n"
