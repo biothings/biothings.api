@@ -757,8 +757,10 @@ class UploaderManager(BaseSourceManager):
         jobs = []
         try:
             for _, klass in enumerate(klasses):
+                kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
-                    partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
+                    # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
+                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
