@@ -18,15 +18,18 @@ class DBParamValidator:
     def validate(self, config):
         assert isinstance(config.ES_INDICES, dict)
 
-        # compatibility settings
-        if getattr(config, "ES_INDEX", None) and getattr(config, "ES_DOC_TYPE", None):
+        # compatibility settings to convert ES_INDEX/ES_DOC_TYPE settings to ES_INDICES
+        if getattr(config, "ES_INDEX", None):
             from biothings.web.settings import default
 
             if config.ES_INDICES is default.ES_INDICES:
                 config.ES_INDICES = {}
             else:  # combine with the user provided value
+                # _doc_type can be None if not provided, in this case, ES_INDEX value will be
+                # set to "None" key in ES_INDICES as the default index used in the handlers
+                _doc_type = getattr(config, "ES_DOC_TYPE", None) or None
                 config.ES_INDICES = dict(config.ES_INDICES)
-            config.ES_INDICES[config.ES_DOC_TYPE] = config.ES_INDEX
+            config.ES_INDICES[_doc_type] = config.ES_INDEX
 
         ERROR = "UNSUPPORTED SETTINGS."
         # encountering the following attributes indicate
