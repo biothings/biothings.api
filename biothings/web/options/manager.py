@@ -9,6 +9,7 @@ from datetime import datetime as dt
 from pprint import pformat
 from types import MappingProxyType
 
+import jmespath
 import orjson
 
 try:
@@ -45,6 +46,7 @@ class Converter:
     """
 
     def __init__(self, **kwargs):
+        self.keyword = kwargs.get("keyword")
         self.type_ = kwargs.get("type", str)
         self.strict = kwargs.get("strict", True)
         translations = kwargs.get("translations", ())
@@ -118,6 +120,15 @@ class Converter:
         # https://docs.python.org/3/library/re.html#re.sub
         for pattern, repl in self.translations:
             value = re.sub(pattern, repl, value)
+
+        if self.keyword == "jmespath" and value:
+            # processing jmespath parameter to be a tuple of (target_field_path, jmes_query)
+            try:
+                target_field_path, jmes_query = value.split("|", maxsplit=1)
+                jmes_query = jmespath.compile(jmes_query)
+            except ValueError as err:  # JMES exeptions are subclasses of ValueError
+                raise OptionError(keyword=self.keyword, reason="Invalid value for jmespath parameter", details=str(err))
+            value = target_field_path, jmes_query
 
         return value
 

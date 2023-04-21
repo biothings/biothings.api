@@ -105,6 +105,7 @@ COMMON_KWARGS = {
     "_sorted": {"type": bool, "default": True},  # alaphabetically
     "always_list": {"type": list, "max": 1000},
     "allow_null": {"type": list, "max": 1000},
+    "jmespath": {"type": str, "default": None},  # jmespath transformation
 }
 ANNOTATION_KWARGS = {
     "*": COMMON_KWARGS.copy(),

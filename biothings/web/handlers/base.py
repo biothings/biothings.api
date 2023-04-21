@@ -200,7 +200,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         message = {"code": status_code, "success": False, "error": reason}
         try:  # merge exception info
             exception = kwargs["exc_info"][1]
-            message.update(exception.args[0])  # <-
+            if isinstance(exception.args[0], dict):
+                message.update(exception.args[0])
         except Exception:
             pass
 

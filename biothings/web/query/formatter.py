@@ -394,6 +394,43 @@ class ESResultFormatter(ResultFormatter):
         if path in licenses and isinstance(doc, dict):
             doc["_license"] = licenses[path]
 
+        if options.jmespath:
+            self.trasform_jmespath(path, doc, options)
+
+    def trasform_jmespath(self, path: str, doc, options) -> None:
+        """Transform any target field in doc using jmespath query syntax.
+        The jmespath query parameter value should have the pattern of "<target_list_fieldname>|<jmespath_query_expression>"
+        <target_list_fieldname> can be any sub-field of the input doc using dot notation, e.g. "aaa.bbb".
+          If empty or ".", it will be the root field.
+        The flexible jmespath syntax allows to filter/transform any nested objects in the input doc on the fly.
+        The output of the jmespath transformation will then be used to replace the original target field value.
+        Examples:
+             * filtering an array sub-field
+                 jmespath=tags|[?name==`Metadata`]  # filter tags array by name field
+                 jmespath=aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)\&\&sub_b==`val_b`]
+        """
+        # options.jmespath is already validated and processed as a tuple
+        # see biothings.web.options.manager.Coverter.translate
+        target_field_path, jmes_query = options.jmespath
+        target_field_path = target_field_path or "."  # set to root field if not provided
+        try:
+            parent_path, target_field = target_field_path.rsplit(".", maxsplit=1)
+        except ValueError:
+            # if no . in the path, it means the target field is the root field
+            parent_path, target_field = "", target_field_path
+
+        if path == parent_path:
+            # we handle jmespath transformation at its parent field level,
+            # so that we can set a transformed value
+            target_field_value = doc.get(target_field) if target_field else doc
+            if target_field_value:
+                transformed_field_value = jmes_query.search(target_field_value)
+                if target_field:
+                    doc[target_field] = transformed_field_value
+                else:
+                    # if the target field is the root field, we need to replace the whole doc
+                    doc = transformed_field_value
+
     def transform_aggs(self, res):
         """
         Transform the aggregations field and make it more presentable.
