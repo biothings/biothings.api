@@ -13,10 +13,31 @@ logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
 # To make sure biothings.config is initialized
 from . import utils
 
+
+def extra_help_msg():
+    """print additional help msg here"""
+    rprint("[magenta]:sparkles: Always run this command inside of your data plugin folder. [/magenta]")
+    rprint(
+        "[magenta]:sparkles: To override the default biothing.config, please define the config.py at the working directory. :rocket::boom:[/magenta]"
+    )
+
+
+short_help = (
+    "[green]Test an individual data plugin locally and make simple queries to inspect your parsed data objects.[/green]"
+)
+long_help = (
+    short_help
+    + "\n\n[magenta]   :sparkles: Go to your existing data plugin folder.[/magenta]"
+    + "\n[magenta]   :sparkles: Dumping, uploading and inspecting your data plugin.[/magenta]"
+    + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
+    + "\n\n[green]   :point_right: Always run this command inside of your data plugin folder.[/green]"
+    + "\n[green]   :point_right: You can include a config.py at the working directly to override the default biothings.config settings.[/green]"
+    + "\n   :rocket::boom::sparkling_heart:"
+)
+
 app = typer.Typer(
-    help="[green]A set of commands that you can use for testing your data plugin and make simple queries to inspect your parsed data objects.[/green]\n"
-    "\n\n[red italic]* Always run this command inside of your data plugin folder[/red italic]"
-    "\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]",
+    help=long_help,
+    short_help=short_help,
     no_args_is_help=True,
     rich_markup_mode="rich",
 )

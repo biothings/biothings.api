@@ -16,17 +16,19 @@ from biothings.utils.configuration import ConfigurationError
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
+
 if typer_avail:
+    # prevent dimming the help text from the 2nd line
+    # see: https://github.com/tiangolo/typer/issues/437#issuecomment-1224149402
+    typer.rich_utils.STYLE_HELPTEXT = ""
+
     cli = typer.Typer(
+        help="[green]BioThings Admin CLI to test your local data plugins.[/green]",
         rich_help_panel="Help and Others",
         rich_markup_mode="rich",
         context_settings=CONTEXT_SETTINGS,
         no_args_is_help=True,
     )
-
-    @cli.callback()
-    def callback():
-        """[green]Biothings Admin CLI.[/green]"""
 
 
 logger = logging.getLogger()

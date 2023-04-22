@@ -16,14 +16,21 @@ from biothings.utils.loggers import get_logger
 
 from . import utils
 
+short_help = "[green]Test multiple data plugins in a local minimal hub without any external databases.[/green]"
+long_help = (
+    short_help
+    + "\n\n[magenta]   :sparkles: Create your new data plugin in a sub-folder.[/magenta]"
+    + "\n[magenta]   :sparkles: Dumping, uploading and inspecting your data plugin.[/magenta]"
+    + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
+    + "\n\n[green]   :point_right: Running this command outside of your data plugin[/green]"
+    + "\n[green]   :point_right: That means your working directory can contains multiple data plugins[/green]"
+    + "\n[green]   :point_right: You can include a config.py at the working directly to override the default biothings.config settings.[/green]"
+    + "\n   :rocket::boom::sparkling_heart:"
+)
+
 app = typer.Typer(
-    help="[green]Bootstrap your data plugin as the Hub does but in a synchronized (one step at a time):[/green]\n"
-    "\n[green]Create your new data plugin in a sub-folder.[/green]"
-    "\n[green]Dumping, uploading, and inspecting your data plugin.[/green]"
-    "\n[green]Serving your data as a web service for making simple queries[/green]"
-    "\n\n[red italic]* Running this command outside of your data plugin[/red italic]"
-    "\n[red italic] * That means your working directory can contains multiple data plugins[/red italic]"
-    "\n[red italic]* To override the default biothing.config, please define the config.py at the working directory[red italic]",
+    help=long_help,
+    short_help=short_help,
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
