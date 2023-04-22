@@ -407,7 +407,7 @@ class ESResultFormatter(ResultFormatter):
         Examples:
              * filtering an array sub-field
                  jmespath=tags|[?name==`Metadata`]  # filter tags array by name field
-                 jmespath=aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)\&\&sub_b==`val_b`]
+                 jmespath=aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)%26%26sub_b==`val_b`]    # use %26%26 for &&
         """
         # options.jmespath is already validated and processed as a tuple
         # see biothings.web.options.manager.Coverter.translate

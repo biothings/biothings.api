@@ -1,4 +1,6 @@
-from biothings.web.options import Converter
+import pytest
+
+from biothings.web.options import Converter, OptionError
 
 
 def test_01():
@@ -40,3 +42,32 @@ def test_03():
     )
     assert cvt.translate("hello world") == "foo bar"
     assert cvt.translate("hello world!") == "foo bar!"
+
+
+def test_jmespath():
+    import jmespath
+
+    cvt = Converter(keyword="jmespath")
+
+    # a simple example
+    target_field_path, jmes_query = cvt.translate("tags|[?name==`Metadata`]")
+    assert target_field_path == "tags"
+    assert isinstance(jmes_query, jmespath.parser.ParsedResult)
+    assert jmes_query.expression == "[?name==`Metadata`]"
+
+    # a more complex example
+    target_field_path, jmes_query = cvt.translate("aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)&&sub_b==`val_b`]")
+    assert target_field_path == "aaa.bbb"
+    assert isinstance(jmes_query, jmespath.parser.ParsedResult)
+
+    # target_field_path can be empty if it operates on the root object
+    target_field_path, jmes_query = cvt.translate("|b")
+    assert target_field_path == ""
+    assert isinstance(jmes_query, jmespath.parser.ParsedResult)
+    assert jmes_query.expression == "b"
+
+    with pytest.raises(OptionError):
+        cvt.translate("tags")
+
+    with pytest.raises(OptionError):
+        cvt.translate("tags|[?name=`Metadata`]")
