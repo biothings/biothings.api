@@ -9,14 +9,15 @@ from collections.abc import Iterable
 from functools import partial, wraps
 
 import bson
-import dateutil.parser as dtparser
+import dateutil.parser as date_parser
 from pymongo import DESCENDING, MongoClient
 from pymongo.collection import Collection as PymongoCollection
 from pymongo.database import Database as PymongoDatabase
 from pymongo.errors import AutoReconnect
 
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.common import (  # timesofar,
+from biothings.utils.common import (
+    timesofar,
     dotdict,
     get_compressed_outfile,
     get_random_string,
@@ -30,8 +31,8 @@ config = None
 
 
 def handle_autoreconnect(cls_instance, func):
-    """After upgrading the pymongo package from 3.12 to 4.x,
-    the AutoReconnect: "connection pool paused" problem appears quite often.
+    """
+    After upgrading the pymongo package from 3.12 to 4.x, the "AutoReconnect: connection pool paused" problem appears quite often.
     It is not clear that the problem happens with our codebase, maybe a pymongo's problem.
 
     This function is an attempt to handle the AutoReconnect exception, without modifying our codebase.
@@ -83,6 +84,7 @@ class DummyCollection(dotdict):
         pass
 
     def __getitem__(self, what):
+        # FIXME
         return DummyCollection()  # ???
 
 
@@ -172,15 +174,13 @@ def requires_config(func):
 def get_conn(server, port):
     try:
         if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
-            uri = "mongodb://{}:{}@{}:{}".format(
-                config.DATA_SRC_SERVER_USERNAME, config.DATA_SRC_SERVER_PASSWORD, server, port
-            )
+            uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME, config.DATA_SRC_SERVER_PASSWORD, server, port)
         else:
             uri = "mongodb://{}:{}".format(server, port)
         conn = DatabaseClient(uri)
         return conn
     except (AttributeError, ValueError):
-        # missing config variables (or invalid), we'll pretend it's a dummy access to mongo
+        # missing config variables (or invalid), we'll pretend it's a dummy connection to mongo
         # (dummy here means there really shouldn't be any call to get_conn()
         # but mongo is too much tied to the code and needs more work to
         # unlink it
@@ -295,8 +295,7 @@ def get_target_master(conn=None):
 @requires_config
 def get_source_fullname(col_name):
     """
-    Assuming col_name is a collection created from an upload process,
-    find the main source & sub_source associated.
+    Assuming col_name is a collection created from an upload process, find the main source & sub_source associated.
     """
     src_dump = get_src_dump()
     # "sources" in config is a list a collection names. src_dump _id is the name of the
@@ -326,70 +325,68 @@ def get_source_fullnames(col_names):
     return list(main_sources)
 
 
-def doc_feeder(
-    collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging
-):
-    """A iterator for returning docs in a collection, with batch query.
-    additional filter query can be passed via "query", e.g.,
-    doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})
-    batch_callback is a callback function as fn(cnt, t), called after every batch
-    fields is optional parameter passed to find to restrict fields to return.
+def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging):
     """
+    An iterator returning docs in a collection, with batch query.
+
+    Additional filter query can be passed via `query`, e.g., `doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})`
+    `batch_callback` is a callback function as `fn(index, t)`, called after every batch.
+    `fields` is an optional parameter to restrict the fields to return.
+    """
+
     if isinstance(collection, DocMongoBackend):
         collection = collection.target_collection
-    cur = collection.find(query, no_cursor_timeout=True, projection=fields)
+
+    # Determine the partition of the collection we iterate over.
+    # E.g. when s = 10000 and e = 15000, the collection partition is range(10000, 15000) and the partition size is 10000 - 15000 = 5000.
+    # We will return those 5000 docs one by one, or in 5 batches if `inbatch = True` and `step = 1000`.
     n = collection.count_documents(query or {})
-    s = s or 0
-    e = e or n
-    ##logger.info('Retrieving %d documents from database "%s".' % (n, collection.name))
-    # t0 = time.time()
-    if inbatch:
-        doc_li = []
-    cnt = 0
-    t1 = time.time()
+    s = s or 0  # start of the collection partition (inclusive)
+    e = e or n  # end of the collection partition (exclusive)
+    logger.debug("Retrieving documents from collection '%s'. start = %d, end = %d, total = %d." % (collection.name, s, e, n))
+
+    cursor_index = s  # the integer index in the collection that the cursor is pointing to
+    job_start_time = time.time()
+    batch_start_time = time.time()
+
     try:
+        cur = collection.find(query, no_cursor_timeout=True, projection=fields)
         if s:
             cur.skip(s)
-            cnt = s
-            ##logger.info("Skipping %d documents." % s)
+            logger.debug("Skipped %d documents from collection '%s'." % (s, collection.name))
         if e:
-            cur.limit(e - (s or 0))
-        cur.batch_size(step)
-        ##logger.info("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)))
+            cur.limit(e - s)  # specify the maximum number of documents the cursor will return
+            logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'." % (e - s, s, e, collection.name))
+        cur.batch_size(step)  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
+
+        if inbatch:  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
+            doc_batch = []
+
         for doc in cur:
             if inbatch:
-                doc_li.append(doc)
+                doc_batch.append(doc)
             else:
                 yield doc
-            cnt += 1
-            if cnt % step == 0:
-                if inbatch:
-                    yield doc_li
-                    doc_li = []
-                if n:
-                    pass
-                    ##logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
-                else:
-                    pass
-                    ##logger.info('Nothing to do...')
-                if batch_callback:
-                    batch_callback(cnt, time.time() - t1)
-                if cnt < e:
-                    t1 = time.time()
-                    ##logger.info("Processing %d-%d documents..." % (cnt + 1, min(cnt + step, e)))
-        if inbatch and doc_li:
-            # Important: need to yield the last batch here
-            yield doc_li
 
-        # print 'Done.[%s]' % timesofar(t1)
-        if n:
-            pass
-            ##logger.info('Done.[%.1f%%,%s]' % (cnt * 100. / n, timesofar(t1)))
-        else:
-            pass
-            ##logger.info('Nothing to do...')
-        ##logger.info("=" * 20)
-        ##logger.info('Finished.[total time: %s]' % timesofar(t0))
+            cursor_index += 1
+
+            if cursor_index % step == 0:  # batch is full
+                if inbatch:
+                    yield doc_batch
+                    doc_batch = []
+
+                logger.debug('Done.[%.1f%%,%s]' % (cursor_index * 100. / n, timesofar(batch_start_time)))
+                logger.debug("Processing %d-%d documents..." % (cursor_index + 1, min(cursor_index + step, e)))
+                if batch_callback:
+                    batch_callback(cursor_index, time.time() - batch_start_time)
+                if cursor_index < e:
+                    batch_start_time = time.time()
+
+        if inbatch and doc_batch:
+            # Important: need to yield the last batch here
+            yield doc_batch
+
+        logger.debug('Finished.[total time: %s]' % timesofar(job_start_time))
     finally:
         cur.close()
 
@@ -407,8 +404,10 @@ def get_cache_filename(col_name):
 def invalidate_cache(col_name, col_type="src"):
     if col_type == "src":
         src_dump = get_src_dump()
-        if not "." in col_name:
+        if "." not in col_name:
             fullname = get_source_fullname(col_name)
+        # FIXME so we are assuming that col_name must contain ".", otherwise the following assertion would fail
+        # FIXME did Sebastien mean `col_name = get_source_fullname(col_name)`?
         assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
 
         main, sub = fullname.split(".")
@@ -431,25 +430,21 @@ def invalidate_cache(col_name, col_type="src"):
 # TODO: this func deals with different backend, should not be in bt.utils.mongo
 # and doc_feeder should do the same as this function regarding backend support
 @requires_config
-def id_feeder(
-    col, batch_size=1000, build_cache=True, logger=logging, force_use=False, force_build=False, validate_only=False
-):
-    """Return an iterator for all _ids in collection "col"
-    Search for a valid cache file if available, if not
-    return a doc_feeder for that collection. Valid cache is
-    a cache file that is newer than the collection.
+def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=False, force_build=False, validate_only=False):
+    """
+    Return an iterator for all _ids in collection "col".
+
+    Search for a valid cache file if available, if not, return a doc_feeder for that collection.
+    Valid cache is a cache file that is newer than the collection.
+
     "db" can be "target" or "src".
-    "build_cache" True will build a cache file as _ids are fetched,
-    if no cache file was found
-    "force_use" True will use any existing cache file and won't check whether
-    it's valid of not.
-    "force_build" True will build a new cache even if current one exists
-    and is valid.
-    "validate_only" will directly return [] if the cache is valid (convenient
-    way to check if the cache is valid)
+    "build_cache" True will build a cache file as _ids are fetched, if no cache file was found.
+    "force_use" True will use any existing cache file and won't check whether it's valid of not.
+    "force_build" True will build a new cache even if current one exists and is valid.
+    "validate_only" will directly return [] if the cache is valid (convenient way to check if the cache is valid).
     """
     src_db = get_src_db()
-    ts = None
+    col_ts = None  # timestamp of the collection
     found_meta = True
 
     if isinstance(col, DocMongoBackend):
@@ -461,8 +456,8 @@ def id_feeder(
             if not info:
                 logger.warning("Can't find information for target collection '%s'" % col.name)
             else:
-                ts = info.get("_meta", {}).get("build_date")
-                ts = ts and dtparser.parse(ts).timestamp()
+                col_ts = info.get("_meta", {}).get("build_date")
+                col_ts = col_ts and date_parser.parse(col_ts).timestamp()
         elif col.database.name == config.DATA_SRC_DATABASE:
             src_dump = get_src_dump()
             info = src_dump.find_one(
@@ -474,7 +469,7 @@ def id_feeder(
             if not info:
                 logger.warning("Can't find information for source collection '%s'" % col.name)
             else:
-                ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
+                col_ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
         else:
             logging.warning("Can't find metadata for collection '%s' (not a target, not a source collection)" % col)
             found_meta = False
@@ -505,16 +500,17 @@ def id_feeder(
                 use_cache = True
                 logger.info("Force using cache file")
             else:
-                mt = os.path.getmtime(cache_file)
-                if ts and mt >= ts:
-                    dtmt = datetime.datetime.fromtimestamp(mt).isoformat()
-                    dtts = datetime.datetime.fromtimestamp(ts).isoformat()
-                    logging.debug("Cache is valid, modiftime_cache:%s >= col_timestamp:%s" % (dtmt, dtts))
+                cache_ts = os.path.getmtime(cache_file)  # Get DLM (Date Last Modified) of the cache file in timestamp format
+                if col_ts and cache_ts >= col_ts:
+                    cache_dt = datetime.datetime.fromtimestamp(cache_ts).isoformat()
+                    col_dt = datetime.datetime.fromtimestamp(col_ts).isoformat()
+                    logging.debug("Cache is valid, cache_datetime:%s >= collection_datetime:%s" % (cache_dt, col_dt))
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
         except FileNotFoundError:
             pass
+
     if use_cache:
         logger.debug("Found valid cache file for '%s': %s" % (col.name, cache_file))
         if validate_only:
@@ -522,10 +518,10 @@ def id_feeder(
             return []
         with open_compressed_file(cache_file) as cache_in:
             if cache_format:
-                iocache = io.TextIOWrapper(cache_in)
+                io_cache = io.TextIOWrapper(cache_in)
             else:
-                iocache = cache_in
-            for ids in iter_n(iocache, batch_size):
+                io_cache = cache_in
+            for ids in iter_n(io_cache, batch_size):
                 yield [_id.strip() for _id in ids if _id.strip()]
     else:
         logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
@@ -536,9 +532,9 @@ def id_feeder(
                 os.makedirs(config.CACHE_FOLDER)
             cache_temp = "%s._tmp_" % cache_file
             # clean aborted cache file generation
-            for tmpcache in glob.glob(os.path.join(config.CACHE_FOLDER, "%s*" % cache_temp)):
-                logger.info("Removing aborted cache file '%s'" % tmpcache)
-                os.remove(tmpcache)
+            for tmp_cache in glob.glob(os.path.join(config.CACHE_FOLDER, "%s*" % cache_temp)):
+                logger.info("Removing aborted cache file '%s'" % tmp_cache)
+                os.remove(tmp_cache)
             # use temp file and rename once done
             cache_temp = "%s%s" % (cache_temp, get_random_string())
             cache_out = get_compressed_outfile(cache_temp, compress=cache_format)
@@ -546,12 +542,11 @@ def id_feeder(
         else:
             logger.info("Can't build cache, cache not allowed or no cache folder")
             build_cache = False
+
         if isinstance(col, PymongoCollection):
             doc_feeder_func = partial(doc_feeder, col, step=batch_size, inbatch=True, fields={"_id": 1})
         elif isinstance(col, DocMongoBackend):
-            doc_feeder_func = partial(
-                doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1}
-            )
+            doc_feeder_func = partial(doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1})
         elif isinstance(col, DocESBackend):
             # get_id_list directly return the _id, wrap it to match other
             # doc_feeder_func returned vals. Also return a batch of id
@@ -568,22 +563,24 @@ def id_feeder(
             doc_feeder_func = partial(wrap_id)
         else:
             raise Exception("Unknown backend %s" % col)
+
         for doc_ids in doc_feeder_func():
             doc_ids = [str(_doc["_id"]) for _doc in doc_ids]
             if build_cache:
-                strout = "\n".join(doc_ids) + "\n"
+                str_out = "\n".join(doc_ids) + "\n"
                 if cache_format:
-                    # assuming binary format (b/ccompressed)
-                    cache_out.write(strout.encode())
+                    # assuming binary format (b/compressed)
+                    cache_out.write(str_out.encode())
                 else:
-                    cache_out.write(strout)
+                    cache_out.write(str_out)
             yield doc_ids
+
         if build_cache:
             cache_out.close()
             cache_final = os.path.splitext(cache_temp)[0]
             try:
                 os.rename(cache_temp, cache_final)
-            except Exception:
+            except OSError:
                 logger.exception("Couldn't set final cache filename, building cache failed")
 
 
@@ -596,13 +593,11 @@ def check_document_size(doc):
 
 def get_previous_collection(new_id):
     """
-    Given 'new_id', an _id from src_build, as the "new" collection,
-    automatically select an "old" collection. By default, src_build's documents
-    will be sorted according to their name (_id) and old colleciton is the one
-    just before new_id.
-    Note: because there can more than one build config used, the actual build config
-    name is first determined using new_id collection name, then the find.sort is done
-    on collections containing that build config name.
+    Given 'new_id', an _id from src_build, as the "new" collection, automatically select an "old" collection.
+    By default, src_build's documents will be sorted according to their name (_id) and old collection is the one just before new_id.
+
+    Note: because there can be more than one build config used, the actual build config name is first determined using new_id collection name,
+      then the find().sort() is done on collections containing that build config name.
     """
     # TODO: this is not compatible with a generic hub_db backend
     # TODO: this should return a collection with status=success
@@ -611,14 +606,14 @@ def get_previous_collection(new_id):
     assert doc, "No build document found for '%s'" % new_id
     assert "build_config" in doc, "No build configuration found for document '%s'" % new_id
     assert doc["build_config"]["name"] == doc["build_config"]["_id"]
-    confname = doc["build_config"]["name"]
+
     docs = (
         get_src_build()
         .find(
             {
                 "$and": [
                     {"started_at": {"$lte": doc["started_at"]}},
-                    {"build_config.name": confname},
+                    {"build_config.name": doc["build_config"]["name"]},
                     {"archived": {"$exists": 0}},
                 ]
             },
