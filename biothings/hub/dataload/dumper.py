@@ -14,6 +14,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
+from ftplib import FTP
 from functools import partial
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
 from urllib import parse as urlparse
@@ -27,6 +28,7 @@ except ImportError:
     docker_avail = False
 
 import orjson
+import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
@@ -573,9 +575,6 @@ class BaseDumper(object):
                 pass
 
 
-from ftplib import FTP
-
-
 class FTPDumper(BaseDumper):
     FTP_HOST = ""
     CWD_DIR = ""
@@ -776,9 +775,6 @@ class LastModifiedFTPDumper(LastModifiedBaseDumper):
         ftpdumper = self.get_client_for_url(urlremotefile)
         remotefile = self.get_remote_file(urlremotefile)
         return ftpdumper.download(remotefile, localfile)
-
-
-import requests
 
 
 class HTTPDumper(BaseDumper):
@@ -1321,7 +1317,6 @@ class GitDumper(BaseDumper):
 
 
 class DumperManager(BaseSourceManager):
-
     SOURCE_CLASS = BaseDumper
 
     def get_source_ids(self):
@@ -1887,8 +1882,10 @@ class DockerContainerDumper(BaseDumper):
 
     def prepare_client(self):
         self.logger.info("Preparing docker client...")
-        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
-        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
+        if not isinstance(self.__class__.SRC_URLS, list):
+            raise DumperException("SRC_URLS should be a list")
+        if not self.__class__.SRC_URLS:
+            raise DumperException("SRC_URLS list is empty")
         if not self._state["client"]:
             docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
             self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
@@ -1934,6 +1931,7 @@ class DockerContainerDumper(BaseDumper):
                     _release = remote_version.decode().strip()
                 else:
                     self.logger.error("Failed to run get_version_cmd. Fallback to timestamp as the release.")
+        # if _release is None, use timestamp as the release
         self.release = _release or datetime.now().strftime("%Y%m%d%H%M%S")
 
     def release_client(self):
@@ -2008,8 +2006,10 @@ class DockerContainerDumper(BaseDumper):
         return self._data_path
 
     async def create_todump_list(self, force=False, job_manager=None, **kwargs):
-        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
-        assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
+        if not isinstance(self.__class__.SRC_URLS, list):
+            raise DumperException("SRC_URLS should be a list")
+        if not self.__class__.SRC_URLS:
+            raise DumperException("SRC_URLS list is empty")
         self.prepare_remote_container()
         # unprepare unpicklable objects so we can use multiprocessing
         self.unprepare()
