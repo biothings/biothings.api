@@ -833,17 +833,14 @@ class DataBuilder(object):
         got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
+
+        # FIXME id_provider initialized below will be overwritten by `if _query and ids is None:` code block
         if ids:
-            self.logger.info(
-                "Merging '%s' specific list of _ids, create merger job with batch_size=%d" % (src_name, batch_size)
-            )
+            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d" % (src_name, batch_size))
             id_provider = [ids]
         else:
-            self.logger.info(
-                "Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d"
-                % (src_name, id_batch_size, batch_size)
-            )
-            id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size)
+            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
+            id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size, logger=self.logger)
 
         if _query and ids is not None:
             self.logger.info("Query/filter involved, but also specific list of _ids. Ignoring query and use _ids")
@@ -853,9 +850,7 @@ class DataBuilder(object):
             # use doc_feeder but post-process doc to keep only the _id
             id_provider = map(
                 lambda docs: [d["_id"] for d in docs],
-                doc_feeder(
-                    self.source_backend[src_name], query=_query, step=batch_size, inbatch=True, fields={"_id": 1}
-                ),
+                doc_feeder(self.source_backend[src_name], query=_query, step=batch_size, inbatch=True, fields={"_id": 1}, logger=self.logger)
             )
         else:
             # when passing a list of _ids, IDs will be sent to the query, so we need to reduce the batch size

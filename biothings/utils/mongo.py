@@ -11,6 +11,7 @@ from functools import partial, wraps
 import bson
 import dateutil.parser as date_parser
 from pymongo import DESCENDING, MongoClient
+from pymongo.client_session import ClientSession
 from pymongo.collection import Collection as PymongoCollection
 from pymongo.database import Database as PymongoDatabase
 from pymongo.errors import AutoReconnect
@@ -325,13 +326,18 @@ def get_source_fullnames(col_names):
     return list(main_sources)
 
 
-def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging):
+def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging, session_refresh_interval=5):
     """
     An iterator returning docs in a collection, with batch query.
 
     Additional filter query can be passed via `query`, e.g., `doc_feeder(collection, query={'taxid': {'$in': [9606, 10090, 10116]}})`
     `batch_callback` is a callback function as `fn(index, t)`, called after every batch.
     `fields` is an optional parameter to restrict the fields to return.
+
+    `session_refresh_interval` is 5 minutes by default. We call `refreshSessions` command every 5 minutes to keep a session alive, otherwise the session
+        and all cursors attached (explicitly or implicitly) to the session will time out after idling for 30 minutes, even if we have `no_cursor_timeout` set
+        True for a cursor. See https://www.mongodb.com/docs/manual/reference/command/refreshSessions/ and
+        https://www.mongodb.com/docs/manual/reference/method/cursor.noCursorTimeout/#session-idle-timeout-overrides-nocursortimeout
     """
 
     if isinstance(collection, DocMongoBackend):
@@ -350,7 +356,12 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     batch_start_time = time.time()
 
     try:
-        cur = collection.find(query, no_cursor_timeout=True, projection=fields)
+        # Explicitly create a session object for the cursor to attach
+        session: ClientSession = collection.database.client.start_session()
+        logger.debug("Session '%s' started." % session.session_id)
+
+        cur = collection.find(query, no_cursor_timeout=True, projection=fields, session=session)
+        logger.debug("Querying '%s' from collection '%s' in session '%s'." % (query, collection.name, session.session_id))
         if s:
             cur.skip(s)
             logger.debug("Skipped %d documents from collection '%s'." % (s, collection.name))
@@ -362,7 +373,16 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         if inbatch:  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
             doc_batch = []
 
+        session_last_refresh_time = time.time()
         for doc in cur:
+            session_current_time = time.time()
+            # session_current_time and session_last_refresh_time are in second, while session_refresh_interval is in minute
+            session_should_refresh = (session_current_time - session_last_refresh_time) > session_refresh_interval * 60
+            if session_should_refresh:
+                cmd_resp = collection.database.command("refreshSessions", [session.session_id], session=session)
+                logger.debug("Session '%s' refreshed, resp=%s", (session.session_id, cmd_resp))
+                session_last_refresh_time = session_current_time
+
             if inbatch:
                 doc_batch.append(doc)
             else:
@@ -389,6 +409,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         logger.debug('Finished.[total time: %s]' % timesofar(job_start_time))
     finally:
         cur.close()
+        logger.debug("Session '%s' to be ended." % session.session_id)
+        session.end_session()
 
 
 def get_cache_filename(col_name):
@@ -407,7 +429,6 @@ def invalidate_cache(col_name, col_type="src"):
         if "." not in col_name:
             fullname = get_source_fullname(col_name)
         # FIXME so we are assuming that col_name must contain ".", otherwise the following assertion would fail
-        # FIXME did Sebastien mean `col_name = get_source_fullname(col_name)`?
         assert fullname, "Can't resolve source '%s' (does it exist ?)" % col_name
 
         main, sub = fullname.split(".")
@@ -471,7 +492,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
             else:
                 col_ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
         else:
-            logging.warning("Can't find metadata for collection '%s' (not a target, not a source collection)" % col)
+            logger.warning("Can't find metadata for collection '%s' (not a target, not a source collection)" % col)
             found_meta = False
             build_cache = False
     except KeyError:
@@ -504,7 +525,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
                 if col_ts and cache_ts >= col_ts:
                     cache_dt = datetime.datetime.fromtimestamp(cache_ts).isoformat()
                     col_dt = datetime.datetime.fromtimestamp(col_ts).isoformat()
-                    logging.debug("Cache is valid, cache_datetime:%s >= collection_datetime:%s" % (cache_dt, col_dt))
+                    logger.debug("Cache is valid, cache_datetime:%s >= collection_datetime:%s" % (cache_dt, col_dt))
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
@@ -514,7 +535,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
     if use_cache:
         logger.debug("Found valid cache file for '%s': %s" % (col.name, cache_file))
         if validate_only:
-            logging.debug("Only validating cache, now return")
+            logger.debug("Only validating cache, now return")
             return []
         with open_compressed_file(cache_file) as cache_in:
             if cache_format:
@@ -544,9 +565,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
             build_cache = False
 
         if isinstance(col, PymongoCollection):
-            doc_feeder_func = partial(doc_feeder, col, step=batch_size, inbatch=True, fields={"_id": 1})
+            doc_feeder_func = partial(doc_feeder, col, step=batch_size, inbatch=True, fields={"_id": 1}, logger=logger)
         elif isinstance(col, DocMongoBackend):
-            doc_feeder_func = partial(doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1})
+            doc_feeder_func = partial(doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1}, logger=logger)
         elif isinstance(col, DocESBackend):
             # get_id_list directly return the _id, wrap it to match other
             # doc_feeder_func returned vals. Also return a batch of id
