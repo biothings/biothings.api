@@ -349,7 +349,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     n = collection.count_documents(query or {})
     s = s or 0  # start of the collection partition (inclusive)
     e = e or n  # end of the collection partition (exclusive)
-    logger.debug("Retrieving documents from collection '%s'. start = %d, end = %d, total = %d." % (collection.name, s, e, n))
+    logger.debug("Retrieving documents from collection '%s'. start = %d, end = %d, total = %d.", collection.name, s, e, n)
 
     cursor_index = s  # the integer index in the collection that the cursor is pointing to
     job_start_time = time.time()
@@ -358,16 +358,16 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     try:
         # Explicitly create a session object for the cursor to attach
         session: ClientSession = collection.database.client.start_session()
-        logger.debug("Session '%s' started." % session.session_id)
+        logger.debug("Session '%s' started.", session.session_id)
 
         cur = collection.find(query, no_cursor_timeout=True, projection=fields, session=session)
-        logger.debug("Querying '%s' from collection '%s' in session '%s'." % (query, collection.name, session.session_id))
+        logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session.session_id)
         if s:
             cur.skip(s)
-            logger.debug("Skipped %d documents from collection '%s'." % (s, collection.name))
+            logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
         if e:
             cur.limit(e - s)  # specify the maximum number of documents the cursor will return
-            logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'." % (e - s, s, e, collection.name))
+            logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.", e - s, s, e, collection.name)
         cur.batch_size(step)  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
 
         if inbatch:  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
@@ -380,7 +380,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
             session_should_refresh = (session_current_time - session_last_refresh_time) > session_refresh_interval * 60
             if session_should_refresh:
                 cmd_resp = collection.database.command("refreshSessions", [session.session_id], session=session)
-                logger.debug("Session '%s' refreshed, resp=%s", (session.session_id, cmd_resp))
+                logger.debug("Session '%s' refreshed, resp=%s", session.session_id, cmd_resp)
                 session_last_refresh_time = session_current_time
 
             if inbatch:
@@ -395,8 +395,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
                     yield doc_batch
                     doc_batch = []
 
-                logger.debug('Done.[%.1f%%,%s]' % (cursor_index * 100. / n, timesofar(batch_start_time)))
-                logger.debug("Processing %d-%d documents..." % (cursor_index + 1, min(cursor_index + step, e)))
+                logger.debug("Done.[%.1f%%,%s]", cursor_index * 100. / n, timesofar(batch_start_time))
+                logger.debug("Processing %d-%d documents...", cursor_index + 1, min(cursor_index + step, e))
                 if batch_callback:
                     batch_callback(cursor_index, time.time() - batch_start_time)
                 if cursor_index < e:
@@ -406,10 +406,10 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
             # Important: need to yield the last batch here
             yield doc_batch
 
-        logger.debug('Finished.[total time: %s]' % timesofar(job_start_time))
+        logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
     finally:
         cur.close()
-        logger.debug("Session '%s' to be ended." % session.session_id)
+        logger.debug("Session '%s' to be ended.", session.session_id)
         session.end_session()
 
 
@@ -475,7 +475,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
         if col.database.name == config.DATA_TARGET_DATABASE:
             info = src_db["src_build"].find_one({"_id": col.name})
             if not info:
-                logger.warning("Can't find information for target collection '%s'" % col.name)
+                logger.warning("Can't find information for target collection '%s'", col.name)
             else:
                 col_ts = info.get("_meta", {}).get("build_date")
                 col_ts = col_ts and date_parser.parse(col_ts).timestamp()
@@ -488,17 +488,17 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
                 }
             )
             if not info:
-                logger.warning("Can't find information for source collection '%s'" % col.name)
+                logger.warning("Can't find information for source collection '%s'", col.name)
             else:
                 col_ts = info["upload"]["jobs"][col.name]["started_at"].timestamp()
         else:
-            logger.warning("Can't find metadata for collection '%s' (not a target, not a source collection)" % col)
+            logger.warning("Can't find metadata for collection '%s' (not a target, not a source collection)", col)
             found_meta = False
             build_cache = False
     except KeyError:
-        logger.warning("Couldn't find timestamp in database for '%s'" % col.name)
+        logger.warning("Couldn't find timestamp in database for '%s'", col.name)
     except Exception as e:
-        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)" % (col, e))
+        logger.info("%s is not a mongo collection, _id cache won't be built (error: %s)", col, e)
         build_cache = False
 
     # try to find a cache file
@@ -525,7 +525,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
                 if col_ts and cache_ts >= col_ts:
                     cache_dt = datetime.datetime.fromtimestamp(cache_ts).isoformat()
                     col_dt = datetime.datetime.fromtimestamp(col_ts).isoformat()
-                    logger.debug("Cache is valid, cache_datetime:%s >= collection_datetime:%s" % (cache_dt, col_dt))
+                    logger.debug("Cache is valid, cache_datetime:%s >= collection_datetime:%s", cache_dt, col_dt)
                     use_cache = True
                 else:
                     logger.info("Cache is too old, discard it")
@@ -533,7 +533,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
             pass
 
     if use_cache:
-        logger.debug("Found valid cache file for '%s': %s" % (col.name, cache_file))
+        logger.debug("Found valid cache file for '%s': %s", col.name, cache_file)
         if validate_only:
             logger.debug("Only validating cache, now return")
             return []
@@ -545,7 +545,7 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
             for ids in iter_n(io_cache, batch_size):
                 yield [_id.strip() for _id in ids if _id.strip()]
     else:
-        logger.debug("No cache file found (or invalid) for '%s', use doc_feeder" % col.name)
+        logger.debug("No cache file found (or invalid) for '%s', use doc_feeder", col.name)
         cache_out = None
         cache_temp = None
         if getattr(config, "CACHE_FOLDER", None) and config.CACHE_FOLDER and build_cache:
@@ -554,12 +554,12 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
             cache_temp = "%s._tmp_" % cache_file
             # clean aborted cache file generation
             for tmp_cache in glob.glob(os.path.join(config.CACHE_FOLDER, "%s*" % cache_temp)):
-                logger.info("Removing aborted cache file '%s'" % tmp_cache)
+                logger.info("Removing aborted cache file '%s'", tmp_cache)
                 os.remove(tmp_cache)
             # use temp file and rename once done
             cache_temp = "%s%s" % (cache_temp, get_random_string())
             cache_out = get_compressed_outfile(cache_temp, compress=cache_format)
-            logger.info("Building cache file '%s'" % cache_temp)
+            logger.info("Building cache file '%s'", cache_temp)
         else:
             logger.info("Can't build cache, cache not allowed or no cache folder")
             build_cache = False

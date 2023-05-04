@@ -221,12 +221,10 @@ class DataBuilder(object):
                     if "source" in job:
                         if job["source"] in offending_sources:
                             num_offenders += 1
-                            self.logger.info("%s uploader running cannot build for now" % job["source"])
+                            self.logger.info("%s uploader running cannot build for now", job["source"])
                     else:
                         num_offenders += 1
-                        self.logger.warning(
-                            "uploader with pinfo: %s running, no source info. " "cannot build for now" % job
-                        )
+                        self.logger.warning("uploader with pinfo: %s running, no source info. cannot build for now", job)
                 else:
                     pass  # job is not an uploader
             return num_offenders == 0
@@ -388,7 +386,7 @@ class DataBuilder(object):
         cols = sorted(cols, reverse=True)
         to_drop = cols[self.keep_archive :]
         for colname in to_drop:
-            self.logger.info("Cleaning old archive collection '%s'" % colname)
+            self.logger.info("Cleaning old archive collection '%s'", colname)
             db[colname].drop()
 
     def init_mapper(self, mapper_name):
@@ -396,7 +394,7 @@ class DataBuilder(object):
             if mapper_name is None:
                 self.logger.info("Initializing default mapper")
             else:
-                self.logger.info("Initializing mapper name '%s'" % mapper_name)
+                self.logger.info("Initializing mapper name '%s'", mapper_name)
             self.mappers[mapper_name].load()
 
     def generate_document_query(self, src_name):
@@ -408,13 +406,11 @@ class DataBuilder(object):
         none_root_srcs = [src.replace("!", "") for src in root_srcs if src.startswith("!")]
         if none_root_srcs:
             if len(none_root_srcs) != len(root_srcs):
-                raise BuilderException(
-                    "If using '!' operator, all datasources must use it (cannot mix), got: %s" % (repr(root_srcs))
-                )
+                raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s", repr(root_srcs))
             # ok, grab sources for this build,
             srcs = self.build_config.get("sources", [])
             root_srcs = list(set(srcs).difference(set(none_root_srcs)))
-            # self.logger.info("'except root' sources %s resolves to root source = %s" % (repr(none_root_srcs),root_srcs))
+            # self.logger.info("'except root' sources %s resolves to root source = %s", repr(none_root_srcs), root_srcs)
 
         # resolve possible regex based source name (split-collections sources)
         root_srcs = self.resolve_sources(root_srcs)
@@ -484,7 +480,7 @@ class DataBuilder(object):
         # also search for _meta in build_config
         bmeta = self.build_config.get("_meta")
         if bmeta:
-            self.logger.info("Found _meta in build_config, merging: %s" % pformat(bmeta))
+            self.logger.info("Found _meta in build_config, merging: %s", pformat(bmeta))
             self.custom_metadata.update(self.build_config.get("_meta", {}))
 
     def update_src_meta_stats(self):
@@ -591,7 +587,7 @@ class DataBuilder(object):
 
         self.custom_metadata = {}
         self.clean_old_collections()
-        self.logger.info("Merging into target collection '%s'" % self.target_backend.target_name)
+        self.logger.info("Merging into target collection '%s'", self.target_backend.target_name)
         strargs = "[sources=%s,target_name=%s]" % (sources, target_name)
 
         try:
@@ -643,7 +639,7 @@ class DataBuilder(object):
                                     "_meta": _meta,
                                 },
                             )
-                            self.logger.info("success %s" % strargs, extra={"notify": True})
+                            self.logger.info("success %s", strargs, extra={"notify": True})
                             # set next step
                             build_conf = AutoBuildConfig(build["build_config"])
                             if build_conf.should_diff_new_build():
@@ -653,7 +649,7 @@ class DataBuilder(object):
                         except Exception as e:
                             strargs = "[sources=%s]" % sources
                             self.register_status("failed", job={"err": repr(e)})
-                            self.logger.exception("failed %s: %s" % (strargs, e), extra={"notify": True})
+                            self.logger.exception("failed %s: %s", strargs, e, extra={"notify": True})
                             raise
 
                     postjob.add_done_callback(stored)
@@ -665,7 +661,7 @@ class DataBuilder(object):
         except (KeyboardInterrupt, Exception) as e:
             self.logger.exception(e)
             self.register_status("failed", job={"err": repr(e)})
-            self.logger.exception("failed %s: %s" % (strargs, e), extra={"notify": True})
+            self.logger.exception("failed %s: %s", strargs, e, extra={"notify": True})
             raise
 
     def get_mapper_for_source(self, src_name, init=True):
@@ -681,7 +677,7 @@ class DataBuilder(object):
         try:
             init and self.init_mapper(mapper_name)
             mapper = self.mappers[mapper_name]
-            self.logger.info("Found mapper '%s' for source '%s'" % (mapper, src_name))
+            self.logger.info("Found mapper '%s' for source '%s'", mapper, src_name)
             return mapper
         except KeyError:
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
@@ -710,15 +706,15 @@ class DataBuilder(object):
         other_sources = list(set(source_names).difference(set(root_sources)))
         # got root doc sources but not part of the merge ? that's weird...
         if defined_root_sources and not root_sources:
-            self.logger.warning("Root document sources found (%s) but not part of the merge..." % defined_root_sources)
+            self.logger.warning("Root document sources found (%s) but not part of the merge...", defined_root_sources)
 
         source_names = sorted(source_names)
         root_sources = sorted(root_sources)
         other_sources = sorted(other_sources)
 
-        self.logger.info("Sources to be merged: %s" % source_names)
-        self.logger.info("Root sources: %s" % root_sources)
-        self.logger.info("Other sources: %s" % other_sources)
+        self.logger.info("Sources to be merged: %s", source_names)
+        self.logger.info("Root sources: %s", root_sources)
+        self.logger.info("Other sources: %s", other_sources)
 
         got_error = False
 
@@ -735,7 +731,7 @@ class DataBuilder(object):
                         res = f.result()
                         stats.update(res)
                     except Exception as e:
-                        self.logger.exception("Failed merging source '%s': %s" % (name, e))
+                        self.logger.exception("Failed merging source '%s': %s", name, e)
                         nonlocal got_error
                         got_error = e
 
@@ -753,7 +749,7 @@ class DataBuilder(object):
                 self.register_status(
                     "building", transient=True, init=True, job={"step": "merge-root", "sources": root_sources}
                 )
-                self.logger.info("Merging root document sources: %s" % root_sources)
+                self.logger.info("Merging root document sources: %s", root_sources)
                 await merge(root_sources)
                 self.register_status("success", job={"step": "merge-root", "sources": root_sources})
 
@@ -761,7 +757,7 @@ class DataBuilder(object):
                 self.register_status(
                     "building", transient=True, init=True, job={"step": "merge-others", "sources": other_sources}
                 )
-                self.logger.info("Merging other resources: %s" % other_sources)
+                self.logger.info("Merging other resources: %s", other_sources)
                 await merge(other_sources)
                 self.register_status("success", job={"step": "merge-others", "sources": other_sources})
 
@@ -784,10 +780,10 @@ class DataBuilder(object):
 
             def postmerged(f):
                 try:
-                    self.logger.info("Post-merge completed [%s]" % f.result())
+                    self.logger.info("Post-merge completed [%s]", f.result())
                     self.register_status("success", job={"step": "post-merge"})
                 except Exception as e:
-                    self.logger.exception("Failed post-merging source: %s" % e)
+                    self.logger.exception("Failed post-merging source: %s", e)
                     nonlocal got_error
                     got_error = e
 
@@ -822,9 +818,7 @@ class DataBuilder(object):
         defined_root_sources = self.get_root_document_sources()
         upsert = not defined_root_sources or src_name in defined_root_sources
         if not upsert:
-            self.logger.debug(
-                "Documents from source '%s' will be stored only if a previous document exists with same _id" % src_name
-            )
+            self.logger.debug("Documents from source '%s' will be stored only if a previous document exists with same _id", src_name)
         jobs = []
         total = self.source_backend[src_name].count()
         btotal = math.ceil(total / batch_size)
@@ -836,10 +830,10 @@ class DataBuilder(object):
 
         # FIXME id_provider initialized below will be overwritten by `if _query and ids is None:` code block
         if ids:
-            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d" % (src_name, batch_size))
+            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d", src_name, batch_size)
             id_provider = [ids]
         else:
-            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d" % (src_name, id_batch_size, batch_size))
+            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d", src_name, id_batch_size, batch_size)
             id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size, logger=self.logger)
 
         if _query and ids is not None:
@@ -863,7 +857,7 @@ class DataBuilder(object):
         src_master = self.source_backend.master
         meta = src_master.find_one({"_id": src_name}) or {}
         merger = meta.get("merger", "upsert")
-        self.logger.info("Documents from source '%s' will be merged using %s" % (src_name, merger))
+        self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
 
         doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
@@ -876,8 +870,8 @@ class DataBuilder(object):
                 pinfo["step"] = src_name
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
                 self.logger.info(
-                    "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)"
-                    % (bnum, btotal, src_name, cnt, total, (cnt / total * 100.0))
+                    "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
+                    bnum, btotal, src_name, cnt, total, (cnt / total * 100.0)
                 )
                 job = await job_manager.defer_to_process(
                     pinfo,
@@ -891,7 +885,7 @@ class DataBuilder(object):
                         upsert,
                         merger,
                         bnum,
-                    ),
+                    )
                 )
 
                 def batch_merged(f, batch_num):
@@ -907,7 +901,7 @@ class DataBuilder(object):
                 # raise error as soon as we know
                 if got_error:
                     raise got_error
-        self.logger.info("%d jobs created for merging step" % len(jobs))
+        self.logger.info("%d jobs created for merging step", len(jobs))
         tasks = asyncio.gather(*jobs)
 
         def done(f):
@@ -1030,13 +1024,13 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         )
         exc_fn = os.path.join(btconfig.LOG_FOLDER, "%s.exc.pick" % logger_name)
         pickle.dump(e, open(exc_fn, "wb"))
-        logger.info("Exception was dumped in pickle file '%s'" % exc_fn)
+        logger.info("Exception was dumped in pickle file '%s'", exc_fn)
         ids_fn = os.path.join(btconfig.LOG_FOLDER, "%s.ids.pick" % logger_name)
         pickle.dump(ids, open(ids_fn, "wb"))
-        logger.info("IDs dumped in pickle file '%s'" % ids_fn)
+        logger.info("IDs dumped in pickle file '%s'", ids_fn)
         dat_fn = os.path.join(btconfig.LOG_FOLDER, "%s.docs.pick" % logger_name)
         pickle.dump(docs, open(dat_fn, "wb"))
-        logger.info("Data (batch of docs) dumped in pickle file '%s'" % dat_fn)
+        logger.info("Data (batch of docs) dumped in pickle file '%s'", dat_fn)
         raise
 
 
@@ -1194,7 +1188,7 @@ class BuilderManager(BaseManager):
         if meta:
             db.remove({"_id": merge_name})
         else:
-            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+            self.logger.warning("No metadata found for merged collection '%s'", merge_name)
         self.delete_merged_data(merge_name)
 
     def archive_merge(self, merge_name):
@@ -1205,7 +1199,7 @@ class BuilderManager(BaseManager):
             meta["archived"] = datetime.now()
             db.replace_one({"_id": merge_name}, meta)
         else:
-            self.logger.warning("No metadata found for merged collection '%s'" % merge_name)
+            self.logger.warning("No metadata found for merged collection '%s'", merge_name)
         self.delete_merged_data(merge_name)
 
     def get_query_for_list_merge(self, only_archived, status=None):
@@ -1408,7 +1402,7 @@ class BuilderManager(BaseManager):
                             },
                         }
                 except Exception as e:
-                    self.logger.warning("Can't check what's new for source '%s': %s" % (src_name, e))
+                    self.logger.warning("Can't check what's new for source '%s': %s", src_name, e)
             return {build_name: new}
 
         if old is None and build_name is None:
