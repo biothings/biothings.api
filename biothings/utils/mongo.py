@@ -175,16 +175,14 @@ def requires_config(func):
 def get_conn(server, port):
     try:
         if config.DATA_SRC_SERVER_USERNAME and config.DATA_SRC_SERVER_PASSWORD:
-            uri = "mongodb://{}:{}@{}:{}".format(config.DATA_SRC_SERVER_USERNAME, config.DATA_SRC_SERVER_PASSWORD, server, port)
+            uri = f"mongodb://{config.DATA_SRC_SERVER_USERNAME}:{config.DATA_SRC_SERVER_PASSWORD}@{server}:{port}"
         else:
-            uri = "mongodb://{}:{}".format(server, port)
+            uri = f"mongodb://{server}:{port}"
         conn = DatabaseClient(uri)
         return conn
     except (AttributeError, ValueError):
         # missing config variables (or invalid), we'll pretend it's a dummy connection to mongo
-        # (dummy here means there really shouldn't be any call to get_conn()
-        # but mongo is too much tied to the code and needs more work to
-        # unlink it
+        # (dummy here means there really shouldn't be any call to get_conn() but mongo is too much tied to the code and needs more work to unlink it)
         return DummyDatabase()
 
 
@@ -536,7 +534,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
         logger.debug("Found valid cache file for '%s': %s", col.name, cache_file)
         if validate_only:
             logger.debug("Only validating cache, now return")
-            return []
+            yield []
+            return
+
         with open_compressed_file(cache_file) as cache_in:
             if cache_format:
                 io_cache = io.TextIOWrapper(cache_in)
@@ -551,13 +551,13 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
         if getattr(config, "CACHE_FOLDER", None) and config.CACHE_FOLDER and build_cache:
             if not os.path.exists(config.CACHE_FOLDER):
                 os.makedirs(config.CACHE_FOLDER)
-            cache_temp = "%s._tmp_" % cache_file
+            cache_temp = f"{cache_file}._tmp_"
             # clean aborted cache file generation
-            for tmp_cache in glob.glob(os.path.join(config.CACHE_FOLDER, "%s*" % cache_temp)):
+            for tmp_cache in glob.glob(os.path.join(config.CACHE_FOLDER, f"{cache_temp}*")):
                 logger.info("Removing aborted cache file '%s'", tmp_cache)
                 os.remove(tmp_cache)
             # use temp file and rename once done
-            cache_temp = "%s%s" % (cache_temp, get_random_string())
+            cache_temp = f"{cache_temp}{get_random_string()}"
             cache_out = get_compressed_outfile(cache_temp, compress=cache_format)
             logger.info("Building cache file '%s'", cache_temp)
         else:
