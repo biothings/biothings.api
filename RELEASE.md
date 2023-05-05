@@ -1,10 +1,12 @@
-### This is the procedure we use for "biothings" package release
+# Release instructions
+
+## This is the procedure we use for "biothings" package release
 
 1. requires both `wheel` and `twine` packages installed
 
-    ```bash
-    pip install wheel twine
-    ```
+   ```bash
+   pip install wheel twine
+   ```
 
 2. Update version number in [biothings/__init__.py](biothings/__init__.py).
 
@@ -12,17 +14,17 @@
 
 4. Build the package locally:
 
-    ```bash
-    python setup.py sdist bdist_wheel
-    ```
+   ```bash
+   python setup.py sdist bdist_wheel
+   ```
 
    Note: No need to add `--unversal` parameter, since `biothings` package now requires Python3, with no support of Python2 any more.
 
 5. Test the package built locally:
 
-    ```bash
-    pip install dist/biothings-0.9.0-py3-none-any.whl
-    ```
+   ```bash
+   pip install dist/biothings-0.9.0-py3-none-any.whl
+   ```
 
    And run any local test as needed (e.g. run nosetests on a local BioThings API instance).
 
@@ -30,24 +32,24 @@
 
    * Create a version branch if not already (no need for every micro versions):
 
-        ```bash
-        git checkout -b 0.11.x
-        git push -u origin "0.11.x"
-        ```
+     ```bash
+     git checkout -b 0.11.x
+     git push -u origin "0.11.x"
+     ```
 
      Note: future version-specific bug-fixes (with increased micro versions) will go to this branch (possibly cherry-picked from `master` branch).
 
    * Create a tag for each released version (with "v" prefix):
 
-        ```bash
-        git tag -a "v0.9.0" -m "tagging v0.9.0 for release"
-        ```
+     ```bash
+     git tag -a "v0.9.0" -m "tagging v0.9.0 for release"
+     ```
 
    * If everything looks good, push to the remote:
 
-        ```bash
-        git push --tags
-        ```
+     ```bash
+     git push --tags
+     ```
 
 7. Publish a new release using Github Action
 
@@ -58,9 +60,9 @@
 
 8. Alternatively, upload manually a new release to PyPI:
 
-    ```bash
-    twine upload dist/*
-    ```
+   ```bash
+   twine upload dist/*
+   ```
 
     Note: make sure `dist` folder contains only the new versions you want to publish.
 
