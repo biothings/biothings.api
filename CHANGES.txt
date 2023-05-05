@@ -1,3 +1,57 @@
+v0.12.0 (2022/05/xx)
+    Highlights:
+        - New CLI feature for developing and testing data plugins https://github.com/newgene/biothings.api/pull/56
+        - New Docker Dumper based data plugins https://github.com/newgene/biothings.api/pull/83
+        - Support manifest-only date plugin (with a pre-defined parser) https://github.com/biothings/biothings.api/issues/259
+        - Support Python 3.11 and dropped Python 3.6 support
+
+    biothings.web improvements
+        - Support Google Analytics 4 https://github.com/newgene/biothings.api/pull/16
+        - Added a new `jmespath` query parameter for response transformation https://github.com/biothings/biothings.api/commit/31898fac7cd86b5c05520622885a3c0852f2494c
+        - Added date_format query parameter validation https://github.com/newgene/biothings.api/pull/97
+        - Added min for numeric query parameter validation (max is already supported) https://github.com/newgene/biothings.api/pull/97
+        - Fixed tornado.autoreload issue to support task-based reload hook https://github.com/newgene/biothings.api/pull/95
+        - Prevent biothing_type field in metadata from returning a single-item list https://github.com/biothings/biothings.api/issues/272
+        - Fixed the response formatter for histogram aggregation results https://github.com/biothings/biothings.api/issues/267
+        - Fixed an issue when only ES_INDEX is provided, not ES_DOC_TYPE https://github.com/biothings/biothings.api/commit/5c6d6dc6057073fb040dd7ae5b11b1b9967bf4f4
+        - Retired the use of pyinotify in autoreloader https://github.com/biothings/biothings.api/issues/260
+        - Logging all hanlders at server start https://github.com/biothings/biothings.api/commit/e9b3f9e6f8761746eb1e6f476dd9500b8bf8fe0e
+        - Adjusted sentry traces_sample_rate setting for better tracking tracebacks https://github.com/biothings/biothings.api/commit/eec03385e79394d1d99a7ed8537966ce2e995645
+
+    biothings.hub improvements
+        - New CLI feature for developing and testing data plugins https://github.com/newgene/biothings.api/pull/56
+        - New Docker Dumper based data plugins https://github.com/newgene/biothings.api/pull/83
+        - Support multiple target Elasticsearch hosts in data releases https://github.com/biothings/biothings.api/issues/251
+        - Allow to set AUTOHUB_VALIDATOR_CLASS to customize release validation logic https://github.com/newgene/biothings.api/pull/105
+        - Allow to override AutoHubFeature.validate_release method to add metadata validation https://github.com/biothings/biothings.api/issues/284
+        - Allow to manually mark a data source dump as success, e.g. manual downloads https://github.com/newgene/biothings.api/pull/101
+        - Verify existing snapshot config matches SNAPSHOT_CONFIG setting and allow to recreate if needed https://github.com/biothings/biothings.api/issues/275
+        - Support addtional filters (e.g. status) for the build list https://github.com/newgene/biothings.api/pull/94
+        - Implemented hub's Auto_Archive feature using AUTO_ARCHIVE_CONFIG https://github.com/biothings/biothings.api/issues/261
+        - Improved data inspection rules for validating field names and values https://github.com/newgene/biothings.api/pull/87
+        - Added a new re_index helper function https://github.com/biothings/biothings.api/issues/269
+        - Added a new helper function to generate local SSL certificate (e.g. to run dev on https) https://github.com/newgene/biothings.api/pull/84
+        - Allow Uploader.load_data method to be called with either data-folder or data-file path https://github.com/newgene/biothings.api/pull/81
+        - Support manifest-only date plugin (with a pre-defined parser) https://github.com/biothings/biothings.api/issues/259
+        - Support biothing_type and display_name in data plugin's manifest file https://github.com/biothings/biothings.api/issues/254
+        - Fixed cursor timeout issue in utils.mongo's doc_feeder helper function https://github.com/biothings/biothings.api/issues/282
+        - Fixed hub logging file names and returned sorting order https://github.com/newgene/biothings.api/pull/88
+        - Fixed CVE-2007-4559 when using tarfile module https://github.com/newgene/biothings.api/pull/74
+        - Fixed Autobuild is not correctly triggered when last build failed https://github.com/biothings/biothings.api/issues/271
+        - Replaced yapf with black as code formatter when exporting data plugins https://github.com/biothings/biothings.api/commit/fce0864b70802326d52ccc2dc71fb6fa1e4c1292
+
+    Experimental features
+        - Automatically clean up Elasticsearch snapshots via AUTO_SNAPSHOT_CLEANUP_CONFIG https://github.com/biothings/biothings.api/issues/276
+        - Allow to delete an existing snapshot https://github.com/newgene/biothings.api/pull/103
+
+    Misc improvements
+        - Added a new biothings.utils.common.DummyConfig class to create a temp config module https://github.com/newgene/biothings.api/pull/79
+        - Fixed all code-styling issue using fourmat (flake8 + black + isort)
+        - Print out the current test url and biothings version in BiothingsWebTest https://github.com/biothings/biothings.api/issues/273
+        - Added API documentation for biothings.hub module https://github.com/biothings/biothings.api/issues/265
+        - The hub commands documentation is now sorted by command names https://github.com/newgene/biothings.api/pull/76
+
+
 v0.11.1 (2022/10/03)
     Hub improvements:
         - use pickle protocol 4 as the pickle.dump default
