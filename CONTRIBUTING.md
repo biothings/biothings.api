@@ -72,7 +72,7 @@ We recommand to setup [fourmat](https://github.com/4Catalyzer/fourmat) as your c
 Fix the styling issue before you push the code to the github. [fourmat](https://github.com/4Catalyzer/fourmat) conviniently combines
 three code-styling tools: [flake8](http://flake8.pycqa.org), [black](https://github.com/python/black) and [isort](https://pypi.org/project/isort/).
 
-We have already included config files for code styling check and formatting: [.flake8](.flake8) for flake8 and [pyproject.toml] for black and isort,
+We have already included config files for code styling check and formatting: [.flake8](.flake8) for flake8 and [pyproject.toml](./pyproject.toml) for black and isort,
 so that we all use the same settings when run `fourmat`.
 
 You can check out more config options for each tool:
