@@ -2010,6 +2010,8 @@ class DockerContainerDumper(BaseDumper):
             raise DumperException("SRC_URLS should be a list")
         if not self.__class__.SRC_URLS:
             raise DumperException("SRC_URLS list is empty")
+        if self.need_prepare():
+            self.prepare_client()
         self.prepare_remote_container()
         # unprepare unpicklable objects so we can use multiprocessing
         self.unprepare()
