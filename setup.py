@@ -117,7 +117,7 @@ docs_requires = ["sphinx>=2.4.3", "sphinx_rtd_theme>=1.0.0", "sphinx_reredirects
 setup(
     name="biothings",
     version=__import__("biothings").__version__,
-    author="Sebastien Lelong, Zhongchao Qian, Xinghua Zhou, Chunlei Wu",
+    author="The BioThings Team",
     author_email="cwu@scripps.edu",
     description="a toolkit for building high-performance data APIs in biology",
     license="Apache License, Version 2.0",
@@ -133,11 +133,11 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",

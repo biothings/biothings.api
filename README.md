@@ -121,3 +121,7 @@ The latest documentation is available at https://docs.biothings.io.
 ## How to contribute
 
 Please check out this [Contribution Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) document.
+
+## Active and past contributors
+
+Please see [Contributors](Contributors.md)
