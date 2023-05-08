@@ -115,6 +115,7 @@ dev_requires = [
 # extra requirements for building docs
 docs_requires = ["sphinx>=2.4.3", "sphinx_rtd_theme>=1.0.0", "sphinx_reredirects>=0.0.1"]
 
+
 setup(
     name="biothings",
     version=__import__("biothings").__version__,
@@ -123,7 +124,14 @@ setup(
     description="a toolkit for building high-performance data APIs in biology",
     license="Apache License, Version 2.0",
     keywords="biology annotation web service client api",
-    url=REPO_URL,
+    url="https://biothings.io",
+    project_urls={
+        "Documentation": "https://docs.biothings.io",
+        "Source": REPO_URL,
+        "Tracker": f"{REPO_URL}/issues",
+        "Changelog": f"{REPO_URL}/blob/master/CHANGES.txt",
+        "Twitter": "https://twitter.com/biothingsapi",
+    },
     packages=find_packages(exclude=["tests"]),
     package_data={"": ["*.html", "*.py.tpl"]},
     include_package_data=True,
