@@ -48,7 +48,7 @@ For example:
 - Defined variable using ConfigurationDefault
 ```
 DATA_HUB_DB_DATABASE = ConfigurationDefault(
-    default='gene_hubdb',
+    default='biothings_hubdb',
     desc="db containing the following (internal use)"
 )
 
@@ -429,7 +429,7 @@ DATA_TARGET_SERVER_PASSWORD = ConfigurationDefault(
 )
 
 DATA_HUB_DB_DATABASE = ConfigurationDefault(
-    default=ConfigurationValue("""'gene_hubdb'"""), desc="db containing the following (internal use)"
+    default=ConfigurationValue("""'biothings_hubdb'"""), desc="db containing the following (internal use)"
 )
 DATA_SRC_MASTER_COLLECTION = ConfigurationDefault(
     default=ConfigurationValue("""'src_master'"""), desc="for metadata of each src collections"
