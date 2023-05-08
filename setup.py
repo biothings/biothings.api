@@ -43,6 +43,7 @@ install_requires = [
     "elasticsearch-dsl>=7, <8",
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
+    "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
     "PyYAML>=5.1",
     "orjson>=3.6.1",  # a faster json lib supports inf/nan and datetime, v3.6.1 is the last version supports Python 3.6
 ]
@@ -69,7 +70,7 @@ hubcore_requires = [
 hub_requires = hubcore_requires + [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
-    "aiohttp==3.8.3",  # elasticsearch requires aiohttp>=3,<4
+    "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
     "asyncssh==2.11.0",  # needs libffi-dev installed (apt-get)
     # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
