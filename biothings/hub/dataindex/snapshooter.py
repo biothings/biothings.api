@@ -193,7 +193,7 @@ class SnapshotEnv:
     def setup_log(self, index):
         build_doc = self._doc(index)
         log_name = build_doc["target_name"] or build_doc["_id"]
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", log_name, "snapshot")
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", log_name, "snapshot") if btconfig.LOG_FOLDER else None
         self.logger, _ = get_logger(index, log_folder=log_folder, force=True)
 
     def snapshot(self, index, snapshot=None, recreate_repo=False):

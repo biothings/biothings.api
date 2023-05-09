@@ -1,3 +1,4 @@
+# flake8: noqa: B008
 import os
 import pathlib
 from typing import Optional
@@ -5,10 +6,11 @@ from typing import Optional
 import typer
 from rich import print as rprint
 
-from biothings import config
-from biothings.utils.loggers import setup_default_log
+# from biothings import config
+from biothings.management.utils import get_logger
 
-logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
+# logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
+logger = get_logger("dataplugin")
 
 # To make sure biothings.config is initialized
 from . import utils
@@ -53,7 +55,7 @@ def listing(
 ):
     working_dir = pathlib.Path().resolve()
     plugin_name = working_dir.name
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     if dump:
@@ -81,7 +83,7 @@ def clean_data(
     ),
 ):
     working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     if dump:
         utils.do_clean_dumped_files(working_dir)
@@ -105,7 +107,7 @@ def dump_data(verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbo
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     manifest = utils.get_manifest_content(working_dir)
     to_dumps = utils.get_todump_list(manifest.get("dumper"))
@@ -138,7 +140,7 @@ def upload_source(
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     plugin_name = working_dir.name
     local_archive_dir = os.path.join(working_dir, ".biothings_hub")
@@ -168,7 +170,7 @@ def inspect(
     mode: Optional[str] = typer.Option(
         default="type,stats",
         help="""
-            The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
+            The inspect mode or list of modes (comma separated), e.g. "type,mapping".\n
             Possible values are:\n
             - "type": explore documents and report strict data structure\n
             - "mapping": same as type but also perform test on data so guess best mapping\n
@@ -200,7 +202,7 @@ def inspect(
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     table_space = utils.get_uploaders(working_dir)
     if sub_source_name and sub_source_name not in table_space:
@@ -245,7 +247,7 @@ def serve(
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir):
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     table_space = utils.get_uploaders(working_dir)
     data_plugin_name = working_dir.name

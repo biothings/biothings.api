@@ -53,7 +53,7 @@ class BaseDiffer(object):
         log_folder = self.log_folder
         name = f"diff_{self.__class__.diff_type}"
         if old and new:
-            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", new, "diff")
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", new, "diff") if btconfig.LOG_FOLDER else None
             name = f"diff_{old}_{new}"
         self.logger, self.logfile = get_logger(name, log_folder, force=True)
 

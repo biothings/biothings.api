@@ -6,6 +6,7 @@ import sys
 
 try:
     import typer
+    from rich.logging import RichHandler
 
     typer_avail = True
 except ImportError:
@@ -30,15 +31,16 @@ if typer_avail:
         no_args_is_help=True,
     )
 
+    logging.basicConfig(
+        level="INFO",
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+    )
+    logger = logging.getLogger("cli")
 
-logger = logging.getLogger()
-logger.setLevel(level=logging.DEBUG)
 
-
-def main():
-    if not typer_avail:
-        logger.error('Error: "typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
-        return
+def setup_config():
     working_dir = pathlib.Path().resolve()
     _config = DummyConfig("config")
     _config.HUB_DB_BACKEND = {
@@ -47,7 +49,8 @@ def main():
     }
     _config.DATA_SRC_DATABASE = ".data_src_database"
     _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
-    _config.LOG_FOLDER = ".biothings_hub/logs"
+    # _config.LOG_FOLDER = ".biothings_hub/logs"
+    _config.LOG_FOLDER = None  # disable file logging, only log to stdout
     _config.DATA_PLUGIN_FOLDER = f"{working_dir}"
     try:
         config_mod = importlib.import_module("config")
@@ -56,11 +59,20 @@ def main():
             if isinstance(value, ConfigurationError):
                 raise ConfigurationError("%s: %s" % (attr, str(value)))
             setattr(_config, attr, value)
-    except Exception:
-        logger.info("The config.py does not exists in the working directory, use default biothings.config")
+    except ModuleNotFoundError:
+        logger.debug("The config.py does not exists in the working directory, use default biothings.config")
+        pass
+
     sys.modules["config"] = _config
     sys.modules["biothings.config"] = _config
 
+
+def main():
+    if not typer_avail:
+        logger.error('"typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
+        return
+
+    setup_config()
     from .dataplugin import app as dataplugin_app
     from .dataplugin_localhub import app as dataplugin_localhub_app
 

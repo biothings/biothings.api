@@ -318,7 +318,7 @@ class Indexer:
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
     def setup_log(self):
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", self.build_name or "", "index")
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", self.build_name or "", "index") if btconfig.LOG_FOLDER else None
         log_name = f"index_{self.es_index_name}"
         self.logger, self.logfile = get_logger(log_name, log_folder=log_folder, force=True)
 

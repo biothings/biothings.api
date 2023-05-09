@@ -105,8 +105,8 @@ _config_for_app()
 #     _config_for_app(_config)
 
 
-from biothings.utils.common import get_class_from_classpath
-from biothings.utils.hub import (
+from biothings.utils.common import get_class_from_classpath  # noqa: E402
+from biothings.utils.hub import (  # noqa: E402
     AlreadyRunningException,
     CommandDefinition,
     CommandError,
@@ -114,9 +114,9 @@ from biothings.utils.hub import (
     get_hub_reloader,
     pending,
 )
-from biothings.utils.jsondiff import make as jsondiff
-from biothings.utils.loggers import ShellLogger, WSLogHandler, WSShellHandler, get_logger
-from biothings.utils.version import check_new_version, get_version
+from biothings.utils.jsondiff import make as jsondiff  # noqa: E402
+from biothings.utils.loggers import ShellLogger, WSLogHandler, WSShellHandler, get_logger  # noqa: E402
+from biothings.utils.version import check_new_version, get_version  # noqa: E402
 
 # adjust some loggers...
 if os.environ.get("HUB_VERBOSE", "0") != "1":

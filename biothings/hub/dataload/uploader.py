@@ -498,7 +498,7 @@ class BaseSourceUploader(object):
         return src_dump
 
     def setup_log(self):
-        log_folder = os.path.join(config.LOG_FOLDER, "dataload")
+        log_folder = os.path.join(config.LOG_FOLDER, "dataload") if config.LOG_FOLDER else None
         return get_logger("upload_%s" % self.fullname, log_folder=log_folder)
 
     def __getattr__(self, attr):

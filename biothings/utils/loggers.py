@@ -32,11 +32,18 @@ class GZipRotator:
 
 
 def create_logger(log_folder, logger_name, level=logging.DEBUG):
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    logfile = os.path.join(log_folder, logger_name)
-    if not logfile.endswith(".log"):
-        logfile += ".log"
+    """
+    Create and return a file logger if log_folder is provided.
+    If log_folder is None, no file handler will be created.
+    """
+    if log_folder:
+        if not os.path.exists(log_folder):
+            os.makedirs(log_folder)
+        logfile = os.path.join(log_folder, logger_name)
+        if not logfile.endswith(".log"):
+            logfile += ".log"
+    else:
+        logfile = None
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     return logger, logfile
@@ -58,7 +65,8 @@ def setup_default_log(default_logger_name, log_folder, level=logging.DEBUG):
     # this will affect any logging calls
     logging.basicConfig(level=level)
     logger, logfile = create_logger(log_folder, default_logger_name, level=level)
-    configurate_file_handler(logger, logfile)
+    if logfile:
+        configurate_file_handler(logger, logfile)
     return logger
 
 
@@ -76,7 +84,7 @@ def get_logger(logger_name, log_folder=None, handlers=("console", "file", "slack
     # this will affect any logging calls
     logger, logfile = create_logger(log_folder, logger_name)
     fmt = logging.Formatter(LOG_FORMAT_STRING, datefmt=DATEFMT)
-    if "file" in handlers:
+    if "file" in handlers and logfile:
         configurate_file_handler(logger, logfile, formater=fmt, force=force)
 
     if "hipchat" in handlers:
@@ -244,15 +252,15 @@ class LookUpList(UserList):
         assert all(isinstance(x.range, Range) for x in self.data)
 
     def find_index(self, val):
-        l, r = 0, len(self.data)
-        while l < r:
-            mid = (l + r) // 2
+        _l, _r = 0, len(self.data)
+        while _l < _r:
+            mid = (_l + _r) // 2
             start = self.data[mid].range.start
             end = self.data[mid].range.end
             if val < start:
-                r = mid
+                _r = mid
             elif val >= end:
-                l = mid + 1
+                _l = mid + 1
             else:  # found
                 return mid
 
@@ -363,15 +371,15 @@ class SlackMentionPolicy:
             # the commonly defined, named ones, search for
             # which range it belongs if that's the case
             levels = list(self._policy.values())
-            l, r = 0, len(levels)
-            while l < r:
-                mid = (l + r) // 2
+            _l, _r = 0, len(levels)
+            while _l < _r:
+                mid = (_l + _r) // 2
                 start = levels[mid].range.start
                 end = levels[mid].range.end
                 if level < start:
-                    r = mid
+                    _r = mid
                 elif level >= end:
-                    l = mid + 1
+                    _l = mid + 1
                 else:  # found
                     level = start
                     break

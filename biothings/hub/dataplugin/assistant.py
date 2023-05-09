@@ -56,7 +56,7 @@ class BasePluginLoader(object):
 
     def setup_log(self):
         """Setup and return a logger instance"""
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload")
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload") if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger("loader_%s" % self.plugin_name, log_folder=log_folder)
 
     def get_plugin_obj(self):

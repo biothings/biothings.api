@@ -242,7 +242,7 @@ class BaseDumper(object):
         pass
 
     def setup_log(self):
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload")
+        log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload") if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger("dump_%s" % self.src_name, log_folder=log_folder)
 
     def prepare(self, state={}):  # noqa: B006

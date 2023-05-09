@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import logging
 import math
 import os
 import pathlib
@@ -17,6 +18,7 @@ import yaml
 from orjson import orjson
 from rich import box, print as rprint
 from rich.console import Console
+from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
@@ -26,6 +28,17 @@ from biothings.utils.common import get_random_string, get_timestamp, timesofar, 
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
+
+
+def get_logger(name):
+    logging.basicConfig(
+        level="INFO",
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+    )
+    logger = logging.getLogger("cli")
+    return logger
 
 
 def get_uploaded_collections(src_db, uploaders):
@@ -550,10 +563,12 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
-def is_valid_working_directory(working_dir):
+def is_valid_working_directory(working_dir, logger=None):
     if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(f"{working_dir}/manifest.json"):
-        rprint(
-            "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
-        )
+        err = "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"
+        if logger:
+            logger.error(err, extra={"markup": True})
+        else:
+            rprint(err)
         return False
     return True

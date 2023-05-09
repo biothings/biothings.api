@@ -70,7 +70,7 @@ class BasePublisher(BaseManager, BaseStatusRegisterer):
     def setup_log(self, build_name=None):
         log_folder = self.log_folder
         if build_name:
-            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name) if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger(self.category, log_folder, force=True)
 
     def get_predicates(self):
@@ -1215,7 +1215,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         name = RELEASEMANAGER_CATEGORY
         log_folder = self.log_folder
         if build_name:
-            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name)
+            log_folder = os.path.join(btconfig.LOG_FOLDER, "build", build_name) if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger(name, log_folder=log_folder, force=True)
 
     def poll(self, state, func):

@@ -1,3 +1,4 @@
+# flake8: noqa: B008
 import os
 import pathlib
 from shutil import copytree
@@ -7,14 +8,7 @@ import tornado.template
 import typer
 from rich import print as rprint
 
-from biothings.hub.dataload.dumper import DumperManager
-from biothings.hub.dataload.uploader import UploaderManager, upload_worker
-from biothings.hub.dataplugin.assistant import LocalAssistant
-from biothings.hub.dataplugin.manager import DataPluginManager
-from biothings.utils.hub_db import get_data_plugin
-from biothings.utils.loggers import get_logger
-
-from . import utils
+from biothings.management import utils
 
 short_help = "[green]Test multiple data plugins in a local minimal hub without any external databases.[/green]"
 long_help = (
@@ -73,6 +67,12 @@ def create_data_plugin(
 
 
 def load_plugin(plugin_name):
+    from biothings.hub.dataload.dumper import DumperManager
+    from biothings.hub.dataload.uploader import UploaderManager
+    from biothings.hub.dataplugin.assistant import LocalAssistant
+    from biothings.hub.dataplugin.manager import DataPluginManager
+    from biothings.utils.hub_db import get_data_plugin
+
     plugin_manager = DataPluginManager(job_manager=None)
     dmanager = DumperManager(job_manager=None)
     upload_manager = UploaderManager(job_manager=None)
@@ -123,6 +123,9 @@ def dump_and_upload(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
+    from biothings.hub.dataload.uploader import upload_worker
+    from biothings.utils.hub_db import get_data_plugin
+
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
@@ -186,11 +189,11 @@ def inspect(
         help="Your sub source name",
     ),
     mode: Optional[str] = typer.Option(
-        "mapping,type,stats",
+        "type,stats",
         "--mode",
         "-m",
         help="""
-            The inspect mode or list of modes (comma separated) eg. "type,mapping".\n
+            The inspect mode or list of modes (comma separated), e.g. "type,mapping".\n
             Possible values are:\n
             - "type": explore documents and report strict data structure\n
             - "mapping": same as type but also perform test on data so guess best mapping\n
@@ -225,7 +228,7 @@ def inspect(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    logger, logfile = get_logger("inspect")
+    logger = utils.get_logger("inspect")
     if not limit:
         limit = None
     logger.info(f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}")
@@ -272,6 +275,7 @@ def clean_data(
         help="Delete all dumped files and drop uploaded sources tables",
     ),
 ):
+    logger = utils.get_logger("clean")
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:
@@ -284,7 +288,7 @@ def clean_data(
     dumper.prepare()
     dumper.create_todump_list(force=True)
     data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
-    if not utils.is_valid_working_directory(data_plugin_dir):
+    if not utils.is_valid_working_directory(data_plugin_dir, logger=logger):
         return exit(1)
     if dump:
         utils.do_clean_dumped_files(pathlib.Path(dumper.new_data_folder), from_hub=True)
