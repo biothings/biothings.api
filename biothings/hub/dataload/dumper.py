@@ -1905,7 +1905,15 @@ class DockerContainerDumper(BaseDumper):
                     raise DumperException("Can not connect to the Docker server, missing cert info")
                 tls_config = docker.tls.TLSConfig(client_cert=(cert_path, key_path), verify=False)
 
-            client = docker.DockerClient(base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config)
+            if tls_config:
+                client = docker.DockerClient(
+                    base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config
+                )
+            else:
+                # when not using tls, we need to increase timeout for the client (1 week)
+                client = docker.DockerClient(
+                    base_url=self.DOCKER_CLIENT_URL, use_ssh_client=use_ssh_client, tls=tls_config, timeout=604800
+                )
             if not client.ping():
                 raise DumperException("Can not connect to the Docker server!")
             self.logger.info("Connected to Docker server")
