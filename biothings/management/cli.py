@@ -61,7 +61,6 @@ def setup_config():
             setattr(_config, attr, value)
     except ModuleNotFoundError:
         logger.debug("The config.py does not exists in the working directory, use default biothings.config")
-        pass
 
     sys.modules["config"] = _config
     sys.modules["biothings.config"] = _config

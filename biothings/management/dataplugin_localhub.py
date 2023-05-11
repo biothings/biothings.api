@@ -10,6 +10,8 @@ from rich import print as rprint
 
 from biothings.management import utils
 
+logger = utils.get_logger("dataplugin-hub")
+
 short_help = "[green]Test multiple data plugins in a local minimal hub without any external databases.[/green]"
 long_help = (
     short_help
@@ -228,7 +230,6 @@ def inspect(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    logger = utils.get_logger("inspect")
     if not limit:
         limit = None
     logger.info(f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}")
@@ -275,7 +276,6 @@ def clean_data(
         help="Delete all dumped files and drop uploaded sources tables",
     ),
 ):
-    logger = utils.get_logger("clean")
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
     if not plugin_name or plugin_name not in valid_names:

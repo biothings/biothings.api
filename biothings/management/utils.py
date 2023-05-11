@@ -37,7 +37,7 @@ def get_logger(name):
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
     )
-    logger = logging.getLogger("cli")
+    logger = logging.getLogger(name)
     return logger
 
 
