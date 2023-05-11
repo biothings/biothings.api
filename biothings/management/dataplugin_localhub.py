@@ -32,7 +32,10 @@ app = typer.Typer(
 )
 
 
-@app.command("create", help="Create a new data plugin")
+@app.command(
+    name="create",
+    help="Create a new data plugin from the tempplate",
+)
 def create_data_plugin(
     name: Optional[str] = typer.Option(
         default="",
@@ -44,28 +47,7 @@ def create_data_plugin(
     ),
     parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
 ):
-    working_dir = pathlib.Path().resolve()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
-        print("Data plugin with the same name is already exists, please remove it before create")
-        return exit(1)
-    copytree(template_dir, plugin_dir)
-    # create manifest file
-    loader = tornado.template.Loader(plugin_dir)
-    parsed_template = (
-        loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
-    )
-    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
-    with open(manifest_file_path, "w") as fh:
-        fh.write(parsed_template)
-
-    # remove manifest template
-    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
-    if not parallelizer:
-        os.unlink(f"{plugin_dir}/parallelizer.py")
-    print(f"Successful create data plugin template at: \n {plugin_dir}")
+    utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
 
 
 def load_plugin(plugin_name):

@@ -46,6 +46,24 @@ app = typer.Typer(
 
 
 @app.command(
+    name="create",
+    help="Create a new data plugin from the tempplate",
+)
+def create_data_plugin(
+    name: Optional[str] = typer.Option(
+        default="",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    ),
+    multi_uploaders: bool = typer.Option(
+        False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
+    ),
+    parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
+):
+    utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
+
+
+@app.command(
     name="list",
     help="Listing dumped files or uploaded sources",
 )

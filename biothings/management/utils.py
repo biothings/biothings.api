@@ -13,6 +13,7 @@ from functools import partial
 from urllib import parse as urlparse
 
 import requests
+import tornado.template
 import typer
 import yaml
 from orjson import orjson
@@ -30,15 +31,42 @@ from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
 
 
-def get_logger(name):
+def get_logger(name=None):
     logging.basicConfig(
         level="INFO",
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
     )
-    logger = logging.getLogger(name)
+    logger = logging.getLogger(name=None)
     return logger
+
+
+def create_data_plugin_template(name, multi_uploaders=False, parallelizer=False, logger=None):
+    """Create a new data plugin from the template"""
+    logger = logger or get_logger()
+    working_dir = pathlib.Path().resolve()
+    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
+    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
+    plugin_dir = os.path.join(working_dir, name)
+    if os.path.isdir(plugin_dir):
+        logger.error("Data plugin with the same name is already exists, please remove it before create")
+        return exit(1)
+    shutil.copytree(template_dir, plugin_dir)
+    # create manifest file
+    loader = tornado.template.Loader(plugin_dir)
+    parsed_template = (
+        loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
+    )
+    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
+    with open(manifest_file_path, "w") as fh:
+        fh.write(parsed_template)
+
+    # remove manifest template
+    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
+    if not parallelizer:
+        os.unlink(f"{plugin_dir}/parallelizer.py")
+    logger.info(f"Successful create data plugin template at: \n {plugin_dir}")
 
 
 def get_uploaded_collections(src_db, uploaders):
