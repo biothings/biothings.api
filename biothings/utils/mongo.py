@@ -18,7 +18,7 @@ from pymongo.errors import AutoReconnect
 
 from biothings.utils.backend import DocESBackend, DocMongoBackend
 from biothings.utils.common import (
-    timesofar,
+    # timesofar,
     dotdict,
     get_compressed_outfile,
     get_random_string,
@@ -350,7 +350,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     logger.debug("Retrieving documents from collection '%s'. start = %d, end = %d, total = %d.", collection.name, s, e, n)
 
     cursor_index = s  # the integer index in the collection that the cursor is pointing to
-    job_start_time = time.time()
+    # job_start_time = time.time()
     batch_start_time = time.time()
 
     try:
@@ -363,10 +363,10 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         # logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session_uuid)
         if s:
             cur.skip(s)
-            logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
+            # logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
         if e:
             cur.limit(e - s)  # specify the maximum number of documents the cursor will return
-            logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.", e - s, s, e, collection.name)
+            # logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.", e - s, s, e, collection.name)
         cur.batch_size(step)  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
 
         if inbatch:  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
@@ -394,8 +394,8 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
                     yield doc_batch
                     doc_batch = []
 
-                logger.debug("Done.[%.1f%%,%s]", cursor_index * 100. / n, timesofar(batch_start_time))
-                logger.debug("Processing %d-%d documents...", cursor_index + 1, min(cursor_index + step, e))
+                # logger.debug("Done.[%.1f%%,%s]", cursor_index * 100. / n, timesofar(batch_start_time))
+                # logger.debug("Processing %d-%d documents...", cursor_index + 1, min(cursor_index + step, e))
                 if batch_callback:
                     batch_callback(cursor_index, time.time() - batch_start_time)
                 if cursor_index < e:
@@ -405,7 +405,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
             # Important: need to yield the last batch here
             yield doc_batch
 
-        logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
+        # logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
     finally:
         cur.close()
         logger.debug("Session '%s' to be ended.", session_uuid)
