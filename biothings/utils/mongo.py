@@ -356,10 +356,11 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     try:
         # Explicitly create a session object for the cursor to attach
         session: ClientSession = collection.database.client.start_session()
-        logger.debug("Session '%s' started.", session.session_id)
+        session_uuid = session.session_id["id"].as_uuid()
+        logger.debug("Session '%s' started for collection '%s'.", session_uuid, collection.name)
 
         cur = collection.find(query, no_cursor_timeout=True, projection=fields, session=session)
-        logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session.session_id)
+        # logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session_uuid)
         if s:
             cur.skip(s)
             logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
@@ -378,7 +379,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
             session_should_refresh = (session_current_time - session_last_refresh_time) > session_refresh_interval * 60
             if session_should_refresh:
                 cmd_resp = collection.database.command("refreshSessions", [session.session_id], session=session)
-                logger.debug("Session '%s' refreshed, resp=%s", session.session_id, cmd_resp)
+                logger.debug("Session '%s' refreshed, resp=%s", session_uuid, cmd_resp)
                 session_last_refresh_time = session_current_time
 
             if inbatch:
@@ -407,7 +408,7 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
     finally:
         cur.close()
-        logger.debug("Session '%s' to be ended.", session.session_id)
+        logger.debug("Session '%s' to be ended.", session_uuid)
         session.end_session()
 
 
