@@ -23,7 +23,6 @@ except ImportError:
     # Suppress import error when we just run CLI
     InteractiveShell = object
 
-import biothings.utils.aws as aws
 from biothings import config
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import to_boolean
@@ -607,6 +606,10 @@ def publish_data_version(s3_bucket, s3_folder, version_info, update_latest=True,
          "release_date" : "...",        # ISO 8601 timestamp, release date/time
          "url": "http...."}             # url pointing to release metadata
     """
+    # import utils.aws within this function to avoid boto3 import error in
+    # the same like CLI (boto3 is not required)
+    import biothings.utils.aws as aws
+
     # register version
     versionskey = os.path.join(s3_folder, "%s.json" % VERSIONS)
     try:
