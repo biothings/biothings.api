@@ -34,7 +34,8 @@ def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batc
         )
         import pickle
 
-        pickfile = os.path.join(os.path.dirname(logfile), "%s.pick" % logger_name)
+        # when logfile is None, we're in CLI mode, so we just use the current directory
+        pickfile = os.path.join(os.path.dirname(logfile) if logfile else ".", "%s.pick" % logger_name)
         try:
             pickle.dump(
                 {
