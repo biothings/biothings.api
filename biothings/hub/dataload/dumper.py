@@ -2181,8 +2181,10 @@ class DockerContainerDumper(BaseDumper):
                     for chunk in bits:
                         fp.write(chunk)
                 # untar data from get_archive
-                untarall(folder=os.path.dirname(local_file), pattern="*.tar")
                 # we dont actually need to modify locallastmodified. tar file created from container.get_archive keeps the original date_modified
+                untarall(folder=os.path.dirname(local_file), pattern="*.tar")
+                # remove the temp tar file
+                os.unlink(tmp_file)
             self.logger.info(f"Successfully download file {remote_file} to {local_file}")
         except Exception as ex:
             self.logger.error(f"Failed to download {remote_file} with exception: {ex}", exc_info=True)
