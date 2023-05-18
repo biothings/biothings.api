@@ -1,6 +1,4 @@
 # flake8: noqa: B008
-import asyncio
-import inspect
 import os
 import pathlib
 from shutil import copytree
@@ -109,6 +107,9 @@ def dump_and_upload(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
+    import asyncio
+    import inspect
+
     from biothings.hub.dataload.uploader import upload_worker
     from biothings.utils.hub_db import get_data_plugin
 
