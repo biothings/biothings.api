@@ -2022,11 +2022,22 @@ class DockerContainerDumper(BaseDumper):
             self.prepare_client()
         self.prepare_remote_container()
         # unprepare unpicklable objects so we can use multiprocessing
-        self.unprepare()
+        state = self.unprepare()
         # set up job to generate remote file
         pinfo = self.get_pinfo()
         pinfo["step"] = "check"
-        job = await job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
+        if job_manager:
+            job = job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
+        else:
+            # otherwise, just run it with asyncio loop directly
+            async def run(fut):
+                res = self.generate_remote_file()
+                fut.set_result(res)
+
+            loop = asyncio.get_event_loop()
+            job = loop.create_future()
+            loop.create_task(run(job))
+
         remote_error = False
 
         def remote_done(f):
@@ -2039,6 +2050,8 @@ class DockerContainerDumper(BaseDumper):
         if remote_error:
             raise remote_error
         # Need to reinit _state b/c of unprepare
+        self.prepare(state)  # reverse of unpreare after async job is done
+        # TODO: test if the following two lines can be removed after we call self.prepare(state) above
         if self.need_prepare():
             self.prepare_client()
         self.setup_log()
