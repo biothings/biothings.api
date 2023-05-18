@@ -151,6 +151,8 @@ def dump_and_upload(
             db=uploader.db,
         )
         uploader.switch_collection()
+        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
+        uploader.clean_archived_collections()
 
     # cleanup
     dumper.src_dump.remove({"_id": dumper.src_name})
