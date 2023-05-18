@@ -25,5 +25,6 @@ class $DUMPER_NAME($BASE_CLASSES):
         if self.__class__.UNCOMPRESS:
             self.logger.info("Uncompress all archive files in '%s'" % self.new_data_folder)
             uncompressall(self.new_data_folder)
+        super().post_dump(*args, **kwargs)
 
     $SET_RELEASE_FUNC
