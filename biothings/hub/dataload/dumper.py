@@ -2051,15 +2051,19 @@ class DockerContainerDumper(BaseDumper):
                 self.logger.exception(err)
                 raise DockerContainerException("Docker APIError when trying to get the container")
 
-            if self.container.status != "running":
+            if self.container.status == "pause":
+                self.logger.info('Unpause the container "%s" ...', self.CONTAINER_NAME)
+                self.container.unpause()
+                self.logger.info('The container "%s" is unpaused!', self.CONTAINER_NAME)
+            elif self.container.status != "running":
                 self.logger.info('Waiting for the container "%s"to run ...', self.CONTAINER_NAME)
                 self.container.start()
                 self.logger.info('The container "%s" is starting ...', self.CONTAINER_NAME)
-                count = 0
-                while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
-                    count += 1
-                    self.container.reload()  # Load this object from the server again and update attrs with the new data
-                    time.sleep(1)
+            count = 0
+            while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
+                count += 1
+                self.container.reload()  # Load this object from the server again and update attrs with the new data
+                time.sleep(1)
             self.logger.info('The container "%s" is now running!', self.CONTAINER_NAME)
             self.container.reload()
             if self.container.status == "exited":
@@ -2248,7 +2252,7 @@ class DockerContainerDumper(BaseDumper):
                 if not self.KEEP_CONTAINER:
                     self.logger.warning(
                         f'The container is pre-existing, "{self.container.name}", but "keep_container" is set to False. '
-                        'We will ignore the "keep_container" setting, will not remove the container.'
+                        'We will ignore the "keep_container" setting, and won\'t remove the container.'
                     )
                 if self.container.status == self.ORIGINAL_CONTAINER_STATUS:
                     # container is in the original status, do nothing
