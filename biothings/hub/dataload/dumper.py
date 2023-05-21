@@ -59,6 +59,7 @@ class BaseDumper(object):
     AUTO_UPLOAD = True
 
     # attribute used to generate data folder path suffix
+    # by default, it uses self.release value, which is typically set in self.set_release method
     SUFFIX_ATTR = "release"
 
     # Max parallel downloads (None = no limit).
@@ -2207,9 +2208,6 @@ class DockerContainerDumper(BaseDumper):
         if remote_better:
             new_localfile = os.path.join(self.new_data_folder, file_name)
             self.to_dump.append({"remote": remote_file, "local": new_localfile})
-        # if there is nothing to dump check if you need to delete container [TODO: probably should be handled somewhere else, like post_dump?]
-        if not self.to_dump:
-            self.delete_container()
 
     def prepare_local_folders(self, localfile):
         """prepare the local folder for the localfile, called in download method"""
@@ -2241,14 +2239,38 @@ class DockerContainerDumper(BaseDumper):
             self.logger.error('Failed to download remote file "%s" with exception: %s', remote_file, ex, exc_info=True)
             raise DumperException(f'Failed to download the remote file"{remote_file}"')
 
-    def delete_container(self):
+    def delete_or_restore_container(self):
+        """Delete the container if it's created by the dumper, or restore it to its original status if it's pre-existing."""
         if self.container:
-            if not self.KEEP_CONTAINER:
+            if self.ORIGINAL_CONTAINER_STATUS:
+                # if self.ORIGINAL_CONTAINER_STATUS is set, the container is pre-existing, we will not remove it
+                # regardless of the keep_container parameter, and try to restore it to its original status.
+                if not self.KEEP_CONTAINER:
+                    self.logger.warning(
+                        f'The container is pre-existing, "{self.container.name}", but "keep_container" is set to False. '
+                        'We will ignore the "keep_container" setting, will not remove the container.'
+                    )
+                if self.container.status == self.ORIGINAL_CONTAINER_STATUS:
+                    # container is in the original status, do nothing
+                    return
+                elif self.ORIGINAL_CONTAINER_STATUS == "exited":
+                    self.logger.debug(f'Stopping container: "{self.container.name}"')
+                    self.container.stop()
+                elif self.ORIGINAL_CONTAINER_STATUS == "paused":
+                    self.logger.debug(f'Pausing container: "{self.container.name}"')
+                    self.container.pause()
+                else:
+                    self.logger.warning(
+                        f'The existing container status, "{self.container.status}", does not match its original status "{self.ORIGINAL_CONTAINER_STATUS}". '
+                        "We will not touch it."
+                    )
+            elif not self.KEEP_CONTAINER:
                 self.logger.debug(f"Removing container: {self.container.name}")
                 self.container.stop()
                 self.container.wait(timeout=self.TIMEOUT)
                 self.container.remove()
 
     def post_dump(self, *args, **kwargs):
+        """Delete container or restore the container status if necessary, called in the dump method after the dump is done (during the "post" step)"""
         super().post_dump(*args, **kwargs)
-        self.delete_container()
+        self.delete_or_restore_container()
