@@ -1985,19 +1985,20 @@ class DockerContainerDumper(BaseDumper):
         self.CONTAINER_NAME = self.source_config["container_name"]
         if not self.DOCKER_IMAGE and not self.CONTAINER_NAME:
             raise DumperException("Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin manifest")
-        # now read the metadata from the Docker image or container
+        # now read the metadata from the Docker image or container, will check the image first, then the container
         if self.DOCKER_IMAGE:
             try:
                 image = self.client.images.get(self.DOCKER_IMAGE)
                 self.image_metadata = image.labels
             except ImageNotFound:
-                pass
+                raise DumperException(f'The docker image "{self.DOCKER_IMAGE}" is not found')
         elif self.CONTAINER_NAME:
+            # when only container is provided, we will try to read the metadata from the container
             try:
                 container = self.client.containers.get(self.CONTAINER_NAME)
                 self.image_metadata = container.labels
-            except (NotFound, NullResource):
-                pass
+            except NotFound:
+                raise DumperException(f'The container "{self.CONTAINER_NAME}" is not found')
         else:
             self.image_metadata = {}
 
