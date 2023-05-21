@@ -21,7 +21,7 @@ from urllib import parse as urlparse
 
 try:
     import docker
-    from docker.errors import NotFound, NullResource
+    from docker.errors import ImageNotFound, NotFound, NullResource
 
     docker_avail = True
 except ImportError:
@@ -1987,11 +1987,17 @@ class DockerContainerDumper(BaseDumper):
             raise DumperException("Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin manifest")
         # now read the metadata from the Docker image or container
         if self.DOCKER_IMAGE:
-            image = self.client.images.get(self.DOCKER_IMAGE)
-            self.image_metadata = image.labels
+            try:
+                image = self.client.images.get(self.DOCKER_IMAGE)
+                self.image_metadata = image.labels
+            except ImageNotFound:
+                pass
         elif self.CONTAINER_NAME:
-            container = self.client.containers.get(self.CONTAINER_NAME)
-            self.image_metadata = container.labels
+            try:
+                container = self.client.containers.get(self.CONTAINER_NAME)
+                self.image_metadata = container.labels
+            except (NotFound, NullResource):
+                pass
         else:
             self.image_metadata = {}
 
