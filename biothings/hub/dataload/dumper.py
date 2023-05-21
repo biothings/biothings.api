@@ -2051,7 +2051,7 @@ class DockerContainerDumper(BaseDumper):
                 self.logger.exception(err)
                 raise DockerContainerException("Docker APIError when trying to get the container")
 
-            if self.container.status == "pause":
+            if self.container.status == "paused":
                 self.logger.info('Unpause the container "%s" ...', self.CONTAINER_NAME)
                 self.container.unpause()
                 self.logger.info('The container "%s" is unpaused!', self.CONTAINER_NAME)
