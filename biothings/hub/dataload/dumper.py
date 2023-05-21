@@ -495,7 +495,9 @@ class BaseDumper(object):
                 # if step is "post" only, it means we didn't even check a new version and we
                 # want to run "post" step on current version again
                 if self.steps == ["post"]:
-                    return self.current_data_folder
+                    return (
+                        self.current_data_folder
+                    )  # FIXME: this causes a recursive error as current_data_folder calls new_data_folder too in some cases
                 else:
                     raise DumperException(
                         "Can't generate new data folder, attribute used for suffix (%s) isn't set"
@@ -1855,23 +1857,33 @@ class DockerContainerDumper(BaseDumper):
         LABEL container_name=mydocker
     """
 
+    # the docker client connection name defined in the config file, default is localhost
     DOCKER_CLIENT_URL = None
-    DOCKER_IMAGE = None
+    # attributes below are defined from either SRC_URLS or docker image LABEL metadata
+    DOCKER_IMAGE = None  # should be in the format of <image_name>:<tag>
     CONTAINER_NAME = None
     DUMP_COMMAND = None
+    GET_VERSION_CMD = None
+    KEEP_CONTAINER = False
+    DATA_PATH = None
+    # set to 1 so we don't execute any docker command in parallel
     MAX_PARALLEL_DUMP = 1
+    # default timeout to wait for container to start or stop
+    # this does not impact the time to run dump_command or get_version_cmd
+    # both commands will be run asynchronizely till they finish.
     TIMEOUT = 300
+    # record the original container status if it exists before dumper runs
+    # we will try to keep the container status as it was before dumper runs
+    ORIGINAL_CONTAINER_STATUS = None
 
     def __init__(self, *args, **kwargs):
         if not docker_avail:
             raise ImportError('"docker" package is required for "DockerContainerDumper" class.')
         super().__init__(*args, **kwargs)
+        # the following attributes are specific to DockerContainerDumper
         self.container = None
-        self.keep_container = False
-        self._source_info = {}
-        self.image_metadata = {}
-        self.custom_get_version_cmd = None
-        self._data_path = None
+        self._source_info = {}  # parsed source_info dictionary from the SRC_URL string
+        self.image_metadata = {}  # parsed LABEL metadata from the Docker image
 
     @property
     def source_config(self):
@@ -1880,12 +1892,18 @@ class DockerContainerDumper(BaseDumper):
             self._source_info = docker_source_info_parser(url)
         return self._source_info
 
+    def need_prepare(self):
+        if not self.client:
+            return True
+
     def prepare_client(self):
         self.logger.info("Preparing docker client...")
         if not isinstance(self.__class__.SRC_URLS, list):
             raise DumperException("SRC_URLS should be a list")
-        if not self.__class__.SRC_URLS:
+        elif not self.__class__.SRC_URLS:
             raise DumperException("SRC_URLS list is empty")
+        elif len(self.__class__.SRC_URLS) > 1:
+            raise DumperException("SRC_URLS list should contain only one source url string")
         if not self._state["client"]:
             docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
             self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
@@ -1918,41 +1936,159 @@ class DockerContainerDumper(BaseDumper):
                 raise DumperException("Can not connect to the Docker server!")
             self.logger.info("Connected to Docker server")
             self._state["client"] = client
-        # prepare docker configs
+        # now prepare docker configs, which requires the docker client.
         self.prepare_dumper_params()
         return self._state["client"]
 
-    def need_prepare(self):
-        if not self.client:
-            return True
-
-    def set_release(self):
-        _release = None
-        if self.custom_get_version_cmd:
-            container = self.client.containers.get(self.CONTAINER_NAME)
-            if container.status == "running":
-                # we can't execute the cmd in a stop container
-                exit_code, remote_version = container.exec_run(["sh", "-c", self.custom_get_version_cmd])
-                if exit_code == 0:
-                    # make sure cmd run successfully on the remote
-                    # the output of get_version_cmd should be the value returned from set_release method
-                    _release = remote_version.decode().strip()
-                else:
-                    self.logger.error("Failed to run get_version_cmd. Fallback to timestamp as the release.")
-        # if _release is None, use timestamp as the release
-        self.release = _release or datetime.now().strftime("%Y%m%d%H%M%S")
-
     def release_client(self):
+        """Release the docker client connection, called in dump method"""
         if self.client:
             self.client.close()
             self.client = None
             self._state["client"] = None
 
-    def post_dump(self, *args, **kwargs):
-        super().post_dump(*args, **kwargs)
-        self.delete_container()
+    def set_dump_command(self):
+        self.DUMP_COMMAND = self.source_config.get("dump_command") or self.image_metadata.get("dump_command")
+        if not self.DUMP_COMMAND:
+            raise DumperException('Missing the require "dump_command" parameter')
+
+    def set_keep_container(self):
+        self.KEEP_CONTAINER = (
+            self.source_config.get("keep_container") or self.image_metadata.get("keep_container") or False
+        )
+
+    def set_get_version_cmd(self):
+        self.GET_VERSION_CMD = self.source_config.get("get_version_cmd") or self.image_metadata.get("get_version_cmd")
+
+    def set_data_path(self):
+        # TODO: we can see if we can support data path provided as a folder, instead a file. In this case, we should download the whole folder
+        self.DATA_PATH = self.source_config.get("path") or self.image_metadata.get("path")
+        if not self.DATA_PATH:
+            raise DumperException('Missing the require "path" parameter')
+
+    def get_remote_file(self):
+        """return the remote file path within the container.
+        In most of cases, dump_command should either generate this file or check if it's ready if there is another
+        automated pipeline generates this file.
+        """
+        if not self.DATA_PATH:
+            self.set_data_path()
+        return self.DATA_PATH
+
+    def prepare_dumper_params(self):
+        """
+        Read all docker dumper parameters from either the data plugin manifest or the Docker image or container metadata.
+        Of course, at least one of docker_image or container_name parameters must be defined in the data plugin manifest first.
+        If the parameter is not defined in the data plugin manifest, we will try to read it from the Docker image metadata.
+        """
+        self.DOCKER_IMAGE = self.source_config["docker_image"]
+        self.CONTAINER_NAME = self.source_config["container_name"]
+        if not self.DOCKER_IMAGE and not self.CONTAINER_NAME:
+            raise DumperException("Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin manifest")
+        # now read the metadata from the Docker image or container
+        if self.DOCKER_IMAGE:
+            image = self.client.images.get(self.DOCKER_IMAGE)
+            self.image_metadata = image.labels
+        elif self.CONTAINER_NAME:
+            container = self.client.containers.get(self.CONTAINER_NAME)
+            self.image_metadata = container.labels
+        else:
+            self.image_metadata = {}
+
+        # Fill dumper parameters if they aren't provided in the data plugin manifest.
+        self.set_dump_command()
+        self.set_keep_container()
+        self.set_get_version_cmd()
+        self.set_data_path()
+        if not self.CONTAINER_NAME:
+            # when the container_name is not provided in the data plugin manifest,
+            # we will check image_metadata to see if it's defined there.
+            self.CONTAINER_NAME = self.image_metadata.get("container_name")
+
+    def prepare_remote_container(self):
+        """prepare the remote container and set self.container, called in create_todump_list method"""
+        if not self.container:
+            try:
+                self.container = self.client.containers.get(self.CONTAINER_NAME)
+                self.ORIGINAL_CONTAINER_STATUS = self.container.status
+            except (NotFound, NullResource):
+                if self.DOCKER_IMAGE:
+                    if self.CONTAINER_NAME:
+                        self.logger.info(
+                            'Can not find an existing container "%s", try to start a new one with this name.',
+                            self.CONTAINER_NAME,
+                        )
+                        self.logger.info(
+                            'Start a new container "%s" with a generic ENTRYPOINT: tail -f /dev/null',
+                            self.CONTAINER_NAME,
+                        )
+                        self.container = self.client.containers.run(
+                            image=self.DOCKER_IMAGE,
+                            name=self.CONTAINER_NAME,
+                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
+                            detach=True,
+                            auto_remove=False,
+                        )
+                    else:
+                        self.logger.info("Start a docker container with a generic ENTRYPOINT: tail -f /dev/null")
+                        self.container = self.client.containers.run(
+                            image=self.DOCKER_IMAGE,
+                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
+                            detach=True,
+                            auto_remove=False,
+                        )
+                        self.CONTAINER_NAME = self.container.name  # record the randomly generated container name
+
+            except Exception as err:
+                self.logger.exception(err)
+                raise DockerContainerException("Docker APIError when trying to get the container")
+
+            if self.container.status != "running":
+                self.logger.info('Waiting for the container "%s"to run ...', self.CONTAINER_NAME)
+                self.container.start()
+                self.logger.info('The container "%s" is starting ...', self.CONTAINER_NAME)
+                count = 0
+                while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
+                    count += 1
+                    self.container.reload()  # Load this object from the server again and update attrs with the new data
+                    time.sleep(1)
+            self.logger.info('The container "%s" is now running!', self.CONTAINER_NAME)
+            self.container.reload()
+            if self.container.status == "exited":
+                raise DockerContainerException(f'The container "{self.CONTAINER_NAME}" exited')
+
+    def set_release(self):
+        """call the get_version_cmd to get the releases, called in get_todump_list method.
+        if get_version_cmd is not defined, use timestamp as the release.
+
+        This is currently a blocking method, assuming get_version_cmd is a quick command.
+        But if necessary, we can make it async in the future.
+        """
+        _release = None
+        if self.GET_VERSION_CMD:
+            if self.container and self.container.status == "running":
+                # we can't execute the cmd in a stop container
+                exit_code, remote_version = self.container.exec_run(["sh", "-c", self.GET_VERSION_CMD])
+                if exit_code == 0:
+                    # make sure cmd run successfully on the remote
+                    # the output of get_version_cmd should be the value returned from set_release method
+                    _release = remote_version.decode().strip()
+                else:
+                    self.logger.error(
+                        "Failed to run the provided get_version_cmd. Fallback to timestamp as the release."
+                    )
+            else:
+                self.logger.error(
+                    'The container "%s" is not running to run the provided get_version_cmd. Fallback to timestamp as the release.',
+                    self.CONTAINER_NAME,
+                )
+        else:
+            self.logger.info("get_version_cmd is not defined. Fallback to timestamp as the release.")
+        # if _release is None, use timestamp as the release
+        self.release = _release or datetime.now().strftime("%Y%m%d%H%M%S")
 
     def get_remote_lastmodified(self, remote_file):
+        """get the last modified time of the remote file within the container using stat command"""
         if not self.CONTAINER_NAME:
             return None  # new fresh container, remote is always better
         try:
@@ -1967,7 +2103,7 @@ class DockerContainerDumper(BaseDumper):
             if exit_code == 0:
                 lastmodified = int(remote_lastmodified_stdout.decode().strip())
             else:
-                self.logger.error("Could not run stat on remote file in get_remote_lastmodified.")
+                self.logger.error('Could not run "stat" on remote file in get_remote_lastmodified.')
         return lastmodified
 
     def remote_is_better(self, remote_file, local_file):
@@ -1982,51 +2118,39 @@ class DockerContainerDumper(BaseDumper):
             return True
         return False
 
-    def set_dump_command(self):
-        if self.source_config.get("dump_command"):
-            self.DUMP_COMMAND = self.source_config["dump_command"]
+    def generate_remote_file(self):
+        """Execute dump_command to generate the remote file, called in create_todump_list method"""
+        if self.need_prepare():
+            self.prepare_client()
+        if self.DUMP_COMMAND:
+            self.logger.info(f"Exec the command: sh -c {self.DUMP_COMMAND}")
+            exit_code, output = self.container.exec_run(["sh", "-c", self.DUMP_COMMAND])
+            self.logger.debug(output.decode())
+            if exit_code != 0:
+                remote_file = self.get_remote_file()
+                self.logger.error(
+                    'Failed to generate "%s", non-zero exit code from custom cmd: %s', remote_file, exit_code
+                )
+                self.logger.error(output)
+                raise DumperException(f"Can not execute the command: {self.DUMP_COMMAND}")
         else:
-            self.DUMP_COMMAND = self.image_metadata.get("dump_command")
-        if not self.DUMP_COMMAND:
-            raise DumperException("Missing the require parameter (DUMP_COMMAND/dump_command)")
-
-    def set_keep_container(self):
-        if self.source_config.get("keep_container") is not None:
-            self.keep_container = self.source_config["keep_container"]
-        elif "keep_container" in self.image_metadata:
-            self.keep_container = self.image_metadata["keep_container"]
-
-    def set_version_cmd(self):
-        if self.source_config.get("get_version_cmd"):
-            self.custom_get_version_cmd = self.source_config["get_version_cmd"]
-        else:
-            self.custom_get_version_cmd = self.image_metadata.get("get_version_cmd")
-
-    def get_remote_file(self):
-        if self._data_path:
-            return self._data_path
-        if self.source_config.get("path"):
-            self._data_path = self.source_config.get("path")
-        else:
-            self._data_path = self.image_metadata.get("path")
-        if not self._data_path:
-            raise DumperException("Missing the require parameter: path")
-        return self._data_path
+            raise DockerContainerException("The dump_command parameter is must be defined")
 
     async def create_todump_list(self, force=False, job_manager=None, **kwargs):
-        if not isinstance(self.__class__.SRC_URLS, list):
-            raise DumperException("SRC_URLS should be a list")
-        if not self.__class__.SRC_URLS:
-            raise DumperException("SRC_URLS list is empty")
+        """
+        Create the list of files to dump, called in dump method.
+        This method will execute dump_command to generate the remote file in docker container,
+        so we define this method as async to make it non-blocking.
+        """
         if self.need_prepare():
             self.prepare_client()
         self.prepare_remote_container()
         # unprepare unpicklable objects so we can use multiprocessing
         state = self.unprepare()
         # set up job to generate remote file
-        pinfo = self.get_pinfo()
-        pinfo["step"] = "check"
         if job_manager:
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "check"
             job = job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
         else:
             # otherwise, just run it with asyncio loop directly
@@ -2042,8 +2166,7 @@ class DockerContainerDumper(BaseDumper):
 
         def remote_done(f):
             nonlocal remote_error
-            if f.exception():
-                remote_error = f.exception()
+            remote_error = f.exception() or False
 
         job.add_done_callback(remote_done)
         await job
@@ -2054,124 +2177,44 @@ class DockerContainerDumper(BaseDumper):
         # TODO: test if the following two lines can be removed after we call self.prepare(state) above
         if self.need_prepare():
             self.prepare_client()
-        self.setup_log()
+        # self.setup_log()    # this line should not needed, since self.prepare calls it already.
 
         self.set_release()
-        for src_url in self.__class__.SRC_URLS:
-            remote_file = self.get_remote_file()
-            file_name = os.path.basename(remote_file)
-            new_localfile = os.path.join(self.new_data_folder, file_name)
+
+        remote_file = self.get_remote_file()
+        file_name = os.path.basename(remote_file)
+        new_localfile = os.path.join(self.new_data_folder, file_name)
+        remote_better = False
+        if force:
+            remote_better = True
+        else:
             try:
                 current_local_file = os.path.join(self.current_data_folder, file_name)
             except TypeError:
                 # current data folder doesn't even exist
                 current_local_file = new_localfile
-            remote_better = self.remote_is_better(remote_file, current_local_file)
-            if force or current_local_file is None or remote_better:
-                new_localfile = os.path.join(self.new_data_folder, file_name)
-                self.to_dump.append({"remote": src_url, "local": new_localfile})
-        # if there is nothing to dump check if you need to delete container
+            if current_local_file:
+                remote_better = self.remote_is_better(remote_file, current_local_file)
+            else:
+                remote_better = True
+        if remote_better:
+            new_localfile = os.path.join(self.new_data_folder, file_name)
+            self.to_dump.append({"remote": remote_file, "local": new_localfile})
+        # if there is nothing to dump check if you need to delete container [TODO: probably should be handled somewhere else, like post_dump?]
         if not self.to_dump:
             self.delete_container()
 
     def prepare_local_folders(self, localfile):
+        """prepare the local folder for the localfile, called in download method"""
+        # the parent method will create the necessary folders
         super().prepare_local_folders(localfile)
+        # remove the localfile if it exists
         if os.path.isfile(localfile):
             os.unlink(localfile)
 
-    def prepare_dumper_params(self):
-        self.DOCKER_IMAGE = self.source_config["docker_image"]
-        self.CONTAINER_NAME = self.source_config["container_name"]
-        if not self.DOCKER_IMAGE and not self.CONTAINER_NAME:
-            raise DumperException("Either DOCKER_IMAGE or CONTAINER_NAME must be defined in the data plugin")
-        if self.DOCKER_IMAGE:
-            image = self.client.images.get(self.DOCKER_IMAGE)
-            self.image_metadata = image.labels
-        elif self.CONTAINER_NAME:
-            container = self.client.containers.get(self.CONTAINER_NAME)
-            self.image_metadata = container.labels
-        else:
-            self.image_metadata = {}
-        # Fill dumper parameters if they aren't provided in the data plugin manifest.
-        self.set_dump_command()
-        self.set_keep_container()
-        self.set_version_cmd()
-        if not self.CONTAINER_NAME:
-            self.CONTAINER_NAME = self.image_metadata.get("container_name")
-
-    def prepare_remote_container(self):
-        if not self.container:
-            try:
-                self.container = self.client.containers.get(self.CONTAINER_NAME)
-            except (NotFound, NullResource):
-                if self.DOCKER_IMAGE:
-                    if self.CONTAINER_NAME:
-                        self.logger.info(
-                            f"Can not find container name {self.CONTAINER_NAME}, try to start a new one with this name."
-                        )
-                        self.logger.info("Start a docker container with the ENTRYPOINT: tail -f /dev/null")
-                        self.container = self.client.containers.run(
-                            image=self.DOCKER_IMAGE,
-                            name=self.CONTAINER_NAME,
-                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
-                            detach=True,
-                            auto_remove=False,
-                        )
-                    else:
-                        self.logger.info("Start a docker container with the ENTRYPOINT: tail -f /dev/null")
-                        self.container = self.client.containers.run(
-                            image=self.DOCKER_IMAGE,
-                            entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
-                            detach=True,
-                            auto_remove=False,
-                        )
-                        self.CONTAINER_NAME = self.container.name
-
-            except Exception as err:
-                self.logger.exception(err)
-                raise DockerContainerException("Docker APIError")
-
-            if self.container.status != "running":
-                self.logger.info("Waiting for the container ...")
-                self.container.start()
-                self.logger.info(f"The container {self.container.name} is creating ...")
-                count = 0
-                while self.container.status not in ["running", "exited"] and count < self.TIMEOUT:
-                    count += 1
-                    self.container.reload()  # Load this object from the server again and update attrs with the new data
-                    time.sleep(1)
-            self.logger.info(f"The container {self.container.name} is now running!")
-            self.container.reload()
-            if self.container.status == "exited":
-                raise DockerContainerException("Container is exited")
-
-    def generate_remote_file(self):
-        if self.need_prepare():
-            self.prepare_client()
-        if self.DUMP_COMMAND:
-            self.logger.info(f"Exec the command: sh -c {self.DUMP_COMMAND}")
-            exit_code, output = self.container.exec_run(["sh", "-c", self.DUMP_COMMAND])
-            self.logger.debug(output.decode())
-            if exit_code != 0:
-                remote_file = self.get_remote_file()
-                self.logger.error(f"Failed to generate {remote_file}, non-zero exit code from custom cmd: {exit_code}")
-                self.logger.error(output)
-                raise DumperException(f"Can not execute the command: {self.DUMP_COMMAND}")
-        else:
-            raise DockerContainerException("The dump_command parameter is must be defined")
-
-    def delete_container(self):
-        if self.container:
-            if not self.keep_container:
-                self.logger.debug(f"Removing container: {self.container.name}")
-                self.container.stop()
-                self.container.wait(timeout=self.TIMEOUT)
-                self.container.remove()
-
-    def download(self, remote_file_url, local_file):
+    def download(self, remote_file, local_file):
         # removes local file if exists before downloading remote file to local
         self.prepare_local_folders(local_file)
-        remote_file = self.get_remote_file()
         try:
             # get_archive returns a tar datastream and dict with stat info
             bits, stat = self.container.get_archive(remote_file, encode_stream=True)
@@ -2180,12 +2223,25 @@ class DockerContainerDumper(BaseDumper):
                 with open(tmp_file, "wb") as fp:
                     for chunk in bits:
                         fp.write(chunk)
-                # untar data from get_archive
-                # we dont actually need to modify locallastmodified. tar file created from container.get_archive keeps the original date_modified
+                # untar data files from the tmp_file, the extracted file will have the same last modified date as the original remote file
+                # so we don't need to synchronize the local file's lastmodified date.
                 untarall(folder=os.path.dirname(local_file), pattern="*.tar")
-                # remove the temp tar file
-                os.unlink(tmp_file)
-            self.logger.info(f"Successfully download file {remote_file} to {local_file}")
+                os.unlink(tmp_file)  # remove the temp tar file
+                self.logger.info('Successfully downloaded file "%s" to "%s"', remote_file, local_file)
+            else:
+                raise DumperException('Find empty remote file: "{remote_file}"')
         except Exception as ex:
-            self.logger.error(f"Failed to download {remote_file} with exception: {ex}", exc_info=True)
-            raise DumperException("Can not download the data file")
+            self.logger.error('Failed to download remote file "%s" with exception: %s', remote_file, ex, exc_info=True)
+            raise DumperException(f'Failed to download the remote file"{remote_file}"')
+
+    def delete_container(self):
+        if self.container:
+            if not self.KEEP_CONTAINER:
+                self.logger.debug(f"Removing container: {self.container.name}")
+                self.container.stop()
+                self.container.wait(timeout=self.TIMEOUT)
+                self.container.remove()
+
+    def post_dump(self, *args, **kwargs):
+        super().post_dump(*args, **kwargs)
+        self.delete_container()
