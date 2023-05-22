@@ -159,7 +159,7 @@ class ResourceNotFound(Exception):
     pass
 
 
-class BaseManager(object):
+class BaseManager:
     def __init__(self, job_manager, poll_schedule=None):
         self.register = {}
         self.poll_schedule = poll_schedule
@@ -245,7 +245,7 @@ class BaseManager(object):
         )
 
 
-class BaseStatusRegisterer(object):
+class BaseStatusRegisterer:
     def load_doc(self, key_name, stage):
         """
         Find document using key_name and stage, stage being a
@@ -474,7 +474,7 @@ class BaseSourceManager(BaseManager):
                 logger.error(traceback.format_exc())
 
 
-class JobManager(object):
+class JobManager:
     # TODO: Add class docstring
     COLUMNS = [
         "pid",
@@ -1291,5 +1291,5 @@ async def %s():
 # just a helper to clean/prepare job's values printing
 def norm(value, maxlen):
     if len(value) > maxlen:
-        value = "...%s" % value[-maxlen + 3 :]
+        value = "...%s" % value[-maxlen + 3:]
     return value
