@@ -180,7 +180,7 @@ def upload_source(
     name="inspect",
     help="Giving detailed information about the structure of documents coming from the parser",
 )
-def inspect(
+def inspect_source(
     sub_source_name: Optional[str] = typer.Option(
         default="",
         help="Your sub source name",
