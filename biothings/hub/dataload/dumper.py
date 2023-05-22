@@ -2163,7 +2163,7 @@ class DockerContainerDumper(BaseDumper):
         if job_manager:
             pinfo = self.get_pinfo()
             pinfo["step"] = "check"
-            job = job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
+            job = await job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
         else:
             # otherwise, just run it with asyncio loop directly
             async def run(fut):
