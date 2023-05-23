@@ -91,10 +91,8 @@ def docker_source_info_parser(url):
     keep_container = query.get("keep_container")
     container_name = query.get("container_name")
     get_version_cmd = query.get("get_version_cmd")
-    if keep_container and keep_container.lower() in ["true", "yes", "1", "y"]:
-        keep_container = True
-    else:
-        keep_container = False
+    if keep_container:
+        keep_container = keep_container.lower() in {"true", "yes", "1", "y"}
     if dump_command:
         dump_command = dump_command.strip('"')
     if get_version_cmd:
@@ -102,7 +100,7 @@ def docker_source_info_parser(url):
     if not image_tag:
         image_tag = "latest"
     docker_image = image and f"{image}:{image_tag}" or None
-    return {
+    source_config = {
         "docker_image": docker_image,
         "path": query.get("path"),
         "dump_command": dump_command,
@@ -111,3 +109,7 @@ def docker_source_info_parser(url):
         "keep_container": keep_container,
         "get_version_cmd": get_version_cmd,
     }
+    if keep_container is None:
+        # remove keep_container if not set, so that later we can check its value from image/container metadata
+        source_config.pop("keep_container")
+    return source_config

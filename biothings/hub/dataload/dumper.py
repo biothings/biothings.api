@@ -1955,7 +1955,7 @@ class DockerContainerDumper(BaseDumper):
 
     def set_keep_container(self):
         self.KEEP_CONTAINER = (
-            self.source_config.get("keep_container") or self.image_metadata.get("keep_container") or False
+            self.source_config.get("keep_container", None) is None or self.image_metadata.get("keep_container", "").lower() in {"true", "yes", "1", "y"}  or False
         )
 
     def set_get_version_cmd(self):
