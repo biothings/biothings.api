@@ -1,6 +1,4 @@
 # flake8: noqa: B008
-import asyncio
-import inspect
 import os
 import pathlib
 from shutil import copytree
@@ -123,11 +121,7 @@ def dump_and_upload(
     uploader_classes = uploader_manager[plugin_name]
     dumper = dumper_class()
     dumper.prepare()
-    if inspect.iscoroutinefunction(dumper.create_todump_list):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(dumper.create_todump_list(force=True))
-    else:
-        dumper.create_todump_list(force=True)
+    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
     for item in dumper.to_dump:
         dumper.download(item["remote"], item["local"])
     dumper.steps = ["post"]
@@ -319,7 +313,7 @@ def listing(
     dumper_class = dumper_manager[plugin_name][0]
     dumper = dumper_class()
     dumper.prepare()
-    dumper.create_todump_list(force=True)
+    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
     if dump:
         utils.show_dumped_files(dumper.new_data_folder, plugin_name)
         return

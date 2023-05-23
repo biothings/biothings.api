@@ -42,6 +42,21 @@ def get_logger(name=None):
     return logger
 
 
+def run_sync_or_async_job(func, *args, **kwargs):
+    """When func is defined as either normal or async function/method, we will call this function properly and return the results.
+    For an async function/method, we will use CLIJobManager to run it.
+    """
+    if asyncio.iscoroutinefunction(func):
+        from biothings.utils.manager import CLIJobManager
+
+        job_manager = CLIJobManager()
+        kwargs["job_manager"] = job_manager
+        return job_manager.loop.run_until_complete(func(*args, **kwargs))
+    else:
+        # otherwise just run it as normal
+        return func(*args, **kwargs)
+
+
 def create_data_plugin_template(name, multi_uploaders=False, parallelizer=False, logger=None):
     """Create a new data plugin from the template"""
     logger = logger or get_logger()
