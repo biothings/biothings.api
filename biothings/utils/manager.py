@@ -1308,7 +1308,8 @@ class CLIJobManager:
         """keep the same signature as JobManager.defer_to_process. The passed pinfo is ignored.
         defer_to_process will still run func in the thread using defer_to_thread method.
         """
-        return self.defer_to_thread(pinfo, func, *args, **kwargs)
+        fut = await self.defer_to_thread(pinfo, func, *args, **kwargs)
+        return fut
 
     async def defer_to_thread(self, pinfo=None, func=None, *args):
         """keep the same signature as JobManager.defer_to_thread. The passed pinfo is ignored"""
