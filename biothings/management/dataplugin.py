@@ -64,60 +64,6 @@ def create_data_plugin(
 
 
 @app.command(
-    name="list",
-    help="Listing dumped files or uploaded sources",
-)
-def listing(
-    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
-):
-    working_dir = pathlib.Path().resolve()
-    plugin_name = working_dir.name
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-    if dump:
-        utils.show_dumped_files(data_folder, plugin_name)
-        return
-    if upload:
-        utils.show_uploaded_sources(working_dir, plugin_name)
-        return
-    utils.show_dumped_files(data_folder, plugin_name)
-    utils.show_uploaded_sources(working_dir, plugin_name)
-
-
-@app.command(
-    name="clean",
-    help="Delete all dumped files and drop uploaded sources tables",
-    no_args_is_help=True,
-)
-def clean_data(
-    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
-    clean_all: bool = typer.Option(
-        False,
-        "--all",
-        help="Delete all dumped files and drop uploaded sources tables",
-    ),
-):
-    working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    if dump:
-        utils.do_clean_dumped_files(working_dir)
-        return exit(0)
-    if upload:
-        utils.do_clean_uploaded_sources(working_dir)
-        return exit(0)
-    if clean_all:
-        utils.do_clean_dumped_files(working_dir)
-        utils.do_clean_uploaded_sources(working_dir)
-        return exit(0)
-    rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
-    return exit(1)
-
-
-@app.command(
     name="dump",
     help="Download source data files to local",
 )
@@ -173,6 +119,29 @@ def upload_source(
     for section in upload_sections:
         utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
     rprint("[green]Success![/green]")
+    utils.show_uploaded_sources(working_dir, plugin_name)
+
+
+@app.command(
+    name="list",
+    help="Listing dumped files or uploaded sources",
+)
+def listing(
+    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
+):
+    working_dir = pathlib.Path().resolve()
+    plugin_name = working_dir.name
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
+        return exit(1)
+    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    if dump:
+        utils.show_dumped_files(data_folder, plugin_name)
+        return
+    if upload:
+        utils.show_uploaded_sources(working_dir, plugin_name)
+        return
+    utils.show_dumped_files(data_folder, plugin_name)
     utils.show_uploaded_sources(working_dir, plugin_name)
 
 
@@ -270,3 +239,34 @@ def serve(
     table_space = utils.get_uploaders(working_dir)
     data_plugin_name = working_dir.name
     utils.serve(host, port, data_plugin_name, table_space)
+
+
+@app.command(
+    name="clean",
+    help="Delete all dumped files and drop uploaded sources tables",
+    no_args_is_help=True,
+)
+def clean_data(
+    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
+    clean_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Delete all dumped files and drop uploaded sources tables",
+    ),
+):
+    working_dir = pathlib.Path().resolve()
+    if not utils.is_valid_working_directory(working_dir, logger=logger):
+        return exit(1)
+    if dump:
+        utils.do_clean_dumped_files(working_dir)
+        return exit(0)
+    if upload:
+        utils.do_clean_uploaded_sources(working_dir)
+        return exit(0)
+    if clean_all:
+        utils.do_clean_dumped_files(working_dir)
+        utils.do_clean_uploaded_sources(working_dir)
+        return exit(0)
+    rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
+    return exit(1)
