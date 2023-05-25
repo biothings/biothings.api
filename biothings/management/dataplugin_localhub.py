@@ -89,6 +89,99 @@ def load_plugin(plugin_name):
 
 
 @app.command(
+    name="dump",
+    help="Download source data files to local",
+)
+def dump_data(
+    plugin_name: Optional[str] = typer.Option(
+        "", "--name", "-n", help="Data plugin name", prompt="What's your data plugin name?"
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging", show_default=True),
+):
+    import biothings.hub  # this import is to make config is setup for the biothings module
+    from biothings.utils.hub_db import get_data_plugin
+
+    working_dir = pathlib.Path().resolve()
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
+    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    del uploader_manager
+    dumper_class = dumper_manager[plugin_name][0]
+    dumper = dumper_class()
+    dumper.prepare()
+    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
+    for item in dumper.to_dump:
+        dumper.download(item["remote"], item["local"])
+    dumper.steps = ["post"]
+    dumper.post_dump()
+    dumper.register_status("success")
+    dumper.release_client()
+    # cleanup
+    dumper.src_dump.remove({"_id": dumper.src_name})
+    dp = get_data_plugin()
+    dp.remove({"_id": plugin_name})
+    rprint("[green]Success![/green]")
+    utils.show_dumped_files(dumper.new_data_folder, plugin_name)
+
+
+@app.command(
+    name="upload",
+    help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
+)
+def upload_source(
+    plugin_name: Optional[str] = typer.Option(
+        "", "--name", "-n", help="Data plugin name", prompt="What's your data plugin name?"
+    ),
+    batch_limit: Optional[int] = typer.Option(
+        None,
+        "--batch-limit",
+        help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
+    ),
+    # multi_uploaders: bool = typer.Option(
+    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
+    # ),
+    # parallelizer: bool = typer.Option(
+    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
+    # ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
+):
+    from biothings.hub.dataload.uploader import upload_worker
+
+    working_dir = pathlib.Path().resolve()
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
+    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    del dumper_manager
+    uploader_classes = uploader_manager[plugin_name]
+    for uploader_cls in uploader_classes:
+        uploader = uploader_cls.create(db_conn_info="")
+        uploader.make_temp_collection()
+        uploader.prepare()
+        upload_worker(
+            uploader.fullname,
+            uploader.__class__.storage_class,
+            uploader.load_data,
+            uploader.temp_collection_name,
+            10000,
+            1,
+            uploader.data_folder,
+            db=uploader.db,
+        )
+        uploader.switch_collection()
+        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
+        uploader.clean_archived_collections()
+
+    rprint("[green]Success![/green]")
+    utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
+
+
+@app.command(
     "dump_and_upload",
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
@@ -152,6 +245,42 @@ def dump_and_upload(
     dp = get_data_plugin()
     dp.remove({"_id": plugin_name})
     rprint("[green]Success![/green]")
+    utils.show_dumped_files(dumper.new_data_folder, plugin_name)
+    utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
+
+
+@app.command(
+    name="list",
+    help="Listing dumped files or uploaded sources",
+)
+def listing(
+    plugin_name: Optional[str] = typer.Option(
+        "",
+        "--name",
+        "-n",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    ),
+    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
+):
+    working_dir = pathlib.Path().resolve()
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
+    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_class = dumper_manager[plugin_name][0]
+    dumper = dumper_class()
+    dumper.prepare()
+    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
+    if dump:
+        utils.show_dumped_files(dumper.new_data_folder, plugin_name)
+        return
+    if upload:
+        utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
+        return
     utils.show_dumped_files(dumper.new_data_folder, plugin_name)
     utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
 
@@ -239,91 +368,6 @@ def inspect_source(
             utils.process_inspect(source_name, mode, limit, merge, logger, do_validate=True, output=output)
 
 
-@app.command(
-    name="clean",
-    help="Delete all dumped files and drop uploaded sources tables",
-    no_args_is_help=True,
-)
-def clean_data(
-    plugin_name: Optional[str] = typer.Option(
-        "",
-        "--name",
-        "-n",
-        help="Data plugin name",
-        prompt="What's your data plugin name?",
-    ),
-    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
-    clean_all: bool = typer.Option(
-        False,
-        "--all",
-        help="Delete all dumped files and drop uploaded sources tables",
-    ),
-):
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
-    dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    dumper.create_todump_list(force=True)
-    data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
-    if not utils.is_valid_working_directory(data_plugin_dir, logger=logger):
-        return exit(1)
-    if dump:
-        utils.do_clean_dumped_files(pathlib.Path(dumper.new_data_folder), from_hub=True)
-        return exit(0)
-    if upload:
-        utils.do_clean_uploaded_sources(data_plugin_dir)
-        return exit(0)
-    if clean_all:
-        utils.do_clean_dumped_files(pathlib.Path(dumper.new_data_folder), from_hub=True)
-        utils.do_clean_uploaded_sources(data_plugin_dir)
-        return exit(0)
-    rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
-    return exit(1)
-
-
-@app.command(
-    name="list",
-    help="Listing dumped files or uploaded sources",
-)
-def listing(
-    plugin_name: Optional[str] = typer.Option(
-        "",
-        "--name",
-        "-n",
-        help="Data plugin name",
-        prompt="What's your data plugin name?",
-    ),
-    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
-):
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
-    dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-    if dump:
-        utils.show_dumped_files(dumper.new_data_folder, plugin_name)
-        return
-    if upload:
-        utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
-        return
-    utils.show_dumped_files(dumper.new_data_folder, plugin_name)
-    utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
-
-
 @app.command("serve")
 def serve(
     plugin_name: Optional[str] = typer.Option(
@@ -374,3 +418,52 @@ def serve(
         uploader_cls = [uploader_cls]
     table_space = [item.name for item in uploader_cls]
     utils.serve(host, port, plugin_name, table_space)
+
+
+@app.command(
+    name="clean",
+    help="Delete all dumped files and drop uploaded sources tables",
+    no_args_is_help=True,
+)
+def clean_data(
+    plugin_name: Optional[str] = typer.Option(
+        "",
+        "--name",
+        "-n",
+        help="Data plugin name",
+        prompt="What's your data plugin name?",
+    ),
+    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
+    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
+    clean_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Delete all dumped files and drop uploaded sources tables",
+    ),
+):
+    working_dir = pathlib.Path().resolve()
+    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+    if not plugin_name or plugin_name not in valid_names:
+        rprint("[red]Please provide your data plugin name! [/red]")
+        rprint("Choose from:\n    " + "\n    ".join(valid_names))
+        return exit(1)
+    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_class = dumper_manager[plugin_name][0]
+    dumper = dumper_class()
+    dumper.prepare()
+    dumper.create_todump_list(force=True)
+    data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
+    if not utils.is_valid_working_directory(data_plugin_dir, logger=logger):
+        return exit(1)
+    if dump:
+        utils.do_clean_dumped_files(pathlib.Path(dumper.new_data_folder), from_hub=True)
+        return exit(0)
+    if upload:
+        utils.do_clean_uploaded_sources(data_plugin_dir)
+        return exit(0)
+    if clean_all:
+        utils.do_clean_dumped_files(pathlib.Path(dumper.new_data_folder), from_hub=True)
+        utils.do_clean_uploaded_sources(data_plugin_dir)
+        return exit(0)
+    rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
+    return exit(1)
