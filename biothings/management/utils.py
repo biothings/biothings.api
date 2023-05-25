@@ -23,10 +23,12 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
+import biothings.hub  # this import is to make config is setup for the biothings module
 import biothings.utils.inspect as btinspect
 from biothings.utils import es, storage
 from biothings.utils.common import get_random_string, get_timestamp, timesofar, uncompressall
 from biothings.utils.dataload import dict_traverse
+from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
 
@@ -204,6 +206,48 @@ def download(logger, schema, remote_url, local_file, uncompress=True):
     if uncompress:
         uncompressall(local_dir)
     return os.listdir(local_dir)
+
+
+def do_dump(dumper_class, plugin_name):
+    """Perform dump for the given dumper_class"""
+    dumper = dumper_class()
+    dumper.prepare()
+    run_sync_or_async_job(dumper.create_todump_list, force=True)
+    for item in dumper.to_dump:
+        dumper.download(item["remote"], item["local"])
+    dumper.steps = ["post"]
+    dumper.post_dump()
+    dumper.register_status("success")
+    dumper.release_client()
+    # cleanup
+    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
+    # dumper.src_dump.remove({"_id": dumper.src_name})
+    dp = get_data_plugin()
+    dp.remove({"_id": plugin_name})
+    return dumper.new_data_folder
+
+
+def do_upload(uploader_classes):
+    """Perform upload for the given list of uploader_classes"""
+    from biothings.hub.dataload.uploader import upload_worker
+
+    for uploader_cls in uploader_classes:
+        uploader = uploader_cls.create(db_conn_info="")
+        uploader.make_temp_collection()
+        uploader.prepare()
+        upload_worker(
+            uploader.fullname,
+            uploader.__class__.storage_class,
+            uploader.load_data,
+            uploader.temp_collection_name,
+            10000,
+            1,
+            uploader.data_folder,
+            db=uploader.db,
+        )
+        uploader.switch_collection()
+        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
+        uploader.clean_archived_collections()
 
 
 def make_temp_collection(uploader_name):

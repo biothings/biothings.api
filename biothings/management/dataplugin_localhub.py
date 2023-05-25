@@ -98,8 +98,7 @@ def dump_data(
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging", show_default=True),
 ):
-    import biothings.hub  # this import is to make config is setup for the biothings module
-    from biothings.utils.hub_db import get_data_plugin
+    from biothings.management.utils import do_dump
 
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
@@ -110,22 +109,9 @@ def dump_data(
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     del uploader_manager
     dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-    for item in dumper.to_dump:
-        dumper.download(item["remote"], item["local"])
-    dumper.steps = ["post"]
-    dumper.post_dump()
-    dumper.register_status("success")
-    dumper.release_client()
-    # cleanup
-    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
-    # dumper.src_dump.remove({"_id": dumper.src_name})
-    dp = get_data_plugin()
-    dp.remove({"_id": plugin_name})
+    data_folder = do_dump(dumper_class, plugin_name)
     rprint("[green]Success![/green]")
-    utils.show_dumped_files(dumper.new_data_folder, plugin_name)
+    utils.show_dumped_files(data_folder, plugin_name)
 
 
 @app.command(
@@ -149,7 +135,7 @@ def upload_source(
     # ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ):
-    from biothings.hub.dataload.uploader import upload_worker
+    from biothings.management.utils import do_upload
 
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
@@ -160,24 +146,7 @@ def upload_source(
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     del dumper_manager
     uploader_classes = uploader_manager[plugin_name]
-    for uploader_cls in uploader_classes:
-        uploader = uploader_cls.create(db_conn_info="")
-        uploader.make_temp_collection()
-        uploader.prepare()
-        upload_worker(
-            uploader.fullname,
-            uploader.__class__.storage_class,
-            uploader.load_data,
-            uploader.temp_collection_name,
-            10000,
-            1,
-            uploader.data_folder,
-            db=uploader.db,
-        )
-        uploader.switch_collection()
-        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
-        uploader.clean_archived_collections()
-
+    do_upload(uploader_classes)
     rprint("[green]Success![/green]")
     utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
 
@@ -201,8 +170,7 @@ def dump_and_upload(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
-    from biothings.hub.dataload.uploader import upload_worker
-    from biothings.utils.hub_db import get_data_plugin
+    from biothings.management.utils import do_dump, do_upload
 
     working_dir = pathlib.Path().resolve()
     valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
@@ -213,41 +181,13 @@ def dump_and_upload(
     dumper_manager, uploader_manager = load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
     uploader_classes = uploader_manager[plugin_name]
-    dumper = dumper_class()
-    dumper.prepare()
-    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-    for item in dumper.to_dump:
-        dumper.download(item["remote"], item["local"])
-    dumper.steps = ["post"]
-    dumper.post_dump()
-    dumper.register_status("success")
-    dumper.release_client()
 
-    for uploader_cls in uploader_classes:
-        uploader = uploader_cls.create(db_conn_info="")
-        uploader.make_temp_collection()
-        uploader.prepare()
-        upload_worker(
-            uploader.fullname,
-            uploader.__class__.storage_class,
-            uploader.load_data,
-            uploader.temp_collection_name,
-            10000,
-            1,
-            uploader.data_folder,
-            db=uploader.db,
-        )
-        uploader.switch_collection()
-        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
-        uploader.clean_archived_collections()
+    data_folder = do_dump(dumper_class, plugin_name)
 
-    # cleanup
-    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
-    # dumper.src_dump.remove({"_id": dumper.src_name})
-    dp = get_data_plugin()
-    dp.remove({"_id": plugin_name})
+    do_upload(uploader_classes)
+
     rprint("[green]Success![/green]")
-    utils.show_dumped_files(dumper.new_data_folder, plugin_name)
+    utils.show_dumped_files(data_folder, plugin_name)
     utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
 
 
