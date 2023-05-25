@@ -120,7 +120,8 @@ def dump_data(
     dumper.register_status("success")
     dumper.release_client()
     # cleanup
-    dumper.src_dump.remove({"_id": dumper.src_name})
+    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
+    # dumper.src_dump.remove({"_id": dumper.src_name})
     dp = get_data_plugin()
     dp.remove({"_id": plugin_name})
     rprint("[green]Success![/green]")
@@ -241,7 +242,8 @@ def dump_and_upload(
         uploader.clean_archived_collections()
 
     # cleanup
-    dumper.src_dump.remove({"_id": dumper.src_name})
+    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
+    # dumper.src_dump.remove({"_id": dumper.src_name})
     dp = get_data_plugin()
     dp.remove({"_id": plugin_name})
     rprint("[green]Success![/green]")
