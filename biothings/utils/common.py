@@ -1064,7 +1064,7 @@ def get_plugin_name_from_remote_manifest(url):
         manifest_json = json.loads(response.text)
     except Exception:
         response = requests.get(url=manifest_yaml_url)
-        manifest_json = json.loads(response.text)
+        manifest_json = yaml.safe_load(response.text)
     finally:
         name = manifest_json.get("name", name)
     return name
