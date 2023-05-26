@@ -29,13 +29,18 @@ if typer_avail:
         rich_markup_mode="rich",
         context_settings=CONTEXT_SETTINGS,
         no_args_is_help=True,
+        pretty_exceptions_show_locals=False,
+        # pretty_exceptions_enable=False,
     )
 
     logging.basicConfig(
         level="INFO",
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+        handlers=[
+            # we don't need to turn on rich_tracebacks since typer creates it already
+            RichHandler(level=logging.INFO, rich_tracebacks=False, show_path=False),
+        ],
     )
     logger = logging.getLogger("cli")
 
