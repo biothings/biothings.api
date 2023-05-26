@@ -905,7 +905,7 @@ class AssistantManager(BaseSourceManager):
                 self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
                 continue
             plugin_name = get_plugin_name_from_local_manifest(plugin.get("download").get("data_folder"))
-            if plugin["_id"] != plugin_name:
+            if plugin_name and plugin["_id"] != plugin_name:
                 plugin = self.update_plugin_name(plugin, plugin_name)
             # remove plugins from folder list if already register
             if plugin_dir_name in plugin_dirs:
