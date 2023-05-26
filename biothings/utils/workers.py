@@ -41,13 +41,13 @@ def upload_worker(name, storage_class, loaddata_func, col_name, batch_size, batc
                 {
                     "exc": e,
                     "params": {"name": name, "storage_class": storage_class},
-                    "loaddata_func": loaddata_func,
+                    "loaddata_func": repr(loaddata_func),  # loaddata_func may not be pickle-able
                     "col_name": col_name,
                     "batch_size": batch_size,
                     "args": args,
                 },
                 open(pickfile, "wb"),
             )
-        except TypeError as ie:
-            logger.warning("Could not pickle batch errors: %s" % ie)
+        except (TypeError, pickle.PicklingError) as ie:
+            logger.warning("Could not pickle batch errors: %s", ie)
         raise e
