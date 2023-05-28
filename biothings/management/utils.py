@@ -23,12 +23,10 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-import biothings.hub  # this import is to make config is setup for the biothings module
 import biothings.utils.inspect as btinspect
 from biothings.utils import es, storage
 from biothings.utils.common import get_random_string, get_timestamp, timesofar, uncompressall
 from biothings.utils.dataload import dict_traverse
-from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
 
@@ -84,6 +82,44 @@ def create_data_plugin_template(name, multi_uploaders=False, parallelizer=False,
     if not parallelizer:
         os.unlink(f"{plugin_dir}/parallelizer.py")
     logger.info(f"Successful create data plugin template at: \n {plugin_dir}")
+
+
+def load_plugin(plugin_name):
+    from biothings.hub.dataload.dumper import DumperManager
+    from biothings.hub.dataload.uploader import UploaderManager
+    from biothings.hub.dataplugin.assistant import LocalAssistant
+    from biothings.hub.dataplugin.manager import DataPluginManager
+    from biothings.utils.hub_db import get_data_plugin
+
+    plugin_manager = DataPluginManager(job_manager=None)
+    dmanager = DumperManager(job_manager=None)
+    upload_manager = UploaderManager(job_manager=None)
+
+    LocalAssistant.data_plugin_manager = plugin_manager
+    LocalAssistant.dumper_manager = dmanager
+    LocalAssistant.uploader_manager = upload_manager
+
+    assistant = LocalAssistant(f"local://{plugin_name}")
+    dp = get_data_plugin()
+    dp.remove({"_id": assistant.plugin_name})
+    dp.insert_one(
+        {
+            "_id": assistant.plugin_name,
+            "plugin": {
+                "url": f"local://{plugin_name}",
+                "type": assistant.plugin_type,
+                "active": True,
+            },
+            "download": {
+                # "data_folder": "/data/biothings_studio/plugins/pharmgkb", # tmp fake
+                "data_folder": f"./{plugin_name}",  # tmp path to your data plugin
+            },
+        }
+    )
+    p_loader = assistant.loader
+    p_loader.load_plugin()
+
+    return p_loader.__class__.dumper_manager, assistant.__class__.uploader_manager
 
 
 def get_uploaded_collections(src_db, uploaders):
@@ -210,6 +246,9 @@ def download(logger, schema, remote_url, local_file, uncompress=True):
 
 def do_dump(dumper_class, plugin_name):
     """Perform dump for the given dumper_class"""
+    import biothings.hub  # this import is to make config is setup before get_data_plugin is imported
+    from biothings.utils.hub_db import get_data_plugin
+
     dumper = dumper_class()
     dumper.prepare()
     run_sync_or_async_job(dumper.create_todump_list, force=True)

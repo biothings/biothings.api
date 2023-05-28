@@ -52,44 +52,6 @@ def create_data_plugin(
     utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
 
 
-def load_plugin(plugin_name):
-    from biothings.hub.dataload.dumper import DumperManager
-    from biothings.hub.dataload.uploader import UploaderManager
-    from biothings.hub.dataplugin.assistant import LocalAssistant
-    from biothings.hub.dataplugin.manager import DataPluginManager
-    from biothings.utils.hub_db import get_data_plugin
-
-    plugin_manager = DataPluginManager(job_manager=None)
-    dmanager = DumperManager(job_manager=None)
-    upload_manager = UploaderManager(job_manager=None)
-
-    LocalAssistant.data_plugin_manager = plugin_manager
-    LocalAssistant.dumper_manager = dmanager
-    LocalAssistant.uploader_manager = upload_manager
-
-    assistant = LocalAssistant(f"local://{plugin_name}")
-    dp = get_data_plugin()
-    dp.remove({"_id": assistant.plugin_name})
-    dp.insert_one(
-        {
-            "_id": assistant.plugin_name,
-            "plugin": {
-                "url": f"local://{plugin_name}",
-                "type": assistant.plugin_type,
-                "active": True,
-            },
-            "download": {
-                # "data_folder": "/data/biothings_studio/plugins/pharmgkb", # tmp fake
-                "data_folder": f"./{plugin_name}",  # tmp path to your data plugin
-            },
-        }
-    )
-    p_loader = assistant.loader
-    p_loader.load_plugin()
-
-    return p_loader.__class__.dumper_manager, assistant.__class__.uploader_manager
-
-
 @app.command(
     name="dump",
     help="Download source data files to local",
@@ -112,7 +74,7 @@ def dump_data(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     del uploader_manager
     dumper_class = dumper_manager[plugin_name][0]
     data_folder = do_dump(dumper_class, plugin_name)
@@ -155,7 +117,7 @@ def upload_source(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     del dumper_manager
     uploader_classes = uploader_manager[plugin_name]
     do_upload(uploader_classes)
@@ -187,7 +149,7 @@ def dump_and_upload(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
     uploader_classes = uploader_manager[plugin_name]
 
@@ -222,7 +184,7 @@ def listing(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
     dumper = dumper_class()
     dumper.prepare()
@@ -308,7 +270,7 @@ def inspect_source(
     source_full_name = plugin_name
     if sub_source_name:
         source_full_name = f"{plugin_name}.{sub_source_name}"
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     if len(uploader_manager[source_full_name]) > 1 and not sub_source_name:
         rprint("[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]")
         rprint(
@@ -375,7 +337,7 @@ def serve(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     uploader_cls = uploader_manager[plugin_name]
     if not isinstance(uploader_cls, list):
         uploader_cls = [uploader_cls]
@@ -409,7 +371,7 @@ def clean_data(
         rprint("[red]Please provide your data plugin name! [/red]")
         rprint("Choose from:\n    " + "\n    ".join(valid_names))
         return exit(1)
-    dumper_manager, uploader_manager = load_plugin(plugin_name)
+    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
     dumper_class = dumper_manager[plugin_name][0]
     dumper = dumper_class()
     dumper.prepare()
