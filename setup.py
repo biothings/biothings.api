@@ -169,6 +169,6 @@ setup(
         "dev": web_extra_requires + hub_requires + cli_requires + docker_requires + dev_requires + docs_requires,
     },
     entry_points={
-        "console_scripts": ["biothings=biothings.management.cli:main"],
+        "console_scripts": ["biothings-cli=biothings.management.cli:main"],
     },
 )
