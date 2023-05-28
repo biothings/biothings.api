@@ -1,19 +1,14 @@
-# flake8: noqa: B008
 import os
 import pathlib
 from typing import Optional
 
 import typer
 from rich import print as rprint
+from typing_extensions import Annotated
 
-# from biothings import config
-from biothings.management.utils import get_logger
+from biothings.management import utils
 
-# logger = setup_default_log("dataplugin", config.LOG_FOLDER, "INFO")
-logger = get_logger("dataplugin")
-
-# To make sure biothings.config is initialized
-from . import utils
+logger = utils.get_logger("dataplugin")
 
 
 def extra_help_msg():
@@ -50,15 +45,19 @@ app = typer.Typer(
     help="Create a new data plugin from the tempplate",
 )
 def create_data_plugin(
-    name: Optional[str] = typer.Option(
-        default="",
-        help="Data plugin name",
-        prompt="What's your data plugin name?",
-    ),
-    multi_uploaders: bool = typer.Option(
-        False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
-    ),
-    parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
+    name: Annotated[
+        str,
+        typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
+    ] = "",
+    multi_uploaders: Annotated[
+        Optional[bool],
+        typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
+    ] = False,
+    # parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
+    parallelizer: Annotated[
+        Optional[bool],
+        typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
+    ] = False,
 ):
     utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
 
@@ -67,7 +66,12 @@ def create_data_plugin(
     name="dump",
     help="Download source data files to local",
 )
-def dump_data(verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging", show_default=True)):
+def dump_data(
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
+    ] = False,
+):
     if verbose:
         logger.setLevel("DEBUG")
     working_dir = pathlib.Path().resolve()
@@ -94,12 +98,17 @@ def dump_data(verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbo
     help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
 )
 def upload_source(
-    batch_limit: Optional[int] = typer.Option(
-        None,
-        "--batch-limit",
-        help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
+    batch_limit: Annotated[
+        Optional[int],
+        typer.Option(
+            "--batch-limit",
+            help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
+        ),
+    ] = None,
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
+    ] = False,
 ):
     if verbose:
         logger.setLevel("DEBUG")
@@ -127,8 +136,12 @@ def upload_source(
     help="Listing dumped files or uploaded sources",
 )
 def listing(
-    dump: bool = typer.Option(False, "--dump", help="Listing dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Listing uploaded sources"),
+    dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
+    upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
+    ] = False,
 ):
     working_dir = pathlib.Path().resolve()
     plugin_name = working_dir.name
@@ -150,13 +163,15 @@ def listing(
     help="Giving detailed information about the structure of documents coming from the parser",
 )
 def inspect_source(
-    sub_source_name: Optional[str] = typer.Option(
-        default="",
-        help="Your sub source name",
-    ),
-    mode: Optional[str] = typer.Option(
-        default="type,stats",
-        help="""
+    sub_source_name: Annotated[
+        Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")
+    ] = "",
+    mode: Annotated[
+        Optional[str],
+        typer.Option(
+            "--mode",
+            "-m",
+            help="""
             The inspect mode or list of modes (comma separated), e.g. "type,mapping".\n
             Possible values are:\n
             - "type": explore documents and report strict data structure\n
@@ -164,26 +179,38 @@ def inspect_source(
                (eg. check if a string is splitable, etc...). Implies merge=True\n
             - "stats": explore documents and compute basic stats (count,min,max,sum)\n
             """,
-    ),
-    limit: Optional[int] = typer.Option(
-        None,
-        "--limit",
-        "-l",
-        help="Can limit the inspection to the x first docs (None = no limit, inspects all)",
-    ),
-    merge: Optional[bool] = typer.Option(
-        False,
-        "--merge",
-        "-m",
-        help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
-    output: Optional[str] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
-    ),
+        ),
+    ] = "type,stats",
+    limit: Annotated[
+        Optional[int],
+        typer.Option(
+            "--limit",
+            "-l",
+            help="""
+            can limit the inspection to the x first docs (None = no limit, inspects all)
+            """,
+        ),
+    ] = None,
+    merge: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--merge",
+            "-m",
+            help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
+        ),
+    ] = False,
+    output: Annotated[
+        Optional[str],
+        typer.Option(
+            "--output",
+            "-o",
+            help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
+        ),
+    ] = None,
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
+    ] = False,
 ):
     """ """
     if verbose:
@@ -204,15 +231,25 @@ def inspect_source(
 
 @app.command(name="serve")
 def serve(
-    host: Optional[str] = typer.Option(
-        default="localhost",
-        help="API server ",
-    ),
-    port: Optional[int] = typer.Option(
-        default=9999,
-        help="API server port",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
+    host: Annotated[
+        Optional[str],
+        typer.Option(
+            "--host",
+            help="The host name to run the test API server",
+        ),
+    ] = "localhost",
+    port: Annotated[
+        Optional[int],
+        typer.Option(
+            "--port",
+            "-p",
+            help="The port number to tun the test API server",
+        ),
+    ] = 9999,
+    verbose: Annotated[
+        Optional[bool],
+        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
+    ] = False,
 ):
     """
     Run the simple API server for serving documents from the source database, \n
@@ -247,13 +284,15 @@ def serve(
     no_args_is_help=True,
 )
 def clean_data(
-    dump: bool = typer.Option(False, "--dump", help="Delete all dumped files"),
-    upload: bool = typer.Option(False, "--upload", help="Drop uploaded sources tables"),
-    clean_all: bool = typer.Option(
-        False,
-        "--all",
-        help="Delete all dumped files and drop uploaded sources tables",
-    ),
+    dump: Annotated[Optional[bool], typer.Option("--dump", help="Delete all dumped files")] = False,
+    upload: Annotated[Optional[bool], typer.Option("--upload", help="Drop uploaded sources tables")] = False,
+    clean_all: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--all",
+            help="Delete all dumped files and drop uploaded sources tables",
+        ),
+    ] = False,
 ):
     working_dir = pathlib.Path().resolve()
     if not utils.is_valid_working_directory(working_dir, logger=logger):
