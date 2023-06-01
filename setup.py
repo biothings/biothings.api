@@ -88,7 +88,8 @@ hub_requires = hubcore_requires + [
     "black",  # code formatter
     "boto3",  # for aws S3 access
     "requests-aws4auth",  # aws s3 auth requests for autohub
-    "networkx>=2.1,<2.6",  # datatransform
+    'networkx>=2.1,<3.0; python_version >= "3.7.0"',  # datatransform
+    'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
 ]
