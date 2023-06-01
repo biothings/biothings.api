@@ -1,6 +1,7 @@
 import importlib
 import importlib.util
 import logging
+import os
 import pathlib
 import sys
 
@@ -17,11 +18,26 @@ from biothings.utils.configuration import ConfigurationError
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
-
 if typer_avail:
     # prevent dimming the help text from the 2nd line
     # see: https://github.com/tiangolo/typer/issues/437#issuecomment-1224149402
     typer.rich_utils.STYLE_HELPTEXT = ""
+
+    # Typer already support an env variable to disable rich tracebacks using _TYPER_STANDARD_TRACEBACK=1
+    # This supports a similar BTCLI_RICH_TRACEBACK=1 env variable to turn it on when default is off in our case
+    # Relevant ref: https://github.com/tiangolo/typer/issues/525 and https://github.com/tiangolo/typer/discussions/612
+    # and BTCLI_DEBUG=1 env varible to turn on both rich tracebacks and show locals
+    if os.environ.get("BTCLI_DEBUG"):
+        pretty_exceptions_enable = True
+        pretty_exceptions_show_locals = True
+        default_logging_level = logging.DEBUG
+    else:
+        if os.environ.get("BTCLI_RICH_TRACEBACK"):
+            pretty_exceptions_enable = True
+        else:
+            pretty_exceptions_enable = False
+        pretty_exceptions_show_locals = False
+        default_logging_level = logging.INFO
 
     cli = typer.Typer(
         help="[green]BioThings Admin CLI to test your local data plugins.[/green]",
@@ -29,8 +45,8 @@ if typer_avail:
         rich_markup_mode="rich",
         context_settings=CONTEXT_SETTINGS,
         no_args_is_help=True,
-        pretty_exceptions_show_locals=False,
-        # pretty_exceptions_enable=False,
+        pretty_exceptions_show_locals=pretty_exceptions_show_locals,
+        pretty_exceptions_enable=pretty_exceptions_enable,
     )
 
     logging.basicConfig(
@@ -39,7 +55,7 @@ if typer_avail:
         datefmt="[%X]",
         handlers=[
             # we don't need to turn on rich_tracebacks since typer creates it already
-            RichHandler(level=logging.INFO, rich_tracebacks=False, show_path=False),
+            RichHandler(level=default_logging_level, rich_tracebacks=False, show_path=False),
         ],
     )
     logger = logging.getLogger("cli")
