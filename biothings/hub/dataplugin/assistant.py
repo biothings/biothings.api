@@ -181,7 +181,14 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "'Wrong format for '%s', it must be defined following format 'module:func': %s" % (mod_name, e)
             )
         modpath = self.plugin_path_name + "." + mod
-        pymod = importlib.import_module(modpath)
+        try:
+            pymod = importlib.import_module(modpath)
+            # self.logger.info("Imported custom module %s for plugin %s", modpath, self.plugin_path_name)
+        except ImportError:
+            # Some data plugins use BioThings generic parser, e.g. CHEBI plugin uses {"parser" : "hub.dataload.data_parsers:load_obo"}
+            # In such cases, `self.plugin_path_name` is not part of the module path.
+            pymod = importlib.import_module(mod)
+            # self.logger.info("Imported generic module %s for plugin %s", mod, self.plugin_path_name)
         # reload in case we need to refresh plugin's code
         importlib.reload(pymod)
         assert funcname in dir(pymod), "%s not found in module %s" % (funcname, pymod)
