@@ -184,7 +184,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         try:
             pymod = importlib.import_module(modpath)
             # self.logger.info("Imported custom module %s for plugin %s", modpath, self.plugin_path_name)
-        except ImportError:
+        except (ImportError, TypeError):
             # Some data plugins use BioThings generic parser, e.g. CHEBI plugin uses {"parser" : "hub.dataload.data_parsers:load_obo"}
             # In such cases, `self.plugin_path_name` is not part of the module path.
             pymod = importlib.import_module(mod)
@@ -337,8 +337,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     try:
                         from {self.plugin_path_name}.{mod} import {func} as parser_func
                     except ImportError:
-                        from .{mod} import {func} as parser_func
-
+                        try:
+                            from .{mod} import {func} as parser_func
+                        except ImportError:
+                            # When relative import fails, try to import it directly
+                            import sys
+                            sys.path.insert(0, ".")
+                            from {mod} import {func} as parser_func
                     parser_kwargs = {parser_kwargs_serialized}
                     """
                     )

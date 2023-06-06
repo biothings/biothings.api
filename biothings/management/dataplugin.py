@@ -74,21 +74,33 @@ def dump_data(
 ):
     if verbose:
         logger.setLevel("DEBUG")
+
     working_dir = pathlib.Path().resolve()
     if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
-    manifest = utils.get_manifest_content(working_dir)
-    to_dumps = utils.get_todump_list(manifest.get("dumper"))
-    for to_dump in to_dumps:
-        utils.download(
-            logger,
-            to_dump["schema"],
-            to_dump["remote_url"],
-            to_dump["local_file"],
-            to_dump["uncompress"],
-        )
     plugin_name = working_dir.name
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+
+    mode = "v2"
+    if mode == "v1":
+        manifest = utils.get_manifest_content(working_dir)
+        to_dumps = utils.get_todump_list(manifest.get("dumper"))
+        for to_dump in to_dumps:
+            utils.download(
+                logger,
+                to_dump["schema"],
+                to_dump["remote_url"],
+                to_dump["local_file"],
+                to_dump["uncompress"],
+            )
+    else:
+        from biothings.management.utils import do_dump
+
+        dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
+        del uploader_manager
+        dumper_class = dumper_manager[plugin_name][0]
+        data_folder = do_dump(dumper_class, plugin_name)
+
     rprint("[green]Success![/green]")
     utils.show_dumped_files(data_folder, plugin_name)
 
@@ -112,21 +124,32 @@ def upload_source(
 ):
     if verbose:
         logger.setLevel("DEBUG")
+
     working_dir = pathlib.Path().resolve()
     if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
     plugin_name = working_dir.name
-    local_archive_dir = os.path.join(working_dir, ".biothings_hub")
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-    os.makedirs(local_archive_dir, exist_ok=True)
-    manifest = utils.get_manifest_content(working_dir)
-    upload_sections = manifest.get("uploaders")
-    if not upload_sections:
-        upload_section = manifest.get("uploader")
-        upload_sections = [upload_section]
 
-    for section in upload_sections:
-        utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
+    mode = "v2"
+    if mode == "v1":
+        local_archive_dir = os.path.join(working_dir, ".biothings_hub")
+        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+        os.makedirs(local_archive_dir, exist_ok=True)
+        manifest = utils.get_manifest_content(working_dir)
+        upload_sections = manifest.get("uploaders")
+        if not upload_sections:
+            upload_section = manifest.get("uploader")
+            upload_sections = [upload_section]
+        for section in upload_sections:
+            utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
+    else:
+        from biothings.management.utils import do_upload
+
+        dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
+        del dumper_manager
+        uploader_classes = uploader_manager[plugin_name]
+        do_upload(uploader_classes)
+
     rprint("[green]Success![/green]")
     utils.show_uploaded_sources(working_dir, plugin_name)
 
@@ -147,7 +170,13 @@ def listing(
     plugin_name = working_dir.name
     if not utils.is_valid_working_directory(working_dir, logger=logger):
         return exit(1)
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
+    dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
+    del uploader_manager
+    dumper_class = dumper_manager[plugin_name][0]
+    dumper = dumper_class()
+    dumper.prepare()
+    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
+    data_folder = dumper.new_data_folder
     if dump:
         utils.show_dumped_files(data_folder, plugin_name)
         return

@@ -84,7 +84,8 @@ def create_data_plugin_template(name, multi_uploaders=False, parallelizer=False,
     logger.info(f"Successful create data plugin template at: \n {plugin_dir}")
 
 
-def load_plugin(plugin_name):
+def load_plugin(plugin_path, plugin_name=None, data_folder=None):
+    from biothings import config as btconfig
     from biothings.hub.dataload.dumper import DumperManager
     from biothings.hub.dataload.uploader import UploaderManager
     from biothings.hub.dataplugin.assistant import LocalAssistant
@@ -99,7 +100,12 @@ def load_plugin(plugin_name):
     LocalAssistant.dumper_manager = dmanager
     LocalAssistant.uploader_manager = upload_manager
 
+    _plugin_path = pathlib.Path(plugin_path).resolve()
+    btconfig.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
+    plugin_name = plugin_name or _plugin_path.name
+    data_folder = data_folder or f"./{plugin_name}"
     assistant = LocalAssistant(f"local://{plugin_name}")
+    # print(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), btconfig.DATA_PLUGIN_FOLDER)
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
     dp.insert_one(
@@ -111,8 +117,7 @@ def load_plugin(plugin_name):
                 "active": True,
             },
             "download": {
-                # "data_folder": "/data/biothings_studio/plugins/pharmgkb", # tmp fake
-                "data_folder": f"./{plugin_name}",  # tmp path to your data plugin
+                "data_folder": data_folder,  # tmp path to your data plugin
             },
         }
     )
@@ -246,8 +251,10 @@ def download(logger, schema, remote_url, local_file, uncompress=True):
 
 def do_dump(dumper_class, plugin_name):
     """Perform dump for the given dumper_class"""
-    import biothings.hub  # this import is to make config is setup before get_data_plugin is imported
-    from biothings.utils.hub_db import get_data_plugin
+    from biothings import config
+    from biothings.utils import hub_db
+
+    hub_db.setup(config)
 
     dumper = dumper_class()
     dumper.prepare()
@@ -261,7 +268,7 @@ def do_dump(dumper_class, plugin_name):
     # cleanup
     # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
     # dumper.src_dump.remove({"_id": dumper.src_name})
-    dp = get_data_plugin()
+    dp = hub_db.get_data_plugin()
     dp.remove({"_id": plugin_name})
     return dumper.new_data_folder
 
