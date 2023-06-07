@@ -692,6 +692,28 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
+def show_hubdb_content():
+    from biothings import config
+    from biothings.utils import hub_db
+
+    console = Console()
+    hub_db.setup(config)
+    coll_list = [hub_db.get_data_plugin(), hub_db.get_src_dump(), hub_db.get_src_master()]
+    hub_db_content = "\n".join(
+        [
+            f"[green]Collection:[/green] [bold]{collection.name}[/bold]\n{json.dumps(collection.find(), indent=4)}"
+            for collection in coll_list
+        ]
+    )
+    console.print(
+        Panel(
+            hub_db_content,
+            title="[bold]Hubdb[/bold]",
+            title_align="left",
+        )
+    )
+
+
 def is_valid_working_directory(working_dir, logger=None):
     if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(f"{working_dir}/manifest.json"):
         err = "[red]This command must be run inside a data plugin folder. Please go to a data plugin folder and try again! [/red]"

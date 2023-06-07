@@ -161,13 +161,14 @@ def upload_source(
 def listing(
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
+    hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
     verbose: Annotated[
         Optional[bool],
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    if dump is False and upload is False:
-        # if both set to False, we meant to list both
+    if dump is False and upload is False and hubdb is False:
+        # if all set to False, we list both dump and upload as the default
         dump = upload = True
 
     working_dir = pathlib.Path().resolve()
@@ -191,6 +192,8 @@ def listing(
         utils.show_dumped_files(data_folder, plugin_name)
     if upload:
         utils.show_uploaded_sources(working_dir, plugin_name)
+    if hubdb:
+        utils.show_hubdb_content()
 
 
 @app.command(
