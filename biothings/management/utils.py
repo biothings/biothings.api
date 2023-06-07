@@ -143,6 +143,7 @@ def get_uploaded_collections(src_db, uploaders):
 
 
 def get_todump_list(dumper_section):
+    # Deprecated!
     working_dir = pathlib.Path().resolve()
     data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
     remote_urls = dumper_section.get("data_url")
@@ -184,6 +185,7 @@ def get_todump_list(dumper_section):
 
 
 def _get_optimal_buffer_size(ftp_host):
+    # deprecated!
     known_optimal_sizes = {
         "ftp.ncbi.nlm.nih.gov": 33554432,
         # see https://ftp.ncbi.nlm.nih.gov/README.ftp for reason
@@ -198,6 +200,7 @@ def _get_optimal_buffer_size(ftp_host):
 
 
 def download(logger, schema, remote_url, local_file, uncompress=True):
+    # deprecated!
     logger.debug(f"Start download {remote_url}")
     local_dir = os.path.dirname(local_file)
     os.makedirs(local_dir, exist_ok=True)
@@ -577,7 +580,7 @@ def get_uploaders(working_dir: pathlib.Path):
     return table_space
 
 
-def remove_files_in_folder(folder_path, from_hub):
+def remove_files_in_folder(folder_path):
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         try:
@@ -587,33 +590,26 @@ def remove_files_in_folder(folder_path, from_hub):
                 shutil.rmtree(file_path)
         except Exception as e:
             rprint("[red]Failed to delete %s. Reason: %s [/red]" % (file_path, e))
-    if from_hub:
-        shutil.rmtree(folder_path)
+    shutil.rmtree(folder_path)
 
 
-def do_clean_dumped_files(working_dir, from_hub=False):
-    plugin_name = working_dir.name
-    if not from_hub:
-        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-    else:
-        data_folder = working_dir
+def do_clean_dumped_files(data_folder, plugin_name):
     if not os.path.isdir(data_folder):
-        rprint(f"[red]Data folder {data_folder} not found![/red]")
-        return exit(1)
+        rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
+        return
     if not os.listdir(data_folder):
-        print("Empty folder!")
+        rprint("[red]Empty folder![/red]")
     else:
         rprint(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(os.listdir(data_folder)))
         delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
-        remove_files_in_folder(data_folder, from_hub)
+        remove_files_in_folder(data_folder)
         rprint("[green]Deleted![/green]")
 
 
-def do_clean_uploaded_sources(working_dir):
-    plugin_name = working_dir.name
+def do_clean_uploaded_sources(working_dir, plugin_name):
     uploaders = get_uploaders(working_dir)
     src_db = get_src_db()
     uploaded_sources = []
@@ -624,7 +620,7 @@ def do_clean_uploaded_sources(working_dir):
             if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
                 uploaded_sources.append(item)
     if not uploaded_sources:
-        print("Empty sources!")
+        rprint("[red]No source has been uploaded yet! [/red]")
     else:
         rprint(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(uploaded_sources))
