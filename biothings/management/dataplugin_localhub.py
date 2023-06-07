@@ -376,32 +376,4 @@ def clean_data(
         ),
     ] = False,
 ):
-    if clean_all:
-        dump = upload = True
-    if dump is False and upload is False:
-        rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
-        return exit(1)
-
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    del uploader_manager
-    dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    # dumper.create_todump_list(force=True)
-    data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
-    if not utils.is_valid_working_directory(data_plugin_dir, logger=logger):
-        return exit(1)
-    if dump:
-        data_folder = dumper.current_data_folder
-        if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-        utils.do_clean_dumped_files(data_folder, plugin_name)
-    if upload:
-        utils.do_clean_uploaded_sources(data_plugin_dir, plugin_name)
+    return utils.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)

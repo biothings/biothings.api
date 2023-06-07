@@ -723,3 +723,51 @@ def is_valid_working_directory(working_dir, logger=None):
             rprint(err)
         return False
     return True
+
+
+def get_plugin_name(plugin_name=None):
+    """return a valid plugin name (the folder name contains a data plugin)
+    When plugin_name is provided as None, it use the current working folder.
+    """
+    working_dir = pathlib.Path().resolve()
+    if plugin_name is None:
+        plugin_name = working_dir.name
+    else:
+        valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+        if not plugin_name or plugin_name not in valid_names:
+            rprint("[red]Please provide your data plugin name! [/red]")
+            rprint("Choose from:\n    " + "\n    ".join(valid_names))
+            return exit(1)
+    return plugin_name
+
+
+def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
+    if clean_all:
+        dump = upload = True
+    if dump is False and upload is False:
+        rprint("[red]Please provide at least one of following option: --dump, --upload, --all[/red]")
+        return exit(1)
+
+    working_dir = pathlib.Path().resolve()
+    _plugin_name = get_plugin_name(plugin_name)
+    if plugin_name is None:
+        # current working_dir has the data plugin
+        dumper_manager, uploader_manager = load_plugin(working_dir, data_folder=".")
+        data_plugin_dir = working_dir
+    else:
+        dumper_manager, uploader_manager = load_plugin(_plugin_name)
+        data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
+    del uploader_manager
+    dumper_class = dumper_manager[_plugin_name][0]
+    dumper = dumper_class()
+    dumper.prepare()
+    if not is_valid_working_directory(data_plugin_dir, logger=logger):
+        return exit(1)
+    if dump:
+        data_folder = dumper.current_data_folder
+        if not data_folder:
+            # data_folder should be saved in hubdb already, if dump has been done successfully first
+            logger.error('Data folder is not available. Please run "dump" first.')
+        do_clean_dumped_files(data_folder, _plugin_name)
+    if upload:
+        do_clean_uploaded_sources(data_plugin_dir, _plugin_name)
