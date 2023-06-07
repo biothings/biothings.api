@@ -2,6 +2,7 @@ import importlib
 import inspect
 import json
 import os
+import pathlib
 import pprint
 import re
 import subprocess
@@ -129,31 +130,39 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
-        df = plugin["download"]["data_folder"]
-        if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
+        df = pathlib.Path(plugin["download"]["data_folder"])
+        # if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
+        if pathlib.Path(df, "manifest.json").exists():
             return True
-        elif "manifest.yaml" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.yaml")):
+        # elif "manifest.yaml" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.yaml")):
+        elif pathlib.Path(df, "manifest.yaml").exists():
             return True
         else:
             return False
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
-        df = plugin["download"]["data_folder"]
-        self.plugin_path_name = os.path.basename(df)
-        if os.path.exists(df):
-            mf = os.path.join(df, "manifest.json")
-            mf_yaml = os.path.join(df, "manifest.yaml")
+        df = pathlib.Path(plugin["download"]["data_folder"])
+        # self.plugin_path_name = os.path.basename(df)
+        self.plugin_path_name = df.name
+        # if os.path.exists(df):
+        if df.exists():
+            # mf = os.path.join(df, "manifest.json")
+            # mf_yaml = os.path.join(df, "manifest.yaml")
+            mf = pathlib.Path(df, "manifest.json")
+            mf_yaml = pathlib.Path(df, "manifest.yaml")
             manifest = None
-            if os.path.exists(mf):
+            # if os.path.exists(mf):
+            if mf.exists():
                 self.logger.debug(f"Loading manifest: {mf}")
                 manifest = json.load(open(mf))
-            elif os.path.exists(mf_yaml):
+            # elif os.path.exists(mf_yaml):
+            elif mf_yaml.exists():
                 self.logger.debug(f"Loading manifest: {mf_yaml}")
                 manifest = yaml.safe_load(open(mf_yaml))
             if manifest:
                 try:
-                    self.interpret_manifest(manifest, df)
+                    self.interpret_manifest(manifest, df.as_posix())
                 except Exception as e:
                     self.invalidate_plugin("Error loading manifest: %s" % str(e))
             else:
@@ -619,7 +628,7 @@ class BaseAssistant(object):
                 loader = klass(self.plugin_name)
                 if loader.can_load_plugin():
                     self._loader = loader
-                    self.logger.info("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
+                    self.logger.debug("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
                     self.register_loader()
                     break
                 else:
