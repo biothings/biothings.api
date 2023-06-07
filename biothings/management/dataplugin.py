@@ -166,6 +166,10 @@ def listing(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
+    if dump is False and upload is False:
+        # if both set to False, we meant to list both
+        dump = upload = True
+
     working_dir = pathlib.Path().resolve()
     plugin_name = working_dir.name
     if not utils.is_valid_working_directory(working_dir, logger=logger):
@@ -175,16 +179,18 @@ def listing(
     dumper_class = dumper_manager[plugin_name][0]
     dumper = dumper_class()
     dumper.prepare()
-    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-    data_folder = dumper.new_data_folder
     if dump:
+        data_folder = dumper.current_data_folder
+        if not data_folder:
+            # data_folder should be saved in hubdb already, if dump has been done successfully first
+            logger.error('Data folder is not available. Please run "dump" first.')
+            # Typically we should not need to use new_data_folder as the data_folder,
+            # but we keep the code commented out below for future reference
+            # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
+            # data_folder = dumper.new_data_folder
         utils.show_dumped_files(data_folder, plugin_name)
-        return
     if upload:
         utils.show_uploaded_sources(working_dir, plugin_name)
-        return
-    utils.show_dumped_files(data_folder, plugin_name)
-    utils.show_uploaded_sources(working_dir, plugin_name)
 
 
 @app.command(
