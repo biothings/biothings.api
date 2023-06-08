@@ -49,7 +49,7 @@ def create_data_plugin(
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
-    utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
+    utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
 @app.command(
@@ -66,20 +66,7 @@ def dump_data(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    from biothings.management.utils import do_dump
-
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    del uploader_manager
-    dumper_class = dumper_manager[plugin_name][0]
-    data_folder = do_dump(dumper_class, plugin_name)
-    rprint("[green]Success![/green]")
-    utils.show_dumped_files(data_folder, plugin_name)
+    utils.do_dump(plugin_name, logger=logger)
 
 
 @app.command(
@@ -109,20 +96,7 @@ def upload_source(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    from biothings.management.utils import do_upload
-
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    del dumper_manager
-    uploader_classes = uploader_manager[plugin_name]
-    do_upload(uploader_classes)
-    rprint("[green]Success![/green]")
-    utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
+    utils.do_upload(plugin_name, logger=logger)
 
 
 @app.command(
@@ -141,25 +115,7 @@ def dump_and_upload(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
-    from biothings.management.utils import do_dump, do_upload
-
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    dumper_class = dumper_manager[plugin_name][0]
-    uploader_classes = uploader_manager[plugin_name]
-
-    data_folder = do_dump(dumper_class, plugin_name)
-
-    do_upload(uploader_classes)
-
-    rprint("[green]Success![/green]")
-    utils.show_dumped_files(data_folder, plugin_name)
-    utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
+    utils.do_dump_and_upload(plugin_name, logger=logger)
 
 
 @app.command(
@@ -179,35 +135,7 @@ def listing(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    if dump is False and upload is False and hubdb is False:
-        # if all set to False, we list both dump and upload as the default
-        dump = upload = True
-
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-    if dump:
-        data_folder = dumper.current_data_folder
-        if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-            # Typically we should not need to use new_data_folder as the data_folder,
-            # but we keep the code commented out below for future reference
-            # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-            # data_folder = dumper.new_data_folder
-        utils.show_dumped_files(dumper.new_data_folder, plugin_name)
-    if upload:
-        utils.show_uploaded_sources(pathlib.Path(f"{working_dir}/{plugin_name}"), plugin_name)
-    if hubdb:
-        utils.show_hubdb_content()
+    utils.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
 
 @app.command(
@@ -268,35 +196,15 @@ def inspect_source(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    if not limit:
-        limit = None
-    logger.info(f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}")
-
-    source_full_name = plugin_name
-    if sub_source_name:
-        source_full_name = f"{plugin_name}.{sub_source_name}"
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    if len(uploader_manager[source_full_name]) > 1 and not sub_source_name:
-        rprint("[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]")
-        rprint(
-            f"[red]Accepted values of --sub-source-name are: {', '.join(uploader.name for uploader in uploader_manager[source_full_name])}[/red]"
-        )
-        exit(1)
-    table_space = utils.get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
-    if sub_source_name and sub_source_name not in table_space:
-        rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
-        exit(1)
-    if sub_source_name:
-        utils.process_inspect(sub_source_name, mode, limit, merge, logger, do_validate=True, output=output)
-    else:
-        for source_name in table_space:
-            utils.process_inspect(source_name, mode, limit, merge, logger, do_validate=True, output=output)
+    utils.do_inspect(
+        plugin_name=plugin_name,
+        sub_source_name=sub_source_name,
+        mode=mode,
+        limit=limit,
+        merge=merge,
+        output=output,
+        logger=logger,
+    )
 
 
 @app.command("serve")
@@ -342,18 +250,7 @@ def serve(
     http://host:port/<your source name>/?key.x=5\n
     - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
-    working_dir = pathlib.Path().resolve()
-    valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-    if not plugin_name or plugin_name not in valid_names:
-        rprint("[red]Please provide your data plugin name! [/red]")
-        rprint("Choose from:\n    " + "\n    ".join(valid_names))
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(plugin_name)
-    uploader_cls = uploader_manager[plugin_name]
-    if not isinstance(uploader_cls, list):
-        uploader_cls = [uploader_cls]
-    table_space = [item.name for item in uploader_cls]
-    utils.serve(host, port, plugin_name, table_space)
+    utils.do_serve(plugin_name=plugin_name, host=host, port=port)
 
 
 @app.command(
@@ -376,4 +273,4 @@ def clean_data(
         ),
     ] = False,
 ):
-    return utils.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    utils.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)

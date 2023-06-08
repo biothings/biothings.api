@@ -59,7 +59,7 @@ def create_data_plugin(
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
-    utils.create_data_plugin_template(name, multi_uploaders, parallelizer, logger)
+    utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
 @app.command(
@@ -75,14 +75,13 @@ def dump_data(
     if verbose:
         logger.setLevel("DEBUG")
 
-    working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    plugin_name = working_dir.name
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-
     mode = "v2"
     if mode == "v1":
+        working_dir = pathlib.Path().resolve()
+        if not utils.is_valid_working_directory(working_dir, logger=logger):
+            return exit(1)
+        plugin_name = working_dir.name
+        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
         manifest = utils.get_manifest_content(working_dir)
         to_dumps = utils.get_todump_list(manifest.get("dumper"))
         for to_dump in to_dumps:
@@ -93,16 +92,10 @@ def dump_data(
                 to_dump["local_file"],
                 to_dump["uncompress"],
             )
+        rprint("[green]Success![/green]")
+        utils.show_dumped_files(data_folder, plugin_name)
     else:
-        from biothings.management.utils import do_dump
-
-        dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
-        del uploader_manager
-        dumper_class = dumper_manager[plugin_name][0]
-        data_folder = do_dump(dumper_class, plugin_name)
-
-    rprint("[green]Success![/green]")
-    utils.show_dumped_files(data_folder, plugin_name)
+        utils.do_dump(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -125,13 +118,12 @@ def upload_source(
     if verbose:
         logger.setLevel("DEBUG")
 
-    working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    plugin_name = working_dir.name
-
     mode = "v2"
     if mode == "v1":
+        working_dir = pathlib.Path().resolve()
+        if not utils.is_valid_working_directory(working_dir, logger=logger):
+            return exit(1)
+        plugin_name = working_dir.name
         local_archive_dir = os.path.join(working_dir, ".biothings_hub")
         data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
         os.makedirs(local_archive_dir, exist_ok=True)
@@ -142,16 +134,26 @@ def upload_source(
             upload_sections = [upload_section]
         for section in upload_sections:
             utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
+
+        rprint("[green]Success![/green]")
+        utils.show_uploaded_sources(working_dir, plugin_name)
     else:
-        from biothings.management.utils import do_upload
+        utils.do_upload(plugin_name=None, logger=logger)
 
-        dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
-        del dumper_manager
-        uploader_classes = uploader_manager[plugin_name]
-        do_upload(uploader_classes)
 
-    rprint("[green]Success![/green]")
-    utils.show_uploaded_sources(working_dir, plugin_name)
+@app.command(
+    "dump_and_upload",
+    help="Download data source to local folder then convert to Json document and upload to the source database",
+)
+def dump_and_upload(
+    # multi_uploaders: bool = typer.Option(
+    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
+    # ),
+    # parallelizer: bool = typer.Option(
+    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
+    # ),
+):
+    utils.do_dump_and_upload(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -167,33 +169,7 @@ def listing(
         typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
     ] = False,
 ):
-    if dump is False and upload is False and hubdb is False:
-        # if all set to False, we list both dump and upload as the default
-        dump = upload = True
-
-    working_dir = pathlib.Path().resolve()
-    plugin_name = working_dir.name
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    dumper_manager, uploader_manager = utils.load_plugin(working_dir, data_folder=".")
-    del uploader_manager
-    dumper_class = dumper_manager[plugin_name][0]
-    dumper = dumper_class()
-    dumper.prepare()
-    if dump:
-        data_folder = dumper.current_data_folder
-        if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-            # Typically we should not need to use new_data_folder as the data_folder,
-            # but we keep the code commented out below for future reference
-            # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-            # data_folder = dumper.new_data_folder
-        utils.show_dumped_files(data_folder, plugin_name)
-    if upload:
-        utils.show_uploaded_sources(working_dir, plugin_name)
-    if hubdb:
-        utils.show_hubdb_content()
+    utils.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
 
 
 @app.command(
@@ -253,18 +229,15 @@ def inspect_source(
     """ """
     if verbose:
         logger.setLevel("DEBUG")
-    working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    table_space = utils.get_uploaders(working_dir)
-    if sub_source_name and sub_source_name not in table_space:
-        rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
-        return
-    if sub_source_name:
-        utils.process_inspect(sub_source_name, mode, limit, merge, logger, True, output)
-    else:
-        for source_name in table_space:
-            utils.process_inspect(source_name, mode, limit, merge, logger, True, output)
+    utils.do_inspect(
+        plugin_name=None,
+        sub_source_name=sub_source_name,
+        mode=mode,
+        limit=limit,
+        merge=merge,
+        output=output,
+        logger=logger,
+    )
 
 
 @app.command(name="serve")
@@ -308,12 +281,7 @@ def serve(
     """
     if verbose:
         logger.setLevel("DEBUG")
-    working_dir = pathlib.Path().resolve()
-    if not utils.is_valid_working_directory(working_dir, logger=logger):
-        return exit(1)
-    table_space = utils.get_uploaders(working_dir)
-    data_plugin_name = working_dir.name
-    utils.serve(host, port, data_plugin_name, table_space)
+    utils.do_serve(plugin_name=None, host=host, port=port)
 
 
 @app.command(
@@ -332,4 +300,4 @@ def clean_data(
         ),
     ] = False,
 ):
-    return utils.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    utils.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
