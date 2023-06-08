@@ -227,7 +227,7 @@ def serve(
     http://host:port/<your source name>/?key.x=5\n
     - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
-    utils.do_serve(plugin_name=plugin_name, host=host, port=port)
+    utils.do_serve(plugin_name=plugin_name, host=host, port=port, logger=logger)
 
 
 @app.command(

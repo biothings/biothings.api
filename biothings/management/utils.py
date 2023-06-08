@@ -111,15 +111,29 @@ def get_plugin_name(plugin_name=None, with_working_dir=True):
     return plugin_name, working_dir if with_working_dir else plugin_name
 
 
-def load_plugin(plugin_name=None, dumper=True, uploader=True):
+def load_plugin(plugin_name=None, dumper=True, uploader=True, logger=None):
+    logger = logger or get_logger(__name__)
     _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
+    data_plugin_dir = pathlib.Path(working_dir) if plugin_name is None else pathlib.Path(working_dir, _plugin_name)
+    if (
+        not pathlib.Path(data_plugin_dir, "manifest.yaml").exists()
+        and not pathlib.Path(data_plugin_dir, "manifest.json").exists()
+    ):
+        if plugin_name is None:
+            err = (
+                "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
+            )
+        else:
+            err = f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
+        logger.error(err, extra={"markup": True})
+        raise typer.Exit(1)
+
     if plugin_name is None:
         # current working_dir has the data plugin
         dumper_manager, uploader_manager = load_plugin_managers(working_dir, data_folder=".")
-        data_plugin_dir = working_dir
     else:
         dumper_manager, uploader_manager = load_plugin_managers(_plugin_name)
-        data_plugin_dir = pathlib.Path(f"{working_dir}/{plugin_name}")
+
     current_plugin = SimpleNamespace(
         plugin_name=_plugin_name,
         data_plugin_dir=data_plugin_dir,
@@ -182,7 +196,7 @@ def do_dump(plugin_name=None, show_dumped=True, logger=None):
 
     hub_db.setup(config)
     logger = logger or get_logger(__name__)
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False)
+    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
     dumper = _plugin.dumper
     dumper.prepare()
     run_sync_or_async_job(dumper.create_todump_list, force=True)
@@ -211,7 +225,7 @@ def do_upload(plugin_name=None, show_uploaded=True, logger=None):
 
     logger = logger or get_logger(__name__)
 
-    _plugin = load_plugin(plugin_name, dumper=False, uploader=True)
+    _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
     for uploader_cls in _plugin.uploader_classes:
         uploader = uploader_cls.create(db_conn_info="")
         uploader.make_temp_collection()
@@ -430,7 +444,7 @@ def do_inspect(
     if not limit:
         limit = None
 
-    _plugin = load_plugin(plugin_name)
+    _plugin = load_plugin(plugin_name, logger=logger)
     # source_full_name = _plugin.plugin_name if sub_source_name else f"{_plugin.plugin_name}.{sub_source_name}"
     if len(_plugin.uploader_classes) > 1:
         if not sub_source_name:
@@ -593,7 +607,7 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
         # if all set to False, we list both dump and upload as the default
         dump = upload = True
 
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False)
+    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
     if dump:
         data_folder = _plugin.dumper.current_data_folder
         if not data_folder:
@@ -610,15 +624,6 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
         show_hubdb_content()
 
 
-def is_valid_working_directory(working_dir, logger=None):
-    logger = logger or get_logger(__name__)
-    if not os.path.isfile(f"{working_dir}/manifest.yaml") and not os.path.isfile(f"{working_dir}/manifest.json"):
-        err = "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
-        logger.error(err, extra={"markup": True})
-        return False
-    return True
-
-
 ########################
 # for serve command    #
 ########################
@@ -632,8 +637,9 @@ def serve(host, port, plugin_name, table_space):
     asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
 
-def do_serve(plugin_name=None, host="localhost", port=9999):
-    _plugin = load_plugin(plugin_name)
+def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
+    logger = logger or get_logger(__name__)
+    _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
     uploader_classes = _plugin.uploader_classes
     table_space = [item.name for item in uploader_classes]
     serve(host=host, port=port, plugin_name=_plugin.plugin_name, table_space=table_space)
@@ -704,10 +710,8 @@ def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger
         logger.error("Please provide at least one of following option: --dump, --upload, --all")
         raise typer.Exit(1)
 
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False)
+    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
 
-    if not is_valid_working_directory(_plugin.data_plugin_dir, logger=logger):
-        raise typer.Exit(1)
     if dump:
         data_folder = _plugin.dumper.current_data_folder
         if not data_folder:
