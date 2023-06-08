@@ -73,6 +73,7 @@ def setup_config():
     # _config.LOG_FOLDER = ".biothings_hub/logs"
     _config.LOG_FOLDER = None  # disable file logging, only log to stdout
     _config.DATA_PLUGIN_FOLDER = f"{working_dir}"
+    _config.hub_db = importlib.import_module(_config.HUB_DB_BACKEND["module"])
     try:
         config_mod = importlib.import_module("config")
         for attr in dir(config_mod):
