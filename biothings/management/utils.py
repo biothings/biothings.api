@@ -111,14 +111,18 @@ def get_plugin_name(plugin_name=None, with_working_dir=True):
     return plugin_name, working_dir if with_working_dir else plugin_name
 
 
+def is_valid_data_plugin_dir(data_plugin_dir):
+    return (
+        pathlib.Path(data_plugin_dir, "manifest.yaml").exists()
+        or pathlib.Path(data_plugin_dir, "manifest.json").exists()
+    )
+
+
 def load_plugin(plugin_name=None, dumper=True, uploader=True, logger=None):
     logger = logger or get_logger(__name__)
     _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
     data_plugin_dir = pathlib.Path(working_dir) if plugin_name is None else pathlib.Path(working_dir, _plugin_name)
-    if (
-        not pathlib.Path(data_plugin_dir, "manifest.yaml").exists()
-        and not pathlib.Path(data_plugin_dir, "manifest.json").exists()
-    ):
+    if not is_valid_data_plugin_dir(data_plugin_dir):
         if plugin_name is None:
             err = (
                 "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
