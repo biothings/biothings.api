@@ -429,26 +429,36 @@ def do_inspect(
     logger = logger or get_logger(__name__)
     if not limit:
         limit = None
-    logger.info(f"Inspect Data plugin {plugin_name} with sub-source name: {sub_source_name} mode: {mode} limit {limit}")
 
     _plugin = load_plugin(plugin_name)
     # source_full_name = _plugin.plugin_name if sub_source_name else f"{_plugin.plugin_name}.{sub_source_name}"
-    if len(_plugin.uploader_classes) > 1 and not sub_source_name:
-        rprint("[red]This is a multiple uploaders data plugin, so '--sub-source-name' must be provided![/red]")
-        rprint(
-            f"[red]Accepted values of --sub-source-name are: {', '.join(uploader.name for uploader in _plugin.uploader_classes)}[/red]"
+    if len(_plugin.uploader_classes) > 1:
+        if not sub_source_name:
+            logger.error('This is a multiple uploaders data plugin, so "--sub-source-name" must be provided!')
+            logger.error(
+                'Accepted values of "--sub-source-name" are: %s',
+                ", ".join(uploader.name for uploader in _plugin.uploader_classes),
+            )
+            raise typer.Exit(code=1)
+        logger.info(
+            'Inspect data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
+            _plugin.plugin_name,
+            sub_source_name,
+            mode,
+            limit,
         )
-        raise typer.Exit(code=1)
+    else:
+        logger.info('Inspect data plugin "%s" (mode="%s", limit=%s)', _plugin.plugin_name, mode, limit)
     # table_space = get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
     table_space = [item.name for item in _plugin.uploader_classes]
     if sub_source_name and sub_source_name not in table_space:
-        rprint(f"[red]Your source name {sub_source_name} does not exits[/red]")
+        logger.error('Your source name "%s" does not exits', sub_source_name)
         raise typer.Exit(code=1)
     if sub_source_name:
-        process_inspect(sub_source_name, mode, limit, merge, logger, do_validate=True, output=output)
+        process_inspect(sub_source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
     else:
         for source_name in table_space:
-            process_inspect(source_name, mode, limit, merge, logger, do_validate=True, output=output)
+            process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
 
 
 def get_manifest_content(working_dir):
