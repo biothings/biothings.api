@@ -36,6 +36,7 @@ if typer_avail:
             pretty_exceptions_enable = True
         else:
             pretty_exceptions_enable = False
+            sys.tracebacklimit = 1  # only show the last traceback, default is 1000
         pretty_exceptions_show_locals = False
         default_logging_level = logging.INFO
 
@@ -55,7 +56,12 @@ if typer_avail:
         datefmt="[%X]",
         handlers=[
             # we don't need to turn on rich_tracebacks since typer creates it already
-            RichHandler(level=default_logging_level, rich_tracebacks=False, show_path=False),
+            RichHandler(
+                level=default_logging_level,
+                rich_tracebacks=False,
+                tracebacks_suppress=[typer],
+                show_path=False,
+            ),
         ],
     )
     logger = logging.getLogger("cli")
