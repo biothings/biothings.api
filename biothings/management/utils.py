@@ -1,23 +1,16 @@
 import asyncio
-import importlib
 import json
 import logging
 import math
 import os
 import pathlib
 import shutil
-import sys
 import time
-from ftplib import FTP
-from functools import partial
 from types import SimpleNamespace
-from urllib import parse as urlparse
 
-import requests
 import tornado.template
 import typer
 import yaml
-from orjson import orjson
 from rich import box, print as rprint
 from rich.console import Console
 from rich.logging import RichHandler
@@ -25,8 +18,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 import biothings.utils.inspect as btinspect
-from biothings.utils import es, storage
-from biothings.utils.common import get_random_string, get_timestamp, timesofar, uncompressall
+from biothings.utils import es
+from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
@@ -177,116 +170,6 @@ def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
     logger.info(f"Successful create data plugin template at: \n {plugin_dir}")
 
 
-def get_todump_list(dumper_section):
-    # Deprecated!
-    working_dir = pathlib.Path().resolve()
-    data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-    remote_urls = dumper_section.get("data_url")
-    uncompress = dumper_section.get("uncompress")
-    to_dumps = []
-    for remote_url in remote_urls:
-        filename = os.path.basename(remote_url)
-        local_file = os.path.join(data_folder, filename)
-        if "ftp" in remote_url:
-            to_dumps.append(
-                {
-                    "schema": "ftp",
-                    "remote_url": remote_url,
-                    "local_file": local_file,
-                    "uncompress": uncompress,
-                }
-            )
-        elif "http" in remote_url:
-            to_dumps.append(
-                {
-                    "schema": "http",
-                    "remote_url": remote_url,
-                    "local_file": local_file,
-                    "uncompress": uncompress,
-                }
-            )
-        elif "https" in remote_url:
-            to_dumps.append(
-                {
-                    "schema": "https",
-                    "remote_url": remote_url,
-                    "local_file": local_file,
-                    "uncompress": uncompress,
-                }
-            )
-        else:
-            raise Exception("Not supported schema")
-    return to_dumps
-
-
-def _get_optimal_buffer_size(ftp_host):
-    # deprecated!
-    known_optimal_sizes = {
-        "ftp.ncbi.nlm.nih.gov": 33554432,
-        # see https://ftp.ncbi.nlm.nih.gov/README.ftp for reason
-        # add new ones above
-        "DEFAULT": 8192,
-    }
-    normalized_host = ftp_host.lower()
-    if normalized_host in known_optimal_sizes:
-        return known_optimal_sizes[normalized_host]
-    else:
-        return known_optimal_sizes["DEFAULT"]
-
-
-def download(logger, schema, remote_url, local_file, uncompress=True):
-    # deprecated!
-    logger.debug(f"Start download {remote_url}")
-    local_dir = os.path.dirname(local_file)
-    os.makedirs(local_dir, exist_ok=True)
-    if schema in ["http", "https"]:
-        client = requests.Session()
-        res = client.get(remote_url, stream=True, headers={})
-        if not res.status_code == 200:
-            raise Exception(
-                "Error while downloading '%s' (status: %s, reason: %s)" % (remote_url, res.status_code, res.reason)
-            )
-        logger.info("Downloading '%s' as '%s'" % (remote_url, local_file))
-        fout = open(local_file, "wb")
-        for chunk in res.iter_content(chunk_size=512 * 1024):
-            if chunk:
-                fout.write(chunk)
-        fout.close()
-        logger.info(f"Successful download {remote_url}")
-    if schema == "ftp":
-        split = urlparse.urlsplit(remote_url)
-        ftp_host = split.hostname
-        ftp_timeout = 10 * 60.0
-        ftp_user = split.username or ""
-        ftp_passwd = split.password or ""
-        cwd_dir = "/".join(split.path.split("/")[:-1])
-        remotefile = split.path.split("/")[-1]
-        client = FTP(ftp_host, timeout=ftp_timeout)
-        client.login(ftp_user, ftp_passwd)
-        if cwd_dir:
-            client.cwd(cwd_dir)
-        try:
-            with open(local_file, "wb") as out_f:
-                client.retrbinary(
-                    cmd="RETR %s" % remotefile,
-                    callback=out_f.write,
-                    blocksize=_get_optimal_buffer_size(ftp_host),
-                )
-            # set the mtime to match remote ftp server
-            response = client.sendcmd("MDTM " + remotefile)
-            code, lastmodified = response.split()
-            logger.info(f"Successful download {remote_url}")
-        except Exception as e:
-            logger.error("Error while downloading %s: %s" % (remotefile, e))
-            client.close()
-            raise
-        finally:
-            client.close()
-    if uncompress:
-        uncompressall(local_dir)
-    return os.listdir(local_dir)
-
-
 ###############################
 # for dump & upload command   #
 ###############################
@@ -325,7 +208,6 @@ def do_dump(plugin_name=None, show_dumped=True, logger=None):
 
 def do_upload(plugin_name=None, show_uploaded=True, logger=None):
     """Perform upload for the given list of uploader_classes"""
-    from biothings.hub.dataload.uploader import upload_worker
 
     logger = logger or get_logger(__name__)
 
@@ -368,95 +250,6 @@ def do_dump_and_upload(plugin_name, logger=None):
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
     show_dumped_files(_plugin.dumper.new_data_folder, _plugin.plugin_name)
     show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
-
-
-def make_temp_collection(uploader_name):
-    # Deprecated!
-    return f"{uploader_name}_temp_{get_random_string()}"
-
-
-def switch_collection(db, temp_collection_name, collection_name, logger):
-    # Deprecated!
-    if temp_collection_name and db[temp_collection_name].count() > 0:
-        if collection_name in db.collection_names():
-            # renaming existing collections
-            new_name = "_".join([collection_name, "archive", get_timestamp(), get_random_string()])
-            logger.info(f"Renaming collection {collection_name} to {new_name} for archiving purpose.")
-            db[collection_name].rename(new_name, dropTarget=True)
-        logger.info(f"Renaming collection {temp_collection_name} to {collection_name}")
-        db[temp_collection_name].rename(collection_name)
-    else:
-        raise Exception("No temp collection (or it's empty)")
-
-
-def process_uploader(working_dir, data_folder, main_source, upload_section, logger, batch_limit):
-    # Deprecated!
-    parser = upload_section.get("parser")
-    parser_kwargs = upload_section.get("parser_kwargs")
-    parser_kwargs_serialized = {}
-    if parser_kwargs:
-        parser_kwargs_serialized = orjson.loads(parser_kwargs)
-    # mapping = upload_section.get("mapping")
-    name = upload_section.get("name")
-    ondups = upload_section.get("on_duplicates")
-
-    if name:
-        uploader_fullname = name
-    else:
-        uploader_fullname = main_source
-    temp_collection_name = make_temp_collection(uploader_fullname)
-    src_db = get_src_db()
-    storage_class_name = storage.get_storage_class(ondups)
-    storage_mod, class_name = storage_class_name.rsplit(".", 1)
-    storage_mod = importlib.import_module(storage_mod)
-    storage_class = getattr(storage_mod, class_name)
-    load_data_func = get_load_data_func(working_dir, parser, **parser_kwargs_serialized)
-    # TODO
-    # if mapping:
-    #     mapping_func = get_custom_mapping_func(working_dir, mapping)
-    upload_worker(
-        uploader_fullname,
-        storage_class,
-        load_data_func,
-        temp_collection_name,
-        1000,
-        1,
-        data_folder,
-        db=src_db,
-        max_batch_num=batch_limit,
-    )
-    switch_collection(
-        src_db,
-        temp_collection_name=temp_collection_name,
-        collection_name=uploader_fullname,
-        logger=logger,
-    )
-
-
-def load_module_locally(module_name, working_dir):
-    # Deprecated!
-    file_path = os.path.join(working_dir, f"{module_name}.py")
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def get_load_data_func(working_dir, parser, **kwargs):
-    # Deprecated!
-    module_name, func = parser.split(":")
-    module = load_module_locally(module_name, working_dir)
-    func = getattr(module, func)
-    return partial(func, **kwargs)
-
-
-def get_custom_mapping_func(working_dir, mapping):
-    # Deprecated!
-    module_name, func = mapping.split(":")
-    module = load_module_locally(module_name, working_dir)
-    func = getattr(module, func)
-    return func
 
 
 ########################
@@ -910,6 +703,6 @@ def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger
         if not data_folder:
             # data_folder should be saved in hubdb already, if dump has been done successfully first
             logger.error('Data folder is not available. Please run "dump" first.')
-        do_clean_dumped_files(data_folder, _plugin._plugin_name)
+        do_clean_dumped_files(data_folder, _plugin.plugin_name)
     if upload:
         do_clean_uploaded_sources(_plugin.data_plugin_dir, _plugin.plugin_name)

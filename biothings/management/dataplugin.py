@@ -1,5 +1,3 @@
-import os
-import pathlib
 from typing import Optional
 
 import typer
@@ -66,36 +64,8 @@ def create_data_plugin(
     name="dump",
     help="Download source data files to local",
 )
-def dump_data(
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
-):
-    if verbose:
-        logger.setLevel("DEBUG")
-
-    mode = "v2"
-    if mode == "v1":
-        working_dir = pathlib.Path().resolve()
-        if not utils.is_valid_working_directory(working_dir, logger=logger):
-            return exit(1)
-        plugin_name = working_dir.name
-        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-        manifest = utils.get_manifest_content(working_dir)
-        to_dumps = utils.get_todump_list(manifest.get("dumper"))
-        for to_dump in to_dumps:
-            utils.download(
-                logger,
-                to_dump["schema"],
-                to_dump["remote_url"],
-                to_dump["local_file"],
-                to_dump["uncompress"],
-            )
-        rprint("[green]Success![/green]")
-        utils.show_dumped_files(data_folder, plugin_name)
-    else:
-        utils.do_dump(plugin_name=None, logger=logger)
+def dump_data():
+    utils.do_dump(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -110,35 +80,8 @@ def upload_source(
             help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
         ),
     ] = None,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
-    if verbose:
-        logger.setLevel("DEBUG")
-
-    mode = "v2"
-    if mode == "v1":
-        working_dir = pathlib.Path().resolve()
-        if not utils.is_valid_working_directory(working_dir, logger=logger):
-            return exit(1)
-        plugin_name = working_dir.name
-        local_archive_dir = os.path.join(working_dir, ".biothings_hub")
-        data_folder = os.path.join(working_dir, ".biothings_hub", "data_folder")
-        os.makedirs(local_archive_dir, exist_ok=True)
-        manifest = utils.get_manifest_content(working_dir)
-        upload_sections = manifest.get("uploaders")
-        if not upload_sections:
-            upload_section = manifest.get("uploader")
-            upload_sections = [upload_section]
-        for section in upload_sections:
-            utils.process_uploader(working_dir, data_folder, plugin_name, section, logger, batch_limit)
-
-        rprint("[green]Success![/green]")
-        utils.show_uploaded_sources(working_dir, plugin_name)
-    else:
-        utils.do_upload(plugin_name=None, logger=logger)
+    utils.do_upload(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -164,10 +107,6 @@ def listing(
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     utils.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
 
@@ -221,14 +160,7 @@ def inspect_source(
             help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
         ),
     ] = None,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
-    """ """
-    if verbose:
-        logger.setLevel("DEBUG")
     utils.do_inspect(
         plugin_name=None,
         sub_source_name=sub_source_name,
@@ -257,10 +189,6 @@ def serve(
             help="The port number to tun the test API server",
         ),
     ] = 9999,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     """
     Run the simple API server for serving documents from the source database, \n
@@ -279,8 +207,6 @@ def serve(
     http://host:port/<your source name>/?key.x=5\n
     - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
     """
-    if verbose:
-        logger.setLevel("DEBUG")
     utils.do_serve(plugin_name=None, host=host, port=port)
 
 

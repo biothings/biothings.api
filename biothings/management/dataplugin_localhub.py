@@ -1,9 +1,6 @@
-import os
-import pathlib
 from typing import Optional
 
 import typer
-from rich import print as rprint
 from typing_extensions import Annotated
 
 from biothings.management import utils
@@ -61,10 +58,6 @@ def dump_data(
         str,
         typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
     ] = "",
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     utils.do_dump(plugin_name, logger=logger)
 
@@ -91,10 +84,6 @@ def upload_source(
     # parallelizer: bool = typer.Option(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     utils.do_upload(plugin_name, logger=logger)
 
@@ -130,10 +119,6 @@ def listing(
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     utils.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
@@ -191,10 +176,6 @@ def inspect_source(
             help="The local JSON file path for storing mapping info if you run with mode 'mapping' (absolute path or relative path)",
         ),
     ] = None,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     utils.do_inspect(
         plugin_name=plugin_name,
@@ -228,10 +209,6 @@ def serve(
             help="The port number to tun the test API server",
         ),
     ] = 9999,
-    verbose: Annotated[
-        Optional[bool],
-        typer.Option("--verbose", "-v", help="Verbose logging", show_default=True),
-    ] = False,
 ):
     """
     Run the simple API server for serving documents from the source database, \n
