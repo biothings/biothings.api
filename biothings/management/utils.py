@@ -277,9 +277,14 @@ def do_dump_and_upload(plugin_name, logger=None):
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
+    VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
     if "jsonschema" in mode:
         mode = ["jsonschema", "type"]
+    for m in mode:
+        if m not in VALID_INSPECT_MODES:
+            logger.error('"%s" is not a valid inspect mode', m)
+            raise typer.Exit(1)
     if not limit:
         limit = None
     sample = None
