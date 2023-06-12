@@ -1,9 +1,15 @@
 import datetime
 from collections import OrderedDict, UserDict, UserList, UserString
+from typing import Any, Union
 from urllib.parse import parse_qs, unquote_plus, urlencode, urlparse, urlunparse
 
 import orjson
 import yaml
+
+
+def load_json(json_str: Union[bytes, str]) -> Any:
+    """Load a JSON string or bytes using orjson"""
+    return orjson.loads(json_str)
 
 
 def to_json_0(data):
@@ -53,7 +59,7 @@ def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False)
 
 
 def to_msgpack(data):
-    import msgpack
+    import msgpack  # import here so that we don't have to install msgpack if we don't use it
 
     return msgpack.packb(data, use_bin_type=True, default=_msgpack_encode_datetime)
 

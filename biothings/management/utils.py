@@ -1,11 +1,11 @@
 import asyncio
-import json
 import logging
 import math
 import os
 import pathlib
 import shutil
 import time
+from pprint import pformat
 from types import SimpleNamespace
 
 import tornado.template
@@ -21,6 +21,7 @@ import biothings.utils.inspect as btinspect
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
+from biothings.utils.serializer import load_json, to_json
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
 
@@ -283,7 +284,6 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         limit = None
     sample = None
     clean = True
-    logger.info(f"Inspecting source name: {source_name} mode: {mode} limit {limit} merge {merge}")
 
     t0 = time.time()
     data_provider = ("src", source_name)
@@ -355,7 +355,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
                 show_lines=True,
             )
             mapping_table.add_column(f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan")
-            mapping_table.add_row(json.dumps(mapping, indent=4, separators=(",", ": "), sort_keys=True))
+            mapping_table.add_row(to_json(mapping, indent=True, sort_keys=True))
     report = []
     problem_summary = []
     if "stats" in mode:
@@ -433,11 +433,11 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         with open(output, "w+") as fp:
             current_content = fp.read()
             if current_content:
-                current_content = json.load(current_content)
+                current_content = load_json(current_content)
             else:
                 current_content = {}
             current_content.update(mapping)
-            fp.write(json.dumps(current_content, indent=4, separators=(",", ": "), sort_keys=True))
+            fp.write(to_json(current_content, indent=True, sort_keys=True))
             rprint(f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]")
 
 
@@ -459,14 +459,14 @@ def do_inspect(
             )
             raise typer.Exit(code=1)
         logger.info(
-            'Inspect data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
+            'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
             _plugin.plugin_name,
             sub_source_name,
             mode,
             limit,
         )
     else:
-        logger.info('Inspect data plugin "%s" (mode="%s", limit=%s)', _plugin.plugin_name, mode, limit)
+        logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', _plugin.plugin_name, mode, limit)
     # table_space = get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
     table_space = [item.name for item in _plugin.uploader_classes]
     if sub_source_name and sub_source_name not in table_space:
@@ -486,7 +486,7 @@ def get_manifest_content(working_dir):
         manifest = yaml.safe_load(open(manifest_file_yml))
         return manifest
     elif os.path.isfile(manifest_file_json):
-        manifest = json.load(open(manifest_file_json))
+        manifest = load_json(open(manifest_file_json).read())
         return manifest
     else:
         raise FileNotFoundError("manifest file does not exits in current working directory")
@@ -589,13 +589,20 @@ def show_hubdb_content():
 
     console = Console()
     hub_db.setup(config)
-    coll_list = [hub_db.get_data_plugin(), hub_db.get_src_dump(), hub_db.get_src_master()]
-    hub_db_content = "\n".join(
-        [
-            f"[green]Collection:[/green] [bold]{collection.name}[/bold]\n{json.dumps(collection.find(), indent=4)}"
-            for collection in coll_list
-        ]
-    )
+    coll_list = [
+        hub_db.get_data_plugin(),
+        hub_db.get_src_dump(),
+        hub_db.get_src_master(),
+        hub_db.get_hub_config(),
+        hub_db.get_event(),
+    ]
+    hub_db_content = []
+
+    for collection in coll_list:
+        content = collection.find()
+        if content:
+            hub_db_content.append(f"[green]Collection:[/green] [bold]{collection.name}[/bold]\n{pformat(content)}")
+    hub_db_content = "\n".join(hub_db_content)
     console.print(
         Panel(
             hub_db_content,
