@@ -149,6 +149,9 @@ DOCKER_CONFIG = {
     "localhost": {"client_url": "unix://var/run/docker.sock"},
 }
 
+# Optional, can used to override the docker connection name from the src_url
+DOCKER_HOST = None
+
 # * 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = ConfigurationError(
