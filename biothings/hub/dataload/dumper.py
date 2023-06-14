@@ -1806,7 +1806,9 @@ class DockerContainerDumper(BaseDumper):
             - The Docker API on the remote server MUST BE secured with TLS
             - A TLS key pair is generated on the Hub server and placed inside the same data plugin folder or the data source folder
 
-    All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG and DOCKER_HOST key, Ex:
+    All info about Docker client connection MUST BE defined in the `config.py` file, under the DOCKER_CONFIG key, Ex
+    Optional DOCKER_HOST can be used to override the docker connections in any docker dumper regardless of the value of the src_url
+    For example, you can set DOCKER_HOST="localhost" for local testing:
         DOCKER_CONFIG = {
             "CONNECTION_NAME_1": {
                 "tls_cert_path": "/path/to/cert.pem",
@@ -1820,7 +1822,7 @@ class DockerContainerDumper(BaseDumper):
                 "client_url": "unix://var/run/docker.sock"
             }
         }
-        DOCKER_HOST = None
+        DOCKER_HOST = "localhost"
 
     The data_url should match the following format:
         docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&dump_command="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"  # NOQA
