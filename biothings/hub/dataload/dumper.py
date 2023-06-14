@@ -1906,7 +1906,10 @@ class DockerContainerDumper(BaseDumper):
         elif len(self.__class__.SRC_URLS) > 1:
             raise DumperException("SRC_URLS list should contain only one source url string")
         if not self._state["client"]:
-            docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
+            if btconfig.DOCKER_HOST:
+                docker_connection = btconfig.DOCKER_CONFIG.get(btconfig.DOCKER_HOST)
+            else:
+                docker_connection = btconfig.DOCKER_CONFIG.get(self.source_config["connection_name"])
             self.DOCKER_CLIENT_URL = docker_connection.get("client_url")
             parsed = urlparse.urlparse(docker_connection.get("client_url"))
             scheme = parsed.scheme
