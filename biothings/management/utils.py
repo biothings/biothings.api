@@ -186,7 +186,7 @@ def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
     os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
     if not parallelizer:
         os.unlink(f"{plugin_dir}/parallelizer.py")
-    logger.info(f"Successful create data plugin template at: \n {plugin_dir}")
+    logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
 
 
 ###############################
@@ -446,7 +446,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         #     fp.write(to_json(current_content, indent=True, sort_keys=True))
         with open(output, "w") as fp:
             fp.write(to_json(mapping, indent=True, sort_keys=True))
-            rprint(f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]")
+            rprint(f"[green]Successfully wrote the mapping info to the JSON file: [bold]{output}[/bold][/green]")
 
 
 def do_inspect(
