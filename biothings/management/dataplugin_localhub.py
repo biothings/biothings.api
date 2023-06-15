@@ -160,14 +160,14 @@ def inspect_source(
             """,
         ),
     ] = None,
-    merge: Annotated[
-        Optional[bool],
-        typer.Option(
-            "--merge",
-            "-m",
-            help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
-        ),
-    ] = False,
+    # merge: Annotated[
+    #     Optional[bool],
+    #     typer.Option(
+    #         "--merge",
+    #         "-m",
+    #         help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
+    #     ),
+    # ] = False,
     output: Annotated[
         Optional[str],
         typer.Option(
@@ -182,7 +182,7 @@ def inspect_source(
         sub_source_name=sub_source_name,
         mode=mode,
         limit=limit,
-        merge=merge,
+        merge=False,
         output=output,
         logger=logger,
     )

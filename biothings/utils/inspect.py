@@ -405,11 +405,9 @@ def merge_scalar_list(mapt, mode):
                     pass
         # explore further
         merge_scalar_list(mapt[list], mode)
-    # elif type(mapt) == dict:   # TODO: remove this line
     elif isinstance(mapt, dict):
         for k in mapt:
             merge_scalar_list(mapt[k], mode)
-    # elif type(mapt) == list:   # TODO: remove this line
     elif isinstance(mapt, list):
         for e in mapt:
             merge_scalar_list(e, mode)
