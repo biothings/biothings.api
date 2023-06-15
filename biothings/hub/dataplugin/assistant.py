@@ -632,11 +632,15 @@ class BaseAssistant(object):
                 loader = klass(self.plugin_name)
                 if loader.can_load_plugin():
                     self._loader = loader
-                    self.logger.debug("For plugin '%s', selecting loader %s" % (self.plugin_name, self._loader))
+                    self.logger.debug(
+                        'For plugin "%s", selecting loader class "%s"',
+                        self.plugin_name,
+                        self._loader.__class__.__name__,
+                    )
                     self.register_loader()
                     break
                 else:
-                    self.logger.debug("Loader %s can't load plugin '%s'" % (loader, self.plugin_name))
+                    self.logger.debug('Loader %s cannot load plugin "%s"', loader, self.plugin_name)
                     continue
         return self._loader
 
