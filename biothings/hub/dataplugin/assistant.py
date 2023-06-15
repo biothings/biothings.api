@@ -74,8 +74,12 @@ class BasePluginLoader(object):
     def invalidate_plugin(self, error):
         self.logger.exception("Invalidate plugin '%s' because: %s" % (self.plugin_name, error))
         # flag all plugin associated (there should only one though, but no need to care here)
-        for klass in self.__class__.data_plugin_manager[self.plugin_name]:
-            klass.data_plugin_error = error
+        try:
+            for klass in self.__class__.data_plugin_manager[self.plugin_name]:
+                klass.data_plugin_error = error
+        except KeyError:
+            # plugin_name is not registered yet
+            pass
         raise LoaderException(error)
 
     def can_load_plugin(self):
