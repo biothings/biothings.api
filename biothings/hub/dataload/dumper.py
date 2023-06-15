@@ -2280,7 +2280,7 @@ class DockerContainerDumper(BaseDumper):
                 self.logger.debug(f"Removing container: {self.container.name}")
                 self.container.stop()
                 self.container.wait(timeout=self.TIMEOUT)
-                self.container.remove()
+                self.container.remove(v=True)
 
     def post_dump(self, *args, **kwargs):
         """Delete container or restore the container status if necessary, called in the dump method after the dump is done (during the "post" step)"""
