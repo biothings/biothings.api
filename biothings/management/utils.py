@@ -435,14 +435,17 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         console.print(mapping_table)
 
     if "mapping" in mode and mapping and output:
-        with open(output, "w+") as fp:
-            current_content = fp.read()
-            if current_content:
-                current_content = load_json(current_content)
-            else:
-                current_content = {}
-            current_content.update(mapping)
-            fp.write(to_json(current_content, indent=True, sort_keys=True))
+        # TODO: the following block is commented out because we don't need to append the mapping info to the existing. Delete this block if we verify it's not needed.
+        # with open(output, "w+") as fp:
+        #     current_content = fp.read()
+        #     if current_content:
+        #         current_content = load_json(current_content)
+        #     else:
+        #         current_content = {}
+        #     current_content.update(mapping)
+        #     fp.write(to_json(current_content, indent=True, sort_keys=True))
+        with open(output, "w") as fp:
+            fp.write(to_json(mapping, indent=True, sort_keys=True))
             rprint(f"[green]Successful writing the mapping info to the JSON file: [bold]{output}[/bold][/green]")
 
 
