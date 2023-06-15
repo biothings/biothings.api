@@ -636,7 +636,8 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
             # but we keep the code commented out below for future reference
             # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
             # data_folder = dumper.new_data_folder
-        show_dumped_files(data_folder, _plugin.plugin_name)
+        else:
+            show_dumped_files(data_folder, _plugin.plugin_name)
     if upload:
         show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
     if hubdb:
