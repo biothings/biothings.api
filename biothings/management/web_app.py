@@ -1,3 +1,6 @@
+import random
+from itertools import chain
+
 import tornado.escape
 import tornado.httpserver
 import tornado.ioloop
@@ -5,8 +8,11 @@ import tornado.locks
 import tornado.options
 import tornado.web
 from rich import print as rprint
+from rich.console import Console
+from rich.panel import Panel
 
-from biothings.utils.serializer import to_json
+from biothings.utils.common import traverse
+from biothings.utils.serializer import load_json, to_json
 
 
 class NoResultError(Exception):
@@ -79,6 +85,37 @@ class EntriesHandler(BaseHandler):
         )
 
 
+def get_example_queries(db, table_space):
+    """return example queries for a given table_space"""
+
+    out = {}
+    for table in table_space:
+        col = db[table]
+        total_cnt = col.count()
+        n = 5
+        i = random.randint(0, min(1000, total_cnt - n))
+        random_docs = [
+            load_json(row[0])
+            for row in (
+                col.get_conn()
+                .execute(
+                    # f"SELECT document FROM {table} WHERE _id IN (SELECT _id FROM {table} ORDER BY RANDOM() LIMIT 10)"
+                    f"SELECT document FROM {table} LIMIT {n} OFFSET {i}"
+                )
+                .fetchall()
+            )
+        ]
+        key_value_list = list(chain(*[traverse(doc, leaf_node=True) for doc in random_docs]))
+        selected_fields = []
+        while len(selected_fields) < n:
+            key, value = random.choice(key_value_list)
+            if key == "_id" or not value or (isinstance(value, str) and (len(value) > 50 or " " in value)):
+                continue
+            selected_fields.append((key, value))
+        out[table] = {"ids": [doc["_id"] for doc in random_docs], "fields": selected_fields}
+    return out
+
+
 class Application(tornado.web.Application):
     def __init__(self, db, table_space, **settings):
         self.db = db
@@ -95,15 +132,33 @@ class Application(tornado.web.Application):
 async def main(host, port, db, table_space):
     app = Application(db, table_space, **{"static_path": "static"})
     rprint(f"[green]Listening on http://{host}:{port}[/green]")
-    rprint(f"[green]There are all available routes:\n    http://{host}:{port}/[/green]")
+    rprint(f"[green]View all available routes: http://{host}:{port}/[/green]")
     list_routes, detail_routes = await get_available_routes(db, table_space)
+    example_queries = get_example_queries(db, table_space)
+    console = Console()
     for route in list_routes:
-        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}/[/green]")
-        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}?from=0&size=10[/green]")
-        rprint(
-            f"    [green]http://{host}:{port}/{route.strip('/')}?q='field1_name:value1 AND field2_name:value2'[/green]"
+        route = route.strip("/")
+        example_ids = example_queries[route]["ids"]
+        example_fields = [(k, str(v)) for k, v in example_queries[route]["fields"]]
+        console.print(
+            Panel(
+                "\n"
+                + ":link: Get a document by id:\n"
+                + f"    [green]http://{host}:{port}/{route}/<doc_id>[/green]\n"
+                + "    [green]Examples:[/green]\n"
+                + f"     [green]http://{host}:{port}/{route}/{example_ids[0]}[/green]\n"
+                + f"     [green]http://{host}:{port}/{route}/{example_ids[1]}[/green]\n"
+                + ":link: Query documents by fields:\n"
+                + f"    [green]http://{host}:{port}/{route}?q=<query>[/green]\n"
+                + "    [green]Examples:[/green]\n"
+                + f"     [green]http://{host}:{port}/{route}?from=0&size=10[/green]\n"
+                + f"     [green]http://{host}:{port}/{route}?q={':'.join(example_fields[0])}[/green]\n"
+                + f"     [green]http://{host}:{port}/{route}?q={':'.join(example_fields[1])} AND {':'.join(example_fields[-1])}[/green]\n",
+                title=f"[bold]http://{host}:{port}/{route}[/bold]",
+                title_align="left",
+            )
         )
-        rprint(f"    [green]http://{host}:{port}/{route.strip('/')}/<doc_id>[/green]")
+
     app.listen(port, address=host)
     shutdown_event = tornado.locks.Event()
     await shutdown_event.wait()
