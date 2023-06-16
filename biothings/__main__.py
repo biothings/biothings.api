@@ -21,6 +21,6 @@ if __package__ == "":
     sys.path.insert(0, path)
 
 if __name__ == "__main__":
-    from biothings.management.cli import main
+    from biothings.cli import main
 
     sys.exit(main())

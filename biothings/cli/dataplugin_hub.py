@@ -3,7 +3,7 @@ from typing import Optional
 import typer
 from typing_extensions import Annotated
 
-from biothings.management import utils
+from biothings.cli import utils
 
 logger = utils.get_logger("dataplugin-hub")
 
