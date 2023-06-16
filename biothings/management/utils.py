@@ -27,12 +27,14 @@ from biothings.utils.workers import upload_worker
 
 
 def get_logger(name=None):
-    logging.basicConfig(
-        level="INFO",
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-    )
+    # basicConfig has been setup in cli.py, so we don't need to do it again here
+    # If everything works as expected, we can delete this block.
+    # logging.basicConfig(
+    #     level="INFO",
+    #     format="%(message)s",
+    #     datefmt="[%X]",
+    #     handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+    # )
     logger = logging.getLogger(name=None)
     return logger
 
