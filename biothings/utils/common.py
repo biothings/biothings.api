@@ -303,11 +303,12 @@ def find_value_in_doc(dotfield, value, doc):
             return False
         return find_value_in_doc(".".join(fields[1:]), value, doc.get(fields[0]))
     else:
+        # doc is a scalar value, we will stringify it and then compare with value
         if fields:
             return False
         if doc is None and value is not None:
             return False
-        return fnmatch.fnmatchcase(doc, value)
+        return fnmatch.fnmatchcase(str(doc), value)
 
 
 def split_ids(q):
