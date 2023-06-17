@@ -41,7 +41,7 @@ class HomeHandler(BaseHandler):
         self.write(to_json(list_routes + detail_routes))
 
 
-class EntryHandler(BaseHandler):
+class DocHandler(BaseHandler):
     async def get(self, slug, item_id):
         src_cols = self.application.db[slug]
         doc = src_cols.find_one({"_id": item_id})
@@ -50,7 +50,7 @@ class EntryHandler(BaseHandler):
         self.write(to_json(doc))
 
 
-class EntriesHandler(BaseHandler):
+class QueryHandler(BaseHandler):
     async def get(self, slug):
         src_cols = self.application.db[slug]
 
@@ -126,8 +126,8 @@ class Application(tornado.web.Application):
         self.table_space = table_space
         handlers = [
             (r"/?", HomeHandler),
-            (r"/([^/]+)/?", EntriesHandler),
-            (r"/([^/]+)/([^/]+)/?", EntryHandler),
+            (r"/([^/]+)/?", QueryHandler),
+            (r"/([^/]+)/([^/]+)/?", DocHandler),
         ]
         settings.update({"debug": True})
         super().__init__(handlers, **settings)
