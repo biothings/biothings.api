@@ -20,9 +20,13 @@ class NoResultError(Exception):
 
 
 async def get_available_routes(db, table_space):
-    collection_names = db.collection_names()
-    list_routes = [f"/{item}/" for item in collection_names if item in table_space]
-    detail_routes = [f"/{item}/([^/]+)/" for item in collection_names if item in table_space]
+    collection_names = set(db.collection_names())
+    list_routes = []
+    detail_routes = []
+    for table in table_space:
+        if table in collection_names and db[table].count() > 0:
+            list_routes.append(f"/{table}/")
+            detail_routes.append(f"/{table}/([^/]+)/")
     return list_routes, detail_routes
 
 
@@ -130,10 +134,17 @@ class Application(tornado.web.Application):
 
 
 async def main(host, port, db, table_space):
+    list_routes, detail_routes = await get_available_routes(db, table_space)
+    del detail_routes
+    if not list_routes:
+        rprint('[red]Error: Source data do not exist or are empty. Was "upload" runned successfully yet?[/red]')
+        return
+
     app = Application(db, table_space, **{"static_path": "static"})
+    app.listen(port, address=host)
+
     rprint(f"[green]Listening on http://{host}:{port}[/green]")
     rprint(f"[green]View all available routes: http://{host}:{port}/[/green]")
-    list_routes, detail_routes = await get_available_routes(db, table_space)
     example_queries = get_example_queries(db, table_space)
     console = Console()
     for route in list_routes:
@@ -159,6 +170,5 @@ async def main(host, port, db, table_space):
             )
         )
 
-    app.listen(port, address=host)
     shutdown_event = tornado.locks.Event()
     await shutdown_event.wait()

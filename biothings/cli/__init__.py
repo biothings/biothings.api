@@ -101,8 +101,8 @@ def main():
 
     setup_config()
     from .dataplugin import app as dataplugin_app
-    from .dataplugin_hub import app as dataplugin_localhub_app
+    from .dataplugin_hub import app as dataplugin_hub_app
 
     cli.add_typer(dataplugin_app, name="dataplugin")
-    cli.add_typer(dataplugin_localhub_app, name="dataplugin-hub")
+    cli.add_typer(dataplugin_hub_app, name="dataplugin-hub")
     return cli()
