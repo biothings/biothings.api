@@ -44,10 +44,10 @@ class HomeHandler(BaseHandler):
 class EntryHandler(BaseHandler):
     async def get(self, slug, item_id):
         src_cols = self.application.db[slug]
-        entries = src_cols.find({"_id": item_id})
-        if not entries:
+        doc = src_cols.find_one({"_id": item_id})
+        if not doc:
             raise tornado.web.HTTPError(404)
-        self.write(to_json(entries))
+        self.write(to_json(doc))
 
 
 class EntriesHandler(BaseHandler):
