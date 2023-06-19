@@ -45,6 +45,11 @@ def to_json_file(data, fobj, indent=False, sort_keys=False):
     fobj.write(json_str)
 
 
+# define aliases close to json.loads and json.dumps for convenience
+json_loads = load_json
+json_dumps = to_json
+
+
 def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False):
     # Author: Cyrus Afrasiabi
 

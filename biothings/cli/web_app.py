@@ -71,9 +71,13 @@ class QueryHandler(BaseHandler):
         if limit:
             limit = int(limit)
             start = int(start)
-            entries, total_hit = src_cols.find_with_count(query_params, start=start, limit=limit)
+            # entries, total_hit = src_cols.find_with_count(query_params, start=start, limit=limit)
+            entries, total_hit = src_cols.findv2(
+                query_params, start=start, limit=limit, return_total=True, return_list=True
+            )
         else:
-            entries, total_hit = src_cols.find_with_count(query_params)
+            # entries, total_hit = src_cols.find_with_count(query_params)
+            entries, total_hit = src_cols.findv2(query_params, return_total=True)
         if not entries:
             entries = []
 
@@ -95,7 +99,9 @@ def get_example_queries(db, table_space):
     out = {}
     for table in table_space:
         col = db[table]
+        print("Counting documents...", end="", flush=True)
         total_cnt = col.count()
+        print(total_cnt)
         n = 5
         i = random.randint(0, min(1000, total_cnt - n))
         random_docs = [

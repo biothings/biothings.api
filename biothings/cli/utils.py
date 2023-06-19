@@ -302,7 +302,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     converters, mode = btinspect.get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
-    cur = src_cols.find()
+    cur = src_cols.findv2()
     res = btinspect.inspect_docs(
         cur,
         mode=mode,

@@ -7,6 +7,7 @@ from biothings.utils.common import find_value_in_doc, json_serial
 from biothings.utils.dataload import update_dict_recur
 from biothings.utils.dotfield import parse_dot_fields
 from biothings.utils.hub_db import IDatabase
+from biothings.utils.serializer import json_loads
 
 config = None
 
@@ -203,7 +204,7 @@ class Collection(object):
                     .fetchone()
                 )
                 if strdoc:
-                    return json.loads(strdoc[0])
+                    return json_loads(strdoc[0])
                 else:
                     return None
             else:
@@ -213,13 +214,73 @@ class Collection(object):
         else:
             return self.find(find_one=True)
 
+    def findv2(self, *args, **kwargs):
+        """This is a new version of find() that uses json feature of sqlite3, will replace find in the future"""
+        start = kwargs.get("start", 0)
+        limit = kwargs.get("limit", 10)
+        return_total = kwargs.get("return_total", False)  # return (results, total) tuple if True, default False
+        return_list = kwargs.get("return_list", False)  # return list instead of generator if True, default False
+        conn = self.get_conn()
+        tbl_name = self.colname
+
+        results = []
+        print(0, args, kwargs)
+
+        print(0.1, conn, self.db, self.db.dbfile)
+        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+            # it's key/value search, args[0] like {"a.b": "test", "a.b.c", "value"}
+            sub_queries = []
+            for k, v in args[0].items():
+                if "*" in v or "?" in v:
+                    _v = v.replace("*", "%").replace("?", "_")
+                    _v = f"LIKE '{_v}'"
+                else:
+                    _v = f"= '{v}'"
+                if "." in k:
+                    # nested field name like a.b.c, we will use json_tree.fullkey to match
+                    k = k.replace(".", "%.%")
+                    k = f"$.%{k}%"
+                    where = f"(json_tree.fullkey LIKE '{k}' AND json_tree.value {_v})"
+                    sub_query = f"SELECT _id FROM {tbl_name}, json_tree({tbl_name}.document) WHERE {where}"
+                else:
+                    # just a top level field, we will use ->> operator to match
+                    where = f"(document->>'{k}' {_v})"
+                    sub_query = f"SELECT _id FROM {tbl_name} WHERE {where}"
+                sub_queries.append(sub_query)
+            if sub_queries:
+                if len(sub_queries) == 1:
+                    query = sub_queries[0].replace("SELECT _id FROM", "SELECT document FROM")
+                else:
+                    query = f"SELECT _id FROM ({sub_queries[0]}) AS subq0"
+                    for i, sub_query in enumerate(sub_queries[1:]):
+                        query += f" INNER JOIN ({sub_queries[i+1]}) AS subq{i+1} USING (_id)"
+                    query = f"SELECT document FROM {tbl_name} WHERE _id IN ({query})"
+        elif not args or len(args) == 1 and len(args[0]) == 0:
+            # nothing or empty dict
+            query = f"SELECT document FROM {tbl_name}"
+        else:
+            raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
+
+        # include limit and offset
+        _query = query + f" LIMIT {limit} OFFSET {start}"
+        print(1, _query)
+        results = (json_loads(doc[0]) for doc in conn.execute(_query))  # results is a generator
+        if return_list:
+            results = list(results)
+        if return_total:
+            # get total count without limit and offset
+            total = conn.execute(query.replace("SELECT document FROM", "SELECT COUNT(*) FROM")).fetchone()[0]
+            return results, total
+        else:
+            return results
+
     def find(self, *args, **kwargs):
         results = []
         if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
             # it's key/value search, let's iterate
             for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall():
                 found = []
-                doc = json.loads(doc[0])
+                doc = json_loads(doc[0])
                 for k, v in args[0].items():
                     _found = find_value_in_doc(k, v, doc)
                     found.append(_found)
@@ -236,7 +297,7 @@ class Collection(object):
         elif not args or len(args) == 1 and len(args[0]) == 0:
             # nothing or empty dict
             results = [
-                json.loads(doc[0])
+                json_loads(doc[0])
                 for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()
             ]
             if "limit" in kwargs:
@@ -244,40 +305,6 @@ class Collection(object):
                 end = start + kwargs.get("limit", 0)
                 return results[start:end]
             return results
-        else:
-            raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
-
-    def find_with_count(self, *args, **kwargs):
-        results = []
-        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
-            # it's key/value search, let's iterate
-            for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall():
-                found = []
-                doc = json.loads(doc[0])
-                for k, v in args[0].items():
-                    _found = find_value_in_doc(k, v, doc)
-                    found.append(_found)
-                if all(found):
-                    if "find_one" in kwargs:
-                        return doc
-                    else:
-                        results.append(doc)
-            if "limit" in kwargs:
-                start = kwargs.get("start", 0)
-                end = start + kwargs.get("limit", 0)
-                return results[start:end], len(results)
-            return results, len(results)
-        elif not args or len(args) == 1 and len(args[0]) == 0:
-            # nothing or empty dict
-            results = [
-                json.loads(doc[0])
-                for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall()
-            ]
-            if "limit" in kwargs:
-                start = kwargs.get("start", 0)
-                end = start + kwargs.get("limit", 0)
-                return results[start:end], len(results)
-            return results, len(results)
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
