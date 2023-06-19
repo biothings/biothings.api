@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sqlite3
 from functools import wraps
@@ -10,6 +11,8 @@ from biothings.utils.hub_db import IDatabase
 from biothings.utils.serializer import json_loads
 
 config = None
+
+logger = logging.getLogger(__name__)
 
 
 def requires_config(func):
@@ -223,10 +226,6 @@ class Collection(object):
         conn = self.get_conn()
         tbl_name = self.colname
 
-        results = []
-        print(0, args, kwargs)
-
-        print(0.1, conn, self.db, self.db.dbfile)
         if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
             # it's key/value search, args[0] like {"a.b": "test", "a.b.c", "value"}
             sub_queries = []
@@ -263,7 +262,7 @@ class Collection(object):
 
         # include limit and offset
         _query = query + f" LIMIT {limit} OFFSET {start}"
-        print(1, _query)
+        logger.debug('SQLite query: "%s"', _query)
         results = (json_loads(doc[0]) for doc in conn.execute(_query))  # results is a generator
         if return_list:
             results = list(results)
