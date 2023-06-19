@@ -235,21 +235,49 @@ class Collection(object):
                     _v = f"LIKE '{_v}'"
                 else:
                     _v = f"= '{v}'"
-                if "." in k:
+                if k == "_id":
+                    where = f"(_id {_v})"
+                    sub_query = f"SELECT _id FROM {tbl_name} WHERE {where}"
+                elif "." in k:
                     # nested field name like a.b.c, we will use json_tree.fullkey to match
+                    # Here is an example for the query {"object.symbol": "BRD1"}:
+                    # SELECT document FROM TISSUES, json_tree(TISSUES.document)
+                    # WHERE (json_tree.fullkey LIKE '$.%object%.%symbol%' AND json_tree.value = 'BRD1')
                     k = k.replace(".", "%.%")
                     k = f"$.%{k}%"
                     where = f"(json_tree.fullkey LIKE '{k}' AND json_tree.value {_v})"
                     sub_query = f"SELECT _id FROM {tbl_name}, json_tree({tbl_name}.document) WHERE {where}"
                 else:
-                    # just a top level field, we will use ->> operator to match
-                    where = f"(document->>'{k}' {_v})"
-                    sub_query = f"SELECT _id FROM {tbl_name} WHERE {where}"
+                    # just a top level field, we will use json_each.key to match
+                    # _v matches the value directly using LIKE or = (for a scalar field);
+                    # _v2 matches the double-quoted value using LIKE (for an array field)
+                    # Here is an example for the query {"ancestors": "CHEBI:75771"}:
+                    # "SELECT _id FROM chebi, json_each(chebi.document)
+                    # WHERE (json_each.key = 'ancestors' AND
+                    #       (json_each.value = 'CHEBI:75771' OR json_each.value LIKE '%"CHEBI:75771"%')
+                    # )
+                    _v2 = _v.replace("LIKE '", "LIKE '%\"").replace("= '", "LIKE '%\"")
+                    _v2 = _v2[:-1] + "\"%'"
+                    where = f"(json_each.key = '{k}' AND (json_each.value {_v} OR json_each.value {_v2}))"
+                    sub_query = f"SELECT _id FROM {tbl_name}, json_each({tbl_name}.document) WHERE {where}"
                 sub_queries.append(sub_query)
             if sub_queries:
                 if len(sub_queries) == 1:
                     query = sub_queries[0].replace("SELECT _id FROM", "SELECT document FROM")
                 else:
+                    # JOIN multiple sub queries:
+                    # Here is an example for the query: q=object.symbol:BRD1%20AND%20subject.id:BTO:0000017
+                    # SELECT document FROM TISSUES WHERE _id IN
+                    #   (SELECT _id FROM
+                    #       (SELECT _id FROM TISSUES, json_tree(TISSUES.document)
+                    #           WHERE (json_tree.fullkey LIKE '$.%object%.%symbol%' AND json_tree.value = 'BRD1')
+                    #       ) AS subq0
+                    #       INNER JOIN
+                    #       (SELECT _id FROM TISSUES, json_tree(TISSUES.document)
+                    #           WHERE (json_tree.fullkey LIKE '$.%subject%.%id%' AND json_tree.value = 'BTO:0000017')
+                    #       ) AS subq1
+                    #       USING (_id)
+                    #   )
                     query = f"SELECT _id FROM ({sub_queries[0]}) AS subq0"
                     for i, sub_query in enumerate(sub_queries[1:]):
                         query += f" INNER JOIN ({sub_queries[i+1]}) AS subq{i+1} USING (_id)"
