@@ -24,9 +24,20 @@ async def get_available_routes(db, table_space):
     list_routes = []
     detail_routes = []
     for table in table_space:
-        if table in collection_names and db[table].count() > 0:
-            list_routes.append(f"/{table}/")
-            detail_routes.append(f"/{table}/([^/]+)/")
+        if table in collection_names:
+            rprint(f"[green]Found collection: [/green]{table}[green]; counting...[/green]", end="")
+            tbl_cnt = db[table].count()
+            rprint(f"[green]Done ([/green]{tbl_cnt}[green] documents)[/green]")
+            if tbl_cnt > 0:
+                list_routes.append(f"/{table}/")
+                detail_routes.append(f"/{table}/([^/]+)/")
+                db._count = getattr(db, "_count", {})
+                db._count[table] = tbl_cnt  # save table count for later use
+                if tbl_cnt > 100000:
+                    rprint(
+                        f"[yellow]WARNING: collection [/yellow]{table}[yellow] has more than 100,000 documents. \n[/yellow]"
+                        f'[yellow]Queries below can be slow since the data are not indexed, except the "_id" field.[/yellow]'
+                    )
     return list_routes, detail_routes
 
 
@@ -99,9 +110,7 @@ def get_example_queries(db, table_space):
     out = {}
     for table in table_space:
         col = db[table]
-        print("Counting documents...", end="", flush=True)
-        total_cnt = col.count()
-        print(total_cnt)
+        total_cnt = getattr(db, "_count", {}).get(table, col.count())
         n = 5
         i = random.randint(0, min(1000, total_cnt - n))
         random_docs = [
