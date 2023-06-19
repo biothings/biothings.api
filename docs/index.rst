@@ -69,3 +69,4 @@ We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your f
    apidoc/biothings.tests
    apidoc/biothings.utils
    apidoc/biothings.hub
+   apidoc/biothings.cli
