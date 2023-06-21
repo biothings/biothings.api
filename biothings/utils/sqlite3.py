@@ -280,7 +280,7 @@ class Collection(object):
                     #   )
                     query = f"SELECT _id FROM ({sub_queries[0]}) AS subq0"
                     for i, sub_query in enumerate(sub_queries[1:]):
-                        query += f" INNER JOIN ({sub_queries[i+1]}) AS subq{i+1} USING (_id)"
+                        query += f" INNER JOIN ({sub_query}) AS subq{i+1} USING (_id)"
                     query = f"SELECT document FROM {tbl_name} WHERE _id IN ({query})"
         elif not args or len(args) == 1 and len(args[0]) == 0:
             # nothing or empty dict
