@@ -41,7 +41,7 @@ if typer_avail:
         default_logging_level = logging.INFO
 
     cli = typer.Typer(
-        help="[green]BioThings Admin CLI to test your local data plugins.[/green]",
+        help="[green]BioThings Admin CLI to test your local data plugins. See helps for each command for specific usage.[/green]",
         rich_help_panel="Help and Others",
         rich_markup_mode="rich",
         context_settings=CONTEXT_SETTINGS,

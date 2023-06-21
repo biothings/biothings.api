@@ -15,6 +15,9 @@ long_help = (
     + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
     + "\n\n[green]   :point_right: Running this command outside of your data plugin[/green]"
     + "\n[green]   :point_right: That means your working directory can contains multiple data plugins[/green]"
+    + "\n[green]   :point_right: Default traceback errors are kept minimal, but you can set [bold]BTCLI_RICH_TRACEBACK=1[/bold][/green]"
+    + "\n[green]      ENV variable to enable full and pretty-formatted tracebacks, [/green]"
+    + "\n[green]      or set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
     + "\n[green]   :point_right: You can include a config.py at the working directly to override the default biothings.config settings.[/green]"
     + "\n   :rocket::boom::sparkling_heart:"
 )
