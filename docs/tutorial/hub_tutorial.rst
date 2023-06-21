@@ -44,10 +44,11 @@ Finally, BioThings SDK is written in python, so you must know some basics.
 Configuration file
 ^^^^^^^^^^^^^^^^^^
 
-Before starting to implement our hub, we first need to define a configuration file. A
-`config_hub.py <https://github.com/biothings/biothings.species/blob/master/src/config_hub.py>` file
-contains all the required configuration variables, some **have** to be defined in your own application, other
-**can** be overriden as needed.
+Before starting to implement our hub, we first need to define a configuration file. This
+`default_config.py <https://github.com/biothings/biothings.api/blob/master/biothings/hub/default_config.py>` file
+contains all the required and optional configuration variables, some **have** to be defined in your own application, other
+**can** be overriden as needed (see `config_hub.py <https://github.com/biothings/biothings.species/blob/master/src/config_hub.py>`
+for an example).
 
 Typically we will have to define the following:
 
