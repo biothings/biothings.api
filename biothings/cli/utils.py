@@ -13,7 +13,6 @@ import typer
 import yaml
 from rich import box, print as rprint
 from rich.console import Console
-from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
@@ -27,6 +26,7 @@ from biothings.utils.workers import upload_worker
 
 
 def get_logger(name=None):
+    """Get a logger with the given name. If name is None, return the root logger."""
     # basicConfig has been setup in cli.py, so we don't need to do it again here
     # If everything works as expected, we can delete this block.
     # logging.basicConfig(
@@ -55,6 +55,7 @@ def run_sync_or_async_job(func, *args, **kwargs):
 
 
 def load_plugin_managers(plugin_path, plugin_name=None, data_folder=None):
+    """Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)"""
     from biothings import config as btconfig
     from biothings.hub.dataload.dumper import DumperManager
     from biothings.hub.dataload.uploader import UploaderManager
@@ -115,6 +116,7 @@ def get_plugin_name(plugin_name=None, with_working_dir=True):
 
 
 def is_valid_data_plugin_dir(data_plugin_dir):
+    """Return True/False if the given folder is a valid data plugin folder (contains either manifest.yaml or manifest.json)"""
     return (
         pathlib.Path(data_plugin_dir, "manifest.yaml").exists()
         or pathlib.Path(data_plugin_dir, "manifest.json").exists()
@@ -122,6 +124,12 @@ def is_valid_data_plugin_dir(data_plugin_dir):
 
 
 def load_plugin(plugin_name=None, dumper=True, uploader=True, logger=None):
+    """Return a plugin object for the given plugin_name.
+    If dumper is True, include a dumper instance in the plugin object.
+    If uploader is True, include uploader_classes in the plugin object.
+
+    If <plugin_name> is not valid, raise the proper error and exit.
+    """
     logger = logger or get_logger(__name__)
     _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
     data_plugin_dir = pathlib.Path(working_dir) if plugin_name is None else pathlib.Path(working_dir, _plugin_name)
@@ -265,6 +273,7 @@ def do_upload(plugin_name=None, show_uploaded=True, logger=None):
 
 
 def do_dump_and_upload(plugin_name, logger=None):
+    """Perform both dump and upload for the given plugin"""
     logger = logger or get_logger(__name__)
     _plugin = do_dump(plugin_name, show_dumped=False, logger=logger)
     do_upload(plugin_name, show_uploaded=False, logger=logger)
@@ -279,6 +288,7 @@ def do_dump_and_upload(plugin_name, logger=None):
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
+    """Perform inspect for the given source. It's used in do_inspect function below"""
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
     if "jsonschema" in mode:
@@ -454,6 +464,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
 def do_inspect(
     plugin_name=None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None, logger=None
 ):
+    """Perform inspection on a data plugin."""
     logger = logger or get_logger(__name__)
     if not limit:
         limit = None
@@ -490,6 +501,7 @@ def do_inspect(
 
 
 def get_manifest_content(working_dir):
+    """return the manifest content of the data plugin in the working directory"""
     manifest_file_yml = os.path.join(working_dir, "manifest.yaml")
     manifest_file_json = os.path.join(working_dir, "manifest.json")
     if os.path.isfile(manifest_file_yml):
@@ -508,6 +520,7 @@ def get_manifest_content(working_dir):
 
 
 def get_uploaders(working_dir: pathlib.Path):
+    """A helper function to get the uploaders from the manifest file in the working directory, used in show_uploaded_sources function below"""
     data_plugin_name = working_dir.name
     manifest = get_manifest_content(working_dir)
     upload_section = manifest.get("uploader")
@@ -519,6 +532,7 @@ def get_uploaders(working_dir: pathlib.Path):
 
 
 def show_dumped_files(data_folder, plugin_name):
+    """A helper function to show the dumped files in the data folder"""
     console = Console()
     if not os.path.isdir(data_folder) or not os.listdir(data_folder):
         console.print(
@@ -543,6 +557,7 @@ def show_dumped_files(data_folder, plugin_name):
 
 
 def get_uploaded_collections(src_db, uploaders):
+    """A helper function to get the uploaded collections in the source database"""
     uploaded_sources = []
     archived_sources = []
     temp_sources = []
@@ -558,6 +573,7 @@ def get_uploaded_collections(src_db, uploaders):
 
 
 def show_uploaded_sources(working_dir, plugin_name):
+    """A helper function to show the uploaded sources from given plugin."""
     console = Console()
     uploaders = get_uploaders(working_dir)
     src_db = get_src_db()
@@ -594,6 +610,7 @@ def show_uploaded_sources(working_dir, plugin_name):
 
 
 def show_hubdb_content():
+    """Output hubdb content in a pretty format."""
     from biothings import config
     from biothings.utils import hub_db
 
@@ -623,6 +640,7 @@ def show_hubdb_content():
 
 
 def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None):
+    """List the dumped files, uploaded sources, or hubdb content."""
     logger = logger or get_logger(__name__)
     if dump is False and upload is False and hubdb is False:
         # if all set to False, we list both dump and upload as the default
@@ -652,6 +670,7 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
 
 
 def serve(host, port, plugin_name, table_space):
+    """Serve a simple API server to query the data plugin source."""
     from .web_app import main
 
     src_db = get_src_db()
@@ -673,6 +692,7 @@ def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
 
 
 def remove_files_in_folder(folder_path):
+    """Remove all files in a folder."""
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         try:
@@ -686,6 +706,7 @@ def remove_files_in_folder(folder_path):
 
 
 def do_clean_dumped_files(data_folder, plugin_name):
+    """Remove all dumped files by a data plugin in the data folder."""
     if not os.path.isdir(data_folder):
         rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
         return
@@ -702,6 +723,7 @@ def do_clean_dumped_files(data_folder, plugin_name):
 
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
+    """Remove all uploaded sources by a data plugin in the working directory."""
     uploaders = get_uploaders(working_dir)
     src_db = get_src_db()
     uploaded_sources = []
@@ -725,6 +747,7 @@ def do_clean_uploaded_sources(working_dir, plugin_name):
 
 
 def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
+    """Clean the dumped files, uploaded sources, or both."""
     logger = logger or get_logger(__name__)
     if clean_all:
         dump = upload = True

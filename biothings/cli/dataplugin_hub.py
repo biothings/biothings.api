@@ -46,6 +46,7 @@ def create_data_plugin(
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
+    """*create* command for creating a new data plugin from the template"""
     utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
@@ -59,6 +60,7 @@ def dump_data(
         typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
     ] = "",
 ):
+    """*dump* command for downloading source data files to local"""
     utils.do_dump(plugin_name, logger=logger)
 
 
@@ -85,6 +87,8 @@ def upload_source(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
+    """*upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
+    A local sqlite database used to store the uploaded data"""
     utils.do_upload(plugin_name, logger=logger)
 
 
@@ -104,6 +108,8 @@ def dump_and_upload(
     #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
     # ),
 ):
+    """*dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
+    Two steps in one command."""
     utils.do_dump_and_upload(plugin_name, logger=logger)
 
 
@@ -120,6 +126,7 @@ def listing(
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
+    """*list* command for listing dumped files and/or uploaded sources"""
     utils.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
 
@@ -177,6 +184,7 @@ def inspect_source(
         ),
     ] = None,
 ):
+    """*inspect* command for giving detailed information about the structure of documents coming from the parser after the upload step"""
     utils.do_inspect(
         plugin_name=plugin_name,
         sub_source_name=sub_source_name,
@@ -211,21 +219,24 @@ def serve(
     ] = 9999,
 ):
     """
-    Run the simple API server for serving documents from the source database, \n
-    Support pagination by using: start=&limit= \n
-    Support filtering by document keys, for example:\n
-    After run 'dump_and_upload', we have a source_name = "test"\n
-    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.\n
-    - You can see all available sources on the index page: http://host:port/
-    - You can list all docs by:\n
-    http://host:port/<your source name>/\n
-    http://host:port/<your source name>/start=10&limit=10\n
-    - You can filter out this doc by:\n
-    http://host:port/<your source name>/?key.a.b=1 (find all docs that have nested dict keys a.b)\n
-    http://host:port/<your source name>/?key.x.y=3 (find all docs that have mixed type dict-list)\n
-    http://host:port/<your source name>/?key.x.z=4\n
-    http://host:port/<your source name>/?key.x=5\n
-    - Or you can retrieve this doc by: http://host:port/<your source name>/123/\n
+    *serve* command runs a simple API server for serving documents from the source database.
+
+    For example, after run 'dump_and_upload', we have a source_name = "test" with a document structure
+    like this:
+
+    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.
+
+    An API server will run at http://host:port/<your source name>/, like http://localhost:9999/test/:
+
+        - You can see all available sources on the index page: http://localhost:9999/
+        - You can list all docs: http://localhost:9999/test/ (default is to return the first 10 docs)
+        - You can paginate doc list: http://localhost:9999/test/?start=10&limit=10
+        - You can retrieve a doc by id: http://localhost:9999/test/123
+        - You can filter out docs with one or multiple fielded terms:
+            - http://localhost:9999/test/?q=key.a.b:1 (query by any field with dot notation like key.a.b=1)
+            - http://localhost:9999/test/?q=key.a.b:1%20AND%20key.x.y=3 (find all docs that match two fields)
+            - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
+            - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
     utils.do_serve(plugin_name=plugin_name, host=host, port=port, logger=logger)
 
@@ -250,4 +261,5 @@ def clean_data(
         ),
     ] = False,
 ):
+    """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
     utils.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)

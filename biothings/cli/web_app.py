@@ -20,6 +20,7 @@ class NoResultError(Exception):
 
 
 async def get_available_routes(db, table_space):
+    """return a list available URLs/routes based on the table_space and the actual collections in the database"""
     collection_names = set(db.collection_names())
     list_routes = []
     detail_routes = []
@@ -47,12 +48,16 @@ class BaseHandler(tornado.web.RequestHandler):
 
 
 class HomeHandler(BaseHandler):
+    """the handler for the landing page, which lists all available routes"""
+
     async def get(self):
         list_routes, detail_routes = await get_available_routes(self.application.db, self.application.table_space)
         self.write(to_json(list_routes + detail_routes))
 
 
 class DocHandler(BaseHandler):
+    """The handler for the detail view of a document, e.g. /<source>/<doc_id/"""
+
     async def get(self, slug, item_id):
         src_cols = self.application.db[slug]
         doc = src_cols.find_one({"_id": item_id})
@@ -62,6 +67,8 @@ class DocHandler(BaseHandler):
 
 
 class QueryHandler(BaseHandler):
+    """The handler for return a list of docs matching the query terms passed to "q" parameter e.g. /<source>/?q=<query>"""
+
     async def get(self, slug):
         src_cols = self.application.db[slug]
 
@@ -105,8 +112,7 @@ class QueryHandler(BaseHandler):
 
 
 def get_example_queries(db, table_space):
-    """return example queries for a given table_space"""
-
+    """Populate example queries for a given table_space"""
     out = {}
     for table in table_space:
         col = db[table]
@@ -136,6 +142,8 @@ def get_example_queries(db, table_space):
 
 
 class Application(tornado.web.Application):
+    """The main application class, which defines the routes and handlers."""
+
     def __init__(self, db, table_space, **settings):
         self.db = db
         self.table_space = table_space
@@ -149,6 +157,7 @@ class Application(tornado.web.Application):
 
 
 async def main(host, port, db, table_space):
+    """The main function, which starts the server."""
     list_routes, detail_routes = await get_available_routes(db, table_space)
     del detail_routes
     if not list_routes:
