@@ -64,7 +64,8 @@ if typer_avail:
             ),
         ],
     )
-    logger = logging.getLogger("cli")
+
+logger = logging.getLogger("cli")
 
 
 def setup_config():
@@ -98,7 +99,9 @@ def setup_config():
 def main():
     """The main entry point for running the BioThings CLI to test your local data plugins."""
     if not typer_avail:
-        logger.error('"typer" package is required for CLI feature. Use "pip install typer[all]" to install.')
+        logger.error(
+            '"typer" package is required for CLI feature. Use "pip install biothings[cli]" or "pip install typer[all]" to install.'
+        )
         return
 
     setup_config()
