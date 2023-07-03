@@ -455,7 +455,7 @@ class BiothingHubMeta(BiothingMetaProp):
 
         return BiothingHubMeta(
             biothing_type=biothing_type,
-            build_date=build_date.isoformat() if build_date else None,
+            build_date=build_date.isoformat() if isinstance(build_date, datetime) else build_date,
             build_version=build_version,
             src=src,
             stats=stats,
