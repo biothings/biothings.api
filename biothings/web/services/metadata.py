@@ -431,7 +431,8 @@ class BiothingHubMeta(BiothingMetaProp):
         # take the latest build_date
         # TODO if one of them is None
         build_date = self.build_date
-        if other.build_date and other.build_date > self.build_date:
+        if other.build_date and (not build_date or other.build_date > build_date):
+            # set to other.build_data if it's newer or current build_date is None
             build_date = other.build_date
 
         # combine build_version field
@@ -454,7 +455,7 @@ class BiothingHubMeta(BiothingMetaProp):
 
         return BiothingHubMeta(
             biothing_type=biothing_type,
-            build_date=build_date.isoformat(),
+            build_date=build_date.isoformat() if build_date else None,
             build_version=build_version,
             src=src,
             stats=stats,
