@@ -342,7 +342,11 @@ class _ESIndexMappings:
         # for elasticsearch version 6.x
         if len(mapping) == 1 and next(iter(mapping)) != "properties":
             # remove doc_type, support 1 type per index
-            mapping = next(iter(mapping.values()))
+            # mapping in ES6 is nested under doc_type
+            # we will try to take the mapping dict under the first doc_type
+            _mapping = next(iter(mapping.values()))
+            if isinstance(_mapping, dict) and "properties" in _mapping:
+                mapping = _mapping
         self.enabled = mapping.pop("enabled", True)
         self.dynamic = mapping.pop("dynamic", True)
         self.properties = mapping.get("properties", {})
