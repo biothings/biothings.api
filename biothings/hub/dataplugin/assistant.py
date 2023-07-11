@@ -747,7 +747,7 @@ class LocalAssistant(BaseAssistant):
             try:
                 self._plugin_name = get_plugin_name_from_local_manifest(
                     os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
-                )
+                ) or src_folder_name
             except Exception as ex:
                 self.logger.exception(ex)
                 self._plugin_name = src_folder_name
