@@ -1,3 +1,9 @@
+v0.12.2 (2022/07/17)
+    Bugfixes:
+        - 7e9583ec Fix dict default vals to work with dicts. (#292)
+        - 77c577cc Break Circular Dependency (#291)
+        - 7044abba Set plugin name to the folder name for Advanced plugins. (#290)
+
 v0.12.1 (2022/07/05)
     Bugfixes:
         - biothings.cli: fixed "logger is not defined" error when typer is not installed
