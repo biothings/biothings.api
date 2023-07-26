@@ -2105,7 +2105,7 @@ class DockerContainerDumper(BaseDumper):
         else:
             self.logger.info("get_version_cmd is not defined. Fallback to timestamp as the release.")
         # if _release is None, use timestamp as the release
-        self.release = _release or datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.release = _release or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def get_remote_lastmodified(self, remote_file):
         """get the last modified time of the remote file within the container using stat command"""
