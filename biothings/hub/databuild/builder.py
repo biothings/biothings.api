@@ -682,6 +682,10 @@ class DataBuilder(object):
         except KeyError:
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
+    def merge_order(self, other_sources):
+        # Optional method to specify the order in which sources should be merged
+        return sorted(other_sources)
+
     async def merge_sources(self, source_names, steps=("merge", "post"), batch_size=100000, ids=None, job_manager=None):
         """
         Merge resources from given source_names or from build config.
@@ -710,7 +714,7 @@ class DataBuilder(object):
 
         source_names = sorted(source_names)
         root_sources = sorted(root_sources)
-        other_sources = sorted(other_sources)
+        other_sources = self.merge_order(other_sources)
 
         self.logger.info("Sources to be merged: %s", source_names)
         self.logger.info("Root sources: %s", root_sources)
