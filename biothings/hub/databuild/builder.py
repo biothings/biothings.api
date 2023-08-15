@@ -683,7 +683,9 @@ class DataBuilder(object):
             raise BuilderException("Found mapper named '%s' but no mapper associated" % mapper_name)
 
     def merge_order(self, other_sources):
-        # Optional method to specify the order in which sources should be merged
+        """Optionally we can override this method to customize the order in which sources should be merged.
+            Default as sorted by name.
+        """
         return sorted(other_sources)
 
     async def merge_sources(self, source_names, steps=("merge", "post"), batch_size=100000, ids=None, job_manager=None):
