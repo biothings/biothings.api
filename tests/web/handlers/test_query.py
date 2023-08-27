@@ -633,6 +633,87 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert term["count"] == 79
         assert term["term"] == "protein-coding"
 
+    def test_33_jmespath(self):
+        """GET /v1/query?q=_id:1017&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]
+        {
+            "hits": [
+                {
+                    "_id": "1017",
+                    "_score": 17.804987,
+                    "accession": {
+                        "rna": [
+                            "NM_001290230.2",
+                            "NM_001798.5",
+                            "NM_052827.4",
+                            "XM_011537732.2",
+                            "XM_054370731.1"
+                        ]
+                    }
+                }
+            ]
+        }
+        """
+        # get the original len of accession.rna field
+        res = self.request("/v1/query?q=_id:1017&fields=accession.rna").json()
+        len_0 = len(res["hits"][0]["accession"]["rna"])
+        assert len_0 > 0
+        # apply jmespath transformation to filter rna list to those contain either NM_ or XM_
+        res = self.request(
+            "/v1/query?q=symbol:cdk2&species=human&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]"
+        ).json()
+        transformed_rna = res["hits"][0]["accession"]["rna"]
+        assert len(transformed_rna) > 0
+        assert len(transformed_rna) < len_0
+        assert [x for x in transformed_rna if not (x.startswith("NM_") or x.startswith("XM_"))] == []
+
+    def test_34_jmespath_root(self):
+        """GET /v1/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}
+        {
+            "hits": [
+                {
+                    "exon_count": 3,
+                }
+            ]
+        }
+        """
+        # set target field to `.` to apply jmespath to the root object
+        res = self.request("/v1/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}").json()
+        assert res["hits"][0]["exon_count"] == 3
+
+        # empty target field works the same as `.` to apply jmespath to the root object
+        res = self.request("/v1/query?q=_id:1017&fields=exons&jmespath=|{exon_count: length(exons)}").json()
+        assert res["hits"][0]["exon_count"] == 3
+
+    def test_35_jmespath_post(self):
+        """Test jmespath works for POST query as well"""
+        res = self.request(
+            "/v1/query",
+            method="POST",
+            json={
+                "q": [1017, 406715],
+                "scopes": "entrezgene",
+                "fields": "pathway.reactome",
+                # filter reactome pathways that contain DNA in their name
+                "jmespath": "pathway.reactome|[?contains(name, `DNA`)]",
+            },
+        ).json()
+        assert len(res) == 2
+        for hit in res:
+            assert len(hit["pathway"]["reactome"]) > 0
+            assert all([x for x in hit["pathway"]["reactome"] if "DNA" in x["name"]])
+
+        # jmespath should work the same if passed as a query parameter
+        res2 = self.request(
+            "/v1/query?jmespath=pathway.reactome|[?contains(name, `DNA`)]",
+            method="POST",
+            json={
+                "q": [1017, 406715],
+                "scopes": "entrezgene",
+                "fields": "pathway.reactome",
+            },
+        ).json()
+        assert res2 == res
+
 
 class TestQueryString(BiothingsWebAppTest):
     def test_00_all(self):
