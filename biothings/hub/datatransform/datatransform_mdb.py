@@ -5,7 +5,7 @@ using conversions described in a networkx graph.
 # pylint: disable=E0401, E0611
 import copy
 
-from networkx import all_shortest_paths, all_simple_paths, nx
+import networkx as nx
 from pymongo.collation import Collation
 
 import biothings.utils.mongo as mongo
@@ -228,7 +228,7 @@ class DataTransformMDB(DataTransform):
         self.paths = {}
         for output_type in self.output_types:
             for input_type in self.input_types:
-                paths = [p for p in all_simple_paths(self.graph, input_type[0], output_type)]
+                paths = [p for p in nx.all_simple_paths(self.graph, input_type[0], output_type)]
                 if not paths:
                     try:
                         # this will try to find self-loops. all_shortest_paths() return one element,
@@ -239,7 +239,7 @@ class DataTransformMDB(DataTransform):
                             # p-to-p isn't defined
                             # pylint: disable=W0104
                             self.graph.edges[input_type[0], output_type]
-                            paths = [p*2 for p in all_shortest_paths(
+                            paths = [p*2 for p in nx.all_shortest_paths(
                                 self.graph, input_type[0], output_type)]
                         except KeyError:
                             pass
