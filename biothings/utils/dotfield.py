@@ -1,4 +1,4 @@
-import json
+import orjson
 
 
 def make_object(attr, value):
@@ -11,12 +11,20 @@ def make_object(attr, value):
         make_object(['a','b','c'], 100) --> {a:{b:{c:100}}}
     """
     attr_list = attr.split(".")
+
     s = ""
     for k in attr_list:
         s += '{"' + k + '":'
-    s += json.dumps(value)
+
+    # Old implementation using json module
+    # s += json.dumps(value)
+    # s += "}" * (len(attr_list))
+    # return json.loads(s)
+
+    # New implementation using orjson module
+    s += orjson.dumps(value).decode("utf-8")  # decoding is necessary because orjson dumps into bytes
     s += "}" * (len(attr_list))
-    return json.loads(s)
+    return orjson.loads(s)
 
 
 def merge_object(obj1, obj2):
