@@ -1,22 +1,30 @@
-import json
+import orjson
 
 
 def make_object(attr, value):
     """
-    Create dictionary following the input dot notation and the value
+    Create dictionary following the input dot notation and the value.
+
     Example::
 
-        make_object('a.b.c', 100) -->
-        or make_object(['a','b','c'], 100) -->
-        {a:{b:{c:100}}}
+        make_object('a.b.c', 100) --> {a:{b:{c:100}}}
+        make_object(['a','b','c'], 100) --> {a:{b:{c:100}}}
     """
     attr_list = attr.split(".")
+
     s = ""
     for k in attr_list:
         s += '{"' + k + '":'
-    s += json.dumps(value)
+
+    # Old implementation using json module
+    # s += json.dumps(value)
+    # s += "}" * (len(attr_list))
+    # return json.loads(s)
+
+    # New implementation using orjson module
+    s += orjson.dumps(value).decode("utf-8")  # decoding is necessary because orjson dumps into bytes
     s += "}" * (len(attr_list))
-    return json.loads(s)
+    return orjson.loads(s)
 
 
 def merge_object(obj1, obj2):
@@ -31,27 +39,25 @@ def merge_object(obj1, obj2):
     return obj1
 
 
-def parse_dot_fields(genedoc):
+def parse_dot_fields(doc):
     """
-    parse_dot_fields({'a': 1, 'b.c': 2, 'b.a.c': 3})
-     should return
-        {'a': 1, 'b': {'a': {'c': 3}, 'c': 2}}
+    Example: parse_dot_fields({'a': 1, 'b.c': 2, 'b.a.c': 3}) should return {'a': 1, 'b': {'a': {'c': 3}, 'c': 2}}
     """
     dot_fields = []
     expanded_doc = {}
-    for key in genedoc:
+    for key in doc:
         if key.find(".") != -1:
             dot_fields.append(key)
-            expanded_doc = merge_object(expanded_doc, make_object(key, genedoc[key]))
-    genedoc.update(expanded_doc)
+            expanded_doc = merge_object(expanded_doc, make_object(key, doc[key]))
+    doc.update(expanded_doc)
     for key in dot_fields:
-        del genedoc[key]
-    return genedoc
+        del doc[key]
+    return doc
 
 
-def compose_dot_fields_by_fields(genedoc, fields):
+def compose_dot_fields_by_fields(doc, fields):
     """
-    reverse funtion of parse_dot_fields
+    Reverse funtion of parse_dot_fields
     """
     res = None
     to_del = set()
@@ -59,12 +65,11 @@ def compose_dot_fields_by_fields(genedoc, fields):
         if k.find(".") != -1:
             if not res:
                 import copy
-
-                res = copy.deepcopy(genedoc)
+                res = copy.deepcopy(doc)
             ks = k.split(".")
             broke = False
-            if ks[0] in genedoc:
-                t = genedoc[ks[0]]
+            if ks[0] in doc:
+                t = doc[ks[0]]
                 for e in ks[1:]:
                     if e in t:
                         t = t[e]
@@ -79,4 +84,4 @@ def compose_dot_fields_by_fields(genedoc, fields):
     for k in to_del:
         del res[k]
 
-    return res if res else genedoc
+    return res if res else doc
