@@ -864,6 +864,8 @@ class DataBuilder(object):
         meta = src_master.find_one({"_id": src_name}) or {}
         merger = meta.get("merger", "upsert")
         self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
+        merger_keywords = meta.get("merger_keywords")
+        self.logger.info("Documents from source '%s' will be using these extra parameters during the merge %s", src_name, merger_keywords)
 
         doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
@@ -891,6 +893,7 @@ class DataBuilder(object):
                         upsert,
                         merger,
                         bnum,
+                        merger_keywords
                     )
                 )
 
@@ -991,7 +994,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     return list(dids.values())
 
 
-def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num):
+def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_keywords=None):
     try:
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
@@ -1014,9 +1017,15 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         if merger == "merge_struct":
             stored_docs = dest.mget_from_ids([d["_id"] for d in docs])
             ddocs = dict([(d["_id"], d) for d in docs])
-            for d in stored_docs:
-                ddocs[d["_id"]] = merge_struct(d, ddocs[d["_id"]])
+            if merger_keywords:
+                for d in stored_docs:
+                    # Merge the old document in mongodb into the new document
+                    ddocs[d["_id"]] = merge_struct(ddocs[d["_id"]], d, **merger_keywords)
+            else:
+                for d in stored_docs:
+                    ddocs[d["_id"]] = merge_struct(d, ddocs[d["_id"]])
             docs = list(ddocs.values())
+
         cnt = dest.update(docs, upsert=upsert)
         return cnt
     except Exception as e:
