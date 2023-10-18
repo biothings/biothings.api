@@ -18,7 +18,7 @@ from biothings.utils.dataload import dict_sweep
 def get_python_version():
     """Get a list of python packages installed and their versions."""
     try:
-        output = check_output(f'{sys.executable or "python3"} -m pip list', shell=True, stderr=DEVNULL)
+        output = check_output([sys.executable or "python3", "-m", "pip", "list"], stderr=DEVNULL)
         return output.decode("utf-8").replace("\r", "").split("\n")[2:-1]
     except Exception:
         return []
