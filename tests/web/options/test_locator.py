@@ -52,11 +52,10 @@ def test_03():
 
 
 def test_04():
-    locator = {"keyword": "_source", "alias": ["fields", "field", "filter"]}
+    locator = {"keyword": "_source", "alias": ["fields", "field"]}
     assert ReqArgs(query={"q": "cdk2", "_source": "taxid"}).lookup(locator) == "taxid"
     assert ReqArgs(query={"q": "cdk2", "fields": "taxid"}).lookup(locator) == "taxid"
     assert ReqArgs(query={"q": "cdk2", "field": "taxid"}).lookup(locator) == "taxid"
-    assert ReqArgs(query={"q": "cdk2", "filter": "taxid"}).lookup(locator) == "taxid"
 
 
 def test_05():
@@ -69,7 +68,7 @@ def test_05():
     )
     locator = {
         "keyword": "_source",
-        "alias": ["fields", "field", "filter"],
+        "alias": ["fields", "field"],
     }
 
     assert args.lookup(locator) == "taxid"
@@ -86,7 +85,7 @@ def test_06():
     )
     locator = {
         "keyword": "_source",
-        "alias": ["fields", "field", "filter"],
+        "alias": ["fields", "field"],
     }
 
     assert args.lookup(locator) == "taxid"

@@ -601,8 +601,42 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res = self.request("/v1/query?scroll_id=<invalid>", expect=400).json()
         assert res["success"] is False
 
-    def test_32_post_filters(self):
+    def test_32_filter(self):
         """
+        apply filter changes the facet result:
+        {
+            'facets': {
+                'type_of_gene': {
+                    '_type': 'terms',
+                    'missing': 0,
+                    'other': 0,
+                    'terms': [{'count': 1, 'term': 'protein-coding'}],
+                    'total': 1
+                }
+            },
+            'hits': [...],
+            'max_score': 0.4116186,
+            'took': 7,
+            'total': 1
+        }
+        """
+
+        res = self.request(
+            "/v1/query?q={q}&aggs={aggs}&filter={_filter}".format(
+                q="cyclin dependent kinase 2",
+                aggs="type_of_gene",
+                _filter="taxid:216574",
+            )
+        ).json()
+
+        assert res["total"] == 1
+        term = res["facets"]["type_of_gene"]["terms"][0]
+        assert term["count"] == 1
+        assert term["term"] == "protein-coding"
+
+    def test_33_post_filter(self):
+        """
+        apply post_filter won't change the facet result:
         {
             'facets': {
                 'type_of_gene': {
@@ -633,7 +667,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert term["count"] == 79
         assert term["term"] == "protein-coding"
 
-    def test_33_jmespath(self):
+    def test_34_jmespath(self):
         """GET /v1/query?q=_id:1017&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]
         {
             "hits": [
@@ -666,7 +700,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert len(transformed_rna) < len_0
         assert [x for x in transformed_rna if not (x.startswith("NM_") or x.startswith("XM_"))] == []
 
-    def test_34_jmespath_root(self):
+    def test_35_jmespath_root(self):
         """GET /v1/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}
         {
             "hits": [
@@ -684,7 +718,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res = self.request("/v1/query?q=_id:1017&fields=exons&jmespath=|{exon_count: length(exons)}").json()
         assert res["hits"][0]["exon_count"] == 3
 
-    def test_35_jmespath_post(self):
+    def test_36_jmespath_post(self):
         """Test jmespath works for POST query as well"""
         res = self.request(
             "/v1/query",
