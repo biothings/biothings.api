@@ -98,7 +98,7 @@ COMMON_KWARGS = {
     "raw": {"type": bool, "default": False},
     "rawquery": {"type": bool, "default": False},
     # query builder stage
-    "_source": {"type": list, "max": 1000, "alias": ("fields", "field", "filter")},
+    "_source": {"type": list, "max": 1000, "alias": ("fields", "field")},
     "size": {"type": int, "max": 1000, "alias": "limit"},
     # formatter stage
     "dotfield": {"type": bool, "default": False},
@@ -124,6 +124,9 @@ QUERY_KWARGS = {
         **{
             "from": {"type": int, "max": 10000, "alias": "skip"},
             "sort": {"type": list, "max": 10},
+            # use to set extra filter, as a filter clause in a boolean query
+            "filter": {"type": str, "default": None},
+            # use to set post_filter query, this one does not impact facets
             "post_filter": {"type": str, "default": None},
         },
     },  # for py3.9+, we can just use `|` operator like `COMMON_KWARGS.copy() | {...}`
