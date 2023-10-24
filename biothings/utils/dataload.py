@@ -249,6 +249,7 @@ def rec_handler(infile, block_end="\n", skip=0, include_block_end=False, as_list
 # List Utility functions
 # ===============================================================================
 
+
 # if dict value is a list of length 1, unlist
 def unlist(d):
     for key, val in d.items():
@@ -935,7 +936,12 @@ def dict_to_list(gene_d):
     return doc_li
 
 
-def merge_struct(v1, v2, aslistofdict=None):
+def merge_struct(v1, v2, aslistofdict=None, include=None, exclude=None):
+    """merge two structures, v1 and v2, into one.
+    :param aslistofdict: a string indicating the key name that should be treated as a list of dict
+    :param include: when given a list of strings, only merge these keys (optional)
+    :param exclude: when given a list of strings, exclude these keys from merging (optional)
+    """
     if isinstance(v1, list):
         if isinstance(v2, list):
             v1 = v1 + [x for x in v2 if x not in v1]
@@ -949,8 +955,13 @@ def merge_struct(v1, v2, aslistofdict=None):
 
     elif isinstance(v1, dict):
         assert isinstance(v2, dict), "v2 %s not a dict (v1: %s)" % (v2, v1)
-        for k in list(v1.keys()):
-            if k in v2:
+        to_merge = list(v1.keys())
+        if include:
+            to_merge = include
+        for k in to_merge:
+            if exclude and k in exclude:
+                continue
+            elif k in v2:
                 if aslistofdict == k:
                     v1elem = v1[k]
                     v2elem = v2[k]

@@ -224,7 +224,9 @@ class DataBuilder(object):
                             self.logger.info("%s uploader running cannot build for now", job["source"])
                     else:
                         num_offenders += 1
-                        self.logger.warning("uploader with pinfo: %s running, no source info. cannot build for now", job)
+                        self.logger.warning(
+                            "uploader with pinfo: %s running, no source info. cannot build for now", job
+                        )
                 else:
                     pass  # job is not an uploader
             return num_offenders == 0
@@ -406,7 +408,9 @@ class DataBuilder(object):
         none_root_srcs = [src.replace("!", "") for src in root_srcs if src.startswith("!")]
         if none_root_srcs:
             if len(none_root_srcs) != len(root_srcs):
-                raise BuilderException("If using '!' operator, all datasources must use it (cannot mix), got: %s", repr(root_srcs))
+                raise BuilderException(
+                    "If using '!' operator, all datasources must use it (cannot mix), got: %s", repr(root_srcs)
+                )
             # ok, grab sources for this build,
             srcs = self.build_config.get("sources", [])
             root_srcs = list(set(srcs).difference(set(none_root_srcs)))
@@ -684,7 +688,7 @@ class DataBuilder(object):
 
     def merge_order(self, other_sources):
         """Optionally we can override this method to customize the order in which sources should be merged.
-            Default as sorted by name.
+        Default as sorted by name.
         """
         return sorted(other_sources)
 
@@ -824,7 +828,9 @@ class DataBuilder(object):
         defined_root_sources = self.get_root_document_sources()
         upsert = not defined_root_sources or src_name in defined_root_sources
         if not upsert:
-            self.logger.debug("Documents from source '%s' will be stored only if a previous document exists with same _id", src_name)
+            self.logger.debug(
+                "Documents from source '%s' will be stored only if a previous document exists with same _id", src_name
+            )
         jobs = []
         total = self.source_backend[src_name].count()
         btotal = math.ceil(total / batch_size)
@@ -836,10 +842,17 @@ class DataBuilder(object):
 
         # FIXME id_provider initialized below will be overwritten by `if _query and ids is None:` code block
         if ids:
-            self.logger.info("Merging '%s' specific list of _ids, create merger job with batch_size=%d", src_name, batch_size)
+            self.logger.info(
+                "Merging '%s' specific list of _ids, create merger job with batch_size=%d", src_name, batch_size
+            )
             id_provider = [ids]
         else:
-            self.logger.info("Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d", src_name, id_batch_size, batch_size)
+            self.logger.info(
+                "Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d",
+                src_name,
+                id_batch_size,
+                batch_size,
+            )
             id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size, logger=self.logger)
 
         if _query and ids is not None:
@@ -850,7 +863,14 @@ class DataBuilder(object):
             # use doc_feeder but post-process doc to keep only the _id
             id_provider = map(
                 lambda docs: [d["_id"] for d in docs],
-                doc_feeder(self.source_backend[src_name], query=_query, step=batch_size, inbatch=True, fields={"_id": 1}, logger=self.logger)
+                doc_feeder(
+                    self.source_backend[src_name],
+                    query=_query,
+                    step=batch_size,
+                    inbatch=True,
+                    fields={"_id": 1},
+                    logger=self.logger,
+                ),
             )
         else:
             # when passing a list of _ids, IDs will be sent to the query, so we need to reduce the batch size
@@ -864,6 +884,13 @@ class DataBuilder(object):
         meta = src_master.find_one({"_id": src_name}) or {}
         merger = meta.get("merger", "upsert")
         self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
+        merger_kwargs = meta.get("merger_kwargs")
+        if merger_kwargs:
+            self.logger.info(
+                "Documents from source '%s' will be using these extra parameters during the merge %s",
+                src_name,
+                merger_kwargs,
+            )
 
         doc_cleaner = self.document_cleaner(src_name)
         for big_doc_ids in id_provider:
@@ -877,7 +904,12 @@ class DataBuilder(object):
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
                 self.logger.info(
                     "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
-                    bnum, btotal, src_name, cnt, total, (cnt / total * 100.0)
+                    bnum,
+                    btotal,
+                    src_name,
+                    cnt,
+                    total,
+                    (cnt / total * 100.0),
                 )
                 job = await job_manager.defer_to_process(
                     pinfo,
@@ -891,7 +923,8 @@ class DataBuilder(object):
                         upsert,
                         merger,
                         bnum,
-                    )
+                        merger_kwargs,
+                    ),
                 )
 
                 def batch_merged(f, batch_num):
@@ -991,7 +1024,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     return list(dids.values())
 
 
-def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num):
+def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
@@ -1014,9 +1047,15 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         if merger == "merge_struct":
             stored_docs = dest.mget_from_ids([d["_id"] for d in docs])
             ddocs = dict([(d["_id"], d) for d in docs])
-            for d in stored_docs:
-                ddocs[d["_id"]] = merge_struct(d, ddocs[d["_id"]])
+            if merger_kwargs:
+                for d in stored_docs:
+                    # Merge the old document in mongodb into the new document
+                    ddocs[d["_id"]] = merge_struct(ddocs[d["_id"]], d, **merger_kwargs)
+            else:
+                for d in stored_docs:
+                    ddocs[d["_id"]] = merge_struct(d, ddocs[d["_id"]])
             docs = list(ddocs.values())
+
         cnt = dest.update(docs, upsert=upsert)
         return cnt
     except Exception as e:
