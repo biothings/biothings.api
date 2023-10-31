@@ -1,3 +1,17 @@
+v0.12.3 (2022/10/31)
+    Highlights:
+        - Implemented the new filter parameter for the query handler (#296)
+    biothings.web improvements:
+        - Enabled post_filter parameter for POST queries (#208)
+        - Improved jmespath transformation with better support root-level transformation
+    biothings.hub improvements:
+        - Allow passing and customizing merge_struct with the new inclusion and exclustion parameters
+        - Allow customization in Builder's merge order with the new merge_order method
+        - Fixed the deprecated import of networkx module
+        - Fixed the security issue when calling check_output https://github.com/biothings/biothings.api/pull/301
+        - Switched to use orjson in utils.dotfield module https://github.com/biothings/biothings.api/pull/300
+        - Changed default release date format in DockerContainerDumper
+
 v0.12.2 (2022/07/17)
     Bugfixes:
         - 7e9583ec Fix dict default vals to work with dicts. (#292)

@@ -17,13 +17,15 @@ REPO_URL = "https://github.com/biothings/biothings.api"
 # version gets set to MAJOR.MINOR.# commits on master branch if installed from pip repo
 # otherwise to MAJOR.MINOR.MICRO as defined in biothings.version
 try:
-    NUM_COMMITS = check_output("git rev-list --count master", shell=True).strip().decode("utf-8")
+    command = ["git", "rev-list", "--count", "master"]
+    NUM_COMMITS = check_output(command).strip().decode("utf-8")
 except CalledProcessError:
     NUM_COMMITS = ""
 
 # Calculate commit hash, should fail if installed from source or from pypi
 try:
-    COMMIT_HASH = check_output("git rev-parse HEAD", shell=True).strip().decode("utf-8")
+    command = ["git", "rev-parse", "HEAD"]
+    COMMIT_HASH = check_output(command).strip().decode("utf-8")
 except CalledProcessError:
     COMMIT_HASH = ""
 
