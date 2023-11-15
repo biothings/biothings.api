@@ -97,12 +97,23 @@ class TornadoBiothingsAPI(tornado.web.Application):
                 settings[setting] = getattr(biothings.config, setting.upper())
 
         if __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
+            def before_send(event, hint):
+                if (
+                    biothings.config.SENTRY_REQUEST_BODY_ENABLED == True
+                    and "request" in event
+                    and "data" in event["request"]
+                ):
+                    body = event["request"].get("data", "")
+                    sentry_sdk.set_context("request", {"body": body})
+                return event
+
             sentry_sdk.init(
                 dsn=biothings.config.SENTRY_CLIENT_KEY,
                 # adjust this value to allow sentry to trace transactions:
                 #   https://docs.sentry.io/platforms/python/guides/starlette/configuration/options/#traces-sample-rate
                 traces_sample_rate=0.2,
                 integrations=[TornadoIntegration()],
+                before_send=before_send,
             )
 
         return settings
