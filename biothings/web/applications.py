@@ -97,9 +97,9 @@ class TornadoBiothingsAPI(tornado.web.Application):
                 settings[setting] = getattr(biothings.config, setting.upper())
 
         if __SENTRY_INSTALLED__ and biothings.config.SENTRY_CLIENT_KEY:
-            def before_send(event, hint):
+            def before_send(event, _):
                 if (
-                    biothings.config.SENTRY_REQUEST_BODY_ENABLED == True
+                    biothings.config.SENTRY_REQUEST_BODY_ENABLED is True
                     and "request" in event
                     and "data" in event["request"]
                 ):
