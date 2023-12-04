@@ -100,6 +100,7 @@ class BiothingsWebTestBase:
     prefix = "v1"
     host = ""
 
+    # override
     def tearDown(self):
         """
         By default, a new "IOLoop" is constructed for each
