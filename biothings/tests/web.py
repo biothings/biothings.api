@@ -100,6 +100,18 @@ class BiothingsWebTestBase:
     prefix = "v1"
     host = ""
 
+    # override
+    def tearDown(self):
+        """
+        By default, a new "IOLoop" is constructed for each
+        test and is available as "self.io_loop". To maintain
+        the desired test behavior, it is necessary to clear
+        the current IOLoop at the end of each test function.
+        See class AsyncTestCase in the reference:
+        Reference: https://www.tornadoweb.org/en/branch6.4/_modules/tornado/testing.html
+        """
+        self.io_loop.clear_current()
+
     def request(self, path, method="GET", expect=200, **kwargs):
         """
         Use requests library to make an HTTP request.
