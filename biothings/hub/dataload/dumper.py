@@ -1870,6 +1870,7 @@ class DockerContainerDumper(BaseDumper):
     GET_VERSION_CMD = None
     KEEP_CONTAINER = False
     DATA_PATH = None
+    VOLUME = None
     # set to 1 so we don't execute any docker command in parallel
     MAX_PARALLEL_DUMP = 1
     # default timeout to wait for container to start or stop
@@ -1975,6 +1976,9 @@ class DockerContainerDumper(BaseDumper):
         if not self.DATA_PATH:
             raise DumperException('Missing the require "path" parameter')
 
+    def set_volume(self):
+        self.VOLUME = self.source_config.get("volume") or self.image_metadata.get("volume")
+
     def get_remote_file(self):
         """return the remote file path within the container.
         In most of cases, dump_command should either generate this file or check if it's ready if there is another
@@ -2016,6 +2020,7 @@ class DockerContainerDumper(BaseDumper):
         self.set_keep_container()
         self.set_get_version_cmd()
         self.set_data_path()
+        self.set_volume()
         if not self.CONTAINER_NAME:
             # when the container_name is not provided in the data plugin manifest,
             # we will check image_metadata to see if it's defined there.
@@ -2044,6 +2049,7 @@ class DockerContainerDumper(BaseDumper):
                             entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
                             detach=True,
                             auto_remove=False,
+                            volumes=self.VOLUME,
                         )
                     else:
                         self.logger.info("Start a docker container with a generic ENTRYPOINT: tail -f /dev/null")
@@ -2052,6 +2058,7 @@ class DockerContainerDumper(BaseDumper):
                             entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
                             detach=True,
                             auto_remove=False,
+                            volumes=self.VOLUME,
                         )
                         self.CONTAINER_NAME = self.container.name  # record the randomly generated container name
 
