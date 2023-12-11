@@ -1871,6 +1871,7 @@ class DockerContainerDumper(BaseDumper):
     KEEP_CONTAINER = False
     DATA_PATH = None
     VOLUME = None
+    NAMED_VOLUME = None
     # set to 1 so we don't execute any docker command in parallel
     MAX_PARALLEL_DUMP = 1
     # default timeout to wait for container to start or stop
@@ -1979,6 +1980,9 @@ class DockerContainerDumper(BaseDumper):
     def set_volume(self):
         self.VOLUME = self.source_config.get("volume") or self.image_metadata.get("volume")
 
+    def set_named_volume(self):
+        self.NAMED_VOLUME = self.source_config.get("named_volume") or self.image_metadata.get("named_volume")
+
     def get_remote_file(self):
         """return the remote file path within the container.
         In most of cases, dump_command should either generate this file or check if it's ready if there is another
@@ -2021,6 +2025,7 @@ class DockerContainerDumper(BaseDumper):
         self.set_get_version_cmd()
         self.set_data_path()
         self.set_volume()
+        self.set_named_volume()
         if not self.CONTAINER_NAME:
             # when the container_name is not provided in the data plugin manifest,
             # we will check image_metadata to see if it's defined there.
@@ -2034,6 +2039,8 @@ class DockerContainerDumper(BaseDumper):
                 self.ORIGINAL_CONTAINER_STATUS = self.container.status
             except (NotFound, NullResource):
                 if self.DOCKER_IMAGE:
+                    if self.NAMED_VOLUME:
+                        self.client.volumes.create(**self.NAMED_VOLUME)
                     if self.CONTAINER_NAME:
                         self.logger.info(
                             'Can not find an existing container "%s", try to start a new one with this name.',
