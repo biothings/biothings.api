@@ -7,8 +7,7 @@ to a fully operational BioThings API. In a second part, this API will enrich for
 
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
-.. note:: The following tutorial is only valid for **BioThings Studio** release **0.2b**. Check
-   all available `releases <https://github.com/biothings/biothings_studio/releases>`_ for more.
+.. note:: The following tutorial uses a docker-compose file to run the **BioThings Studio** and **Hub**. This file is available `here <https://github.com/biothings/biothings_docker/tree/docker-compose>`_
 
 =================
 1. What you'll learn
@@ -16,7 +15,7 @@ to a fully operational BioThings API. In a second part, this API will enrich for
 
 Through this guide, you'll learn:
 
-* how to obtain a Docker image to run your favorite API
+* how to run a docker-compose to run your favorite API
 * how to run that image inside a Docker container and how to access the **BioThings Studio** application
 * how to integrate a new data source by defining a data plugin
 * how to define a build configuration and create data releases
@@ -29,14 +28,9 @@ Through this guide, you'll learn:
 =============
 
 Using **BioThings Studio** requires a Docker server up and running, some basic knowledge
-about commands to run and use containers. Images have been tested on Docker >=17. Using AWS cloud,
-you can use our public AMI **biothings_demo_docker** (``ami-44865e3c`` in Oregon region) with Docker pre-configured
-and ready for studio deployment. Instance type depends on the size of data you
-want to integrate and parsers' performances. For this tutorial, we recommend using instance type with at least
-4GiB RAM, such as ``t2.medium``. AMI comes with an extra 30GiB EBS volume, which is more than enough
-for the scope of this tutorial.
+about commands to run and use containers. Images have been tested on Docker >=17.
 
-Alternately, you can install your own Docker server (on recent Ubuntu systems, ``sudo apt-get install docker.io``
+You can install your own Docker server (on recent Ubuntu systems, ``sudo apt-get install docker.io``
 is usually enough). You may need to point Docker images directory to a specific hard drive to get enough space,
 using ``-g`` option:
 
@@ -47,16 +41,16 @@ using ``-g`` option:
   # restart to make this change active
   sudo service docker restart
 
+Alternatively, if you have a Mac or Windows, you can install `Docker Desktop <https://www.docker.com/products/docker-desktop>`_.
+It will install the docker server for you. Once you have Docker Desktop installed, go to settings->resources->advanced. You should give at least 80% of your resources to Docker for each category.
+This will prevent your Docker from crashing if you are running a large datasource or build.
 
 ============
 3. Installation
 ============
 
-**BioThings Studio** is available as a Docker image that you can pull from our BioThings Docker Hub repository:
-
-.. code:: bash
-
-  $ docker pull biothings/biothings-studio:0.2b
+**BioThings Studio** is available as a docker-compose file at our `github repository <https://github.com/biothings/biothings_docker/>`_.:
+Clone the repository and go to the ``docker-compose`` branch.
 
 A **BioThings Studio** instance exposes several services on different ports:
 
@@ -70,43 +64,24 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
 * **60080**: `Code-Server <https://github.com/cdr/code-server>`_, a webapp used to directly edit code in the container
 
-We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
-having to enter the container:
+.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000, 60080 are exposed by default in the docker-compose.yml file.
 
 .. code:: bash
 
-  $ docker run --rm --name studio -p 8080:8080 -p 7022:7022 -p 7080:7080 -p 7081:7081 -p 9200:9200 \
-    -p 27017:27017 -p 8000:8000 -p 9000:9000 -p 60080:60080 -d biothings/biothings-studio:0.2b
-
-.. note:: we need to add the release number after the image name: biothings-studio:**0.2b**. Should you use another release (including unstable releases,
-   tagged as ``master``) you would need to adjust this parameter accordingly.
-
-.. note:: Biothings Studio and the Hub are not designed to be publicly accessible. Those ports should **not** be exposed. When
-   accessing the Studio and any of these ports, SSH tunneling can be used to safely access the services from outside.
-   Ex: ``ssh -L 7080:localhost:7080 -L 8080:localhost:8080 -L 7022:localhost:7022 -L 9000:localhost:9000 user@mydockerserver`` will expose the Hub REST API, the web application,
-   the Hub SSH, and Cerebro app ports to your computer, so you can access the webapp using http://localhost:8080, the Hub REST API using http://localhost:7080,
-   http://localhost:9000 for Cerebro, and directly type ``ssh -p 7022 biothings@localhost`` to access Hub's internals via the console.
-   See https://www.howtogeek.com/168145/how-to-use-ssh-tunneling for more details.
+  $ docker compose up -d --build
 
 We can follow the starting sequence using ``docker logs`` command:
 
 .. code:: bash
 
-  $ docker logs -f studio
-  Waiting for mongo
-  tcp        0      0 127.0.0.1:27017         0.0.0.0:*               LISTEN      -
-  * Starting Elasticsearch Server
-  ...
-  Waiting for cerebro
-  ...
-  now run webapp
-  not interactive
+  $ docker logs -f biothings
+   ARG
+   SSH keys not yet created, creating
+   Generating SSH Keys for BioThings Hub...
+   SSH Key has been generated, Public Key:
 
 Please refer to `Filesystem overview <studio_guide.html#filesystem-overview>`_ and  `Services check <studio_guide.html#services-check>`_ for
 more details about Studio's internals.
-
-By default, the studio will auto-update its source code to the latest version available and install all required dependencies. This behavior can be skipped
-by adding ``no-update`` at the end of the command line of ``docker run ...``.
 
 We can now access **BioThings Studio** using the dedicated web application (see `webapp overview <studio_guide.html#overview-of-biothings-studio-web-application>`_).
 
@@ -119,7 +94,7 @@ In this section we'll dive in more details on using the **BioThings Studio** and
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
-The whole source code is available at https://github.com/sirloon/pharmgkb, each branch pointing to a specific step in this tutorial.
+The whole source code is available at https://github.com/remoteeng00/pharmgkb/, each branch pointing to a specific step in this tutorial.
 
 4.1. Input data
 ^^^^^^^^^^^^^^^
@@ -137,12 +112,15 @@ The last two files will be used in the second part of this tutorial when we'll a
 .. _`drugLabels.zip`: https://s3.pgkb.org/data/drugLabels.zip
 .. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
 
+These files will be downloaded by the **Hub** when we trigger the dumper. These files will go into a folder named ``data_folder`` by default.
+This will be explained in more detail in the `Data plugin <studio.html#data-plugin>`_ section.
+
 4.2. Parser
 ^^^^^^^^^^^
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
-https://github.com/sirloon/pharmgkb/blob/pharmgkb_v1/parser.py. After some boilerplate code at the beginning for dependencies and initialization,
+https://github.com/remoteeng00/pharmgkb/blob/pharmgkb_v1/parser.py. After some boilerplate code at the beginning for dependencies and initialization,
 the main logic is the following:
 
 
@@ -178,6 +156,10 @@ containing the downloaded data. This path is automatically set by the Hub and po
 
 It is the responsibility of the parser to select, within that folder, the file(s) of interest. Here we need data from a file named ``var_drug_ann.tsv``.
 Following the moto "don't assume it, prove it", we make that file exists.
+
+.. note:: In this case, an assertion isn't necessary as code will fail anyway if the file doesn't exist. But it's a good practice to make sure
+   the file exists before trying to open it. Also, it's a good practice to use ``os.path.join()`` to build the path to the file, as it will
+   automatically use the right path separator depending on the operating system.
 
 .. code:: python
 
@@ -232,6 +214,9 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
 .. note:: In this specific example, we read the whole content of this input file in memory, then store annotations per gene. The data itself
    is small enough to do this, but memory usage always needs to be cautiously considered when we write a parser.
 
+.. note:: In this case the final documents are assembled within a generator function, which is a good practice to save memory.
+   You may see within our `Biothings github organization <https://github.com/biothings>`_ that we have plugins where we return a dictonary or a list of documents.
+   This is also fine, but it is recommended to use a generator function when possible.
 
 4.3. Data plugin
 ^^^^^^^^^^^^^^^^
@@ -252,7 +237,7 @@ that contains everything useful for the datasource. This is what we'll do in the
    so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
    is already defined in github in our case, we'll use the github repo registration method.
 
-The corresponding data plugin repository can be found at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v1. The manifest file looks like this:
+The corresponding data plugin repository can be found at https://github.com/remoteeng00/pharmgkb/tree/pharmgkb_v1. The manifest file looks like this:
 
 .. code:: bash
 
