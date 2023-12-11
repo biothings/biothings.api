@@ -92,7 +92,10 @@ def docker_source_info_parser(url):
     keep_container = query.get("keep_container")
     container_name = query.get("container_name")
     get_version_cmd = query.get("get_version_cmd")
+    named_volume = query.get("named_volume")
     volume = query.get("volume")
+    if named_volume:
+        volume = json.loads(named_volume)
     if volume:
         volume = json.loads(volume)
     if keep_container:
@@ -113,6 +116,7 @@ def docker_source_info_parser(url):
         "keep_container": keep_container,
         "get_version_cmd": get_version_cmd,
         "volume": volume,
+        "named_volume": named_volume,
     }
     if keep_container is None:
         # remove keep_container if not set, so that later we can check its value from image/container metadata
