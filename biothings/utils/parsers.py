@@ -95,7 +95,7 @@ def docker_source_info_parser(url):
     named_volume = query.get("named_volume")
     volume = query.get("volume")
     if named_volume:
-        volume = json.loads(named_volume)
+        named_volume = json.loads(named_volume)
     if volume:
         volume = json.loads(volume)
     if keep_container:
