@@ -44,7 +44,7 @@ def temporary_data_storage(tmp_path_factory, request) -> Path:
         logger.info(f"Discovered {test_name}@{test_location} given node #{test_node}")
 
     module_root_path = request.config.rootpath
-    test_data_directories = ["tests/hub/config/data", "tests/hub/datarelease/data", "tests/data"]
+    test_data_directories = ["tests/hub/dataplugin/plugin_architectures"]
     test_data_locations = [module_root_path / test_data_directory for test_data_directory in test_data_directories]
 
     temp_directory_name = "state_alchemist"
