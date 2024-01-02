@@ -3,7 +3,6 @@ Tests for exercising the functionality and structure of our
 plugin design
 """
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 import logging
 
@@ -32,8 +31,7 @@ def test_plugin_loading(plugin):
     Because we moved the plugin contents to the /tmp/ directory to avoid
     writing over the data stored in the repository, we need to ensure we
     add the plugin to the python system path for when we attempt to load the
-    plugin via 
-
+    plugin via:
     p_loader = assistant_instance.loader
     p_loader.load_plugin()
 
@@ -41,7 +39,6 @@ def test_plugin_loading(plugin):
     (version, parser, etc ...) we can properly find the modules we've moved
     off the python system path
     """
-    sys.path.append(str(plugin))
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
@@ -100,7 +97,6 @@ def test_plugin_loading(plugin):
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
 def test_plugin_dump(plugin):
-    sys.path.append(str(plugin))
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
@@ -143,7 +139,6 @@ def test_plugin_dump(plugin):
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
 def test_plugin_upload(plugin):
-    sys.path.append(str(plugin))
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)

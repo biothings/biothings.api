@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import shutil
+import sys
 import threading
 
 import pytest
@@ -17,7 +18,7 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def temporary_mock_data(tmp_path_factory):
     """
     Generates a subset of random binary files for populating the mock data hosting
@@ -38,7 +39,7 @@ def temporary_mock_data(tmp_path_factory):
     shutil.rmtree(str(temp_directory))
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def mock_data_hosting(temporary_mock_data):
     """
     Mocks a basic HTTP server pointed to a temporary directory
@@ -73,7 +74,7 @@ def mock_data_hosting(temporary_mock_data):
     logger.info(f"Shut down HTTP server instance {http_server_instance} @ {http_server_instance.server_address}")
 
 
-@pytest.fixture()
+@pytest.fixture(scope="function")
 def plugin(temporary_data_storage, mock_data_hosting, request):
     """
     Modified the plugin manifest to reflect the data generated
@@ -106,4 +107,6 @@ def plugin(temporary_data_storage, mock_data_hosting, request):
     with open(manifest_file, "w", encoding="utf-8") as file_handle:
         json.dump(manifest_content, file_handle, indent=4)
 
-    return mock_plugin_directory
+    sys.path.append(str(mock_plugin_directory))
+    yield mock_plugin_directory
+    sys.path.remove(str(mock_plugin_directory))
