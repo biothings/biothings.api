@@ -86,7 +86,7 @@ def plugin(temporary_data_storage, mock_data_hosting, request):
     server_thread = mock_data_hosting[1]
     plugin_name = request.param
 
-    plugin_directory = Path(temporary_data_storage) / "plugins"
+    plugin_directory = Path(temporary_data_storage) / "plugin_architectures"
     mock_plugin_directory = Path(plugin_directory) / plugin_name
 
     request_handler_keyword_mapping = server_instance.RequestHandlerClass.keywords
