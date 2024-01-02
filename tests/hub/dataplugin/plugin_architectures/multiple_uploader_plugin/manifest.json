@@ -1,0 +1,22 @@
+{
+    "version": "1.0",
+    "dumper": {
+        "data_url": [],
+        "uncompress": false,
+        "release": "version:get_release"
+    },
+    "uploaders": [
+        {
+            "name" : "filepath",
+            "parser": "parser:path_loader",
+            "on_duplicates": "error",
+            "mapping": "mapping:path_mapping"
+        },
+        {
+            "name" : "filesize",
+            "parser": "parser:size_loader",
+            "on_duplicates": "error",
+            "mapping": "mapping:size_mapping"
+        }
+    ]
+}
