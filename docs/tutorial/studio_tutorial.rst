@@ -214,7 +214,7 @@ in a dictionary indexed by gene ID. The final documents are assembled in the las
 .. note:: In this specific example, we read the whole content of this input file in memory, then store annotations per gene. The data itself
    is small enough to do this, but memory usage always needs to be cautiously considered when we write a parser.
 
-.. note:: In this case the final documents are assembled within a generator function, which is a good practice to save memory.
+.. note:: In this case, the final documents are assembled within a generator function, which is a good practice to save memory.
    You may see within our `Biothings github organization <https://github.com/biothings>`_ that we have plugins where we return a dictonary or a list of documents.
    This is also fine, but it is recommended to use a generator function when possible.
 
@@ -297,6 +297,9 @@ reconnect, which we'll do!
 
 .. image:: ../_static/hub_restarting.png
    :width: 250px
+
+Once you reconnect, you will have to restart the docker-compose file to make sure the **Hub** is properly restarted. You can do this by running:
+``docker compose up -d``
 
 The Hub shows an error though:
 
