@@ -1890,6 +1890,7 @@ class DockerContainerDumper(BaseDumper):
         self.container = None
         self._source_info = {}  # parsed source_info dictionary from the SRC_URL string
         self.image_metadata = {}  # parsed LABEL metadata from the Docker image
+        self.volume = None # volume that is created by the NAMED_VOLUME var
 
     @property
     def source_config(self):
@@ -2040,7 +2041,7 @@ class DockerContainerDumper(BaseDumper):
             except (NotFound, NullResource):
                 if self.DOCKER_IMAGE:
                     if self.NAMED_VOLUME:
-                        self.client.volumes.create(**self.NAMED_VOLUME)
+                        self.volume = self.client.volumes.create(**self.NAMED_VOLUME)
                     if self.CONTAINER_NAME:
                         self.logger.info(
                             'Can not find an existing container "%s", try to start a new one with this name.',
@@ -2295,6 +2296,8 @@ class DockerContainerDumper(BaseDumper):
                 self.container.stop()
                 self.container.wait(timeout=self.TIMEOUT)
                 self.container.remove(v=True)
+                if self.NAMED_VOLUME:
+                    self.volume.remove()
 
     def post_dump(self, *args, **kwargs):
         """Delete container or restore the container status if necessary, called in the dump method after the dump is done (during the "post" step)"""
