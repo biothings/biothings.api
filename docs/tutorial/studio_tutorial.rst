@@ -94,7 +94,7 @@ In this section we'll dive in more details on using the **BioThings Studio** and
 within the **Hub**, declare a build configuration using that datasource, create a build from that configuration, then a data release and finally instantiate a new API service
 and use it to query our data.
 
-The whole source code is available at https://github.com/remoteeng00/pharmgkb/, each branch pointing to a specific step in this tutorial.
+The whole source code is available at https://github.com/biothings/tutorials/tree/master, each branch pointing to a specific step in this tutorial.
 
 4.1. Input data
 ^^^^^^^^^^^^^^^
@@ -120,7 +120,7 @@ This will be explained in more detail in the `Data plugin <studio.html#data-plug
 
 In order to ingest this data and make it available as an API, we first need to write a parser. Data is pretty simple, tab-separated files, and we'll
 make it even simpler by using ``pandas`` python library. The first version of this parser is available in branch ``pharmgkb_v1`` at
-https://github.com/remoteeng00/pharmgkb/blob/pharmgkb_v1/parser.py. After some boilerplate code at the beginning for dependencies and initialization,
+https://github.com/biothings/tutorials/blob/pharmgkb_v1/parser.py. After some boilerplate code at the beginning for dependencies and initialization,
 the main logic is the following:
 
 
@@ -237,7 +237,7 @@ that contains everything useful for the datasource. This is what we'll do in the
    so we don't have to regurlarly update the plugin code (``git pull``) from the webapp, to fetch the latest code. That said, since the plugin
    is already defined in github in our case, we'll use the github repo registration method.
 
-The corresponding data plugin repository can be found at https://github.com/remoteeng00/pharmgkb/tree/pharmgkb_v1. The manifest file looks like this:
+The corresponding data plugin repository can be found at https://github.com/biothings/tutorials/tree/pharmgkb_v1. The manifest file looks like this:
 
 .. code:: bash
 
@@ -298,15 +298,9 @@ reconnect, which we'll do!
 .. image:: ../_static/hub_restarting.png
    :width: 250px
 
-Once you reconnect, you will have to restart the docker-compose file to make sure the **Hub** is properly restarted. You can do this by running:
-``docker compose up -d``
+Once you reconnect, you will have to do a hard refresh on your webpage, for example, ``cmd + shift + r`` on a Mac or ``ctrl + shift + r`` on a Windows/Linux.
 
-The Hub shows an error though:
-
-.. image:: ../_static/nomanifest.png
-   :width: 250px
-
-Indeed, we fetch source code from branch ``master``, which doesn't contain any manifest file. We need to switch to another branch (this tutorial is organized using branches,
+Since we fetch source code from branch ``master``, which doesn't contain any manifest file. We need to switch to another branch (this tutorial is organized using branches,
 and also it's a perfect opportunity to learn how to use a specific branch/commit using **BioThings Studio**...)
 
 Let's click on ``pharmgkb`` link, then |plugin|. In the textbox on the right, enter ``pharmgkb_v1`` then click on ``Update``.
@@ -319,6 +313,8 @@ Let's click on ``pharmgkb`` link, then |plugin|. In the textbox on the right, en
 
 **BioThings Studio** will fetch the corresponding branch (we could also have specified a commit hash for instance), source code changes will be detected and the Hub will restart.
 The new code version is now visible in the plugin tab
+
+.. note:: Remember to do a hard refresh again before continuing as the hub will attempt to restart.
 
 .. image:: ../_static/branch.png
    :width: 400px
@@ -352,7 +348,7 @@ we've run 3 commands to register the plugin, dump the data and upload the JSON d
 .. image:: ../_static/allcommands.png
    :width: 450px
 
-We also have new notifications as shown by the red number on the right. Let's have a quick look:
+We also have new notifications as shown by the red number on the left. Let's have a quick look:
 
 .. image:: ../_static/allnotifs.png
    :width: 450px
@@ -363,7 +359,7 @@ release number, the data folder, when the last download was, how long it tooks t
 .. image:: ../_static/dumptab.png
    :width: 450px
 
-Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB.
+Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB. Exact number may change depending on source file that is downloaded.
 
 .. image:: ../_static/uploadtab.png
    :width: 450px
@@ -486,10 +482,10 @@ tells the **Hub** which datasources should be merged together, and how. Click on
 * the `document type` represents the kind of documents stored in the merged collection. It gives its name to the annotate API endpoint (eg. /gene). This source
   is about gene annotations, so "gene" it is...
 * open the dropdown list and select the `sources` you want to be part of the merge. We only have one, "pharmgkb"
-* in `root sources`, we can declare which sources are allowed to create new documents in the merged collection, that is merge documents from a
-  datasource, but only if corresponding documents exist in the merged collection. It's useful if data from a specific source relates to data on
-  another source (it only makes sense to merge that relating data if the data itself is present). If root sources are declared, **Hub** will first
-  merge them, then the others. In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection)
+* in `root sources`, we can declare which sources are allowed to create new documents in the merged collection.
+  If a root source is declared, data from other sources will only be merged if documents previously exist with same IDs (documents coming from root sources).
+  If not, data is discarded. Finally, if no root source is declared, any data sources can generate a new document in the merged data.
+  In our case, we can leave it empty (no root sources specified, all sources can create documents in the merged collection).
 * selecting a builder is optional, but for the sake of this tutorial, we'll choose ``LinkDataBuilder``. This special builder will fetch documents directly from
   our datasources `pharmgkb` when indexing documents, instead of duplicating documents into another connection (called `target` or `merged` collection). We can
   do this (and save time and disk space) because we only have one datasource here.
