@@ -8,12 +8,14 @@ import logging
 
 import pytest
 
+
+from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
-from biothings.hub.dataplugin.assistant import AssistantManager
-from biothings.hub.dataplugin.assistant import LocalAssistant
+from biothings.hub.dataplugin.assistant import AdvancedPluginLoader, LocalAssistant, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.manager import DataPluginManager
-from biothings.utils.hub_db import get_data_plugin
+from biothings.utils import hub_db
+from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(__name__)
@@ -21,40 +23,47 @@ logger = logging.getLogger(__name__)
 plugin_designs = ["single_uploader_plugin", "multiple_uploader_plugin"]
 
 
-@pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
-def test_plugin_loading(plugin):
+def test_local_assistant_construction():
     """
-    Test the plugin loading capability across different plugin implementations
+    Ensures that we can construct and leverage the API provided
+    by the <biothings.hub.dataplugin.assistant LocalAssistant>
     """
+    mock_plugin = Path("/mock/plugins/nuclear-plugin")
+    plugin_name = mock_plugin.name
 
-    """
-    Because we moved the plugin contents to the /tmp/ directory to avoid
-    writing over the data stored in the repository, we need to ensure we
-    add the plugin to the python system path for when we attempt to load the
-    plugin via:
-    p_loader = assistant_instance.loader
-    p_loader.load_plugin()
-
-    This is so when we attempt to import the modules via importlib
-    (version, parser, etc ...) we can properly find the modules we've moved
-    off the python system path
-    """
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
 
-    plugin_name = plugin.name
     assistant_url = f"local://{plugin_name}"
-
     assistant_instance = LocalAssistant(assistant_url)
 
-    logger.info(
-        (f"Plugin Assistant Plugin Name: {assistant_instance.plugin_name} | " f"Plugin Path: {plugin.as_posix()}")
-    )
+    assert isinstance(assistant_instance.dumper_manager, DumperManager)
+    assert assistant_instance.dumper_manager.register == {}
+    assert assistant_instance.dumper_manager.get_source_ids() == []
 
-    dp = get_data_plugin()
-    dp.remove({"_id": assistant_instance.plugin_name})
+    assert isinstance(assistant_instance.data_plugin_manager, DataPluginManager)
+
+    assert isinstance(assistant_instance.uploader_manager, UploaderManager)
+    assert assistant_instance.uploader_manager.register == {}
+    assert assistant_instance.uploader_manager.get_source_ids() == []
+
+    assert assistant_instance.plugin_name == plugin_name
+    assert assistant_instance.plugin_type == "local"
+    assert assistant_instance.url == assistant_url
+
+    assert assistant_instance.loaders["manifest"] == ManifestBasedPluginLoader
+    assert assistant_instance.loaders["advanced"] == AdvancedPluginLoader
+
+    assert Path(assistant_instance.logfile).exists()
+
+
+@pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
+def test_plugin_loading(plugin):
     """
+    Test the plugin loading capability across different plugin implementations
+
+    *** NOTE ***
     The download folder must be the exact same directory as the plugin directory
     due to the search process when attempting to load the plugin
 
@@ -62,11 +71,9 @@ def test_plugin_loading(plugin):
     property instance (see below) it will search in the download folder directory. If this is not
     specified to the plugin directory where we define the manifest location then the search will
     fail and we will be unable to load the plugin
-    @property
+    619     @property
     620     def loader(self):
-    621         \"""
-    622         Return loader object able to interpret plugin's folder content
-    623         \"""
+
     624         if not self._loader:
     625             # iterate over known loaders, the first one which can interpret plugin content is kept
     626             for klass in self.loaders.values():
@@ -77,8 +84,20 @@ def test_plugin_loading(plugin):
     631                 klass.keylookup = self.keylookup
     632                 loader = klass(self.plugin_name)
     634                 if loader.can_load_plugin():
-    biothings/hub/dataplugin/assistant.py" 1175 lines --52%--
+    biothings/hub/dataplugin/assistant.py
     """
+    hub_db.setup(config)
+    LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
+    LocalAssistant.dumper_manager = DumperManager(job_manager=None)
+    LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
+
+    plugin_name = plugin.name
+    assistant_url = f"local://{plugin_name}"
+
+    assistant_instance = LocalAssistant(assistant_url)
+
+    dp = hub_db.get_data_plugin()
+    dp.remove({"_id": assistant_instance.plugin_name})
     plugin_entry = {
         "_id": assistant_instance.plugin_name,
         "plugin": {
@@ -97,6 +116,10 @@ def test_plugin_loading(plugin):
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
 def test_plugin_dump(plugin):
+    """
+    Test the dumper capabilities associated with the plugin architectures
+    """
+    hub_db.setup(config)
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
@@ -106,7 +129,7 @@ def test_plugin_dump(plugin):
 
     assistant_instance = LocalAssistant(assistant_url)
 
-    dp = get_data_plugin()
+    dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
     plugin_entry = {
         "_id": assistant_instance.plugin_name,
@@ -132,13 +155,26 @@ def test_plugin_dump(plugin):
 
     # Generate dumper instance
     dumper_class = dumper_manager[plugin_name][0]
-    _dumper = dumper_class()
-    _dumper.prepare()
-    current_plugin.dumper = _dumper
+    dumper_instance = dumper_class()
+    current_plugin.dumper = dumper_instance
+    current_plugin.dumper.prepare()
+
+    current_plugin.dumper.create_todump_list(force=True)
+    for item in current_plugin.dumper.to_dump:
+        current_plugin.dumper.download(item["remote"], item["local"])
+
+    current_plugin.dumper.steps = ["post"]
+    current_plugin.dumper.post_dump()
+    current_plugin.dumper.register_status("success")
+    current_plugin.dumper.release_client()
+
+    dp.remove({"_id": current_plugin.plugin_name})
+    data_folder = current_plugin.dumper.new_data_folder
 
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
 def test_plugin_upload(plugin):
+    hub_db.setup(config)
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
     LocalAssistant.dumper_manager = DumperManager(job_manager=None)
     LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
@@ -148,7 +184,7 @@ def test_plugin_upload(plugin):
 
     assistant_instance = LocalAssistant(assistant_url)
 
-    dp = get_data_plugin()
+    dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
     plugin_entry = {
         "_id": assistant_instance.plugin_name,
@@ -177,3 +213,24 @@ def test_plugin_upload(plugin):
     if not isinstance(uploader_classes, list):
         uploader_classes = [uploader_classes]
     current_plugin.uploader_classes = uploader_classes
+
+    for uploader_cls in current_plugin.uploader_classes:
+        uploader = uploader_cls.create(db_conn_info="")
+        uploader.make_temp_collection()
+        uploader.prepare()
+
+        assert Path(uploader.data_folder).exists()
+
+        upload_worker(
+            uploader.fullname,
+            uploader.__class__.storage_class,
+            uploader.load_data,
+            uploader.temp_collection_name,
+            10000,
+            1,
+            uploader.data_folder,
+            db=uploader.db,
+        )
+        uploader.switch_collection()
+        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
+        uploader.clean_archived_collections()

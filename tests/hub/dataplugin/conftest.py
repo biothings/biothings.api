@@ -107,6 +107,16 @@ def plugin(temporary_data_storage, mock_data_hosting, request):
     with open(manifest_file, "w", encoding="utf-8") as file_handle:
         json.dump(manifest_content, file_handle, indent=4)
 
+    # Because we moved the plugin contents to the /tmp/ directory to avoid
+    # writing over the data stored in the repository, we need to ensure we
+    # add the plugin to the python system path for when we attempt to load the
+    # plugin via:
+    # p_loader = assistant_instance.loader
+    # p_loader.load_plugin()
+
+    # This is so when we attempt to import the modules via importlib
+    # (version, parser, etc ...) we can properly find the modules we've moved
+    # off the python system path
     sys.path.append(str(mock_plugin_directory))
     yield mock_plugin_directory
     sys.path.remove(str(mock_plugin_directory))
