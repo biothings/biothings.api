@@ -2047,7 +2047,7 @@ class DockerContainerDumper(BaseDumper):
                             for named_volume in self.NAMED_VOLUMES:
                                 self.volumes.append(self.client.volumes.create(**named_volume))
                         else:
-                            self.volumes = list(self.client.volumes.create(**self.NAMED_VOLUMES))
+                            self.volumes = [self.client.volumes.create(**self.NAMED_VOLUMES)]
                     if self.CONTAINER_NAME:
                         self.logger.info(
                             'Can not find an existing container "%s", try to start a new one with this name.',
