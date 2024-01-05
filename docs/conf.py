@@ -59,20 +59,16 @@ html_static_path = ["_static"]
 
 
 # on_rtd is whether we are on readthedocs.org
-import os
+# import os
+# on_rtd = os.environ.get("READTHEDOCS", None) == "True"
 
-on_rtd = os.environ.get("READTHEDOCS", None) == "True"
+try:
+    import sphinx_rtd_theme
 
-if not on_rtd:
-    # only import and set the theme if we're building docs locally
-    try:
-        import sphinx_rtd_theme
-
-        html_theme = "sphinx_rtd_theme"
-        html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
-    except ImportError:
-        print('Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.')
-# otherwise, readthedocs.org uses their theme by default, so no need to specify it
+    html_theme = "sphinx_rtd_theme"
+    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+except ImportError:
+    print('Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.')
 
 
 # Both the class’ and the __init__ method’s docstring are concatenated and inserted.
