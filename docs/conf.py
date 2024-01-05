@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",  # support numpy and google style docstring
     "sphinx_reredirects",  # handle old page redirection see "redirects" setting below
+    "sphinx_rtd_theme",  # standard readthedocs theme
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -57,19 +58,22 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 
+html_theme = "sphinx_rtd_theme"
 
-# on_rtd is whether we are on readthedocs.org
+# # on_rtd is whether we are on readthedocs.org
 # import os
 # on_rtd = os.environ.get("READTHEDOCS", None) == "True"
 
-try:
-    import sphinx_rtd_theme
+# if not on_rtd:
+#     # only import and set the theme if we're building docs locally
+#     try:
+#         import sphinx_rtd_theme
 
-    html_theme = "sphinx_rtd_theme"
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
-except ImportError:
-    print('Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.')
-
+#         html_theme = "sphinx_rtd_theme"
+#         html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+#     except ImportError:
+#         print('Warning: "sphinx_rtd_theme" is not installed, fall back to default theme.')
+# # otherwise, readthedocs.org uses their theme by default, so no need to specify it
 
 # Both the class’ and the __init__ method’s docstring are concatenated and inserted.
 # Ref: http://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content
