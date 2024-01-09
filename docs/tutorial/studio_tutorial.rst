@@ -688,6 +688,18 @@ Finally, we can fetch a variant by its PharmGKB ID:
   }
 
 
+Most of the time, the API testing is not necessary. Unless you are specifically testing out a custom api feature.
+You can learn more about customizing api web components in the `Biothings Web <web.html>`_. In our use case, you can just query the Elasticsearch instance directly.
+In this example, we will be using `postman <https://www.postman.com/>`_, to query the Elasticsearch Index.
+Once you have postman installed you can make this query ``http://localhost:9200/MY_BUILD_NAME/_search``. Check a few of the hits to make sure if your parser has correctly formatted the data.
+You can also make more detailed search queries in the elasticsearch index if needed.
+
+
+
+.. image:: ../_static/postman.png
+   :width: 300px
+
+
 4.9. Conclusions
 ^^^^^^^^^^^^^^^^^
 
@@ -709,7 +721,7 @@ In the previous part, we generated an API from a single flat file. This API serv
 we also downloaded drug labels and publications information. Integrating those unused files, we'll be able to enrich our API even more, that's the goal of this part.
 
 In our case, we have one *dumper* responsible for downloading three different files, and we now need three different *uploaders* in order to process these files. With above data plugin (4.3), only one file is parsed. In order to proceed
-further, we need to specify multiple *uploaders* on the *manifest.json* file, the full example can be found in branch ``pharmgkb_v5`` available at https://github.com/remoteeng00/pharmgkb/tree/pharmgkb_v5.
+further, we need to specify multiple *uploaders* on the *manifest.json* file, the full example can be found in branch ``pharmgkb_v5`` available at https://github.com/biothings/tutorials/tree/pharmgkb_v5.
 
 .. note:: You can learn more about data plugin in the section **B.4. Data plugin architecture and specifications**
 
@@ -769,34 +781,34 @@ Let's delete the plugin, by clicking on |trash|, and confirm the deletion.
 .. |trash| image:: ../_static/trash.png
    :width: 30px
 
-**Hub** will restart again (reload page if not) and this time, our datasource is active. If we click on ``pharmgkb``, we'll see the same details as before except the ``Plugin`` tab which
+**Hub** will restart again (reload page if not) and this time, our datasource is active. If we click on ``tutorials``, we'll see the same details as before except the ``Plugin`` tab which
 disappeared. So far, our exported code runs, and we're in the exact same state as before, the **Hub** even kept our previously dumped/uploaded data.
 
 Let's explore the source code that has been generated through out this process. Let's enter our docker container, and become user ``biothings`` (from which everything runs):
 
 .. code:: bash
 
-  $ docker exec -ti studio /bin/bash
+  $ docker exec -ti biothings /bin/bash
   $ sudo su - biothings
 
 Paths provided as export results (``hub/dataload/sources/*``) are relative to the started folder named ``biothings_studio``. Let's move there:
 
 .. code:: bash
 
-  $ cd biothings_studio/hub/dataload/sources/
+  $ cd ~/biothings_studio/hub/dataload/sources/
   $ ls -la
   total 0
   -rw-rw-r-- 1 biothings biothings   0 Jan 15 23:41 __init__.py
   drwxrwxr-x 2 biothings biothings  45 Jan 15 23:41 __pycache__
   drwxr-xr-x 1 biothings biothings  75 Jan 15 23:41 ..
   drwxr-xr-x 1 biothings biothings  76 Jan 22 19:32 .
-  drwxrwxr-x 3 biothings biothings 154 Jan 22 19:32 pharmgkb
+  drwxrwxr-x 3 biothings biothings 154 Jan 22 19:32 tutorials
 
-A ``pharmgkb`` folder can be found and contains the exported code:
+A ``tutorials`` folder can be found and contains the exported code:
 
 .. code:: bash
 
-  $ cd pharmgkb
+  $ cd tutorials
   $ ls
   total 32
   drwxrwxr-x 3 biothings biothings   154 Jan 22 19:32 .
@@ -813,15 +825,15 @@ Some files were copied from data plugin repository (``LICENCE``, ``README`` and 
 for the uploader and the mappings, and ``__init__.py`` so the **Hub** can find these components upon start. We'll go in further details later, specially when we'll add more
 uploaders.
 
-For conveniency, the exported code can be found in branch ``pharmgkb_v3`` available at https://github.com/sirloon/pharmgkb/tree/pharmgkb_v3. One easy way to follow
-this tutorial without having to type too much is to replace folder ``pharmgkb`` with a clone from Git repository. The checked out code is exactly the same as code after export.
+For conveniency, the exported code can be found in branch ``pharmgkb_v3`` available at https://github.com/biothings/tutorials/tree/pharmgkb_v3. One easy way to follow
+this tutorial without having to type too much is to replace folder ``tutorials`` with a clone from Git repository. The checked out code is exactly the same as code after export.
 
 .. code:: bash
 
   $ cd ~/biothings_studio/hub/dataload/sources/
-  $ rm -fr pharmgkb
-  $ git clone https://github.com/sirloon/pharmgkb.git
-  $ cd pharmgkb
+  $ rm -fr tutorials
+  $ git clone https://github.com/biothings/tutorials.git
+  $ cd tutorials
   $ git checkout pharmgkb_v3
 
 
