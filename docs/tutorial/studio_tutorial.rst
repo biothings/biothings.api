@@ -49,7 +49,7 @@ This will prevent your Docker from crashing if you are running a large datasourc
 3. Installation
 ============
 
-**BioThings Studio** is available as a docker-compose file at our `github repository <https://github.com/biothings/biothings_docker/>`_.:
+**BioThings Studio** is available as a docker-compose file at our `github repository <https://github.com/biothings/biothings_docker/>`_.
 Clone the repository and go to the ``docker-compose`` branch.
 
 A **BioThings Studio** instance exposes several services on different ports:
@@ -113,7 +113,7 @@ The last two files will be used in the second part of this tutorial when we'll a
 .. _`occurrences.zip`: https://s3.pgkb.org/data/occurrences.zip
 
 These files will be downloaded by the **Hub** when we trigger the dumper. These files will go into a folder named ``data_folder`` by default.
-This will be explained in more detail in the `Data plugin <studio.html#data-plugin>`_ section.
+This will be explained in more detail in the `Data Plugin <studio.html#id1>`_ section.
 
 4.2. Parser
 ^^^^^^^^^^^
@@ -303,7 +303,7 @@ Once you reconnect, you will have to do a hard refresh on your webpage, for exam
 Since we fetch source code from branch ``master``, which doesn't contain any manifest file. We need to switch to another branch (this tutorial is organized using branches,
 and also it's a perfect opportunity to learn how to use a specific branch/commit using **BioThings Studio**...)
 
-Let's click on ``pharmgkb`` link, then |plugin|. In the textbox on the right, enter ``pharmgkb_v1`` then click on ``Update``.
+Let's click on ``tutorials`` link, then |plugin|. In the textbox on the right, enter ``pharmgkb_v1`` then click on ``Update``.
 
 .. |plugin| image:: ../_static/plugin.png
    :width: 70px
@@ -348,7 +348,7 @@ we've run 3 commands to register the plugin, dump the data and upload the JSON d
 .. image:: ../_static/allcommands.png
    :width: 450px
 
-We also have new notifications as shown by the red number on the left. Let's have a quick look:
+We also have new notifications as shown by the speakerphone icon number on the right. Let's have a quick look:
 
 .. image:: ../_static/allnotifs.png
    :width: 450px
@@ -359,7 +359,7 @@ release number, the data folder, when the last download was, how long it tooks t
 .. image:: ../_static/dumptab.png
    :width: 450px
 
-Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB. Exact number may change depending on source file that is downloaded.
+Same for the `Uploader` tab, we now have 979 documents uploaded to MongoDB. Exact number may change depending on when the source file that is downloaded.
 
 .. image:: ../_static/uploadtab.png
    :width: 450px
@@ -413,7 +413,7 @@ Since the collection is very small, inspection is fast. But... it seems like we 
 This result means documents sometimes have ``notes`` key equal to ``NaN``, and sometimes equal to a string (a splittable string, meaning there are spaces in it).
 This is a problem for ElasticSearch because it wouldn't index the data properly. And furthermore, ElasticSearch doesn't allow ``NaN`` values anyway. So we need
 to fix the parser. The fixed version is available in branch ``pharmgkb_v2`` (go back to Plugin tab, enter that branch name and update the code).
-The fix consists in `removing key/value <https://github.com/sirloon/pharmgkb/blob/pharmgkb_v2/parser.py#L24>`_ from the records, whenever a value is equal to ``NaN``.
+The fix consists in `removing key/value <https://github.com/biothings/tutorials/blob/pharmgkb_v2/parser.py#L32>`_ from the records, whenever a value is equal to ``NaN``.
 
 .. code:: python
 
@@ -456,7 +456,7 @@ moving forwared, we want to make sure the mapping is valid, let's click on |vali
 
 Everything looks fine, the last step is to "commit" the mapping, meaning we're ok to use this mapping as the official, registered mapping that will actually be used by ElasticSearch. Indeed the left side of the page is about inspected mapping, we can re-launch the
 inspection as many times as we want, without impacting active/registered mapping (this is usefull when the data structure changes). Click on
-|commit| then "OK", and you now should see the final, registered mapping on the right:
+|commit| then "YES", and you now should see the final, registered mapping on the right:
 
 .. |commit| image:: ../_static/commit.png
    :width: 75px
