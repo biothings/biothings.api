@@ -348,7 +348,7 @@ we've run 3 commands to register the plugin, dump the data and upload the JSON d
 .. image:: ../_static/allcommands.png
    :width: 450px
 
-We also have new notifications as shown by the speakerphone icon number on the right. Let's have a quick look:
+We also have new notifications as shown by the speakerphone icon number on the left. Let's have a quick look:
 
 .. image:: ../_static/allnotifs.png
    :width: 450px
