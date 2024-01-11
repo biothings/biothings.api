@@ -62,9 +62,8 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **27017**: MongoDB port
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
-* **60080**: `Code-Server <https://github.com/cdr/code-server>`_, a webapp used to directly edit code in the container
 
-.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000, 60080 are exposed by default in the docker-compose.yml file.
+.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
 
 .. code:: bash
 
@@ -697,7 +696,7 @@ You can also make more detailed search queries in the elasticsearch index if nee
 
 
 .. image:: ../_static/postman.png
-   :width: 300px
+   :width: 600px
 
 
 4.9. Conclusions
@@ -840,7 +839,7 @@ this tutorial without having to type too much is to replace folder ``tutorials``
 5.3. More uploaders
 ^^^^^^^^^^^^^^
 
-Now that we have exported the code, we can start the modifications. The final code can be found on branch https://github.com/sirloon/pharmgkb/tree/pharmgkb_v4.
+Now that we have exported the code, we can start the modifications. The final code can be found on branch https://github.com/biothings/tutorials/tree/pharmgkb_v4.
 
 .. note:: We can directly point to that branch using ``git checkout pharmgkb_v4`` within the datasource folder previously explored.
 
@@ -861,7 +860,6 @@ Next is about defining new uploaders. In ``upload.py``, we currently have one up
       name = "pharmgkb"
       __metadata__ = {"src_meta": {}}
       idconverter = None
-      storage_class = biothings.hub.dataload.storage.BasicStorage
   ...
 
 The important pieces of information here is ``name``, which gives the name of the uploader we define. Currently uploader is named ``pharmgkb``.
@@ -891,7 +889,6 @@ As a result, we now have:
 
     main_source = "pharmgkb"
     name = "druglabels"
-    storage_class = biothings.hub.dataload.storage.BasicStorage
 
     def load_data(self, data_folder):
         self.logger.info("Load data from directory: '%s'" % data_folder)
@@ -914,7 +911,6 @@ As a result, we now have:
 
       main_source = "pharmgkb"
       name = "occurrences"
-      storage_class = biothings.hub.dataload.storage.BasicStorage
 
       def load_data(self, data_folder):
           self.logger.info("Load data from directory: '%s'" % data_folder)
@@ -981,7 +977,7 @@ There several parameters we need to adjust:
   merge the other sources **only** if a document from ``annotations`` with the same _id exists. If not, documents are silently ignored.
 * finally, we were previously using a ``LinkDataBuilder`` because we only had one datasource (data wasn't copied, but refered, or linked to the original datasource collection). We now
   have three datasources involved in the merge so we can't use that builder anymore and need to switch to the default ``DataBuilder`` one. If not, **Hub** will complain and deactivate
-  the build configuration until it's fixed.
+  the build configuration until it's fixed. Since we already had a previous build, we want to specify an incremental build ``diff``.
 
 The next configuration is summarized in the following picture:
 
