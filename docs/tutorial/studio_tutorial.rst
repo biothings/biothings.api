@@ -1167,15 +1167,39 @@ for everyone.
 .. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
    it's not recommended to expose any ports, including API ports, to public-facing internet.
 
+
+===============
+6. Data Plugins
+===============
+
+In our last section, we learned how to create a **Regular Data Source**.
+Now that we have learned how to dynamically generate code for our plugin, we can discuss the different classes that we can use for our dumpers.
+Using these classes, we can have an easier time creating dumpers to fit our needs when downloading different types of data on the interweb.
+Here is a short summary of some of the important classes that you may typically use.
+
+* APIDumper: This will run API calls in a clean process and write its results in one or more NDJSON documents.
+* DockerContainerDumper:  Starts a docker container (typically runs on a different server) to prepare the data file on the remote container,
+  and then download this file to the local data source folder.
+* LastModifiedFTPDumper: SRC_URLS containing a list of URLs pointing to files to download, uses FTP's MDTM command to check whether files should be downloaded.
+* LastModifiedHTTPDumper: Given a list of URLs, check Last-Modified header to see whether the file should be downloaded.
+
+All of data plugin types can all be reviewed in our biothings.api on github https://github.com/biothings/biothings.api/blob/master/biothings/hub/dataload/dumper.py.
+
+
+6.1. DockerContainer Plugin
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This part is still under development....
+
+
 =========================================
-6. API cloud deployments and hosting
+7. API cloud deployments and hosting
 =========================================
 
 This part is still under development... Stay tuned and join Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings) for more.
 
 
 ===============
-7. Troubleshooting
+8. Troubleshooting
 ===============
 
 We test and make sure, as much as we can, that the **BioThings Studio** image is up-to-date and running properly. But things can still go wrong...
