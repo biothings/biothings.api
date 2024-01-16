@@ -7,21 +7,23 @@ from types import SimpleNamespace
 import logging
 
 import pytest
+import _pytest
+
 
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
-from biothings.hub.dataplugin.assistant import AdvancedPluginLoader, LocalAssistant, ManifestBasedPluginLoader, AssistantManager, GithubAssistant
+from biothings.hub.dataplugin.assistant import AdvancedPluginLoader, LocalAssistant, ManifestBasedPluginLoader, AssistantManager, GithubAssistant, AssistantException
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
-from biothings.utils.common import get_loop
+from biothings.utils.common import get_loop, parse_folder_name_from_url
 from biothings.utils.manager import JobManager
 from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(__name__)
 
-def test_assistant_manager():
+def test_assistant_manager(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
     """
     Tests the construction of an AssistantManager instance and the API
     provided by the object
@@ -29,6 +31,7 @@ def test_assistant_manager():
     Ensures that we can construct and leverage the API provided
     by the <biothings.hub.dataplugin.assistant LocalAssistant>
     """
+    hub_db.setup(config)
     remote_plugin_repository = "https://github.com/biothings/tutorials.git"
 
     job_manager = JobManager(loop=get_loop())
@@ -60,3 +63,31 @@ def test_assistant_manager():
     assert assistant_manager.register["local"] == LocalAssistant
     generated_assistant = assistant_manager.submit(url=remote_plugin_repository)
     assert isinstance(generated_assistant, GithubAssistant)
+
+    temporary_local_plugin_directory = tmp_path_factory.mktemp("test_remote_plugin")
+    assert Path(temporary_local_plugin_directory).exists()
+
+    data_plugin = hub_db.get_data_plugin()
+    data_plugin.remove({"_id": generated_assistant.plugin_name})
+    plugin_entry = {
+        "_id": generated_assistant.plugin_name,
+        "plugin": {
+            "url": remote_plugin_repository,
+            "type": generated_assistant.plugin_type,
+            "active": True,
+        },
+        "download": {"data_folder": str(Path(temporary_local_plugin_directory))},
+    }
+
+    data_plugin.insert_one(plugin_entry)
+
+    try:
+        assistant_manager.register_url(url=remote_plugin_repository)
+    except Exception as gen_exp:
+        pass
+    else:
+        pass
+
+    assistant_manager.unregister_url(url=remote_plugin_repository)
+
+    assert not Path(temporary_local_plugin_directory).exists()
