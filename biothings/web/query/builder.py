@@ -123,7 +123,7 @@ class ESQueryBuilder:
     def __init__(
         self,
         user_query=None,  # like a prepared statement in SQL
-        scopes_regexs=(),  # inference used when encountering empty scopes
+        scopes_regexs=((r"(?P<scope>\w+):(?P<term>[^:]+)", ()),),  # inference used when encountering empty scopes
         scopes_default=("_id",),  # fallback used when scope inference fails
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
