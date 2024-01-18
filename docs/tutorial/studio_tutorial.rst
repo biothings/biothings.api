@@ -1224,12 +1224,14 @@ but we will not be using all of the parameters for this tutorial:
 
 
 Now we will need to clone the tutorial onto your local computer and switch to pharmgkb_v7.
+
 .. code:: bash
    git clone https://github.com/biothings/tutorials.git
    cd tutorials
    git checkout pharmgkb_v7
 
 Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub dev environemt.
+
 .. code:: bash
    python -m venv .venv
    source ./venv/bin/activate
@@ -1305,6 +1307,7 @@ hold the information that would normally be held in the mongodb. The former bein
 the latter holding our uploaded data.
 
 With our uploaded data in our database, we can finally serve this data on our localhost.
+
 .. code:: bash
    biothings-cli dataplugin serve
 
