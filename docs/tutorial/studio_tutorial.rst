@@ -1281,6 +1281,7 @@ If you are working with a larger source you will need need to use them separatel
    biothings-cli dataplugin dump_and_upload
 
 We have now successfully dumped and uploaded our source. Why did we not see any of the expected errors for missing parameters?
+
 .. image:: ../_static/clidumpupload.png
    :width: 500px
 
@@ -1312,6 +1313,7 @@ With our uploaded data in our database, we can finally serve this data on our lo
    biothings-cli dataplugin serve
 
 The result should look something similar to this:
+
 .. image:: ../_static/datapluginserve.png
    :width: 500px
 
