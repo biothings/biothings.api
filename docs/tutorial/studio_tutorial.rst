@@ -1188,6 +1188,7 @@ All of data plugin types can all be reviewed in our biothings.api on github http
 
 6.1. DockerContainer Plugin
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. note:: For this section, you will need to know how to use our Biothings CLI, as our docker compose is not built to handle this type of plugin.
    Please refer back to our Biothings CLI tutorial before starting this section.
 
@@ -1198,6 +1199,7 @@ if we follow their rate limiting, the api may flag our IP address as a bot. By u
 a different IP address separate from the Scripps Network, so if there is a ban it only be contained to our one server instead of our whole network.
 
 The steps to the DockerContainerDumper Plugin look like this:
+
 * It boots up a container from provided parameters: image, tag, container_name.
 * Runs the dump_command inside this container. This command MUST block the dumper until the data file is completely prepared.
   This will guarantee that the remote file is ready for downloading.
@@ -1210,6 +1212,7 @@ The steps to the DockerContainerDumper Plugin look like this:
 
 There are additional parameters that can also be added. All of them will be listed here with a short summary,
 but we will not be using all of the parameters for this tutorial:
+
 * image: (Optional) the Docker image name
 * tag: (Optional) the image tag
 * container_name: (Required) Boots up an existing container. If the container does not exist, it will create a new container using the image and tag parameters.
