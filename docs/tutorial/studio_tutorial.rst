@@ -1188,7 +1188,131 @@ All of data plugin types can all be reviewed in our biothings.api on github http
 
 6.1. DockerContainer Plugin
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This part is still under development....
+.. note:: For this section, you will need to know how to use our Biothings CLI, as our docker compose is not built to handle this type of plugin.
+   Please refer back to our Biothings CLI tutorial before starting this section.
+
+The DockerContainer plugin allows us to remotely start and control a docker container from another server, using our Biothings Hub.
+Using another server to run the bulk process of our dumper can have many different use cases. For example, if we are using a public api
+to create a source, we may need to call their api multiple times for testing. This may inadvertantly cause an accidental ban. Even
+if we follow their rate limiting, the api may flag our IP address as a bot. By using another server, we can minimize this issue by setting
+a different IP address separate from the Scripps Network, so if there is a ban it only be contained to our one server instead of our whole network.
+
+The steps to the DockerContainerDumper Plugin look like this:
+* It boots up a container from provided parameters: image, tag, container_name.
+* Runs the dump_command inside this container. This command MUST block the dumper until the data file is completely prepared.
+  This will guarantee that the remote file is ready for downloading.
+* Optional: runs the get_version_cmd inside this container. Set this command out put as self.release.
+* Download the remote file via Docker API, extract the downloaded .tar file.
+* When the downloading is complete:
+   * if keep_container=false: Remove the above container after.
+   * if keep_container=true: leave this container running.
+* If there are any errors during the data dump, the remote container and volumes won't be removed.
+
+There are additional parameters that can also be added. All of them will be listed here with a short summary,
+but we will not be using all of the parameters for this tutorial:
+* image: (Optional) the Docker image name
+* tag: (Optional) the image tag
+* container_name: (Required) Boots up an existing container. If the container does not exist, it will create a new container using the image and tag parameters.
+* volumes: (Optional) Used specifally for local bind mounts. If used without a named_volume, the volume will not automatically be removed once the data finishes dumping.
+* named_volumes: (Optional) Creates a named volume to be removed when the data finishes dumping.
+* path: (Required) path to the remote file inside the Docker container.
+* dump_command: (Required) This command will be run inside the Docker container in order to create the remote file.
+* keep_container: (Optional) accepted values: true/false, default: false.
+   * If keep_container=true, the remote container will be persisted.
+   * If keep_container=false, the remote container will be removed in the end of dump step.
+* get_version_cmd: (Optional) The custom command for checking release version of local and remote file.
+
+
+Now we will need to clone the tutorial onto your local computer and switch to pharmgkb_v7.
+.. code:: bash
+   git clone https://github.com/biothings/tutorials.git
+   cd tutorials
+   git checkout pharmgkb_v7
+
+Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub dev environemt.
+.. code:: bash
+   python -m venv .venv
+   source ./venv/bin/activate
+   pip install pip install "biothings[dev]"
+
+Just like our original pharmgkb plugin, we have a manifest and a parser file with the new addition of a Dockerfile.
+Lets have a quick look at the manifest file.
+
+.. code:: yaml
+   version: '0.3'
+   name: 'tutorials'
+   requires:
+   - pandas
+   - numpy
+   dumper:
+      data_url:
+         - docker://localhost?image=annotations&tag=latest
+      #  - docker://localhost?container_name=mytest2&image=annotations&tag=latest&path=/tmp/annotations.zip&exec_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false"
+      #  - docker://localhost?image=annotations&tag=latest&path=/tmp/annotations.zip&exec_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false&get_version_cmd="md5sum {} | awk '{ print $1 }'"
+      #  - docker://localhost?container_name=<YOUR CONTAINER NAME>&path=/tmp/annotations.zip&exec_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"
+   uncompress: true
+   uploader:
+   parser: parser:load_annotations
+   on_duplicates: error
+
+.. note::
+   If you notice, the manifest file is in a yaml format while the previous manifest files have all been in a json format. This is because our Hub can parse both yaml and json formatted files!
+
+As you can see, the manifest file is in a very similar format as the manifest file in our Data Plugin <studio.html#id1>`_ section.
+The only difference is we have included a new data_url section within the dumper.
+The data_url should match the following format:
+
+``docker://CONNECTION_NAME?image=DOCKER_IMAGE&tag=TAG&path=/path/to/remote_file&dump_command="this is custom command"&container_name=CONTAINER_NAME&keep_container=true&get_version_cmd="cmd"&volumes=VOLUMES&named_volumes=NAMED_VOLUMES``
+
+There seems to be an issue though looking at our listed parameters, the dump_command, path, and countainer_name are all required, but they seem to be missing from the data_url.
+Lets try to dump using this manifest file to see what happens!
+
+Lets first build our docker file. As shown in our manifest, the data url has ``image=annotations`` so when we build we have to make sure to name our image accordingly.
+
+.. code:: bash
+   docker build -t annotations .
+
+Now we can finally test our source using the Biothings CLI. Since our document size is small we can directly use the dump_and_upload.
+If you are working with a larger source you will need need to use them separately and specify the ``--batch-limit`` flag when uploading:
+
+.. code:: bash
+   biothings-cli dataplugin dump_and_upload
+
+We have now successfully dumped and uploaded our source. Why did we not see any of the expected errors for missing parameters?
+.. image:: ../_static/clidumpupload.png
+   :width: 500px
+
+To answer this question, we have to take a look at the Dockerfile.
+.. code::
+   FROM praqma/network-multitool:latest
+   LABEL "path"="/tmp/annotations.zip"
+   LABEL "dump_command"="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"
+   LABEL keep_container="true"
+   LABEL container_name=tutorials
+
+To keep the data url from becoming too difficult to read, we can directly set the paramters into a Docker **LABEL** object.
+This is why we are able to run the dump and upload process without encountering any errors.
+A new directory has been created by the CLI. Lets take a look at it.
+
+.. image:: ../_static/biothingshub.png
+   :width: 500px
+
+Within the ``.biothings_hub/archive/tutorials/2024-01-17T23:42:38Z`` directory, there is an annotations.zip that was dumped along with the uncompressed contents
+that we specified in the manifest. Since we did not specify a version, the current datetime is automatically used for the directory name ``.biothings_hub/archive/tutorials/2024-01-17T23:42:38Z``
+The ``.biothings_hub/biothings_hubdb`` and ``.biothings_hub/.data_src_database`` are both sqlite databases that
+hold the information that would normally be held in the mongodb. The former being the datasource settings and
+the latter holding our uploaded data.
+
+With our uploaded data in our database, we can finally serve this data on our localhost.
+.. code:: bash
+   biothings-cli dataplugin serve
+
+The result should look something similar to this:
+.. image:: ../_static/datapluginserve.png
+   :width: 500px
+
+Congratulations you have learned how to build a Docker based plugin!
+Remember to make sure to always test out some of the queries before submitting your plugin.
 
 
 =========================================
