@@ -1283,6 +1283,7 @@ We have now successfully dumped and uploaded our source. Why did we not see any 
    :width: 500px
 
 To answer this question, we have to take a look at the Dockerfile.
+
 .. code::
    FROM praqma/network-multitool:latest
    LABEL "path"="/tmp/annotations.zip"
