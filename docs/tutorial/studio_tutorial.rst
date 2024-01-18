@@ -1233,7 +1233,7 @@ Now we will need to install the requirements to run our Biothings CLI. We will f
 .. code:: bash
    python -m venv .venv
    source ./venv/bin/activate
-   pip install pip install "biothings[dev]"
+   pip install "biothings[dev]"
 
 Just like our original pharmgkb plugin, we have a manifest and a parser file with the new addition of a Dockerfile.
 Lets have a quick look at the manifest file.
@@ -1316,7 +1316,7 @@ Remember to make sure to always test out some of the queries before submitting y
 
 
 =========================================
-7. API cloud deployments and hosting
+1. API cloud deployments and hosting
 =========================================
 
 This part is still under development... Stay tuned and join Biothings Google Groups (https://groups.google.com/forum/#!forum/biothings) for more.
