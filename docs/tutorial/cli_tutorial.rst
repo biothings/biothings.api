@@ -60,6 +60,7 @@ Clone the tutorials repository on our Biothings group.
    git checkout pharmgkb_v5
 
 Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub CLI environemt.
+
 .. code:: bash
    python -m venv .venv
    source ./.venv/bin/activate
@@ -88,6 +89,7 @@ The Biothings CLI can only be used for a manifest based plugin. Looking at our m
 Check out our `manifest section <studio.html#manifest-plugins>`_ to know more about the different types of manifest files that can be used with our Hub.
 
 .. code:: bash
+
     {
         "version": "0.3",
         "requires" : ["pandas", "numpy"],
@@ -116,7 +118,6 @@ Check out our `manifest section <studio.html#manifest-plugins>`_ to know more ab
             }
         ]
     }
-
 
 
 
