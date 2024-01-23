@@ -59,7 +59,7 @@ Clone the tutorials repository on our Biothings group.
    cd tutorials
    git checkout pharmgkb_v5
 
-Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub CLI environemt.
+Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub CLI environment.
 
 .. code:: bash
    python -m venv .venv
@@ -118,6 +118,121 @@ Check out our `manifest section <studio.html#manifest-plugins>`_ to know more ab
             }
         ]
     }
+
+* `version` specifies the manifest version (it's not the version of the datasource itself) and tells the Hub what to expect from the manifest.
+* parser uses ``pandas`` and ``numpy`` library, we declare that dependency in `requires` section.
+* the `dumper` section declares where the input files are, using `data_url` key. In the end, we'll use 3 different files so a list of URLs is specified there. A single
+  string is also allowed if only one file (ie. one URL) is required. Since the input file is a ZIP file, we first need to uncompress the archive, using `uncompress : true`.
+  We will see the uncompressed contents shortly after dumping.
+* the `uploaders` section tells the **Hub** how to upload JSON documents to MongoDB. `parser` has a special format, `module_name:function_name`. For example the first parsing function is named
+  `load_annotations` and can be found in `parser.py` module. `'on_duplicates' : 'error'` tells the **Hub** to raise an error if we have documents with the same _id (it would
+  mean we have a bug in our parser).
+
+Now we we will run the dump process using the CLI `dump` command.
+
+.. code:: bash
+
+    biothings-cli dataplugin dump
+
+.. image:: ../_static/clidump.png
+   :width: 100%
+
+There should be a successful dump along with the dump contents in the ``.biothings_hub/archive/DATE_TIME`` directory.
+
+.. note::
+    Remember since we set uncompress as ``true`` in the manifest the ``.biothings_hub/archive/DATE_TIME`` will contain both the zip files
+    and the uncompressed contents.
+
+
+In our ``.biothings_hub`` directory, there should be a sqlite database that was created called biothings_hubdb.
+Lets take a look at it's contents using ``biothings-cli dataplugin list --hubdb``.
+
+.. image:: ../_static/clihubdb.png
+    :width: 100%
+
+We can see two collections that have been created during our dump.
+
+The ``data_plugin`` collection contains the information of our ``tutorial`` dataplugin.
+The each entry within the ``data_plugin`` contains:
+
+* _id: name of the plugin
+* download.data_folder: where the plugin is located
+* plugin.active: if the plugin is still being used
+* plugin.loader: type of plugin. At the moment, we can only using manifest type plugins for the cli, but more features will be updated in the future to include other types.
+* plugin.type: local vs remote repository
+* plugin.url: TODO
+
+The ``src_dump`` collection contains the information of our dumps:
+
+* _id: name of the dataplugin
+* download.data_folder: location of the dumped contents
+* download.last_success: datetime of last successful dump
+* download.logfile: location of generated logfiles
+* download.release: name of release
+* download.started_at: datetime of when the dump was started
+* download.status: status of the dump
+* download.time: how long the dump process took
+
+Now that our dumper has been populated, we can continue to the upload process. Lets take a look at the upload command.
+
+.. image:: ../_static/cliuploadhelp.png
+    :width: 100%
+
+Since our data is small, we do not need to use the ``--batch-limit`` tag for testing. Instead we can directly run ``biothings-cli dataplugin upload``.
+
+.. image:: ../_static/cliupload.png
+    :width: 100%
+
+After a successful upload, the sqlite database ``.biothings_hub/.data_src_database`` is created with three different collections.
+Each collection matches the corresponding uploader in our manifest file: `annotations, druglabels, occurences`.
+
+To view our data, we will need to use the ``serve`` command.
+
+.. code:: bash
+
+    biothings-cli dataplugin serve
+
+.. image:: ../_static/cliserve.png
+    :width: 100%
+
+Once we have served the data, there should be 3 endpoints that are created. Go to http://localhost:9999/ to view all of the available endpoints.
+For each endpoint we can query by id:
+
+* http://localhost:9999/annotations/DOC_ID
+
+or field:
+
+* http://localhost:9999/annotations?q=QUERY
+
+Try out a few of the examples for youself listed in the serve output!
+
+.. note::
+    You may have noticed that we are able to serve `occurences` and `druglabels` without registering a mapping.
+    The reason is because Biothings CLI does not check for correct mappings. If you want to know if your mapping is
+    correctly registered, you will have to use our  `biothings studio <studio.html>`_.
+
+To review we can use the ``biothings dataplugin list`` command. Using this command we can see all of our dump and upload information.
+
+.. image:: ../_static/clilistreview.png
+    :width: 100%
+
+Once we are finished with our plugin we can delete our unused data with ``biothings dataplugin clean --all``.
+This will delete all the dumped files and drop all the uploaded source data.
+
+.. image:: ../_static/cliclean.png
+    :width: 100%
+
+We can check if all the data is deleted using ``biothings dataplugin list``.
+
+.. image:: ../_static/clilistclean.png
+    :width: 100%
+
+We have successfully set up a Biothings CLI environment and created an API from a flat file using only the CLI.
+
+* by defining a data plugin, we told the **BioThings CLI** where the remote data was and what the parser function was
+* We used the **BioThings CLI** to create a new dataplugin and dump the data locally
+* We also generated an `uploader` to run the parser and store resulting JSON documents into a SQLite database
+* We served the resulting data with a simple API server from the source database.
 
 
 
