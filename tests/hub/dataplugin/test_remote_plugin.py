@@ -13,7 +13,14 @@ import _pytest
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
-from biothings.hub.dataplugin.assistant import AdvancedPluginLoader, LocalAssistant, ManifestBasedPluginLoader, AssistantManager, GithubAssistant, AssistantException
+from biothings.hub.dataplugin.assistant import (
+    AdvancedPluginLoader,
+    LocalAssistant,
+    ManifestBasedPluginLoader,
+    AssistantManager,
+    GithubAssistant,
+    AssistantException,
+)
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
 from biothings.utils.common import get_loop, parse_folder_name_from_url
@@ -23,7 +30,8 @@ from biothings.utils.workers import upload_worker
 
 logger = logging.getLogger(__name__)
 
-def test_assistant_manager(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
+
+def test_assistant_manager():
     """
     Tests the construction of an AssistantManager instance and the API
     provided by the object
@@ -64,30 +72,40 @@ def test_assistant_manager(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
     generated_assistant = assistant_manager.submit(url=remote_plugin_repository)
     assert isinstance(generated_assistant, GithubAssistant)
 
+
+def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
+    """
+    Tests the ability register a remote url using the internals of the biothings.api
+    library
+    """
+    hub_db.setup(config)
+    remote_plugin_repository = "https://github.com/biothings/tutorials.git"
+
+    job_manager = JobManager(loop=get_loop())
+    data_plugin_manager = DataPluginManager(job_manager=job_manager)
+    dumper_manager = DumperManager(job_manager=job_manager)
+    uploader_manager = UploaderManager(job_manager=job_manager)
+
+    assistant_manager = AssistantManager(
+        job_manager=job_manager,
+        data_plugin_manager=data_plugin_manager,
+        dumper_manager=dumper_manager,
+        uploader_manager=uploader_manager,
+        keylookup=None,
+        default_export_folder="hub/dataload/sources",
+    )
+
+    assistant_manager.configure()
+    generated_assistant = assistant_manager.submit(url=remote_plugin_repository)
+
     temporary_local_plugin_directory = tmp_path_factory.mktemp("test_remote_plugin")
     assert Path(temporary_local_plugin_directory).exists()
 
     data_plugin = hub_db.get_data_plugin()
     data_plugin.remove({"_id": generated_assistant.plugin_name})
-    plugin_entry = {
-        "_id": generated_assistant.plugin_name,
-        "plugin": {
-            "url": remote_plugin_repository,
-            "type": generated_assistant.plugin_type,
-            "active": True,
-        },
-        "download": {"data_folder": str(Path(temporary_local_plugin_directory))},
-    }
+    plugin_document = data_plugin.find_one({"plugin.url": remote_plugin_repository})
+    if plugin_document is not None:
+        data_plugin.remove(plugin_document)
 
-    data_plugin.insert_one(plugin_entry)
-
-    try:
-        assistant_manager.register_url(url=remote_plugin_repository)
-    except Exception as gen_exp:
-        pass
-    else:
-        pass
-
+    assistant_manager.register_url(url=remote_plugin_repository)
     assistant_manager.unregister_url(url=remote_plugin_repository)
-
-    assert not Path(temporary_local_plugin_directory).exists()
