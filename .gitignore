@@ -10,7 +10,6 @@
 __pycache__
 .DS_Store
 .env
-.venv
 
 # temp files
 docs/_build
