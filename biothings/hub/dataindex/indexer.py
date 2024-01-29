@@ -318,7 +318,9 @@ class Indexer:
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
     def setup_log(self):
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", self.build_name or "", "index") if btconfig.LOG_FOLDER else None
+        log_folder = (
+            os.path.join(btconfig.LOG_FOLDER, "build", self.build_name or "", "index") if btconfig.LOG_FOLDER else None
+        )
         log_name = f"index_{self.es_index_name}"
         self.logger, self.logfile = get_logger(log_name, log_folder=log_folder, force=True)
 
@@ -804,8 +806,9 @@ class IndexManager(BaseManager):
 
         return self._config
 
-    def get_indexes_by_name(self, index_name=None, limit=10):
+    def get_indexes_by_name(self, index_name=None, env_name=None, limit=10):
         """Accept an index_name and return a list of indexes get from all elasticsearch environments
+        or from specific elasticsearch environment.
 
         If index_name is blank, it will be return all indexes.
         limit can be used to specify how many indexes should be return.
@@ -829,9 +832,13 @@ class IndexManager(BaseManager):
             index_name = "*"
         limit = int(limit)
 
-        async def fetch(index_name, limit=None):
+        async def fetch(index_name, env_name=None, limit=None):
             indexes = []
-            for env_name, env in self.register.items():
+            for _env_name, env in self.register.items():
+                # If env_name is set, only fetch indexes for the specific es server
+                if env_name and env_name != _env_name:
+                    continue
+
                 async with AsyncElasticsearch(**env["args"]) as client:
                     try:
                         indices = await client.indices.get(index_name)
@@ -846,7 +853,7 @@ class IndexManager(BaseManager):
                                 "count": mapping_meta["stats"]["total"],
                                 "creation_date": index_data["settings"]["index"]["creation_date"],
                                 "environment": {
-                                    "name": env_name,
+                                    "name": _env_name,
                                     "host": env["args"]["hosts"],
                                 },
                             }
@@ -858,7 +865,7 @@ class IndexManager(BaseManager):
                 indexes = indexes[:limit]
             return indexes
 
-        job = asyncio.ensure_future(fetch(index_name, limit=limit))
+        job = asyncio.ensure_future(fetch(index_name, env_name=env_name, limit=limit))
         job.add_done_callback(self.logger.debug)
         return job
 

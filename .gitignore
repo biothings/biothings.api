@@ -41,3 +41,4 @@ config.py
 .notes/
 .env
 .notes
+ssh_host_key*
