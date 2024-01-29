@@ -356,9 +356,15 @@ class ESQueryBuilder:
         # https://www.elastic.co/guide/en/elasticsearch/
         # reference/current/index-modules.html
 
+        # Feature: filter
+        # apply extra filter (as query_string query) to filter results
+        # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/query-dsl-bool-query.html
+        if options.filter:
+            search = search.filter("query_string", query=options.filter)
+
         # Feature: post_filter
         # -- implementation using query string matching
-        # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.1/filter-search-results.html#post-filter
+        # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/filter-search-results.html#post-filter
         if options.post_filter:
             search = search.post_filter("query_string", query=options["post_filter"])
 

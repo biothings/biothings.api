@@ -11,6 +11,7 @@
 from collections import UserDict, defaultdict
 
 from biothings.utils.common import dotdict, traverse
+from biothings.utils.jmespath import options as jmp_options
 
 
 class FormatterDict(UserDict):
@@ -411,25 +412,23 @@ class ESResultFormatter(ResultFormatter):
         """
         # options.jmespath is already validated and processed as a tuple
         # see biothings.web.options.manager.Coverter.translate
-        target_field_path, jmes_query = options.jmespath
-        target_field_path = target_field_path or "."  # set to root field if not provided
-        try:
-            parent_path, target_field = target_field_path.rsplit(".", maxsplit=1)
-        except ValueError:
-            # if no . in the path, it means the target field is the root field
-            parent_path, target_field = "", target_field_path
+        parent_path, target_field, jmes_query = options.jmespath
 
         if path == parent_path:
             # we handle jmespath transformation at its parent field level,
             # so that we can set a transformed value
             target_field_value = doc.get(target_field) if target_field else doc
             if target_field_value:
-                transformed_field_value = jmes_query.search(target_field_value)
+                # pass jmp_options to include our own custom jmespath functions
+                transformed_field_value = jmes_query.search(target_field_value, options=jmp_options)
                 if target_field:
                     doc[target_field] = transformed_field_value
                 else:
                     # if the target field is the root field, we need to replace the whole doc
-                    doc = transformed_field_value
+                    # note that we cannot use `doc = transformed_field_value` here, because
+                    # it will break the reference to the original doc object
+                    doc.clear()
+                    doc.update(transformed_field_value)
 
     def transform_aggs(self, res):
         """

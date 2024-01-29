@@ -796,6 +796,7 @@ class IndexManager(BaseManager):
                                 "doc_type": v["mappings"]["_meta"]["biothing_type"],
                             }
                             for k, v in indices.items()
+                            if "_meta" in v["mappings"] and "biothing_type" in v["mappings"]["_meta"]
                         ]
             return conf
 

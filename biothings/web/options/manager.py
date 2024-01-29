@@ -122,13 +122,20 @@ class Converter:
             value = re.sub(pattern, repl, value)
 
         if self.keyword == "jmespath" and value:
-            # processing jmespath parameter to be a tuple of (target_field_path, jmes_query)
+            # processing jmespath parameter to be a tuple of (parent_path, target_field, jmes_query)
             try:
                 target_field_path, jmes_query = value.split("|", maxsplit=1)
                 jmes_query = jmespath.compile(jmes_query)
             except ValueError as err:  # JMES exeptions are subclasses of ValueError
                 raise OptionError(keyword=self.keyword, reason="Invalid value for jmespath parameter", details=str(err))
-            value = target_field_path, jmes_query
+            # now split target_field_path into parent_path and target_field
+            target_field_path = target_field_path or "."  # set to root field if not provided
+            try:
+                parent_path, target_field = target_field_path.rsplit(".", maxsplit=1)
+            except ValueError:
+                # if no . in the path, it means the target field is the root field
+                parent_path, target_field = "", target_field_path
+            value = parent_path, target_field, jmes_query
 
         return value
 

@@ -98,7 +98,7 @@ COMMON_KWARGS = {
     "raw": {"type": bool, "default": False},
     "rawquery": {"type": bool, "default": False},
     # query builder stage
-    "_source": {"type": list, "max": 1000, "alias": ("fields", "field", "filter")},
+    "_source": {"type": list, "max": 1000, "alias": ("fields", "field")},
     "size": {"type": int, "max": 1000, "alias": "limit"},
     # formatter stage
     "dotfield": {"type": bool, "default": False},
@@ -119,15 +119,22 @@ ANNOTATION_KWARGS = {
     "POST": {"id": {"type": list, "max": 1000, "required": True, "alias": "ids"}},
 }
 QUERY_KWARGS = {
-    "*": COMMON_KWARGS.copy(),
+    "*": {
+        **COMMON_KWARGS.copy(),
+        **{
+            "from": {"type": int, "max": 10000, "alias": "skip"},
+            "sort": {"type": list, "max": 10},
+            # use to set extra filter, as a filter clause in a boolean query
+            "filter": {"type": str, "default": None},
+            # use to set post_filter query, this one does not impact facets
+            "post_filter": {"type": str, "default": None},
+        },
+    },  # for py3.9+, we can just use `|` operator like `COMMON_KWARGS.copy() | {...}`
     "GET": {
         "q": {"type": str, "default": None},
         "aggs": {"type": list, "max": 1000, "alias": "facets"},
-        "post_filter": {"type": str, "default": None},
         "facet_size": {"type": int, "default": 10, "max": 1000},
-        "from": {"type": int, "max": 10000, "alias": "skip"},
         "userquery": {"type": str, "alias": ["userfilter"]},
-        "sort": {"type": list, "max": 10},
         "explain": {"type": bool},
         "fetch_all": {"type": bool},
         "scroll_id": {"type": str},
@@ -135,8 +142,6 @@ QUERY_KWARGS = {
     "POST": {
         "q": {"type": list, "required": True},
         "scopes": {"type": list, "default": ["_id"], "max": 1000},
-        "from": {"type": int, "max": 10000, "alias": "skip"},
-        "sort": {"type": list, "max": 10},
         "with_total": {"type": bool},
         "analyzer": {"type": str},  # any of built-in analyzer (overrides default index-time analyzer)
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-analyzers.html

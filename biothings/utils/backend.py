@@ -295,8 +295,6 @@ class DocESBackend(DocBackendBase):
         self.target_esidxer.update(id, extra_doc, bulk=True)
 
     def drop(self):
-        from utils.es import IndexMissingException
-
         conn = self.target_esidxer.conn
         index_name = self.target_esidxer.ES_INDEX_NAME
         index_type = self.target_esidxer.ES_INDEX_TYPE
@@ -304,7 +302,7 @@ class DocESBackend(DocBackendBase):
         # Check if index_type exists
         try:
             conn.get_mapping(index_type, index_name)
-        except IndexMissingException:
+        except NotFoundError:
             return
         return conn.delete_mapping(index_name, index_type)
 
