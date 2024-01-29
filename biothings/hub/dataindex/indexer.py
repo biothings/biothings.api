@@ -849,6 +849,7 @@ class IndexManager(BaseManager):
                         indexes.append(
                             {
                                 "index_name": index_name,
+                                "doc_type": mapping_meta["biothing_type"],
                                 "build_version": mapping_meta["build_version"],
                                 "count": mapping_meta["stats"]["total"],
                                 "creation_date": index_data["settings"]["index"]["creation_date"],
