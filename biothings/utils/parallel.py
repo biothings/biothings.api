@@ -1,22 +1,43 @@
-'''
-NOTE: This is deprecated!
-
+"""
 Utils for running parallel jobs on IPython cluster.
-'''
-import os, sys
-import time
+"""
 import copy
-from ipyparallel import Client
+import os
+import time
+import warnings
+from concurrent.futures import ProcessPoolExecutor
+
+import biothings
 
 # ipcluster expecting to be in the folder where the app config is
 # because ipcluster will just import this file/module, kind of as if
 # it was building a main script from this lib
-import config, biothings
+import biothings.config as config
+
 biothings.config_for_app(config)
-from biothings.utils.common import timesofar, ask
+from biothings.utils.common import ask, timesofar
+
+
+def run_jobs_on_parallel(worker, task_list, executor_args=None):
+    """
+    This method will run multiple workers to handle the task_list, in a process pool,
+    which is an easy way to run and manage processes.
+
+    Parameters:
+    - worker: a callable, which will be apply for an item of the task_list
+    - task_list: a iterable, which contains task data should be processed.
+    - executor_args: should be valid parameters for initializing a ProcessPoolExecutor.
+    """
+
+    executor_args = executor_args or {}
+    with ProcessPoolExecutor(**executor_args) as executor:
+        return executor.map(worker, task_list)
 
 
 def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=False):
+    warnings.warn(DeprecationWarning("This function is deprecated! Use run_jobs_on_parallel function instead."))
+
+    from ipyparallel import Client
 
     t0 = time.time()
     rc = Client(config.CLUSTER_CLIENT_JSON)
@@ -27,14 +48,14 @@ def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=
     # move to app path
     lview.map(os.chdir, [config.APP_PATH] * cnt_nodes)
     print("\t# of tasks: {}".format(len(task_list)))
-    print("\tsubmitting...", end='')
-    job = lview.map_async(worker,task_list)
+    print("\tsubmitting...", end="")
+    job = lview.map_async(worker, task_list)
     print("done.")
     try:
         job.wait_interactive()
     except KeyboardInterrupt:
-        #handle "Ctrl-C"
-        if ask("\nAbort all submitted jobs?") == 'Y':
+        # handle "Ctrl-C"
+        if ask("\nAbort all submitted jobs?") == "Y":
             lview.abort()
             print("Aborted, all submitted jobs are cancelled.")
         else:
@@ -46,9 +67,9 @@ def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=
     print("\ttotal time: {}".format(timesofar(t0)))
 
     if shutdown_ipengines_after_done:
-        print("\tshuting down all ipengine nodes...", end='')
+        print("\tshuting down all ipengine nodes...", end="")
         lview.shutdown()
-        print('Done.')
+        print("Done.")
     return job.result()
 
 
@@ -57,16 +78,16 @@ def collection_partition(src_collection_list, step=100000):
         src_collection_list = [src_collection_list]
 
     kwargs = {}
-    kwargs['limit'] = step
+    kwargs["limit"] = step
     for src_collection in src_collection_list:
         _kwargs = copy.copy(kwargs)
-        _kwargs['src_collection'] = src_collection.name
-        _kwargs['src_db'] = src_collection.database.name
-        _kwargs['server'] = src_collection.database.connection.host
-        _kwargs['port'] = src_collection.database.connection.port
+        _kwargs["src_collection"] = src_collection.name
+        _kwargs["src_db"] = src_collection.database.name
+        _kwargs["server"] = src_collection.database.connection.host
+        _kwargs["port"] = src_collection.database.connection.port
 
         cnt = src_collection.count()
         for s in range(0, cnt, step):
             __kwargs = copy.copy(_kwargs)
-            __kwargs['skip'] = s
+            __kwargs["skip"] = s
             yield __kwargs
