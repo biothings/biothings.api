@@ -136,7 +136,7 @@ setup(
         "Twitter": "https://twitter.com/biothingsapi",
     },
     packages=find_packages(exclude=["tests"]),
-    package_data={"": ["*.html", "*.py.tpl"]},
+    package_data={"": ["*.html", "*.tpl"]},
     include_package_data=True,
     scripts=list(glob.glob("biothings/bin/*")),
     long_description=read("README.md"),
