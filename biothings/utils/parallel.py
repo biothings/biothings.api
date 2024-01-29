@@ -1,21 +1,7 @@
 """
-Utils for running parallel jobs on IPython cluster.
+Utils for running parallel jobs.
 """
-import copy
-import os
-import time
-import warnings
 from concurrent.futures import ProcessPoolExecutor
-
-import biothings
-
-# ipcluster expecting to be in the folder where the app config is
-# because ipcluster will just import this file/module, kind of as if
-# it was building a main script from this lib
-import biothings.config as config
-
-biothings.config_for_app(config)
-from biothings.utils.common import ask, timesofar
 
 
 def run_jobs_on_parallel(worker, task_list, executor_args=None):
@@ -35,9 +21,22 @@ def run_jobs_on_parallel(worker, task_list, executor_args=None):
 
 
 def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=False):
+    import warnings
     warnings.warn(DeprecationWarning("This function is deprecated! Use run_jobs_on_parallel function instead."))
 
+    import os
+    import time
+
     from ipyparallel import Client
+    import biothings
+
+    # ipcluster expecting to be in the folder where the app config is
+    # because ipcluster will just import this file/module, kind of as if
+    # it was building a main script from this lib
+    import biothings.config as config
+
+    biothings.config_for_app(config)
+    from biothings.utils.common import ask, timesofar
 
     t0 = time.time()
     rc = Client(config.CLUSTER_CLIENT_JSON)
@@ -74,6 +73,9 @@ def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=
 
 
 def collection_partition(src_collection_list, step=100000):
+    """This function is deprecated, not used anywhere"""
+    import copy
+
     if not isinstance(src_collection_list, (list, tuple)):
         src_collection_list = [src_collection_list]
 

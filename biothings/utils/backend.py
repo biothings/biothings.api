@@ -188,12 +188,9 @@ class DocMongoBackend(DocBackendBase):
         self.target_collection.drop()
 
     def get_id_list(self):
-        try:
-            # Just keep this line to not break the other feature.
-            return [x["_id"] for x in self.target_collection.find(projection=[], manipulate=False)]
-        except TypeError:
-            # Current version of PyMongo doesn't support manipulate parameter for Cursor.find method
-            return [x["_id"] for x in self.target_collection.find(projection=[])]
+        # manipulate parameter is deprecated
+        # return [x["_id"] for x in self.target_collection.find(projection=[], manipulate=False)]
+        return [x["_id"] for x in self.target_collection.find(projection=[])]
 
     def get_from_id(self, id):
         return self.target_collection.find_one({"_id": id})
