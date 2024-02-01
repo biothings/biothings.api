@@ -848,19 +848,20 @@ class IndexManager(BaseManager):
                     for index_name, index_data in indices.items():
                         if "_meta" in index_data["mappings"] and "biothing_type" in index_data["mappings"]["_meta"]:
                             mapping_meta = index_data["mappings"]["_meta"]
-                            indexes.append(
-                                {
-                                    "index_name": index_name,
-                                    "doc_type": mapping_meta["biothing_type"],
-                                    "build_version": mapping_meta["build_version"],
-                                    "count": mapping_meta["stats"]["total"],
-                                    "creation_date": index_data["settings"]["index"]["creation_date"],
-                                    "environment": {
-                                        "name": _env_name,
-                                        "host": env["args"]["hosts"],
-                                    },
-                                }
-                            )
+                            if "total" in mapping_meta["stats"]:
+                                indexes.append(
+                                    {
+                                        "index_name": index_name,
+                                        "doc_type": mapping_meta["biothing_type"],
+                                        "build_version": mapping_meta["build_version"],
+                                        "count": mapping_meta["stats"]["total"],
+                                        "creation_date": index_data["settings"]["index"]["creation_date"],
+                                        "environment": {
+                                            "name": _env_name,
+                                            "host": env["args"]["hosts"],
+                                        },
+                                    }
+                                )
 
             indexes.sort(key=lambda index: index["creation_date"], reverse=True)
 
