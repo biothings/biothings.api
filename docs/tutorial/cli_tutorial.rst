@@ -55,6 +55,7 @@ Setting Up
 Clone the tutorials repository on our Biothings group.
 
 .. code:: bash
+
    git clone https://github.com/biothings/tutorials.git
    cd tutorials
    git checkout pharmgkb_v5
@@ -62,6 +63,7 @@ Clone the tutorials repository on our Biothings group.
 Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub CLI environment.
 
 .. code:: bash
+
    python -m venv .venv
    source ./.venv/bin/activate
    pip install "biothings[cli]"
