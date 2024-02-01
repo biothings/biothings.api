@@ -157,12 +157,12 @@ We can see two collections that have been created during our dump.
 The ``data_plugin`` collection contains the information of our ``tutorial`` dataplugin.
 The each entry within the ``data_plugin`` contains:
 
-* _id: name of the plugin
-* download.data_folder: where the plugin is located
-* plugin.active: if the plugin is still being used
+* _id: name of the plugin.
+* download.data_folder: where the plugin is located.
+* plugin.active: if the plugin is still being used.
 * plugin.loader: type of plugin. At the moment, we can only using manifest type plugins for the cli, but more features will be updated in the future to include other types.
-* plugin.type: local vs remote repository
-* plugin.url: TODO
+* plugin.type: local vs remote repository.
+* plugin.url: plugin source folder.
 
 The ``src_dump`` collection contains the information of our dumps:
 
