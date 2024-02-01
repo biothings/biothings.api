@@ -235,9 +235,3 @@ We have successfully set up a Biothings CLI environment and created an API from 
 * We used the **BioThings CLI** to create a new dataplugin and dump the data locally
 * We also generated an `uploader` to run the parser and store resulting JSON documents into a SQLite database
 * We served the resulting data with a simple API server from the source database.
-
-
-
-----------
-Subsection
-----------
