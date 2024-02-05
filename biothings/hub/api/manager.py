@@ -54,7 +54,11 @@ class APIManager(BaseManager):
     def get_apis(self):
         return [d for d in self.api.find()]
 
+    def test_variables(self):
+        print(f"**** THIS IS A TESTING IF CONFIG_WEB_LOCAL IS IMPORTED {btconfig.ES_HOST}")
+
     def start_api(self, api_id):
+        self.test_variables()
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
             raise APIManagerException("No such API with ID '%s'" % api_id)
