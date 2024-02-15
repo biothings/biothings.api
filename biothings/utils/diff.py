@@ -93,7 +93,15 @@ def diff_docs_jsonpatch(b1, b2, ids, fastdiff=False, exclude_attrs=None):
 
 # TODO: move to mongodb backend class
 def get_mongodb_uri(backend):
-    opt = backend.target_collection.database.client._MongoClient__options.credentials
+    db = backend.target_collection.database
+    mongo_client = db.client
+
+    # Credential information of current PyMongo placed in pool_options
+    opt = mongo_client.options.pool_options._credentials
+    # Still keep the old implementation to not break other feature.
+    if hasattr(mongo_client._MongoClient__options, "credentials"):
+        opt = mongo_client._MongoClient__options.credentials
+
     username = opt and opt.username or None
     password = opt and opt.password or None
     dbase = opt and opt.source or None
@@ -103,9 +111,9 @@ def get_mongodb_uri(backend):
             uri += "%s:%s@" % (username, password)
         else:
             uri += "%s@" % username
-    host, port = backend.target_collection.database.client.address
+    host, port = mongo_client.address
     uri += "%s:%s" % (host, port)
-    uri += "/%s" % (dbase or backend.target_collection.database.name)
+    uri += "/%s" % (dbase or db.name)
     # uri += "/%s" % backend.target_collection.name
     print("uri: %s" % uri)
     return uri
@@ -138,14 +146,14 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
         if not use_parallel:
             _updates = _diff_doc_inner_worker(b1, b2, list(id_common))
         else:
-            from .parallel import run_jobs_on_ipythoncluster
+            from .parallel import run_jobs_on_parallel
 
             _path = os.path.split(os.path.split(os.path.abspath(__file__))[0])[0] + "/.."
             id_common = list(id_common)
             _b1 = (get_mongodb_uri(b1), b1.target_collection.database.name, b1.target_name, b1.name)
             _b2 = (get_mongodb_uri(b2), b2.target_collection.database.name, b2.target_name, b2.name)
             task_li = [(_b1, _b2, id_common[i : i + step], _path) for i in range(0, len(id_common), step)]
-            job_results = run_jobs_on_ipythoncluster(_diff_doc_worker, task_li)
+            job_results = run_jobs_on_parallel(_diff_doc_worker, task_li)
             _updates = []
             if job_results:
                 for res in job_results:
