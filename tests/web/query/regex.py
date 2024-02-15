@@ -87,6 +87,58 @@ class TestSingularPatternQStringParser:
         assert parser_result.term == expected_result.term
         assert parser_result.scopes == expected_result.scopes
 
+class TestGeneCurieQuery:
+    @classmethod
+    def setup_class(cls):
+        BIOLINK_MODEL_PREFIX_BIOTHINGS_GENE_MAPPING = {
+            "NCBIGene": {"type": "gene", "field": ["entrezgene", "retired"]},
+            "ENSEMBL": {"type": "gene", "field": "ensembl.gene"},
+            "UniProtKB": {"type": "gene", "field": "uniprot.Swiss-Prot"},
+        }
+        parser_patterns = []
+        for (
+            biolink_prefix,
+            mapping,
+        ) in BIOLINK_MODEL_PREFIX_BIOTHINGS_GENE_MAPPING.items():
+            expression = re.compile(rf"({biolink_prefix}):(?P<term>[^:]+)", re.I)
+            field_match = mapping["field"]
+            pattern = (expression, field_match)
+            parser_patterns.append(pattern)
+
+        fallback_pattern = (re.compile(r"^\d+$"), ["entrezgene", "retired"])
+        parser_patterns.append(fallback_pattern)
+        default_pattern = (re.compile(r"(?P<scope>[\w\W]+):(?P<term>[^:]+)"), [])
+        parser_patterns.append(default_pattern)
+
+        cls.parser = QStringParser(
+            default_scopes=("_id",),
+            patterns=parser_patterns,
+            gpnames=("term", "scope"),
+        )
+
+    @pytest.mark.parametrize(
+        "query, expected_result",
+        [
+            ("entrezgene:1017", Query(term="1017", scopes=["entrezgene"])),
+            ("NCBIGENE:1017", Query(term="1017", scopes=["entrezgene", "retired"])),
+            ("ncbigene:1017", Query(term="1017", scopes=["entrezgene", "retired"])),
+            ("ensembl.gene:ENSG00000123374", Query(term="ENSG00000123374", scopes=["ensembl.gene"])),
+            ("ENSEMBL:ENSG00000123374", Query(term="ENSG00000123374", scopes=["ensembl.gene"])),
+            ("uniprot.Swiss-Prot:P47804", Query(term="P47804", scopes=["uniprot.Swiss-Prot"])),
+            ("UniProtKB:P47804", Query(term="P47804", scopes=["uniprot.Swiss-Prot"]))
+        ]
+    )
+    def test_curie_id_queries(self, query: str, expected_result: Query):
+        """
+        Tests various CURIE ID based queries targetting the types of queries we'd expect
+        to see with the mygene instance
+        """
+        parser_result = self.parser.parse(query)
+        assert isinstance(parser_result, Query)
+        assert parser_result == expected_result
+        assert parser_result.term == expected_result.term
+        assert parser_result.scopes == expected_result.scopes
+
 
 class TestMultiplerPatternQStringParser:
     @classmethod
