@@ -268,3 +268,17 @@ Next Steps
     production environment (e.g. AWS cloud environment).
   * Please contact the Manager of one of our managed BioThings Hubs.
     The rest of the deployment process will be handled by the managed Hub.
+
+
+* Managing multiple plugins:
+
+  If you need to manage multiple data plugins locally, there are different options to organize them:
+
+  * Option 1: Create a new directory for every plugin and use the ``biothings-cli dataplugin`` command to manage one
+    data plugin at a time as we described in the tutorial above.
+  * Option 2: Create a parent directory and organize multiple data plugins in subdirectories. You can then run the
+    ``biothings-cli dataplugin-hub`` command at the parent directory as a controller to manage all data plugins, with
+    almost identical subcommands (e.g. ``dump``, ``upload`` etc.) described above.
+  * Option 3: Follow our  `BioThings Studio Tutorial <studio.html>`_ to install a full-featured web UI to manage multiple data plugins, 
+    which is the same interface we use to manage a BioThings dataplugin hub in our production environment.
+  
