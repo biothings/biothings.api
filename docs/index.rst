@@ -56,6 +56,7 @@ We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your f
     :caption: Products
 
     tutorial/studio
+    tutorial/cli
     tutorial/standalone
     tutorial/hub_tutorial
     tutorial/web
