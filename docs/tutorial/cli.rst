@@ -2,6 +2,7 @@
 BioThings CLI
 *************
 
+============
 Introduction
 ============
 
@@ -82,9 +83,9 @@ environment.
    pip install "biothings[cli]"
 
 
-======================================
-Create and Test the dataplugin via CLI
-======================================
+=======================
+Run/Test a data plugin
+=======================
 
 Let's check out our command line inputs. Here is a quick summary of every
 command we will be using in this tutorial.
