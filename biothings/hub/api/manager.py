@@ -1,3 +1,4 @@
+import os
 import socket
 import types
 from datetime import datetime
@@ -55,10 +56,19 @@ class APIManager(BaseManager):
         return [d for d in self.api.find()]
 
     def test_variables(self):
-        print(f"**** THIS IS A TESTING IF CONFIG_WEB_LOCAL IS IMPORTED {btconfig.ES_HOST}")
+        has_pytests = False
+        try:
+            import config_web_local as config_mod
+            has_pytests = True
+            self.logger.info(f"**** THIS IS A TESTING IF CONFIG_WEB_LOCAL IS IMPORTED {config_mod.ES_HOST}")
+            self.logger.info(f"**** THIS IS THE CURRENT WORKING DIR {os.getcwd()}")
+        except ImportError:
+            self.logger.info("**** CANNOT IMPORT CONFIG_WEB")
+            config_mod = types.ModuleType("config_mod")
+        finally:
+            return config_mod, has_pytests
 
     def start_api(self, api_id):
-        self.test_variables()
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
             raise APIManagerException("No such API with ID '%s'" % api_id)
@@ -67,10 +77,13 @@ class APIManager(BaseManager):
                 "Custom entry point not implemented yet, " + "only basic generated APIs are currently supported"
             )
 
-        config_mod = types.ModuleType("config_mod")
+        config_mod, has_pytests = self.test_variables()
+        self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
+        # config_mod = types.ModuleType("config_mod")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
         config_mod.ES_INDEX = apidoc["config"]["index"]
         config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
+        self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
 
         launcher = BiothingsAPILauncher(config_mod)
         port = int(apidoc["config"]["port"])
@@ -85,6 +98,7 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
+        # TODO import pytests if has_pytest is true then run the pytests
 
     def stop_api(self, api_id):
         try:
