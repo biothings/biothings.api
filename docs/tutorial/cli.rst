@@ -96,8 +96,8 @@ command we will be using in this tutorial.
   into JSON documents and upload the to the source database
 * ``biothings-cli dataplugin serve``: *serve* command runs a simple API server
   for serving documents from the source database.
-* ``biothings-cli dataplugin clean``: Delete all dumped files and drop uploaded
-* sources tables
+* ``biothings-cli dataplugin clean``: Delete all dumped files and drop uploaded 
+  sources tables
 
 If you have any further questions on what other options are available in our
 ``biothings-cli``. You can check out more using the ``--help`` or ``-h`` flag
