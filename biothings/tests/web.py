@@ -233,7 +233,36 @@ class BiothingsWebTestBase:
 
 
 class BiothingsWebTest(BiothingsWebTestBase):
-    """ """
+    """
+
+    """
+
+    @pytest.fixture(autouse=True)
+    def set_host(self, request):
+        try:
+            host = request.getfixturevalue("host")
+            if host:
+                self.host = host
+        except pytest.FixtureLookupError:
+            pass
+
+    @pytest.fixture(autouse=True)
+    def set_prefix(self, request):
+        try:
+            prefix = request.getfixturevalue("prefix")
+            if prefix:
+                self.prefix = prefix
+        except pytest.FixtureLookupError:
+            pass
+
+    @pytest.fixture(autouse=True)
+    def set_scheme(self, request):
+        try:
+            scheme = request.getfixturevalue("scheme")
+            if scheme:
+                self.scheme = scheme
+        except pytest.FixtureLookupError:
+            pass
 
     @classmethod
     def setup_class(cls):
