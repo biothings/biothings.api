@@ -7,7 +7,7 @@ to a fully operational BioThings API. In a second part, this API will enrich for
 
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
-.. note:: The following tutorial uses a docker-compose file to run the **BioThings Studio** and **Hub**. This file is available `here <https://github.com/biothings/biothings_docker/tree/docker-compose>`_
+.. note:: The following tutorial uses a docker-compose file to run the **BioThings Studio** and **Hub**. This file is available `here <https://github.com/biothings/biothings_docker>`_
 
 =================
 1. What you'll learn
