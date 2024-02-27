@@ -50,7 +50,7 @@ This will prevent your Docker from crashing if you are running a large datasourc
 ============
 
 **BioThings Studio** is available as a docker-compose file at our `github repository <https://github.com/biothings/biothings_docker/>`_.
-Clone the repository and go to the ``docker-compose`` branch.
+Clone the repository to your local.
 
 A **BioThings Studio** instance exposes several services on different ports:
 
