@@ -98,7 +98,14 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
-        # TODO import pytests if has_pytest is true then run the pytests
+        # import pytests if has_pytest is true then run the pytests
+        if has_pytests:
+            self.logger.info("**** RUNNING PYTESTS ****")
+            import pytest
+            PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
+            pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
+            self.logger.info("**** PYTESTS FINISHED ****")
+
 
     def stop_api(self, api_id):
         try:
