@@ -69,7 +69,7 @@ class APIManager(BaseManager):
             return config_mod, has_pytests
 
 
-    def run_pytests(self, api_id):
+    def test_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
         config_mod, has_pytests = self.test_variables()
         self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
@@ -90,7 +90,7 @@ class APIManager(BaseManager):
             self.logger.info("**** PYTESTS FINISHED ****")
 
 
-    def start_api(self, api_id, job_manager=None):
+    def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
             raise APIManagerException("No such API with ID '%s'" % api_id)
@@ -120,8 +120,7 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
-        assert job_manager
-        # self.run_pytests(api_id)
+        # self.test_api(api_id)
 
 
     def stop_api(self, api_id):
@@ -168,5 +167,3 @@ class APIManager(BaseManager):
         self.api.save(apidoc)
         return apidoc
 
-    def test_api(self, api_id):
-        pass
