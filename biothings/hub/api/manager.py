@@ -68,7 +68,29 @@ class APIManager(BaseManager):
         finally:
             return config_mod, has_pytests
 
-    def start_api(self, api_id):
+
+    def run_pytests(self, api_id):
+        apidoc = self.api.find_one({"_id": api_id})
+        config_mod, has_pytests = self.test_variables()
+        self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
+        # config_mod = types.ModuleType("config_mod")
+        config_mod.ES_HOST = apidoc["config"]["es_host"]
+        config_mod.ES_INDEX = apidoc["config"]["index"]
+        config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
+        self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
+        port = int(apidoc["config"]["port"])
+
+        # import pytests if has_pytest is true then run the pytests
+        if has_pytests:
+            self.logger.info("**** RUNNING PYTESTS ****")
+            import pytest
+            PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
+            pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"])
+            # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
+            self.logger.info("**** PYTESTS FINISHED ****")
+
+
+    def start_api(self, api_id, job_manager=None):
         apidoc = self.api.find_one({"_id": api_id})
         if not apidoc:
             raise APIManagerException("No such API with ID '%s'" % api_id)
@@ -98,13 +120,8 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
-        # import pytests if has_pytest is true then run the pytests
-        if has_pytests:
-            self.logger.info("**** RUNNING PYTESTS ****")
-            import pytest
-            PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
-            pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
-            self.logger.info("**** PYTESTS FINISHED ****")
+        assert job_manager
+        # self.run_pytests(api_id)
 
 
     def stop_api(self, api_id):

@@ -758,7 +758,8 @@ class HubServer(object):
         from biothings.hub.api.manager import APIManager
 
         args = self.mixargs("api")
-        api_manager = APIManager(**args)
+        api_manager = APIManager(job_manager=self.managers["job_manager"], **args)
+        # api_manager = APIManager(**args)
         self.managers["api_manager"] = api_manager
 
     def configure_source_manager(self):
