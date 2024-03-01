@@ -148,7 +148,7 @@ class ESQueryBuilder:
         """
         With the ANNOTATION_ID_REGEX_LIST configuration parameter, the user can provide
         regex patterns matching the following structure:
-        (Union[str, re.Pattern], Iterable)
+        (Union[str, re.Pattern], Union[str, Iterable])
 
         We don't want to publically expose the default regex pattern in the configuration as
         accidently modifying that could lead to unexpected / unwanted behavior. Therefore we
@@ -168,22 +168,22 @@ class ESQueryBuilder:
         """
         default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
         default_regex_fields = ()
+
+        formatted_scopes_regexs = []
         if scopes_regexs is None:
-            scopes_regexs = [(default_regex_pattern, default_regex_fields)]
+            formatted_scopes_regexs = [(default_regex_pattern, default_regex_fields)]
         elif isinstance(scopes_regexs, Iterable):
-            scopes_regexs = [(re.compile(regex_pattern), regex_fields) for regex_pattern, regex_fields in scopes_regexs]
+            for regex_pattern, regex_fields in scopes_regexs:
+                regex_pattern = re.compile(regex_pattern)
+                if isinstance(regex_fields, str):
+                    regex_fields = [regex_fields]
 
-            default_regex_index = None
-            for index, regex_pattern, regex_fields in enumerate(scopes_regexs):
-                if regex_pattern.pattern == default_regex_pattern and len(regex_fields) == 0:
-                    default_regex_index = index
-                    break
+                if regex_pattern.pattern == default_regex_pattern.pattern and len(regex_fields) == 0:
+                    continue
 
-            if default_regex_index is None:
-                scopes_regexs.append((default_regex_pattern, default_regex_fields))
-            else:
-                scopes_regexs.append(scopes_regexs.pop(default_regex_index))
-        return scopes_regexs
+                formatted_scopes_regexs.append((regex_pattern, regex_fields))
+            formatted_scopes_regexs.append((default_regex_pattern, default_regex_fields))
+        return formatted_scopes_regexs
 
     def build(self, q=None, **options):
         """
