@@ -29,16 +29,17 @@
         facet_size: int, maximum number of agg results.
 
 """
-import logging
-import os
-import re
 from collections import UserString, namedtuple
 from copy import deepcopy
 from random import randrange
+import logging
+import os
+import re
+from typing import Iterable
 
-import orjson
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
+import orjson
 
 from biothings.utils.common import dotdict
 
@@ -123,12 +124,15 @@ class ESQueryBuilder:
     def __init__(
         self,
         user_query=None,  # like a prepared statement in SQL
-        scopes_regexs=((r"(?P<scope>\W\w+):(?P<term>[^:]+)", ()),),  # inference used when encountering empty scopes
+        scopes_regexs=None,
         scopes_default=("_id",),  # fallback used when scope inference fails
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
         metadata=None,  # access to data like total number of documents
     ):
+        # inference used when encountering empty scopes
+        scopes_regexs = self._verify_default_regex_pattern(scopes_regexs)
+
         # for autoscope feature, to infer scope from q when enabled
         self.parser = QStringParser(scopes_default, scopes_regexs)
 
@@ -139,6 +143,47 @@ class ESQueryBuilder:
 
         # currently metadata is only used for __any__ query
         self.metadata = metadata
+
+    def _verify_default_regex_pattern(self, scopes_regexs):
+        """
+        With the ANNOTATION_ID_REGEX_LIST configuration parameter, the user can provide
+        regex patterns matching the following structure:
+        (Union[str, re.Pattern], Iterable)
+
+        We don't want to publically expose the default regex pattern in the configuration as
+        accidently modifying that could lead to unexpected / unwanted behavior. Therefore we
+        add it at runtime if it isn't discovered
+
+        Flow:
+        1) Branch on if a regex pattern list was provided. If none provided then set to the default
+        and return
+        2) If an iterable of regex patterns is provided then we force the structure into what we
+        expect: List[re.Pattern, Iterable]
+        3) We then iterate over the structure looking for the default regex pattern. If we find it
+        then we store the index of that pattern
+        4) If we found the index, then we pop it and move it to the back to ensure it's the last
+        pattern in the collection and then return the regex pattern collection
+        5) Otherwise if we didn't find an index, then we append it to the end of the collection and
+        return the regex pattern collection
+        """
+        default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
+        default_regex_fields = ()
+        if scopes_regexs is None:
+            scopes_regexs = [(default_regex_pattern, default_regex_fields)]
+        elif isinstance(scopes_regexs, Iterable):
+            scopes_regexs = [(re.compile(regex_pattern), regex_fields) for regex_pattern, regex_fields in scopes_regexs]
+
+            default_regex_index = None
+            for index, regex_pattern, regex_fields in enumerate(scopes_regexs):
+                if regex_pattern.pattern == default_regex_pattern and len(regex_fields) == 0:
+                    default_regex_index = index
+                    break
+
+            if default_regex_index is None:
+                scopes_regexs.append((default_regex_pattern, default_regex_fields))
+            else:
+                scopes_regexs.append(scopes_regexs.pop(default_regex_index))
+        return scopes_regexs
 
     def build(self, q=None, **options):
         """
