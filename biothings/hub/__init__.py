@@ -1293,6 +1293,7 @@ class HubServer(object):
             self.extra_commands["create_api"] = CommandDefinition(command=self.managers["api_manager"].create_api)
             self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
             self.extra_commands["stop_api"] = self.managers["api_manager"].stop_api
+            self.extra_commands["test_api"] = CommandDefinition(command=self.managers["api_manager"].test_api)
         if "upgrade" in self.DEFAULT_FEATURES:
 
             def upgrade(code_base):  # just a wrapper over dumper
@@ -1504,6 +1505,8 @@ class HubServer(object):
             self.api_endpoints["api"].append(EndpointDefinition(name="create_api", method="post", force_bodyargs=True))
         if not self.api_endpoints["api"]:
             self.api_endpoints.pop("api")
+        if "test_api" in cmdnames:
+            self.api_endpoints["api"].append(EndpointDefinition(name="test_api", method="post", suffix="test"))
         if "get_apis" in cmdnames:
             self.api_endpoints["api/list"] = EndpointDefinition(name="get_apis", method="get")
         if "stop" in cmdnames:

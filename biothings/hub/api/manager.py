@@ -167,3 +167,6 @@ class APIManager(BaseManager):
         apidoc.update(kwargs)
         self.api.save(apidoc)
         return apidoc
+
+    def test_api(self, api_id):
+        pass
