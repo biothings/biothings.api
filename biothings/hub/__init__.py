@@ -146,6 +146,7 @@ DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
 INSPECTOR_CATEGORY = "inspector"
+APITESTER_CATEGORY = "apitester"
 
 # HUB_REFRESH_COMMANDS = hasattr(
 #     config, "HUB_REFRESH_COMMANDS"

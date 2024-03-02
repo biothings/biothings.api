@@ -2,8 +2,10 @@ import os
 import socket
 import types
 from datetime import datetime
+from functools import partial
 
 from biothings import config as btconfig
+from biothings.hub import APITESTER_CATEGORY
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
@@ -29,6 +31,25 @@ class APIManager(BaseManager):
 
     def setup_log(self):
         self.logger, _ = get_logger("apimanager")
+
+    def get_predicates(self):
+        return []
+
+    def get_pinfo(self):
+        """
+        Return dict containing information about the current process
+        (used to report in the hub)
+        """
+        pinfo = {
+            "category": APITESTER_CATEGORY,
+            "description": "",
+            "step": "test_api",
+        }
+        preds = self.get_predicates()
+        if preds:
+            pinfo["__predicates__"] = preds
+        return pinfo
+
 
     def restore_running_apis(self):
         """
@@ -87,10 +108,26 @@ class APIManager(BaseManager):
             self.logger.info("**** RUNNING PYTESTS ****")
             import pytest
             PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
-            job = job_manager.defer_to_process(pinfo, partial(pytest.main, [PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
+            pinfo = self.get_pinfo()
+            pinfo["description"] = "Running API tests"
+            job = self.job_manager.defer_to_process(pinfo, partial(pytest.main, [PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
             # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
-            self.logger.info("**** PYTESTS FINISHED ****")
+
+            got_error = False
+            def updated(f):
+                try:
+                    _ = f.result()
+                    self.logger.info("Finished running pytests for '%s'" % api_id)
+                    self.register_status("success", job={"step": "test_api"})
+                except Exception as e:
+                    nonlocal got_error
+                    self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+                    self.register_status("failed", job={"err": repr(e)})
+                    got_error = e
+
+            job.add_done_callback(updated)
             await job
+            self.logger.info("**** PYTESTS FINISHED ****")
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
