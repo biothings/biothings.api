@@ -42,6 +42,7 @@ class APIManager(BaseManager):
         """
         pinfo = {
             "category": APITESTER_CATEGORY,
+            "source": "",
             "description": "",
             "step": "test_api",
         }
