@@ -16,6 +16,7 @@ class APIManagerException(Exception):
 
 class APIManager(BaseManager):
     def __init__(self, log_folder=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api = get_api()
         self.register = {}
         self.timestamp = datetime.now()
@@ -69,7 +70,8 @@ class APIManager(BaseManager):
             return config_mod, has_pytests
 
 
-    def test_api(self, api_id):
+    async def test_api(self, api_id):
+        assert self.job_manager
         apidoc = self.api.find_one({"_id": api_id})
         config_mod, has_pytests = self.test_variables()
         self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
@@ -85,10 +87,10 @@ class APIManager(BaseManager):
             self.logger.info("**** RUNNING PYTESTS ****")
             import pytest
             PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
-            pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"])
+            job = job_manager.defer_to_process(pinfo, partial(pytest.main, [PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
             # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
             self.logger.info("**** PYTESTS FINISHED ****")
-
+            await job
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
