@@ -118,11 +118,11 @@ class APIManager(BaseManager):
                 try:
                     _ = f.result()
                     self.logger.info("Finished running pytests for '%s'" % api_id)
-                    self.register_status("success", job={"step": "test_api"})
+                    self.register_status(api_id, "success", job={"step": "test_api"})
                 except Exception as e:
                     nonlocal got_error
                     self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-                    self.register_status("failed", job={"err": repr(e)})
+                    self.register_status(api_id, "failed", job={"err": repr(e)})
                     got_error = e
 
             job.add_done_callback(updated)
