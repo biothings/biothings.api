@@ -63,8 +63,6 @@ def test_es():
     assert "_id" in query["_source"]["includes"]
     assert "fieldA" in query["_source"]["includes"]
 
-def test_regex_order
-
 
 if __name__ == "__main__":
     test_es()
