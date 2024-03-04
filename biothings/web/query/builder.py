@@ -159,12 +159,12 @@ class ESQueryBuilder:
         and return
         2) If an iterable of regex patterns is provided then we force the structure into what we
         expect: List[re.Pattern, Iterable]
-        3) We then iterate over the structure looking for the default regex pattern. If we find it
-        then we store the index of that pattern
-        4) If we found the index, then we pop it and move it to the back to ensure it's the last
-        pattern in the collection and then return the regex pattern collection
-        5) Otherwise if we didn't find an index, then we append it to the end of the collection and
-        return the regex pattern collection
+        3) We then iterate over the structure looking for the default regex pattern.
+            - If we find the default regex pattern match, we ignore updating our list
+            - If we don't find the default regex pattern match, we update our list with the pattern
+        4) At the end we add the default regex pattern because we've exhausted our search of the
+        current pattern list and trimmed any instances we found. This should ensure we've set the
+        default as the last instance in the regex pattern list
         """
         default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
         default_regex_fields = ()
@@ -178,10 +178,13 @@ class ESQueryBuilder:
                 if isinstance(regex_fields, str):
                     regex_fields = [regex_fields]
 
+                # Check if the pattern matchs the default
+                # If it does match, we ignore adding it until outside the loop
+                # If it doesn't match we add it in the next instruction
                 if regex_pattern.pattern == default_regex_pattern.pattern and len(regex_fields) == 0:
                     continue
-
                 formatted_scopes_regexs.append((regex_pattern, regex_fields))
+
             formatted_scopes_regexs.append((default_regex_pattern, default_regex_fields))
         return formatted_scopes_regexs
 
