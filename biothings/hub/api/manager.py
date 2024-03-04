@@ -84,7 +84,6 @@ class APIManager(BaseManager):
             import config_web_local as config_mod
             has_pytests = True
             self.logger.info(f"**** THIS IS A TESTING IF CONFIG_WEB_LOCAL IS IMPORTED {config_mod.ES_HOST}")
-            self.logger.info(f"**** THIS IS THE CURRENT WORKING DIR {os.getcwd()}")
         except ImportError:
             self.logger.info("**** CANNOT IMPORT CONFIG_WEB")
             config_mod = types.ModuleType("config_mod")
@@ -108,7 +107,7 @@ class APIManager(BaseManager):
         if has_pytests:
             self.logger.info("**** RUNNING PYTESTS ****")
             import pytest
-            PYTEST_PATH = os.path.join(os.getcwd(), config_mod.PYTEST_PATH)
+            PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
             job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, [PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
@@ -119,11 +118,11 @@ class APIManager(BaseManager):
                 try:
                     _ = f.result()
                     self.logger.info("Finished running pytests for '%s'" % api_id)
-                    self.register_status(api_id, "success", job={"step": "test_api"})
+                    self.register_status(api_id, "running", job={"step": "test_api"})
                 except Exception as e:
                     nonlocal got_error
                     self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-                    self.register_status(api_id, "failed", job={"err": repr(e)})
+                    self.register_status(api_id, "running", job={"err": repr(e)})
                     got_error = e
 
             job.add_done_callback(updated)
