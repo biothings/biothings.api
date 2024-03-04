@@ -2,11 +2,17 @@
 Tests the QStringParser parsing capabilities for various different queries
 """
 
+import logging
 import re
+from typing import Union
 
 import pytest
 
 from biothings.web.query.builder import ESQueryBuilder, QStringParser, Query
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class TestDefaultQStringParser:
@@ -43,7 +49,7 @@ class TestDefaultQStringParser:
             ("a:b:c", Query(term="a:b:c", scopes=("_id",))),
         ],
     )
-    def test_default_builder_parser(self, query:str, expected_result: Query):
+    def test_default_builder_parser(self, query: str, expected_result: Query):
         """
         Comparison between the default parser for the ESQueryBuilder and the QStringParser
         itself to ensure we get similar results from the defaults
@@ -87,6 +93,7 @@ class TestSingularPatternQStringParser:
         assert parser_result.term == expected_result.term
         assert parser_result.scopes == expected_result.scopes
 
+
 class TestGeneCurieQuery:
     @classmethod
     def setup_class(cls):
@@ -125,8 +132,8 @@ class TestGeneCurieQuery:
             ("ensembl.gene:ENSG00000123374", Query(term="ENSG00000123374", scopes=["ensembl.gene"])),
             ("ENSEMBL:ENSG00000123374", Query(term="ENSG00000123374", scopes=["ensembl.gene"])),
             ("uniprot.Swiss-Prot:P47804", Query(term="P47804", scopes=["uniprot.Swiss-Prot"])),
-            ("UniProtKB:P47804", Query(term="P47804", scopes=["uniprot.Swiss-Prot"]))
-        ]
+            ("UniProtKB:P47804", Query(term="P47804", scopes=["uniprot.Swiss-Prot"])),
+        ],
     )
     def test_curie_id_queries(self, query: str, expected_result: Query):
         """
@@ -177,3 +184,77 @@ class TestMultiplerPatternQStringParser:
         assert parser_result == expected_result
         assert parser_result.term == expected_result.term
         assert parser_result.scopes == expected_result.scopes
+
+
+class TestRegexPatternOrdering:
+    @classmethod
+    def setup_class(cls):
+        cls.builder = ESQueryBuilder(
+            user_query=None,  # like a prepared statement in SQL
+            scopes_regexs=None,
+            scopes_default=("_id",),  # fallback used when scope inference fails
+            allow_random_query=True,  # used for data exploration, can be expensive
+            allow_nested_query=False,  # nested aggregation can be expensive
+            metadata=None,  # access to data like total number of documents
+        )
+
+    @pytest.mark.parametrize(
+        "regex_patterns",
+        [
+            ((r"fake_regex", ["fake_field"]),),
+            ((re.compile(r"fake_regex"), "fake_field"),),
+            [(re.compile(r"fake_regex"), ["fake_field"])],
+            ((re.compile(r"^\d+$"), ["entrezgene", "retired"]),),
+            [(re.compile(r"^\d+$"), ["entrezgene", "retired"])],
+            [
+                (re.compile(r"db[0-9]+", re.I), "drugbank.id"),
+                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                (re.compile(r"chembl[0-9]+", re.I), "chembl.molecule_chembl_id"),
+                (re.compile(r"chebi\:[0-9]+", re.I), ["chebi.id", "chebi.secondary_chebi_id"]),
+                (re.compile(r"[A-Z0-9]{10}"), "unii.unii"),
+                (re.compile(r"((cid\:(?P<term>[0-9]+))|([0-9]+))", re.I), "pubchem.cid"),
+            ],
+            [
+                (r"db[0-9]+", "drugbank.id"),
+                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                (r"chembl[0-9]+", "chembl.molecule_chembl_id"),
+                (re.compile(r"chebi\:[0-9]+", re.I), ["chebi.id", "chebi.secondary_chebi_id"]),
+                (r"[A-Z0-9]{10}", "unii.unii"),
+                (re.compile(r"((cid\:(?P<term>[0-9]+))|([0-9]+))", re.I), "pubchem.cid"),
+            ],
+            [
+                (re.compile(r"rs[0-9]+", re.I), "dbsnp.rsid"),
+                (re.compile(r"rcv[0-9\.]+", re.I), "clinvar.rcv.accession"),
+                (re.compile(r"var_[0-9]+", re.I), "uniprot.humsavar.ftid"),
+            ],
+            [
+                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                (re.compile(r"fake_regex"), ["fake_field"]),
+                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+            ],
+            [
+                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                (r"(?P<scope>\W\w+):(?P<term>[^:]+)", []),
+                (re.compile(r"fake_regex"), ["fake_field"]),
+            ],
+        ],
+    )
+    def test_default_ordering(self, regex_patterns: Union[list, tuple]):
+        """
+        Ensure that no matter the type of ordering we pass we always have the default
+        regex pattern as the last one in the ordering
+        """
+        logger.info(f"Verifying regex pattern collection: {regex_patterns}")
+        processed_regex_patterns = self.builder._verify_default_regex_pattern(scopes_regexs=regex_patterns)
+
+        default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
+        for regex_pattern, regex_fields in processed_regex_patterns[:-1]:
+            assert isinstance(regex_pattern, re.Pattern)
+            assert isinstance(regex_fields, (list, tuple))
+            assert not regex_pattern == default_regex_pattern
+
+        last_regex_pattern = processed_regex_patterns[-1]
+        assert isinstance(last_regex_pattern[0], re.Pattern)
+        assert isinstance(last_regex_pattern[1], (list, tuple))
+        assert last_regex_pattern[0] == default_regex_pattern
+        assert last_regex_pattern[1] == ()
