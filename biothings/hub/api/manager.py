@@ -1,10 +1,10 @@
-import io
 import os
 import socket
+import sys
 import types
-from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from functools import partial
+from io import StringIO
 
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
@@ -93,6 +93,10 @@ class APIManager(BaseManager):
             return config_mod, has_pytests
 
 
+    def run_tests(self, pytest_path, host):
+        import pytest
+        pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host])
+
     async def test_api(self, api_id):
         assert self.job_manager
         apidoc = self.api.find_one({"_id": api_id})
@@ -108,22 +112,11 @@ class APIManager(BaseManager):
         # import pytests if has_pytest is true then run the pytests
         if has_pytests:
             self.logger.info("**** RUNNING PYTESTS ****")
-            import pytest
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            # job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, ["-o", "log-cli=true", PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
+            job = await self.job_manager.defer_to_process(pinfo, partial(self.run_tests, [PYTEST_PATH, "mygene.info"]))
             # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
-
-            # Capture the output of pytest.main
-            captured_stdout = io.StringIO()
-            captured_stderr = io.StringIO()
-            with redirect_stdout(captured_stdout), redirect_stderr(captured_stderr):
-                job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, ["-v", PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
-
-            self.logger.info(captured_stdout.getvalue())
-            if captured_stderr.getvalue():
-                self.logger.error(captured_stderr.getvalue())
 
             got_error = False
             def updated(f):
