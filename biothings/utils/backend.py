@@ -94,7 +94,7 @@ class DocMongoBackend(DocBackendBase):
             self._target_db = None
         else:
             self._target_db = target_db
-        if target_collection:
+        if target_collection is not None:
             self.target_collection = target_collection
 
     def __eq__(self, other):
@@ -188,7 +188,9 @@ class DocMongoBackend(DocBackendBase):
         self.target_collection.drop()
 
     def get_id_list(self):
-        return [x["_id"] for x in self.target_collection.find(projection=[], manipulate=False)]
+        # manipulate parameter is deprecated
+        # return [x["_id"] for x in self.target_collection.find(projection=[], manipulate=False)]
+        return [x["_id"] for x in self.target_collection.find(projection=[])]
 
     def get_from_id(self, id):
         return self.target_collection.find_one({"_id": id})
