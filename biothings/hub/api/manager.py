@@ -115,7 +115,7 @@ class APIManager(BaseManager):
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            job = await self.job_manager.defer_to_process(pinfo, partial(self.run_tests, [PYTEST_PATH, "mygene.info"]))
+            job = await self.job_manager.defer_to_process(pinfo, partial(self.run_tests, PYTEST_PATH, "mygene.info"))
             # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
 
             got_error = False
