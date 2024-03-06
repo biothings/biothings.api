@@ -6,6 +6,8 @@ from datetime import datetime
 from functools import partial
 from io import StringIO
 
+import pytest
+
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
 from biothings.utils.hub_db import get_api
@@ -94,7 +96,6 @@ class APIManager(BaseManager):
 
 
     def run_tests(self, pytest_path, host):
-        import pytest
         pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host])
 
     async def test_api(self, api_id):
@@ -109,7 +110,7 @@ class APIManager(BaseManager):
         self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
         port = int(apidoc["config"]["port"])
 
-        # import pytests if has_pytest is true then run the pytests
+        #if has_pytest is true then run the pytests
         if has_pytests:
             self.logger.info("**** RUNNING PYTESTS ****")
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
