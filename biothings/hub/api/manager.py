@@ -1,7 +1,6 @@
 import contextlib
 import os
 import socket
-import sys
 import types
 from datetime import datetime
 from functools import partial
@@ -101,35 +100,29 @@ class APIManager(BaseManager):
     def get_apis(self):
         return [d for d in self.api.find()]
 
-    def test_variables(self):
-        has_pytests = False
+    def import_config_web(self):
         try:
             import config_web_local as config_mod
             self.logger.info("IMPORTED CONFIG_WEB_LOCAL")
             self.logger.info("ORIGINAL ES_HOST: %s" % config_mod.ES_HOST)
-            if config_mod.PYTEST_PATH:
-                has_pytests = True
         except ImportError:
             self.logger.info("CANNOT IMPORT CONFIG_WEB")
             config_mod = types.ModuleType("config_mod")
         finally:
-            return config_mod, has_pytests
+            return config_mod
 
     async def test_api(self, api_id):
         assert self.job_manager
-        apidoc = self.api.find_one({"_id": api_id})
-        config_mod, has_pytests = self.test_variables()
-        self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
-        # config_mod = types.ModuleType("config_mod")
-        config_mod.ES_HOST = apidoc["config"]["es_host"]
-        config_mod.ES_INDEX = apidoc["config"]["index"]
-        config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
-        self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
-        port = int(apidoc["config"]["port"])
+        config_mod = self.import_config_web()
+        has_pytests = False
+        if config_mod.PYTEST_PATH:
+            has_pytests = True
 
         #if has_pytest is true then run the pytests
         if has_pytests:
             self.logger.info("**** RUNNING PYTESTS ****")
+            apidoc = self.api.find_one({"_id": api_id})
+            port = int(apidoc["config"]["port"])
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
@@ -163,7 +156,7 @@ class APIManager(BaseManager):
                 "Custom entry point not implemented yet, " + "only basic generated APIs are currently supported"
             )
 
-        config_mod, _ = self.test_variables()
+        config_mod = self.import_config_web()
         self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
         config_mod.ES_INDEX = apidoc["config"]["index"]
