@@ -1,12 +1,12 @@
+import contextlib
 import os
+import pytest
 import socket
 import sys
 import types
 from datetime import datetime
 from functools import partial
 from io import StringIO
-
-import pytest
 
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
@@ -15,6 +15,24 @@ from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
+
+class Test:
+    def __init__(self):
+        self.setup()
+
+    def setup(self):
+        self.setup_log()
+
+    def setup_log(self):
+        self.logger, _ = get_logger("apimanager")
+
+    def test(self, pytest_path, host):
+        stdout = StringIO()
+        stderr = StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            pytest.main(["-v", pytest_path, "--host", host])
+        self.logger.info(stdout.getvalue())
+        self.logger.info(stderr.getvalue())        
 
 class APIManagerException(Exception):
     pass
@@ -112,7 +130,8 @@ class APIManager(BaseManager):
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, ["-v", PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
+            # job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, ["-v", PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
+            job = await self.job_manager.defer_to_process(pinfo, partial(Test().test, PYTEST_PATH, "mygene.info"))
             # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
 
             got_error = False
