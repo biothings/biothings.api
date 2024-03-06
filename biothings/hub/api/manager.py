@@ -1,12 +1,13 @@
 import contextlib
 import os
-import pytest
 import socket
 import sys
 import types
 from datetime import datetime
 from functools import partial
 from io import StringIO
+
+import pytest
 
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
@@ -16,7 +17,7 @@ from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
 
-class Test:
+class APITester:
     def __init__(self):
         self.setup()
 
@@ -26,13 +27,13 @@ class Test:
     def setup_log(self):
         self.logger, _ = get_logger("apimanager")
 
-    def test(self, pytest_path, host):
+    def run_pytests(self, pytest_path, host):
         stdout = StringIO()
         stderr = StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             pytest.main(["-v", pytest_path, "--host", host])
         self.logger.info(stdout.getvalue())
-        self.logger.info(stderr.getvalue())        
+        self.logger.info(stderr.getvalue())
 
 class APIManagerException(Exception):
     pass
@@ -104,10 +105,12 @@ class APIManager(BaseManager):
         has_pytests = False
         try:
             import config_web_local as config_mod
-            has_pytests = True
-            self.logger.info(f"**** THIS IS A TESTING IF CONFIG_WEB_LOCAL IS IMPORTED {config_mod.ES_HOST}")
+            self.logger.info("IMPORTED CONFIG_WEB_LOCAL")
+            self.logger.info("ORIGINAL ES_HOST: %s" % config_mod.ES_HOST)
+            if config_mod.PYTEST_PATH:
+                has_pytests = True
         except ImportError:
-            self.logger.info("**** CANNOT IMPORT CONFIG_WEB")
+            self.logger.info("CANNOT IMPORT CONFIG_WEB")
             config_mod = types.ModuleType("config_mod")
         finally:
             return config_mod, has_pytests
@@ -130,9 +133,8 @@ class APIManager(BaseManager):
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            # job = await self.job_manager.defer_to_process(pinfo, partial(pytest.main, ["-v", PYTEST_PATH, "-m", "not userquery", "--host", "mygene.info"]))
-            job = await self.job_manager.defer_to_process(pinfo, partial(Test().test, PYTEST_PATH, "mygene.info"))
-            # pytest.main([PYTEST_PATH, "-m", "not userquery", "--host", str(port)])
+            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, "mygene.info"))
+            # job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, str(port)))
 
             got_error = False
             def updated(f):
@@ -149,6 +151,8 @@ class APIManager(BaseManager):
             job.add_done_callback(updated)
             await job
             self.logger.info("**** PYTESTS FINISHED ****")
+        else:
+            self.logger.error("**** NO PYTESTS FOUND ****")
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
@@ -159,9 +163,8 @@ class APIManager(BaseManager):
                 "Custom entry point not implemented yet, " + "only basic generated APIs are currently supported"
             )
 
-        config_mod, has_pytests = self.test_variables()
+        config_mod, _ = self.test_variables()
         self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
-        # config_mod = types.ModuleType("config_mod")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
         config_mod.ES_INDEX = apidoc["config"]["index"]
         config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
@@ -180,7 +183,6 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
-        # self.test_api(api_id)
 
 
     def stop_api(self, api_id):
