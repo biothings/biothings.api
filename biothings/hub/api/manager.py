@@ -1,10 +1,13 @@
+import asyncio
 import contextlib
+import importlib
+import logging
 import os
 import socket
+import time
 import types
 from datetime import datetime
 from functools import partial
-from io import StringIO
 
 import pytest
 
@@ -16,25 +19,25 @@ from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
 
-class APITester:
-    def __init__(self):
-        self.setup()
+class LoggerFile:
+    """
+    File-like object that writes to a logger at a specific level.
+    This object is used to redirect stdout/stderr to a logger.
+    """
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
 
-    def setup(self):
-        self.setup_log()
+    def write(self, message):
+        if message.rstrip() != "":
+            self.logger.log(self.level, message)
 
-    def setup_log(self):
-        self.logger, _ = get_logger("apimanager")
+    def flush(self):
+        pass
 
-    def run_pytests(self, pytest_path, host):
-        stdout = StringIO()
-        stderr = StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host, "--scheme", "http"])
-        for line in stdout.getvalue().split("\n"):
-            self.logger.info(line)
-        for line in stderr.getvalue().split("\n"):
-            self.logger.error(line)
+    def isatty(self):
+        return False
+
 
 class APIManagerException(Exception):
     pass
@@ -104,49 +107,75 @@ class APIManager(BaseManager):
 
     def import_config_web(self):
         try:
-            import config_web_local as config_mod
-            self.logger.info("IMPORTED CONFIG_WEB_LOCAL")
-            self.logger.info("ORIGINAL ES_HOST: %s" % config_mod.ES_HOST)
-        except ImportError:
-            self.logger.info("CANNOT IMPORT CONFIG_WEB")
+            config_mod = importlib.import_module(btconfig.APITEST_CONFIG)
+            self.logger.info("Imported %s as config_mod.", btconfig.APITEST_CONFIG)
+        except (AttributeError, ImportError):
+            self.logger.info("Cannot import APITEST_CONFIG variable from btconfig, creating a new module")
             config_mod = types.ModuleType("config_mod")
         finally:
             return config_mod
 
-    async def test_api(self, api_id):
+    def log_pytests(self, pytest_path, host):
+        """
+        Run the pytests for the given pytest path and host. We create a LoggerFile object to redirect stdout and stderr to the logger.
+        """
+
+        stdout = LoggerFile(self.logger, logging.INFO)
+        stderr = LoggerFile(self.logger, logging.ERROR)
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            pytest.main(["-vv", pytest_path, "-m", "not production", "--host", host, "--scheme", "http"])
+
+    def test_api(self, api_id):
+        """
+        Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
+        APITEST_PATH: path to the directory containing the pytests
+        APITEST_CONFIG: name of the config file containing the api web configuration
+        """
         assert self.job_manager
-        config_mod = self.import_config_web()
         has_pytests = False
-        if config_mod.PYTEST_PATH:
-            has_pytests = True
+        try:
+            if btconfig.APITEST_PATH and btconfig.APITEST_CONFIG:
+                has_pytests = True
+        except AttributeError:
+            self.logger.error("No APITEST_PATH or APITEST_CONFIG found in config. Skipping pytests for '%s'", api_id)
 
-        #if has_pytest is true then run the pytests
-        if has_pytests:
-            self.logger.info("**** RUNNING PYTESTS ****")
-            apidoc = self.api.find_one({"_id": api_id})
-            port = int(apidoc["config"]["port"])
-            PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
-            pinfo = self.get_pinfo()
-            pinfo["description"] = "Running API tests"
-            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, "localhost:" + str(port)))
+        try:
+            #if has_pytest is true then run the pytests
+            if has_pytests:
+                self.logger.info("APITEST_PATH found in config. Running pytests from %s.", btconfig.APITEST_PATH)
+                apidoc = self.api.find_one({"_id": api_id})
+                port = int(apidoc["config"]["port"])
+                APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
 
-            got_error = False
-            def updated(f):
-                try:
-                    _ = f.result()
-                    self.logger.info("Finished running pytests for '%s'" % api_id)
-                    self.register_status(api_id, "running", job={"step": "test_api"})
-                except Exception as e:
-                    nonlocal got_error
-                    self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-                    self.register_status(api_id, "running", job={"err": repr(e)})
-                    got_error = e
+                async def run_pytests(path, port):
+                    pinfo = self.get_pinfo()
+                    pinfo["description"] = "Running API tests"
+                    # defer_to_process leaves the websocket open for unknown reasons when trying to stop the api so we use defer_to_thread
+                    job = await self.job_manager.defer_to_thread(pinfo, partial(self.log_pytests, path, "localhost:" + str(port)))
+                    got_error = False
+                    def updated(f):
+                        try:
+                            _ = f.result()
+                            self.logger.info("Finished running pytests for '%s'" % api_id)
+                            self.register_status(api_id, "running", job={"step": "test_api"})
+                        except Exception as e:
+                            nonlocal got_error
+                            self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+                            self.register_status(api_id, "running", job={"err": repr(e)})
+                            got_error = e
 
-            job.add_done_callback(updated)
-            await job
-            self.logger.info("**** PYTESTS FINISHED ****")
-        else:
-            self.logger.error("**** NO PYTESTS FOUND ****")
+                    job.add_done_callback(updated)
+                    await job
+                    if got_error:
+                        raise got_error
+
+                job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
+                return job
+        except Exception as e:
+            self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+            raise
+
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
@@ -158,11 +187,9 @@ class APIManager(BaseManager):
             )
 
         config_mod = self.import_config_web()
-        self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
         config_mod.ES_INDEX = apidoc["config"]["index"]
         config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
-        self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
 
         launcher = BiothingsAPILauncher(config_mod)
         port = int(apidoc["config"]["port"])
