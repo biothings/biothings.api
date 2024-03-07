@@ -43,7 +43,7 @@ from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
-from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
+from biothings.config import config
 
 
 class RawQueryInterrupt(Exception):
@@ -106,12 +106,12 @@ class QStringParser:
         default as the last instance in the regex pattern list
 
         """
-        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
-        default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
+        default_regex_pattern = config.ANNOTATION_DEFAULT_REGEX_PATTERN[0]
+        default_regex_fields = config.ANNOTATION_DEFAULT_REGEX_PATTERN[1]
 
         structured_patterns = []
         if patterns is None:
-            structured_patterns = [ANNOTATION_DEFAULT_REGEX_PATTERN]
+            structured_patterns = [config.ANNOTATION_DEFAULT_REGEX_PATTERN]
         elif isinstance(patterns, Iterable):
             for regex_pattern, regex_fields in patterns:
                 regex_pattern = re.compile(regex_pattern)
