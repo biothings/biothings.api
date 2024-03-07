@@ -36,7 +36,7 @@ from random import randrange
 import logging
 import os
 import re
-from typing import Iterable
+from typing import Iterable, List, Tuple, Union
 
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
@@ -59,22 +59,75 @@ Group = namedtuple("Group", ("term", "scopes"))
 class QStringParser:
     def __init__(
         self,
-        default_scopes=("_id",),
-        patterns=((r"(?P<scope>\W\w+):(?P<term>[^:]+)", ()),),
-        gpnames=("term", "scope"),
+        default_scopes: Tuple[str] = None,
+        patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
+        gpnames: Tuple[str] = None,
     ):
+        if default_scopes is None:
+            default_scopes = ("_id",)
+
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
         self.default = default_scopes  # ["_id", "entrezgene", "ensembl.gene"]
-        self.patterns = []  # [(re.compile(r'^\d+$'), ['entrezgene', 'retired'])]
+
+        self.patterns = self._build_regex_pattern_collection(
+            patterns=patterns
+        )  # [(re.compile(r'^\d+$'), ['entrezgene', 'retired'])]
+
+        if gpnames is None:
+            gpnames = ("term", "scope")
         self.gpname = Group(*gpnames)  # symbolic group name for term substitution
-        for pattern, fields in patterns:
-            fields = [fields] if isinstance(fields, str) else fields
-            assert all(isinstance(field, str) for field in fields)
-            pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
-            if hasattr(re, "Pattern"):  # TODO remove for python>3.7
-                assert isinstance(pattern, re.Pattern)
-            self.patterns.append((pattern, fields))
+
+    def _build_regex_pattern_collection(
+        self, patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]]
+    ) -> List[Tuple[re.Pattern, List[str]]]:
+        """
+        Builds the regex pattern list based off the provided patterns. With the
+        ANNOTATION_ID_REGEX_LIST configuration parameter, the user can provide
+        regex patterns matching the following structure:
+        (Union[str, re.Pattern], Union[str, Iterable])
+
+        We also load the default annotation regex pattern from the settings and ensure it's
+        applied as the very last pattern in a the potential list of regex patterns provided
+        by the instance configuration. We don't want to publically expose the default regex
+        pattern in the configuration as accidently modifying that could lead to unexpected /
+        unwanted behavior. Therefore we add it at runtime if it isn't discovered
+
+        Flow:
+        1) Branch on if a regex pattern list was provided. If none provided then set to the default
+        and return
+        2) If an iterable of regex patterns is provided then we force the structure into what we
+        expect: List[re.Pattern, Iterable]
+        3) We then iterate over the structure looking for the default regex pattern.
+            - If we find the default regex pattern match, we ignore updating our list
+            - If we don't find the default regex pattern match, we update our list with the pattern
+        4) At the end we add the default regex pattern because we've exhausted our search of the
+        current pattern list and trimmed any instances we found. This should ensure we've set the
+        default as the last instance in the regex pattern list
+
+        """
+        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
+        default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
+
+        structured_patterns = []
+        if patterns is None:
+            structured_patterns = [ANNOTATION_DEFAULT_REGEX_PATTERN]
+        elif isinstance(patterns, Iterable):
+            for regex_pattern, regex_fields in patterns:
+                regex_pattern = re.compile(regex_pattern)
+                if isinstance(regex_fields, str):
+                    regex_fields = [regex_fields]
+                assert all(isinstance(field, str) for field in regex_fields)
+
+                # Check if the pattern matchs the default
+                # If it does match, we ignore adding it until outside the loop
+                # If it doesn't match we add it in the next instruction
+                if regex_pattern.pattern == default_regex_pattern.pattern and len(regex_fields) == 0:
+                    continue
+                structured_patterns.append((regex_pattern, regex_fields))
+
+            structured_patterns.append((default_regex_pattern, default_regex_fields))
+        return structured_patterns
 
     def parse(self, q):
         assert isinstance(q, str)
@@ -120,7 +173,7 @@ class ESQueryBuilder:
 
     # Different from other query pipelines, elasticsearch
     # supports querystring query, which means we can directly
-    # dispatch queires without fields to querystring query,
+    # dispatch queries without fields to querystring query,
     # and those with fields specified to typical match queries.
 
     def __init__(
@@ -132,67 +185,18 @@ class ESQueryBuilder:
         allow_nested_query=False,  # nested aggregation can be expensive
         metadata=None,  # access to data like total number of documents
     ):
-        # inference used when encountering empty scopes
-        scopes_regexs = self._verify_default_regex_pattern(scopes_regexs)
-
-        # for autoscope feature, to infer scope from q when enabled
-        self.parser = QStringParser(scopes_default, scopes_regexs)
+        self.parser = QStringParser(default_scopes=scopes_default, patterns=scopes_regexs, gpnames=None)
 
         # all settings below affect only query string queries
-        self.user_query = user_query or ESUserQuery("userquery")
+        if user_query is None:
+            user_query = ESUserQuery("userquery")
+        self.user_query = user_query
+
         self.allow_random_query = allow_random_query
         self.allow_nested_query = allow_nested_query  # for aggregations
 
         # currently metadata is only used for __any__ query
         self.metadata = metadata
-
-    def _verify_default_regex_pattern(self, scopes_regexs):
-        """
-        We load the default annoation regex pattern from the settings and ensure it's
-        applied as the very last pattern in a the potential list of regex patterns provided
-        by the instance configuration
-
-        With the ANNOTATION_ID_REGEX_LIST configuration parameter, the user can provide
-        regex patterns matching the following structure:
-        (Union[str, re.Pattern], Union[str, Iterable])
-
-        We don't want to publically expose the default regex pattern in the configuration as
-        accidently modifying that could lead to unexpected / unwanted behavior. Therefore we
-        add it at runtime if it isn't discovered
-
-        Flow:
-        1) Branch on if a regex pattern list was provided. If none provided then set to the default
-        and return
-        2) If an iterable of regex patterns is provided then we force the structure into what we
-        expect: List[re.Pattern, Iterable]
-        3) We then iterate over the structure looking for the default regex pattern.
-            - If we find the default regex pattern match, we ignore updating our list
-            - If we don't find the default regex pattern match, we update our list with the pattern
-        4) At the end we add the default regex pattern because we've exhausted our search of the
-        current pattern list and trimmed any instances we found. This should ensure we've set the
-        default as the last instance in the regex pattern list
-        """
-        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
-        default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
-
-        formatted_scopes_regexs = []
-        if scopes_regexs is None:
-            formatted_scopes_regexs = [ANNOTATION_DEFAULT_REGEX_PATTERN]
-        elif isinstance(scopes_regexs, Iterable):
-            for regex_pattern, regex_fields in scopes_regexs:
-                regex_pattern = re.compile(regex_pattern)
-                if isinstance(regex_fields, str):
-                    regex_fields = [regex_fields]
-
-                # Check if the pattern matchs the default
-                # If it does match, we ignore adding it until outside the loop
-                # If it doesn't match we add it in the next instruction
-                if regex_pattern.pattern == default_regex_pattern.pattern and len(regex_fields) == 0:
-                    continue
-                formatted_scopes_regexs.append((regex_pattern, regex_fields))
-
-            formatted_scopes_regexs.append((default_regex_pattern, default_regex_fields))
-        return formatted_scopes_regexs
 
     def build(self, q=None, **options):
         """
