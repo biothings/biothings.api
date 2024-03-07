@@ -31,8 +31,10 @@ class APITester:
         stderr = StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             pytest.main(["-v", pytest_path, "--host", host])
-        self.logger.info(stdout.getvalue())
-        self.logger.info(stderr.getvalue())
+        for line in stdout.getvalue().split("\n"):
+            self.logger.info(line)
+        for line in stderr.getvalue().split("\n"):
+            self.logger.error(line)
 
 class APIManagerException(Exception):
     pass
