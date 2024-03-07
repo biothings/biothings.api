@@ -128,7 +128,7 @@ class APIManager(BaseManager):
         try:
             config_mod = importlib.import_module(btconfig.APITEST_CONFIG)
             self.logger.info("Imported %s as config_mod.", btconfig.APITEST_CONFIG)
-        except ImportError:
+        except ImportError or AttributeError:
             self.logger.info("Cannot import APITEST_CONFIG variable from btconfig, creating a new module")
             config_mod = types.ModuleType("config_mod")
         finally:
