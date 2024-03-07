@@ -29,6 +29,7 @@
         facet_size: int, maximum number of agg results.
 
 """
+
 from collections import UserString, namedtuple
 from copy import deepcopy
 from random import randrange
@@ -42,6 +43,7 @@ from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
+from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
 class RawQueryInterrupt(Exception):
@@ -146,6 +148,10 @@ class ESQueryBuilder:
 
     def _verify_default_regex_pattern(self, scopes_regexs):
         """
+        We load the default annoation regex pattern from the settings and ensure it's
+        applied as the very last pattern in a the potential list of regex patterns provided
+        by the instance configuration
+
         With the ANNOTATION_ID_REGEX_LIST configuration parameter, the user can provide
         regex patterns matching the following structure:
         (Union[str, re.Pattern], Union[str, Iterable])
@@ -166,12 +172,12 @@ class ESQueryBuilder:
         current pattern list and trimmed any instances we found. This should ensure we've set the
         default as the last instance in the regex pattern list
         """
-        default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
-        default_regex_fields = ()
+        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
+        default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
 
         formatted_scopes_regexs = []
         if scopes_regexs is None:
-            formatted_scopes_regexs = [(default_regex_pattern, default_regex_fields)]
+            formatted_scopes_regexs = [ANNOTATION_DEFAULT_REGEX_PATTERN]
         elif isinstance(scopes_regexs, Iterable):
             for regex_pattern, regex_fields in scopes_regexs:
                 regex_pattern = re.compile(regex_pattern)

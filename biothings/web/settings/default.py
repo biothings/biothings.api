@@ -2,6 +2,8 @@
     Biothings Web Settings Default
 """
 
+import re
+
 # *****************************************************************************
 # biothings.web.launcher
 # *****************************************************************************
@@ -223,6 +225,14 @@ HTML_OUT_QUERY_DOCS = ""  # URL
 # Annotation
 ANNOTATION_DEFAULT_SCOPES = ["_id"]
 ANNOTATION_ID_REGEX_LIST = []  # [(re.compile(r'rs[0-9]+', re.I), 'dbsnp.rsid')]
+
+# The default pattern matches up to the first ":" character to represent the scope
+# of the query. The scope represents the associated field to query against on the
+# elasticsearch backend. The term is the "value" we wish to search for immediately
+# preceding the ":" character. In this case we look for any number of word (\w) or
+# or non-word (\W) characters to match against in the group to represent the value
+ANNOTATION_DEFAULT_REGEX_PATTERN = (re.compile(r"(?P<scope>[^:]+):(?P<term>[\W\w]+)"), ())
+
 #
 # Status
 # https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html
