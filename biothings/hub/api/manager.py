@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import os
 import socket
 import types
@@ -16,6 +17,18 @@ from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
 
+class LoggerFile:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+
+    def write(self, message):
+        if message.rstrip() != "":
+            self.logger.log(self.level, message.rstrip())
+
+    def flush(self):
+        pass
+
 class APITester:
     def __init__(self):
         self.setup()
@@ -27,14 +40,18 @@ class APITester:
         self.logger, _ = get_logger("apimanager")
 
     def run_pytests(self, pytest_path, host):
-        stdout = StringIO()
-        stderr = StringIO()
+        # stdout = StringIO()
+        # stderr = StringIO()
+        stdout = LoggerFile(self.logger, logging.INFO)
+        stderr = LoggerFile(self.logger, logging.ERROR)
+
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host, "--scheme", "http"])
-        for line in stdout.getvalue().split("\n"):
-            self.logger.info(line)
-        for line in stderr.getvalue().split("\n"):
-            self.logger.error(line)
+
+        # for line in stdout.getvalue().split("\n"):
+        #     self.logger.info(line)
+        # for line in stderr.getvalue().split("\n"):
+        #     self.logger.error(line)
 
 class APIManagerException(Exception):
     pass
