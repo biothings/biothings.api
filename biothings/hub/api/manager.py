@@ -30,7 +30,7 @@ class APITester:
         stdout = StringIO()
         stderr = StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            pytest.main(["-v", pytest_path, "--host", host])
+            pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host, "--scheme", "http"])
         self.logger.info(stdout.getvalue())
         self.logger.info(stderr.getvalue())
 
@@ -126,8 +126,7 @@ class APIManager(BaseManager):
             PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, "mygene.info"))
-            # job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, str(port)))
+            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, "localhost:" + str(port)))
 
             got_error = False
             def updated(f):
