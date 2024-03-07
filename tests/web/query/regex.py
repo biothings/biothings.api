@@ -9,6 +9,7 @@ from typing import Union
 import pytest
 
 from biothings.web.query.builder import ESQueryBuilder, QStringParser, Query
+from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class TestDefaultQStringParser:
             ("x", Query(term="x", scopes=("_id",))),
             ("a:b", Query(term="b", scopes=["a"])),
             ("_id:123", Query(term="123", scopes=["_id"])),
-            ("a:b:c", Query(term="a:b:c", scopes=("_id",))),
+            ("a:b:c", Query(term="b:c", scopes=["a"])),
         ],
     )
     def test_generic_entries(self, query: str, expected_result: Query):
@@ -46,7 +47,7 @@ class TestDefaultQStringParser:
             ("x", Query(term="x", scopes=("_id",))),
             ("a:b", Query(term="b", scopes=["a"])),
             ("_id:123", Query(term="123", scopes=["_id"])),
-            ("a:b:c", Query(term="a:b:c", scopes=("_id",))),
+            ("a:b:c", Query(term="b:c", scopes=["a"])),
         ],
     )
     def test_default_builder_parser(self, query: str, expected_result: Query):
@@ -189,14 +190,7 @@ class TestMultiplerPatternQStringParser:
 class TestRegexPatternOrdering:
     @classmethod
     def setup_class(cls):
-        cls.builder = ESQueryBuilder(
-            user_query=None,  # like a prepared statement in SQL
-            scopes_regexs=None,
-            scopes_default=("_id",),  # fallback used when scope inference fails
-            allow_random_query=True,  # used for data exploration, can be expensive
-            allow_nested_query=False,  # nested aggregation can be expensive
-            metadata=None,  # access to data like total number of documents
-        )
+        cls.parser = QStringParser(default_scopes=None, patterns=None, gpnames=None)
 
     @pytest.mark.parametrize(
         "regex_patterns",
@@ -245,9 +239,9 @@ class TestRegexPatternOrdering:
         regex pattern as the last one in the ordering
         """
         logger.info(f"Verifying regex pattern collection: {regex_patterns}")
-        processed_regex_patterns = self.builder._verify_default_regex_pattern(scopes_regexs=regex_patterns)
+        processed_regex_patterns = self.parser._build_regex_pattern_collection(patterns=regex_patterns)
 
-        default_regex_pattern = re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)")
+        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
         for regex_pattern, regex_fields in processed_regex_patterns[:-1]:
             assert isinstance(regex_pattern, re.Pattern)
             assert isinstance(regex_fields, (list, tuple))
