@@ -1,11 +1,11 @@
 import contextlib
+import importlib
 import logging
 import os
 import socket
 import types
 from datetime import datetime
 from functools import partial
-from io import StringIO
 
 import pytest
 
@@ -18,6 +18,10 @@ from biothings.web.launcher import BiothingsAPILauncher
 
 
 class LoggerFile:
+    """
+    File-like object that writes to a logger at a specific level.
+    This object is used to redirect stdout/stderr to a logger.
+    """
     def __init__(self, logger, level):
         self.logger = logger
         self.level = level
@@ -43,18 +47,16 @@ class APITester:
         self.logger, _ = get_logger("apimanager")
 
     def run_pytests(self, pytest_path, host):
-        # stdout = StringIO()
-        # stderr = StringIO()
+        """
+        Run the pytests for the given pytest path and host. We create a LoggerFile object to redirect stdout and stderr to the logger.
+        """
+
         stdout = LoggerFile(self.logger, logging.INFO)
         stderr = LoggerFile(self.logger, logging.ERROR)
 
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            pytest.main(["-v", pytest_path, "-m", "not userquery", "--host", host, "--scheme", "http"])
+            pytest.main(["-vv", pytest_path, "-m", "not production", "--host", host, "--scheme", "http"])
 
-        # for line in stdout.getvalue().split("\n"):
-        #     self.logger.info(line)
-        # for line in stderr.getvalue().split("\n"):
-        #     self.logger.error(line)
 
 class APIManagerException(Exception):
     pass
@@ -124,31 +126,33 @@ class APIManager(BaseManager):
 
     def import_config_web(self):
         try:
-            import config_web_local as config_mod
-            self.logger.info("IMPORTED CONFIG_WEB_LOCAL")
-            self.logger.info("ORIGINAL ES_HOST: %s" % config_mod.ES_HOST)
+            config_mod = importlib.import_module(btconfig.APITEST_CONFIG)
+            self.logger.info("Imported %s as config_mod.", btconfig.APITEST_CONFIG)
         except ImportError:
-            self.logger.info("CANNOT IMPORT CONFIG_WEB")
+            self.logger.info("Cannot import APITEST_CONFIG variable from btconfig, creating a new module")
             config_mod = types.ModuleType("config_mod")
         finally:
             return config_mod
 
     async def test_api(self, api_id):
+        """
+        Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
+        """
         assert self.job_manager
-        config_mod = self.import_config_web()
+
         has_pytests = False
-        if config_mod.PYTEST_PATH:
+        if btconfig.APITEST_PATH:
             has_pytests = True
 
         #if has_pytest is true then run the pytests
         if has_pytests:
-            self.logger.info("**** RUNNING PYTESTS ****")
+            self.logger.info("Pytest path found in config_web_local.py. Running pytests from %s.", btconfig.APITEST_PATH)
             apidoc = self.api.find_one({"_id": api_id})
             port = int(apidoc["config"]["port"])
-            PYTEST_PATH = os.path.join(config_mod.PYTEST_PATH)
+            APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
             pinfo = self.get_pinfo()
             pinfo["description"] = "Running API tests"
-            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, PYTEST_PATH, "localhost:" + str(port)))
+            job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, APITEST_PATH, "localhost:" + str(port)))
 
             got_error = False
             def updated(f):
@@ -164,9 +168,8 @@ class APIManager(BaseManager):
 
             job.add_done_callback(updated)
             await job
-            self.logger.info("**** PYTESTS FINISHED ****")
         else:
-            self.logger.error("**** NO PYTESTS FOUND ****")
+            self.logger.error("No pytest path found in config_web_local.py. Skipping pytests for '%s'", api_id)
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
@@ -178,11 +181,9 @@ class APIManager(BaseManager):
             )
 
         config_mod = self.import_config_web()
-        self.logger.info(f"THESE ARE ALL THE VARIABLES {dir(config_mod)}")
         config_mod.ES_HOST = apidoc["config"]["es_host"]
         config_mod.ES_INDEX = apidoc["config"]["index"]
         config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
-        self.logger.info(f"CHECK IF ESHOST IS CHANGED {config_mod.ES_HOST}")
 
         launcher = BiothingsAPILauncher(config_mod)
         port = int(apidoc["config"]["port"])
