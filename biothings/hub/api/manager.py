@@ -145,11 +145,11 @@ class APIManager(BaseManager):
             if btconfig.APITEST_PATH:
                 has_pytests = True
         except AttributeError:
-            self.logger.error("No pytest path found in config_web_local.py. Skipping pytests for '%s'", api_id)
+            self.logger.error("No pytest path found in config. Skipping pytests for '%s'", api_id)
 
         #if has_pytest is true then run the pytests
         if has_pytests:
-            self.logger.info("Pytest path found in config_web_local.py. Running pytests from %s.", btconfig.APITEST_PATH)
+            self.logger.info("Pytest path found in config. Running pytests from %s.", btconfig.APITEST_PATH)
             apidoc = self.api.find_one({"_id": api_id})
             port = int(apidoc["config"]["port"])
             APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
