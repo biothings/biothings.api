@@ -141,8 +141,11 @@ class APIManager(BaseManager):
         assert self.job_manager
 
         has_pytests = False
-        if btconfig.APITEST_PATH:
-            has_pytests = True
+        try:
+            if btconfig.APITEST_PATH:
+                has_pytests = True
+        except AttributeError:
+            self.logger.error("No pytest path found in config_web_local.py. Skipping pytests for '%s'", api_id)
 
         #if has_pytest is true then run the pytests
         if has_pytests:
@@ -168,8 +171,6 @@ class APIManager(BaseManager):
 
             job.add_done_callback(updated)
             await job
-        else:
-            self.logger.error("No pytest path found in config_web_local.py. Skipping pytests for '%s'", api_id)
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
