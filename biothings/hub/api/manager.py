@@ -24,10 +24,13 @@ class LoggerFile:
 
     def write(self, message):
         if message.rstrip() != "":
-            self.logger.log(self.level, message.rstrip())
+            self.logger.log(self.level, message)
 
     def flush(self):
         pass
+
+    def isatty(self):
+        return False
 
 class APITester:
     def __init__(self):
