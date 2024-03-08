@@ -1504,10 +1504,10 @@ class HubServer(object):
             )
         if "create_api" in cmdnames:
             self.api_endpoints["api"].append(EndpointDefinition(name="create_api", method="post", force_bodyargs=True))
-        if not self.api_endpoints["api"]:
-            self.api_endpoints.pop("api")
         if "test_api" in cmdnames:
             self.api_endpoints["api"].append(EndpointDefinition(name="test_api", method="post", suffix="test"))
+        if not self.api_endpoints["api"]:
+            self.api_endpoints.pop("api")
         if "get_apis" in cmdnames:
             self.api_endpoints["api/list"] = EndpointDefinition(name="get_apis", method="get")
         if "stop" in cmdnames:
