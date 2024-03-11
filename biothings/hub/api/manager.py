@@ -188,38 +188,40 @@ class APIManager(BaseManager):
         except AttributeError:
             self.logger.error("No APITEST_PATH or APITEST_CONFIG found in config. Skipping pytests for '%s'", api_id)
 
+        try:
+            #if has_pytest is true then run the pytests
+            if has_pytests:
+                self.logger.info("APITEST_PATH found in config. Running pytests from %s.", btconfig.APITEST_PATH)
+                apidoc = self.api.find_one({"_id": api_id})
+                port = int(apidoc["config"]["port"])
+                APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
 
-        #if has_pytest is true then run the pytests
-        if has_pytests:
-            self.logger.info("APITEST_PATH found in config. Running pytests from %s.", btconfig.APITEST_PATH)
-            apidoc = self.api.find_one({"_id": api_id})
-            port = int(apidoc["config"]["port"])
-            APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
+                async def run_pytests():
+                    pinfo = self.get_pinfo()
+                    pinfo["description"] = "Running API tests"
+                    job = await self.job_manager.defer_to_thread(pinfo, partial(time.sleep, 5))
+                    got_error = False
+                    def updated(f):
+                        try:
+                            _ = f.result()
+                            self.logger.info("Finished running pytests for '%s'" % api_id)
+                            self.register_status(api_id, "running", job={"step": "test_api"})
+                        except Exception as e:
+                            nonlocal got_error
+                            self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+                            self.register_status(api_id, "running", job={"err": repr(e)})
+                            got_error = e
 
-            async def run_pytests():
-                pinfo = self.get_pinfo()
-                pinfo["description"] = "Running API tests"
-                # job = await self.job_manager.defer_to_process(pinfo, partial(time.sleep, 5))
-                await asyncio.sleep(5)
-                got_error = False
-                def updated(f):
-                    try:
-                        _ = f.result()
-                        self.logger.info("Finished running pytests for '%s'" % api_id)
-                        self.register_status(api_id, "running", job={"step": "test_api"})
-                    except Exception as e:
-                        nonlocal got_error
-                        self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-                        self.register_status(api_id, "running", job={"err": repr(e)})
-                        got_error = e
+                    job.add_done_callback(updated)
+                    await job
+                    if got_error:
+                        raise got_error
 
-                # job.add_done_callback(updated)
-                # await job
-                if got_error:
-                    raise got_error
-
-            job = asyncio.ensure_future(run_pytests())
-            return job
+                job = asyncio.ensure_future(run_pytests())
+                return job
+        except Exception as e:
+            self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+            raise
 
 
     def start_api(self, api_id):
