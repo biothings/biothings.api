@@ -199,8 +199,8 @@ class APIManager(BaseManager):
             async def run_pytests():
                 pinfo = self.get_pinfo()
                 pinfo["description"] = "Running API tests"
-                job = await self.job_manager.defer_to_process(pinfo, partial(time.sleep, 5))
-
+                # job = await self.job_manager.defer_to_process(pinfo, partial(time.sleep, 5))
+                await asyncio.sleep(5)
                 got_error = False
                 def updated(f):
                     try:
@@ -213,8 +213,8 @@ class APIManager(BaseManager):
                         self.register_status(api_id, "running", job={"err": repr(e)})
                         got_error = e
 
-                job.add_done_callback(updated)
-                await job
+                # job.add_done_callback(updated)
+                # await job
                 if got_error:
                     raise got_error
 
