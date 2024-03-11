@@ -1293,7 +1293,7 @@ class HubServer(object):
             self.extra_commands["delete_api"] = CommandDefinition(command=self.managers["api_manager"].delete_api)
             self.extra_commands["create_api"] = CommandDefinition(command=self.managers["api_manager"].create_api)
             self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
-            self.extra_commands["stop_api"] = self.managers["api_manager"].stop_api
+            self.extra_commands["stop_api"] = CommandDefinition(command=self.managers["api_manager"].stop_api)
             self.extra_commands["test_api"] = CommandDefinition(command=self.managers["api_manager"].test_api)
         if "upgrade" in self.DEFAULT_FEATURES:
 
