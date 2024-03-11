@@ -196,10 +196,10 @@ class APIManager(BaseManager):
                 port = int(apidoc["config"]["port"])
                 APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
 
-                async def run_pytests():
+                async def run_pytests(path, port):
                     pinfo = self.get_pinfo()
                     pinfo["description"] = "Running API tests"
-                    job = await self.job_manager.defer_to_thread(pinfo, partial(time.sleep, 5))
+                    job = await self.job_manager.defer_to_thread(pinfo, partial(APITester().run_pytests, path, "localhost:" + str(port)))
                     got_error = False
                     def updated(f):
                         try:
@@ -217,7 +217,7 @@ class APIManager(BaseManager):
                     if got_error:
                         raise got_error
 
-                job = asyncio.ensure_future(run_pytests())
+                job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
                 return job
         except Exception as e:
             self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
