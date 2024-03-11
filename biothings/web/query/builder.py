@@ -43,7 +43,7 @@ from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
-from biothings.config import config
+from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
 class RawQueryInterrupt(Exception):
@@ -61,6 +61,7 @@ class QStringParser:
         self,
         default_scopes: Tuple[str] = None,
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
+        default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = None,
         gpnames: Tuple[str] = None,
     ):
         if default_scopes is None:
@@ -68,18 +69,57 @@ class QStringParser:
 
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
-        self.default = default_scopes  # ["_id", "entrezgene", "ensembl.gene"]
-
-        self.patterns = self._build_regex_pattern_collection(
-            patterns=patterns
-        )  # [(re.compile(r'^\d+$'), ['entrezgene', 'retired'])]
+        self.default = default_scopes
+        self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
+        self.patterns = self._build_regex_pattern_collection(patterns=patterns)
 
         if gpnames is None:
             gpnames = ("term", "scope")
         self.gpname = Group(*gpnames)  # symbolic group name for term substitution
 
+    def _verify_default_regex_pattern(
+        default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = None,
+    ) -> Tuple[re.Pattner, Iterable]:
+        """
+        Take the default pattern and ensure that if the user does intend to override
+        the default value provided by ANNOTATION_DEFAULT_REGEX_PATTERN that it still matches
+        the overall structure we expect
+
+        Also provides a warning if the user does change the value in case that provides
+        unwanted behavior
+
+        We do allow for setting the regex pattern to None in case the instance does want to
+        eliminate regex pattern matching in the query building
+        """
+        if default_pattern != ANNOTATION_DEFAULT_REGEX_PATTERN:
+            logger.warning(
+                (
+                    f"Default regex pattern changed to [{ANNOTATION_DEFAULT_REGEX_PATTERN}]."
+                    "If this is not the desired behavior, modify <ANNOTATION_DEFAULT_REGEX_PATTERN> in the configuration"
+                )
+            )
+
+        if default_pattern is not None:
+            try:
+                default_regex_pattern = re.compile(default_pattern[0])
+                default_regex_fields = [str(field_entry) for field_entry in default_pattern[1]]
+            except Exception as gen_exc:
+                logger.exception(gen_exc)
+                logger.error(
+                    (
+                        f"Invalid provided regex pattern [{default_pattern}]."
+                        f"Resetting to the default pattern [{ANNOTATION_DEFAULT_REGEX_PATTERN}]"
+                    )
+                )
+                default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
+                default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
+            finally:
+                default_pattern = (default_regex_pattern, default_regex_fields)
+        return default_pattern
+
     def _build_regex_pattern_collection(
-        self, patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]]
+        self,
+        patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]],
     ) -> List[Tuple[re.Pattern, List[str]]]:
         """
         Builds the regex pattern list based off the provided patterns. With the
@@ -106,13 +146,13 @@ class QStringParser:
         default as the last instance in the regex pattern list
 
         """
-        default_regex_pattern = config.ANNOTATION_DEFAULT_REGEX_PATTERN[0]
-        default_regex_fields = config.ANNOTATION_DEFAULT_REGEX_PATTERN[1]
+        if self.default_pattern:
+            default_regex_pattern = self.default_pattern[0]
+        else:
+            default_regex_pattern = None
 
         structured_patterns = []
-        if patterns is None:
-            structured_patterns = [config.ANNOTATION_DEFAULT_REGEX_PATTERN]
-        elif isinstance(patterns, Iterable):
+        if isinstance(patterns, Iterable):
             for regex_pattern, regex_fields in patterns:
                 regex_pattern = re.compile(regex_pattern)
                 if isinstance(regex_fields, str):
@@ -122,11 +162,16 @@ class QStringParser:
                 # Check if the pattern matchs the default
                 # If it does match, we ignore adding it until outside the loop
                 # If it doesn't match we add it in the next instruction
-                if regex_pattern.pattern == default_regex_pattern.pattern and len(regex_fields) == 0:
+                if (
+                    default_regex_pattern
+                    and regex_pattern.pattern == default_regex_pattern.pattern
+                    and len(regex_fields) == 0
+                ):
                     continue
                 structured_patterns.append((regex_pattern, regex_fields))
 
-            structured_patterns.append((default_regex_pattern, default_regex_fields))
+        if self.default_pattern:
+            structured_patterns.append(self.default_pattern)
         return structured_patterns
 
     def parse(self, q):
@@ -181,11 +226,14 @@ class ESQueryBuilder:
         user_query=None,  # like a prepared statement in SQL
         scopes_regexs=None,
         scopes_default=("_id",),  # fallback used when scope inference fails
+        pattern_default=None,
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
         metadata=None,  # access to data like total number of documents
     ):
-        self.parser = QStringParser(default_scopes=scopes_default, patterns=scopes_regexs, gpnames=None)
+        self.parser = QStringParser(
+            default_scopes=scopes_default, patterns=scopes_regexs, default_pattern=pattern_default, gpnames=None
+        )
 
         # all settings below affect only query string queries
         if user_query is None:
