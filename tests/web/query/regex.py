@@ -202,7 +202,7 @@ class TestRegexPatternOrdering:
             [(re.compile(r"^\d+$"), ["entrezgene", "retired"])],
             [
                 (re.compile(r"db[0-9]+", re.I), "drugbank.id"),
-                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
                 (re.compile(r"chembl[0-9]+", re.I), "chembl.molecule_chembl_id"),
                 (re.compile(r"chebi\:[0-9]+", re.I), ["chebi.id", "chebi.secondary_chebi_id"]),
                 (re.compile(r"[A-Z0-9]{10}"), "unii.unii"),
@@ -210,7 +210,7 @@ class TestRegexPatternOrdering:
             ],
             [
                 (r"db[0-9]+", "drugbank.id"),
-                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
                 (r"chembl[0-9]+", "chembl.molecule_chembl_id"),
                 (re.compile(r"chebi\:[0-9]+", re.I), ["chebi.id", "chebi.secondary_chebi_id"]),
                 (r"[A-Z0-9]{10}", "unii.unii"),
@@ -222,14 +222,14 @@ class TestRegexPatternOrdering:
                 (re.compile(r"var_[0-9]+", re.I), "uniprot.humsavar.ftid"),
             ],
             [
-                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
                 (re.compile(r"fake_regex"), ["fake_field"]),
-                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
             ],
             [
-                (re.compile(r"(?P<scope>\W\w+):(?P<term>[^:]+)"), ()),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
                 (r"(?P<scope>\W\w+):(?P<term>[^:]+)", []),
-                (re.compile(r"fake_regex"), ["fake_field"]),
+                ANNOTATION_DEFAULT_REGEX_PATTERN,
             ],
         ],
     )
@@ -251,4 +251,4 @@ class TestRegexPatternOrdering:
         assert isinstance(last_regex_pattern[0], re.Pattern)
         assert isinstance(last_regex_pattern[1], (list, tuple))
         assert last_regex_pattern[0] == default_regex_pattern
-        assert last_regex_pattern[1] == ()
+        assert last_regex_pattern[1] == []
