@@ -176,6 +176,17 @@ class APIManager(BaseManager):
     #         if got_error:
     #             raise got_error
 
+    def log_pytests(self, pytest_path, host):
+        """
+        Run the pytests for the given pytest path and host. We create a LoggerFile object to redirect stdout and stderr to the logger.
+        """
+
+        stdout = LoggerFile(self.logger, logging.INFO)
+        stderr = LoggerFile(self.logger, logging.ERROR)
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            pytest.main(["-vv", pytest_path, "-m", "not production", "--host", host, "--scheme", "http"])
+
     def test_api(self, api_id):
         """
         Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
@@ -199,7 +210,7 @@ class APIManager(BaseManager):
                 async def run_pytests(path, port):
                     pinfo = self.get_pinfo()
                     pinfo["description"] = "Running API tests"
-                    job = await self.job_manager.defer_to_thread(pinfo, partial(APITester().run_pytests, path, "localhost:" + str(port)))
+                    job = await self.job_manager.defer_to_thread(pinfo, partial(self.log_pytests, path, "localhost:" + str(port)))
                     got_error = False
                     def updated(f):
                         try:
