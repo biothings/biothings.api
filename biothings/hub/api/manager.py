@@ -38,27 +38,6 @@ class LoggerFile:
     def isatty(self):
         return False
 
-class APITester:
-    def __init__(self):
-        self.setup()
-
-    def setup(self):
-        self.setup_log()
-
-    def setup_log(self):
-        self.logger, _ = get_logger("apimanager")
-
-    def run_pytests(self, pytest_path, host):
-        """
-        Run the pytests for the given pytest path and host. We create a LoggerFile object to redirect stdout and stderr to the logger.
-        """
-
-        stdout = LoggerFile(self.logger, logging.INFO)
-        stderr = LoggerFile(self.logger, logging.ERROR)
-
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            pytest.main(["-vv", pytest_path, "-m", "not production", "--host", host, "--scheme", "http"])
-
 
 class APIManagerException(Exception):
     pass
@@ -136,46 +115,6 @@ class APIManager(BaseManager):
         finally:
             return config_mod
 
-    # async def test_api(self, api_id):
-    #     """
-    #     Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
-    #     """
-    #     assert self.job_manager
-    #     has_pytests = False
-    #     try:
-    #         if btconfig.APITEST_PATH and btconfig.APITEST_CONFIG:
-    #             has_pytests = True
-    #     except AttributeError:
-    #         self.logger.error("No APITEST_PATH or APITEST_CONFIG found in config. Skipping pytests for '%s'", api_id)
-
-
-    #     #if has_pytest is true then run the pytests
-    #     if has_pytests:
-    #         self.logger.info("APITEST_PATH found in config. Running pytests from %s.", btconfig.APITEST_PATH)
-    #         apidoc = self.api.find_one({"_id": api_id})
-    #         port = int(apidoc["config"]["port"])
-    #         APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
-    #         pinfo = self.get_pinfo()
-    #         pinfo["description"] = "Running API tests"
-    #         # job = await self.job_manager.defer_to_process(pinfo, partial(APITester().run_pytests, APITEST_PATH, "localhost:" + str(port)))
-    #         job = await self.job_manager.defer_to_process(pinfo, partial(time.sleep, 5))
-    #         got_error = False
-    #         def updated(f):
-    #             try:
-    #                 _ = f.result()
-    #                 self.logger.info("Finished running pytests for '%s'" % api_id)
-    #                 self.register_status(api_id, "running", job={"step": "test_api"})
-    #             except Exception as e:
-    #                 nonlocal got_error
-    #                 self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-    #                 self.register_status(api_id, "running", job={"err": repr(e)})
-    #                 got_error = e
-
-    #         job.add_done_callback(updated)
-    #         await job
-    #         if got_error:
-    #             raise got_error
-
     def log_pytests(self, pytest_path, host):
         """
         Run the pytests for the given pytest path and host. We create a LoggerFile object to redirect stdout and stderr to the logger.
@@ -190,6 +129,8 @@ class APIManager(BaseManager):
     def test_api(self, api_id):
         """
         Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
+        APITEST_PATH: path to the directory containing the pytests
+        APITEST_CONFIG: name of the config file containing the api web configuration
         """
         assert self.job_manager
         has_pytests = False
