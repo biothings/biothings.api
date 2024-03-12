@@ -46,6 +46,9 @@ from biothings.utils.common import dotdict
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
+logger = logging.getLogger(__name__)
+
+
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
         super().__init__()
@@ -61,7 +64,7 @@ class QStringParser:
         self,
         default_scopes: Tuple[str] = None,
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
-        default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = None,
+        default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
         gpnames: Tuple[str] = None,
     ):
         if default_scopes is None:
@@ -78,8 +81,8 @@ class QStringParser:
         self.gpname = Group(*gpnames)  # symbolic group name for term substitution
 
     def _verify_default_regex_pattern(
-        default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = None,
-    ) -> Tuple[re.Pattner, Iterable]:
+        self, default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]]
+    ) -> Tuple[re.Pattern, Iterable]:
         """
         Take the default pattern and ensure that if the user does intend to override
         the default value provided by ANNOTATION_DEFAULT_REGEX_PATTERN that it still matches
@@ -226,7 +229,7 @@ class ESQueryBuilder:
         user_query=None,  # like a prepared statement in SQL
         scopes_regexs=None,
         scopes_default=("_id",),  # fallback used when scope inference fails
-        pattern_default=None,
+        pattern_default=ANNOTATION_DEFAULT_REGEX_PATTERN,
         allow_random_query=True,  # used for data exploration, can be expensive
         allow_nested_query=False,  # nested aggregation can be expensive
         metadata=None,  # access to data like total number of documents
