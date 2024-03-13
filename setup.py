@@ -95,6 +95,7 @@ hub_requires = hubcore_requires + [
     'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
+    "pytest" # to run hub api pytests
 ]
 
 # minimal requirements for to run biothings CLI
