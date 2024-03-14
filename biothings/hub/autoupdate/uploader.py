@@ -5,7 +5,7 @@ import os
 from functools import partial
 from typing import Optional
 
-from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
+from elasticsearch import Elasticsearch, NotFoundError
 from requests_aws4auth import AWS4Auth
 
 import biothings.hub.dataload.uploader as uploader
@@ -103,7 +103,8 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     "es",
                 )
                 es_conf["http_auth"] = AWS4Auth(*auth_args)
-                es_conf["connection_class"] = RequestsHttpConnection
+                # RequestsHttpConnection is not available in elasticsearch 8.x
+                # es_conf["connection_class"] = RequestsHttpConnection
             elif auth["type"] == "http":
                 auth_args = (
                     auth["properties"]["username"],
