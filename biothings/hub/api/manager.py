@@ -188,8 +188,13 @@ class APIManager(BaseManager):
 
         config_mod = self.import_config_web()
         config_mod.ES_HOST = apidoc["config"]["es_host"]
-        config_mod.ES_INDEX = apidoc["config"]["index"]
         config_mod.ES_DOC_TYPE = apidoc["config"]["doc_type"]
+        try:
+            if config_mod.ES_INDICES:
+                for key in config_mod.ES_INDICES:
+                    config_mod.ES_INDICES[key] = apidoc["config"]["index"]
+        except AttributeError:
+            config_mod.ES_INDEX = apidoc["config"]["index"]
 
         launcher = BiothingsAPILauncher(config_mod)
         port = int(apidoc["config"]["port"])
