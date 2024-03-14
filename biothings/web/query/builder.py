@@ -97,10 +97,16 @@ class QStringParser:
         if default_pattern != ANNOTATION_DEFAULT_REGEX_PATTERN:
             logger.warning(
                 (
-                    f"Default regex pattern changed to [{ANNOTATION_DEFAULT_REGEX_PATTERN}]."
-                    "If this is not the desired behavior, modify <ANNOTATION_DEFAULT_REGEX_PATTERN> in the configuration"
+                    "Default regex pattern changed to [%s]."
+                    "Set by <ANNOTATION_DEFAULT_REGEX_PATTERN> in the configuration",
+                    ANNOTATION_DEFAULT_REGEX_PATTERN,
                 )
             )
+
+        # Initialize to the default pattern and then reset it as well if any exceptions occur
+        # while loading the overrided pattern
+        default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
+        default_regex_fields = ANNOTATION_DEFAULT_REGEX_PATTERN[1]
 
         if default_pattern is not None:
             try:
@@ -110,8 +116,9 @@ class QStringParser:
                 logger.exception(gen_exc)
                 logger.error(
                     (
-                        f"Invalid provided regex pattern [{default_pattern}]."
-                        f"Resetting to the default pattern [{ANNOTATION_DEFAULT_REGEX_PATTERN}]"
+                        "Invalid provided regex pattern [%s]." "Resetting to the default pattern [%s]",
+                        default_pattern,
+                        ANNOTATION_DEFAULT_REGEX_PATTERN,
                     )
                 )
                 default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
@@ -160,7 +167,6 @@ class QStringParser:
                 regex_pattern = re.compile(regex_pattern)
                 if isinstance(regex_fields, str):
                     regex_fields = [regex_fields]
-                assert all(isinstance(field, str) for field in regex_fields)
 
                 # Check if the pattern matchs the default
                 # If it does match, we ignore adding it until outside the loop
