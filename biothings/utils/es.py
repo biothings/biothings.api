@@ -876,8 +876,7 @@ class ESIndexer:
                     self._es.indices.put_alias(index=index, name=alias_name)
                 else:
                     raise IndexerException(
-                        f"Cannot create alias {
-                            alias_name} " "an index with the same name " "already exists"
+                        f"Cannot create alias {alias_name} an index with the same name already exists"
                     )
 
     def get_repository(self, repo_name):
