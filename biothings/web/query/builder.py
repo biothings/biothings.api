@@ -116,7 +116,7 @@ class QStringParser:
                 logger.exception(gen_exc)
                 logger.error(
                     (
-                        "Invalid provided regex pattern [%s]." "Resetting to the default pattern [%s]",
+                        "Invalid new regex pattern [%s]. Resetting to the default pattern [%s]",
                         default_pattern,
                         ANNOTATION_DEFAULT_REGEX_PATTERN,
                     )
