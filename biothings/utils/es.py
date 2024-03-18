@@ -300,7 +300,7 @@ class ESIndexer:
     def exists_index(self, index: Optional[str] = None):
         if not index:
             index = self._index
-        return self._es.indices.exists(index)
+        return self._es.indices.exists(index=index)
 
     def index(self, doc, id=None, action="index"):  # pylint: disable=redefined-builtin
         """add a doc to the index. If id is not None, the existing doc will be
@@ -362,7 +362,7 @@ class ESIndexer:
     def delete_index(self, index=None):
         if not index:
             index = self._index
-        self._es.indices.delete(index)
+        self._es.indices.delete(index=index)
 
     def update(self, id, extra_doc, upsert=True):  # pylint: disable=redefined-builtin
         """update an existing doc with extra_doc.
@@ -722,14 +722,14 @@ class ESIndexer:
         if mode == "purge":
             # Note: this works, just for small one when deletion is done instantly
             try:
-                self._es.snapshot.get(repo, snapshot)
+                self._es.snapshot.get(repository=repo, snapshot=snapshot)
                 # if we can get it, we have to delete it
-                self._es.snapshot.delete(repo, snapshot)
+                self._es.snapshot.delete(repository=repo, snapshot=snapshot)
             except NotFoundError:
                 # ok, nothing to delete/purge
                 pass
         try:
-            return self._es.snapshot.create(repo, snapshot, body=body, params=params)
+            return self._es.snapshot.create(repository=repo, snapshot=snapshot, body=body, params=params)
         except RequestError as e:
             try:
                 err_msg = e.info["error"]["reason"]
@@ -763,7 +763,7 @@ class ESIndexer:
                 #  In ES8, an error will be raised if set to True
                 "include_global_state": False,
             }
-            return self._es.snapshot.restore(repo_name, snapshot_name, body=body)
+            return self._es.snapshot.restore(repository=repo_name, snapshot=snapshot_name, body=body)
         except TransportError as e:
             raise IndexerException(
                 "Can't restore snapshot '%s' (does index '%s' already exist ?): %s" % (
@@ -853,7 +853,7 @@ class ESIndexer:
         if index is None:
             index = self._index
 
-        if not self._es.indices.exists(alias_name):
+        if not self._es.indices.exists(index=alias_name):
             # case 1 it does not already exist
             #  create the alias pointing to _index
             self._es.indices.put_alias(index=index, name=alias_name)
@@ -872,7 +872,7 @@ class ESIndexer:
                 # if not _index and is the canonical index name
                 #  then delete the index and create alias
                 if alias_name == self.canonical_index_name:
-                    self._es.indices.delete(alias_name)
+                    self._es.indices.delete(index=alias_name)
                     self._es.indices.put_alias(index=index, name=alias_name)
                 else:
                     raise IndexerException(
@@ -881,13 +881,13 @@ class ESIndexer:
 
     def get_repository(self, repo_name):
         try:
-            return self._es.snapshot.get_repository(repo_name)
+            return self._es.snapshot.get_repository(name=repo_name)
         except NotFoundError:
             raise IndexerException("Repository '%s' doesn't exist" % repo_name)
 
     def create_repository(self, repo_name, settings):
         try:
-            self._es.snapshot.create_repository(repo_name, settings)
+            self._es.snapshot.create_repository(name=repo_name, settings=settings)
         except TransportError as e:
             raise IndexerException(
                 "Can't create snapshot repository '%s': %s" % (repo_name, e))
@@ -914,7 +914,7 @@ class ESIndexer:
         return indices
 
     def get_snapshot_status(self, repo, snapshot):
-        return self._es.snapshot.status(repo, snapshot)
+        return self._es.snapshot.status(repository=repo, snapshot=snapshot)
 
     def get_restore_status(self, index_name=None):
         index_name = index_name or self._index
@@ -935,7 +935,7 @@ class ESIndexer:
 
     def get_internal_number_of_replicas(self):
         try:
-            index_settings = self._es.indices.get_settings(self._index)
+            index_settings = self._es.indices.get_settings(index=self._index)
             return index_settings[self._index]["settings"]["index"]["number_of_replicas"]
         except Exception:
             return
@@ -1008,10 +1008,10 @@ class ESIndexer:
         return self._es.reindex(body=body, **kwargs)
 
     def close(self):
-        self._es.indices.close(self._index)
+        self._es.indices.close(index=self._index)
 
     def open(self):
-        self._es.indices.open(self._index)
+        self._es.indices.open(index=self._index)
 
 
 class MappingError(Exception):

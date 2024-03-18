@@ -14,8 +14,8 @@ class Snapshot:
         if self.repository.exists():
             return bool(
                 self.client.snapshot.get(
-                    self.repository.name,
-                    self.name,
+                    repository=self.repository.name,
+                    snapshot=self.name,
                     ignore_unavailable=True,
                 )["snapshots"]
             )
@@ -23,19 +23,19 @@ class Snapshot:
 
     def create(self, indices):
         self.client.snapshot.create(
-            self.repository.name,
-            self.name,
-            {
+            repository=self.repository.name,
+            snapshot=self.name,
+            body={
                 "indices": indices,
                 "include_global_state": False,
-            },
+            }
         )
 
     def state(self):
         if self.repository.exists():
             snapshots = self.client.snapshot.get(
-                self.repository.name,
-                self.name,
+                repository=self.repository.name,
+                snapshot=self.name,
                 ignore_unavailable=True,
             )["snapshots"]
 
@@ -46,7 +46,7 @@ class Snapshot:
         return "N/A"
 
     def delete(self):
-        self.client.snapshot.delete(self.repository.name, self.name)
+        self.client.snapshot.delete(repository=self.repository.name, snapshot=self.name)
 
     def __str__(self):
         return f"<Snapshot {self.state()} name='{self.name}' repository={self.repository}>"
