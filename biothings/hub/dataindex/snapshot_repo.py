@@ -13,17 +13,17 @@ class Repository:
 
     def exists(self):
         try:
-            self.client.snapshot.get_repository(self.name)
+            self.client.snapshot.get_repository(name=self.name)
         except elasticsearch.exceptions.NotFoundError:
             return False
         return True
 
     def create(self, **body):
         # https://www.elastic.co/guide/en/elasticsearch/plugins/current/repository-s3-client.html
-        return self.client.snapshot.create_repository(self.name, body=body)
+        return self.client.snapshot.create_repository(name=self.name, body=body)
 
     def delete(self):
-        self.client.snapshot.delete_repository(self.name)
+        self.client.snapshot.delete_repository(name=self.name)
 
     def verify(self, config):
         """A repository is consider properly setup and working, when:
@@ -32,10 +32,10 @@ class Repository:
         """
 
         # Check if the repo pass ElasticSearch's verification
-        self.client.snapshot.verify_repository(self.name)
+        self.client.snapshot.verify_repository(name=self.name)
 
         # Check if the repo's settings match with the snapshot's config
-        repo_settings = self.client.snapshot.get_repository(self.name)[self.name]
+        repo_settings = self.client.snapshot.get_repository(name=self.name)[self.name]
         incorrect_data = {}
 
         for field in ["type", "settings"]:
