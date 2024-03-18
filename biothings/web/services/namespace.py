@@ -100,6 +100,7 @@ class BiothingsNamespace:
                 self.elasticsearch.userquery,
                 self.config.ANNOTATION_ID_REGEX_LIST,
                 self.config.ANNOTATION_DEFAULT_SCOPES,
+                self.config.ANNOTATION_DEFAULT_REGEX_PATTERN,
                 self.config.ALLOW_RANDOM_QUERY,
                 self.config.ALLOW_NESTED_AGGS,
                 self.elasticsearch.metadata.biothing_metadata,

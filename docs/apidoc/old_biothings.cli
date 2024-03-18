@@ -1,5 +1,5 @@
 biothings.cli
-===============
+=============
 
 .. automodule:: biothings.cli
    :members:
@@ -7,7 +7,7 @@ biothings.cli
    :show-inheritance:
 
 biothings.cli.dataplugin
---------------------------
+------------------------
 
 .. automodule:: biothings.cli.dataplugin
    :members:
@@ -15,7 +15,7 @@ biothings.cli.dataplugin
    :show-inheritance:
 
 biothings.cli.dataplugin_hub
---------------------------
+----------------------------
 
 .. automodule:: biothings.cli.dataplugin_hub
    :members:
@@ -23,7 +23,7 @@ biothings.cli.dataplugin_hub
    :show-inheritance:
 
 biothings.cli.utils
---------------------------
+-------------------
 
 .. automodule:: biothings.cli.utils
    :members:
@@ -31,7 +31,7 @@ biothings.cli.utils
    :show-inheritance:
 
 biothings.cli.web_app
---------------------------
+---------------------
 
 .. automodule:: biothings.cli.web_app
    :members:

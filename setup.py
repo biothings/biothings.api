@@ -38,11 +38,14 @@ if COMMIT_HASH or NUM_COMMITS:
 # very minimal requirement for running biothings.web
 install_requires = [
     "requests>=2.21.0",
-    'tornado==6.1.0; python_version < "3.8.0"',
+    'tornado==6.1.0; python_version < "3.7.0"',
+    'tornado==6.2.0; python_version == "3.7.0"',
     'tornado==6.4.0; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
-    "elasticsearch[async]>=7, <8",
-    "elasticsearch-dsl>=7, <8",
+    "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
+    "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
+    "elasticsearch[async]>=8, <9; python_version >= '3.7.0'",
+    "elasticsearch-dsl>=8, <9; python_version >= '3.7.0'",
     'singledispatchmethod; python_version < "3.8.0"',
     'dataclasses; python_version < "3.7.0"',
     "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
@@ -72,7 +75,7 @@ hubcore_requires = [
 hub_requires = hubcore_requires + [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
-    "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
+    #"aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
     "asyncssh==2.11.0",  # needs libffi-dev installed (apt-get)
     # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
@@ -94,6 +97,7 @@ hub_requires = hubcore_requires + [
     'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
+    "pytest" # to run hub api pytests
 ]
 
 # minimal requirements for to run biothings CLI
@@ -116,7 +120,7 @@ dev_requires = [
 ]
 
 # extra requirements for building docs
-docs_requires = ["sphinx>=2.4.3", "sphinx_rtd_theme>=1.0.0", "sphinx_reredirects>=0.0.1"]
+docs_requires = ["sphinx>=7.2.6", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
 
 
 setup(

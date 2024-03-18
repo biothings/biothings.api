@@ -5,7 +5,7 @@ import os
 from functools import partial
 from typing import Optional
 
-from elasticsearch import Elasticsearch, NotFoundError, RequestsHttpConnection
+from elasticsearch import Elasticsearch, NotFoundError
 from requests_aws4auth import AWS4Auth
 
 import biothings.hub.dataload.uploader as uploader
@@ -103,7 +103,8 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                     "es",
                 )
                 es_conf["http_auth"] = AWS4Auth(*auth_args)
-                es_conf["connection_class"] = RequestsHttpConnection
+                # RequestsHttpConnection is not available in elasticsearch 8.x
+                # es_conf["connection_class"] = RequestsHttpConnection
             elif auth["type"] == "http":
                 auth_args = (
                     auth["properties"]["username"],
@@ -118,7 +119,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     def _get_repository(self, es_host: str, repo_name: str, auth: Optional[dict]):
         es = self._get_es_client(es_host, auth)
         try:
-            repo = es.snapshot.get_repository(repository=repo_name)
+            repo = es.snapshot.get_repository(name=repo_name)
         except NotFoundError:
             repo = None
         return repo
@@ -128,7 +129,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         Create Elasticsearch Snapshot repository
         """
         es = self._get_es_client(es_host, auth)
-        es.snapshot.create_repository(repository=repo_name, body=repo_settings)
+        es.snapshot.create_repository(name=repo_name, body=repo_settings)
 
     async def restore_snapshot(self, build_meta, job_manager, **kwargs):
         self.logger.debug("Restoring snapshot...")
