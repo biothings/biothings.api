@@ -38,8 +38,8 @@ if COMMIT_HASH or NUM_COMMITS:
 # very minimal requirement for running biothings.web
 install_requires = [
     "requests>=2.21.0",
-    'tornado==6.1.0; python_version < "3.7.0"',
-    'tornado==6.2.0; python_version >= "3.7.0"',
+    'tornado==6.1.0; python_version < "3.8.0"',
+    'tornado==6.4.0; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8",
     "elasticsearch-dsl>=7, <8",
@@ -116,7 +116,7 @@ dev_requires = [
 ]
 
 # extra requirements for building docs
-docs_requires = ["sphinx>=2.4.3", "sphinx_rtd_theme>=1.0.0", "sphinx_reredirects>=0.0.1"]
+docs_requires = ["sphinx>=7.2.6", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
 
 
 setup(
@@ -136,7 +136,7 @@ setup(
         "Twitter": "https://twitter.com/biothingsapi",
     },
     packages=find_packages(exclude=["tests"]),
-    package_data={"": ["*.html", "*.py.tpl"]},
+    package_data={"": ["*.html", "*.tpl"]},
     include_package_data=True,
     scripts=list(glob.glob("biothings/bin/*")),
     long_description=read("README.md"),
