@@ -31,7 +31,7 @@ def prepare():
     client = elasticsearch.Elasticsearch(os.environ["ES_SOURCE"])
     dirname = os.path.dirname(__file__)
 
-    mapping = client.indices.get("_all")
+    mapping = client.indices.get(index="_all")
     with open(os.path.join(dirname, "test_data_index.json"), "w") as file:
         setting = next(iter(mapping.values()))
         setting["settings"]["index"] = {"analysis": setting["settings"]["index"]["analysis"]}
