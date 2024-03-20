@@ -301,7 +301,7 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
         s.mount(
             "http://", adapter=requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=5, backoff_factor=3.0))
         )  # values seem reasonable
-        es_host = "http://" + self.config.ES_HOST
+        es_host = self.config.ES_HOST
 
         server_info = s.get(es_host).json()
         version_info = tuple(int(v) for v in server_info["version"]["number"].split("."))
