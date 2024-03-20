@@ -755,7 +755,7 @@ class IndexManager(BaseManager):
             async with AsyncElasticsearch(**env["args"]) as client:
                 doc_type = None
                 if int((await client.info())["version"]["number"].split(".")[0]) < 7:
-                    mappings = client.indices.get_mapping(index_name)
+                    mappings = client.indices.get_mapping(index=index_name)
                     mappings = mappings[index_name]["mappings"]
                     doc_type = next(iter(mappings.keys()))
 
@@ -784,7 +784,7 @@ class IndexManager(BaseManager):
             for name, env in self.register.items():
                 async with AsyncElasticsearch(**env["args"]) as client:
                     try:
-                        indices = await client.indices.get("*")
+                        indices = await client.indices.get(index="*")
                     except elasticsearch.exceptions.ConnectionError:
                         ...  # keep the hard-coded place-holders info
                     else:  # replace the index key with remote info

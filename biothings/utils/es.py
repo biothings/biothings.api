@@ -11,7 +11,7 @@ import time
 from importlib import import_module
 from typing import List, Mapping, Optional
 
-from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError, helpers, ApiError
+from elasticsearch import ApiError, Elasticsearch, NotFoundError, RequestError, TransportError, helpers
 from elasticsearch.serializer import JSONSerializer
 
 from biothings.utils.common import inf, iter_n, merge, nan, splitstr, traverse
@@ -95,7 +95,7 @@ class IndexerException(Exception):
 @functools.lru_cache()
 def get_doc_type(es_client, index_name):
     if int(es_client.info()["version"]["number"].split(".")[0]) < 7:
-        mappings = es_client.indices.get_mapping(index_name)
+        mappings = es_client.indices.get_mapping(index=index_name)
         mappings = mappings[index_name]["mappings"]
         return next(iter(mappings.keys()))
     return None
