@@ -174,7 +174,6 @@ class ESResultFormatter(ResultFormatter):
                 }
         """
         options = dotdict(options)
-        response = response.body
         if isinstance(response, list):
             max_total = 0
             count_query_exceed_max_size = 0
@@ -229,6 +228,11 @@ class ESResultFormatter(ResultFormatter):
                     )
 
             return response_
+
+        try:
+            response = response.body
+        except AttributeError as e:
+            pass
 
         if isinstance(response, dict):
             response = self._Hits(response)
