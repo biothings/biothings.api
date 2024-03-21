@@ -95,11 +95,12 @@ def capturesESExceptions(func):
             return await func(*args, **kwargs)
         except (
             RawQueryInterrupt,  # correspond to 'rawquery' option
-            RawResultInterrupt,  # correspond to 'raw' option
             EndScrollInterrupt,
         ) as exc:
+            logger.debug("QueryPipelineInterrupt: %s", exc.data)
             raise QueryPipelineInterrupt(exc.data)
-
+        except RawResultInterrupt as exc:  # correspond to 'raw' option
+            raise QueryPipelineInterrupt(exc.data.body)
         except AssertionError as exc:
             # in our application, AssertionError should be internal
             # the individual components raising the error should instead
