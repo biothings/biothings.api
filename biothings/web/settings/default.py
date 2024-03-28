@@ -13,7 +13,7 @@ LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s:%(lineno)d]%(end_color)s %(me
 # *****************************************************************************
 # Elasticsearch Settings
 # *****************************************************************************
-ES_HOST = "localhost:9200"
+ES_HOST = "http://localhost:9200"
 ES_INDICES = {
     None: "_all",
     "doc": "_all",

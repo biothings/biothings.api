@@ -55,7 +55,9 @@ def setup_es():
     Populate ES with test index and documents.
     Index to localhost:9200 only.
     """
-    client = elasticsearch.Elasticsearch()
+    client = elasticsearch.Elasticsearch(
+        hosts=os.environ.get("ES_HOST", "http://localhost:9200"),
+    )
     dirname = os.path.dirname(__file__)
 
     server_major_version = client.info()["version"]["number"].split(".")[0]
