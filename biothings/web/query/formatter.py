@@ -422,7 +422,7 @@ class ESResultFormatter(ResultFormatter):
         if path == parent_path:
             # we handle jmespath transformation at its parent field level,
             # so that we can set a transformed value
-            if not isinstance(doc, dict):
+            if not isinstance(doc, (dict, UserDict)):
                 raise ResultFormatterException(
                     f"\"parent_path\" in jmespath transformation cannot be non-dict type: \"{parent_path}\"({type(doc)})"
                 )

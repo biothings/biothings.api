@@ -95,7 +95,7 @@ class IndexerException(Exception):
 @functools.lru_cache()
 def get_doc_type(es_client, index_name):
     if int(es_client.info()["version"]["number"].split(".")[0]) < 7:
-        mappings = es_client.indices.get_mapping(index=index_name)
+        mappings = es_client.indices.get_mapping(index_name)
         mappings = mappings[index_name]["mappings"]
         return next(iter(mappings.keys()))
     return None
@@ -145,7 +145,7 @@ class ESIndexer:
         self,
         index,
         doc_type="_doc",
-        es_host="localhost:9200",
+        es_host="http://localhost:9200",
         step=500,
         step_size=10,  # elasticsearch.helpers.bulk
         number_of_shards=1,

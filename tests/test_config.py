@@ -45,7 +45,7 @@ DATA_TARGET_SERVER_PASSWORD = ""
 # For now, other options are: mongodb, sqlite3, elasticsearch
 HUB_DB_BACKEND = {
     "module": "biothings.utils.es",
-    "host": "localhost",
+    "host": "http://localhost:9200",
 }
 
 # Hub environment (like, prod, dev, ...)
@@ -84,6 +84,6 @@ LOG_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "logs")
 # Provide a default hub logger instance (use setup_default_log(name,log_folder)
 logger = setup_default_log("hub", LOG_FOLDER)
 
-ES_HOST = "localhost:9200"  # optional
+ES_HOST = "http://localhost:9200"  # optional
 ES_INDICES = {"dev": "main_build_configuration"}
 ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]

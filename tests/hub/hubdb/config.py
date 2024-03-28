@@ -1,6 +1,6 @@
 HUB_DB_BACKEND = {
     "module": "biothings.utils.es",
-    "host": "localhost:9200",
+    "host": "http://localhost:9200",
 }
 
 # db containing the following (internal use)
