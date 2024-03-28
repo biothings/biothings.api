@@ -232,7 +232,7 @@ INDEX_CONFIG = {
     "env": {
         "localhub": {
             "host": "http://localhost:9200",
-            "indexer": {"args": {"timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
+            "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
         }
     },
 }

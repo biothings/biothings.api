@@ -334,7 +334,7 @@ class SnapshotManager(BaseManager):
         "indexer": {
             "name": "local",
             "args": {
-                "timeout": 100,
+                "request_timeout": 100,
                 "max_retries": 5
             }
         },

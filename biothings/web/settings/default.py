@@ -23,7 +23,7 @@ ES_INDICES = {
 ES_ARGS = {
     # https://elasticsearch-py.readthedocs.io/en/v7.12.1/connection.html
     "sniff": False,  # this is a shortcut to configure multiple values
-    "timeout": 60,  # increase from default (10s) to support heavy query
+    "request_timeout": 60,  # increase from default (10s) to support heavy query
 }
 
 # *****************************************************************************
