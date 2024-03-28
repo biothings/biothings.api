@@ -42,5 +42,3 @@ config.py
 .env
 .notes
 ssh_host_key*
-
-venv
