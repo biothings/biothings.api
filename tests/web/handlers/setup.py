@@ -15,6 +15,7 @@ import pytest
 
 TEST_INDEX = "bts_test"
 TEST_DOC_TYPE = "gene"
+TEST_HOST = "http://localhost:9200"
 
 
 def prepare():
@@ -55,7 +56,9 @@ def setup_es():
     Populate ES with test index and documents.
     Index to localhost:9200 only.
     """
-    client = elasticsearch.Elasticsearch()
+    client = elasticsearch.Elasticsearch(
+        hosts=TEST_HOST,
+    )
     dirname = os.path.dirname(__file__)
 
     server_major_version = client.info()["version"]["number"].split(".")[0]

@@ -7,8 +7,9 @@
     one or more individual queries.
 
 """
-
 from collections import UserDict, defaultdict
+
+from elastic_transport import ObjectApiResponse
 
 from biothings.utils.common import dotdict, traverse
 from biothings.utils.jmespath import options as jmp_options
@@ -229,10 +230,8 @@ class ESResultFormatter(ResultFormatter):
 
             return response_
 
-        try:
+        if isinstance(response, ObjectApiResponse):
             response = response.body
-        except AttributeError:
-            pass
 
         if isinstance(response, dict):
             response = self._Hits(response)
@@ -422,7 +421,7 @@ class ESResultFormatter(ResultFormatter):
         if path == parent_path:
             # we handle jmespath transformation at its parent field level,
             # so that we can set a transformed value
-            if not isinstance(doc, dict):
+            if not isinstance(doc, (dict, UserDict)):
                 raise ResultFormatterException(
                     f"\"parent_path\" in jmespath transformation cannot be non-dict type: \"{parent_path}\"({type(doc)})"
                 )

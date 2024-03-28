@@ -13,7 +13,7 @@ LOGGING_FORMAT = "%(color)s[%(levelname)s %(name)s:%(lineno)d]%(end_color)s %(me
 # *****************************************************************************
 # Elasticsearch Settings
 # *****************************************************************************
-ES_HOST = "localhost:9200"
+ES_HOST = "http://localhost:9200"
 ES_INDICES = {
     None: "_all",
     "doc": "_all",
@@ -23,7 +23,7 @@ ES_INDICES = {
 ES_ARGS = {
     # https://elasticsearch-py.readthedocs.io/en/v7.12.1/connection.html
     "sniff": False,  # this is a shortcut to configure multiple values
-    "timeout": 60,  # increase from default (10s) to support heavy query
+    "request_timeout": 60,  # increase from default (10s) to support heavy query
 }
 
 # *****************************************************************************

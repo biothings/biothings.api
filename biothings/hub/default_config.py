@@ -231,8 +231,8 @@ INDEX_CONFIG = {
     },
     "env": {
         "localhub": {
-            "host": "localhost:9200",
-            "indexer": {"args": {"timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
+            "host": "http://localhost:9200",
+            "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
         }
     },
 }
@@ -327,7 +327,7 @@ STANDALONE_AWS_CREDENTIALS = {"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": 
 STANDALONE_CONFIG = {
     # default config
     "_default": {
-        "es_host": "localhost:9200",
+        "es_host": "http://localhost:9200",
         "index": "biothings_current",
     },
     # # custom definition
