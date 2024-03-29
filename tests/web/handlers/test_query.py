@@ -748,6 +748,17 @@ class TestQueryKeywords(BiothingsWebAppTest):
         ).json()
         assert res2 == res
 
+    def test_37_jmespath_nested(self):
+        self.request(
+            "/v1/query?q=_id:1017&fields=exons&jmespath=exons.position|{exon_count: length(@)}",
+            expect=400
+        )
+
+    def test_38_jmespath_exclude_empty(self):
+        res = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna==`NM_052827.4`]").json()
+        assert len(res["hits"]) == 10
+        res2 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna==`NM_052827.4`]").json()
+        assert len(res2["hits"]) == 1
 
 class TestQueryString(BiothingsWebAppTest):
     def test_00_all(self):
