@@ -108,6 +108,7 @@ COMMON_KWARGS = {
     "always_list": {"type": list, "max": 1000},
     "allow_null": {"type": list, "max": 1000},
     "jmespath": {"type": str, "default": None},  # jmespath transformation
+    "jmespath_exclude_empty": {"type": bool, "default": False},  # jmespath transformation option
     # final handler write method stage:
     "format": {
         "type": str,
