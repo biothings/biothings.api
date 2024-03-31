@@ -50,15 +50,15 @@ def test_jmespath():
     cvt = Converter(keyword="jmespath")
 
     # a simple example
-    parent_path, target_field, jmes_query = cvt.translate("tags|[?name==`Metadata`]")
+    parent_path, target_field, jmes_query = cvt.translate("tags|[?name=='Metadata']")
     assert parent_path == ""
     assert target_field == "tags"
     assert isinstance(jmes_query, jmespath.parser.ParsedResult)
-    assert jmes_query.expression == "[?name==`Metadata`]"
+    assert jmes_query.expression == "[?name=='Metadata']"
 
     # a more complex example
     parent_path, target_field, jmes_query = cvt.translate(
-        "aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)&&sub_b==`val_b`]"
+        "aaa.bbb|[?(sub_a=='val_a'||sub_a=='val_aa')&&sub_b=='val_b']"
     )
     assert parent_path == "aaa"
     assert target_field == "bbb"
@@ -82,4 +82,4 @@ def test_jmespath():
         cvt.translate("tags")
 
     with pytest.raises(OptionError):
-        cvt.translate("tags|[?name=`Metadata`]")
+        cvt.translate("tags|[?name='Metadata']")
