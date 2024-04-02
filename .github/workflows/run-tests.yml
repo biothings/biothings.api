@@ -23,8 +23,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run Tests
         run: pytest tests
-        env:
-          HUB_CONFIG: 'tests.test_config'
+        # env:
+        #   HUB_CONFIG: 'tests.test_config'
 
     services:
       Elasticsearch:
