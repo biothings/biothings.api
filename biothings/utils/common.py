@@ -496,6 +496,11 @@ def list2dict(a_list, keyitem, alwayslist=False):
     return _dict
 
 
+def list_trim(a_list, idx_to_remove):
+    """Remove items IN-PLACE from a list by index."""
+    for i in sorted(idx_to_remove, reverse=True):
+        del a_list[i]
+
 def filter_dict(d, keys):
     """
     Remove keys from dict "d". "keys" is a list
