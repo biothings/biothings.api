@@ -120,7 +120,7 @@ dev_requires = [
 ]
 
 # extra requirements for building docs
-docs_requires = ["sphinx>=7.2.6", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
+docs_requires = ["sphinx>=5.3.0", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
 
 
 setup(
