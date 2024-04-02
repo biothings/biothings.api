@@ -133,7 +133,7 @@ def test_registrar():
 
     indexer = SimpleNamespace(
         mongo_collection_name="mynews_202012280220_vsdevjdk",  # must exists in DB
-        es_client_args=dict(hosts="localhost:9200"),
+        es_client_args=dict(hosts="http://localhost:9200"),
         es_index_name="__index_name__",
         logfile="/log/file",
         conf_name="bc_news",

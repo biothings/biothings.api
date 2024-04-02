@@ -15,6 +15,7 @@ import pytest
 
 TEST_INDEX = "bts_test"
 TEST_DOC_TYPE = "gene"
+TEST_HOST = "http://localhost:9200"
 
 
 def prepare():
@@ -31,7 +32,7 @@ def prepare():
     client = elasticsearch.Elasticsearch(os.environ["ES_SOURCE"])
     dirname = os.path.dirname(__file__)
 
-    mapping = client.indices.get("_all")
+    mapping = client.indices.get(index="_all")
     with open(os.path.join(dirname, "test_data_index.json"), "w") as file:
         setting = next(iter(mapping.values()))
         setting["settings"]["index"] = {"analysis": setting["settings"]["index"]["analysis"]}
@@ -55,7 +56,9 @@ def setup_es():
     Populate ES with test index and documents.
     Index to localhost:9200 only.
     """
-    client = elasticsearch.Elasticsearch()
+    client = elasticsearch.Elasticsearch(
+        hosts=TEST_HOST,
+    )
     dirname = os.path.dirname(__file__)
 
     server_major_version = client.info()["version"]["number"].split(".")[0]

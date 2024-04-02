@@ -61,7 +61,7 @@ def load_module(config, default=None):
 # Opinion on item access []
 # The ConfigModule is intended to present a interface similar to
 # types.ModuleType or types.SimpleNamespace, and hold primarily
-# known attributes that persisit throughout the application. For
+# known attributes that persist throughout the application. For
 # those reasons, item-access interface is not supported.
 
 

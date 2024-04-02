@@ -7,7 +7,6 @@ from functools import partial
 import elasticsearch
 import elasticsearch_dsl
 import requests
-from elasticsearch import AIOHttpConnection, RequestsHttpConnection as _Conn
 from tornado.ioloop import IOLoop
 
 from biothings.utils.common import run_once
@@ -29,8 +28,10 @@ _should_log = run_once()
 def _log_pkg():
     es_ver = elasticsearch.__version__
     es_dsl_ver = elasticsearch_dsl.__version__
-    logger.info("Elasticsearch Package Version: %s", ".".join(map(str, es_ver)))
-    logger.info("Elasticsearch DSL Package Version: %s", ".".join(map(str, es_dsl_ver)))
+    logger.info("Elasticsearch Package Version: %s",
+                ".".join(map(str, es_ver)))
+    logger.info("Elasticsearch DSL Package Version: %s",
+                ".".join(map(str, es_dsl_ver)))
 
 
 def _log_db(client, uri):
@@ -65,22 +66,23 @@ def _log_es(client, hosts):
 #   Low Level Functions
 # ------------------------
 
+# TODO https://elastic-transport-python.readthedocs.io/en/latest/transport.html
+# Convert to use the new async transport class, AIOHttpConnection was removed in 8.x
+# class _AsyncConn(AIOHttpConnection):
+#     def __init__(self, *args, **kwargs):
+#         self.aws_auth = None
+#         _auth = kwargs.get("http_auth")
+#         if _auth and hasattr(_auth, "region") and isinstance(_auth, AWS4Auth):
+#             self.aws_auth = _auth
+#             kwargs["http_auth"] = None
+#         super().__init__(*args, **kwargs)
 
-class _AsyncConn(AIOHttpConnection):
-    def __init__(self, *args, **kwargs):
-        self.aws_auth = None
-        _auth = kwargs.get("http_auth")
-        if _auth and hasattr(_auth, "region") and isinstance(_auth, AWS4Auth):
-            self.aws_auth = _auth
-            kwargs["http_auth"] = None
-        super().__init__(*args, **kwargs)
-
-    async def perform_request(self, method, url, params=None, body=None, timeout=None, ignore=(), headers=None):
-        req = requests.PreparedRequest()
-        req.prepare(method, self.host + url, headers, None, body, params)
-        self.aws_auth(req)  # sign the request
-        headers.update(req.headers)
-        return await super().perform_request(method, url, params, body, timeout, ignore, headers)
+#     async def perform_request(self, method, url, params=None, body=None, timeout=None, ignore=(), headers=None):
+#         req = requests.PreparedRequest()
+#         req.prepare(method, self.host + url, headers, None, body, params)
+#         self.aws_auth(req)  # sign the request
+#         headers.update(req.headers)
+#         return await super().perform_request(method, url, params, body, timeout, ignore, headers)
 
 
 # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
@@ -100,7 +102,8 @@ def get_es_client(hosts=None, async_=False, **settings):
 
     if settings.pop("aws", False):
         if not aws_avail:
-            raise ImportError('"boto3" and "requests_aws4auth" are required for AWS OpenSearch')
+            raise ImportError(
+                '"boto3" and "requests_aws4auth" are required for AWS OpenSearch')
         # find region
         session = boto3.Session()
         region = session.region_name
@@ -116,10 +119,13 @@ def get_es_client(hosts=None, async_=False, **settings):
 
         # find credentials
         credentials = session.get_credentials()
-        awsauth = AWS4Auth(refreshable_credentials=credentials, region=region, service="es")
+        awsauth = AWS4Auth(refreshable_credentials=credentials,
+                           region=region, service="es")
 
-        _cc = _AsyncConn if async_ else _Conn
-        settings.update(http_auth=awsauth, connection_class=_cc)
+        # No longer needed in 8.x, AIOHttpConnection was removed
+        # _cc = _AsyncConn if async_ else _Conn
+        # settings.update(http_auth=awsauth, connection_class=_cc)
+        settings.update(http_auth=awsauth)
         settings.setdefault("use_ssl", True)
         settings.setdefault("verify_certs", True)
 

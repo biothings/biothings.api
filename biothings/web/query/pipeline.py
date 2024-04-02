@@ -7,6 +7,7 @@ import elasticsearch
 
 from biothings.web.query.builder import RawQueryInterrupt
 from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
+from biothings.web.query.formatter import ResultFormatterException
 
 # here this module defines two types of operations supported in
 # each query pipeline class, one called "search" which corresponds to
@@ -95,10 +96,13 @@ def capturesESExceptions(func):
             return await func(*args, **kwargs)
         except (
             RawQueryInterrupt,  # correspond to 'rawquery' option
-            RawResultInterrupt,  # correspond to 'raw' option
             EndScrollInterrupt,
         ) as exc:
+            logger.debug("QueryPipelineInterrupt: %s", exc.data)
             raise QueryPipelineInterrupt(exc.data)
+
+        except RawResultInterrupt as exc:  # correspond to 'raw' option
+            raise QueryPipelineInterrupt(exc.data.body)
 
         except AssertionError as exc:
             # in our application, AssertionError should be internal
@@ -107,7 +111,7 @@ def capturesESExceptions(func):
             logging.exception("FIXME: Unexpected Assertion Error.", exc_info=exc)
             raise QueryPipelineException(500, str(exc) or "N/A")
 
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ResultFormatterException) as exc:
             raise QueryPipelineException(400, type(exc).__name__, str(exc))
 
         except elasticsearch.ConnectionError:  # like timeouts..

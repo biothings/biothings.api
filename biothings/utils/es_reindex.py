@@ -42,7 +42,7 @@ def reindex(
         task_check_interval: the interval to check reindex job status, default is 15s
         src_indexer_kwargs: a dict contains infor to construct ESIndexer for src index
         target_indexer_kwargs: a dict contains infor to construct ESIndexer for target index
-        reindex_kwargs: a dict contains extra parameters passed to reindex, e.g. {"timeout": "5m",
+        reindex_kwargs: a dict contains extra parameters passed to reindex, e.g. {"request_timeout": "5m",
                         "slices": 10}. see
         https://www.elastic.co/guide/en/elasticsearch/reference/7.17/docs-reindex.html#docs-reindex-api-query-params
                         for available parameters. Note that "wait_for_completion" parameter

@@ -185,7 +185,8 @@ class SnapshotEnv:
         self.wtime = kwargs.get("monitor_delay", 15)
 
     def _doc(self, index):
-        doc = get_src_build().find_one({f"index.{index}.environment": self.idxenv})
+        doc = get_src_build().find_one(
+            {f"index.{index}.environment": self.idxenv})
         if not doc:  # not asso. with a build
             raise ValueError("Not a hub-managed index.")
         return doc  # TODO UNIQUENESS
@@ -193,7 +194,8 @@ class SnapshotEnv:
     def setup_log(self, index):
         build_doc = self._doc(index)
         log_name = build_doc["target_name"] or build_doc["_id"]
-        log_folder = os.path.join(btconfig.LOG_FOLDER, "build", log_name, "snapshot") if btconfig.LOG_FOLDER else None
+        log_folder = os.path.join(
+            btconfig.LOG_FOLDER, "build", log_name, "snapshot") if btconfig.LOG_FOLDER else None
         self.logger, _ = get_logger(index, log_folder=log_folder, force=True)
 
     def snapshot(self, index, snapshot=None, recreate_repo=False):
@@ -211,7 +213,8 @@ class SnapshotEnv:
 
                 job = await self.job_manager.defer_to_thread(
                     self.pinfo.get_pinfo(step, snapshot),
-                    partial(getattr(self, state.func), cfg, index, snapshot, recreate_repo=recreate_repo),
+                    partial(getattr(self, state.func), cfg, index,
+                            snapshot, recreate_repo=recreate_repo),
                 )
                 try:
                     dx = await job
@@ -256,7 +259,8 @@ class SnapshotEnv:
         try:
             repo.verify(config=cfg)
         except TransportError as tex:
-            raise RepositoryVerificationFailed({"error": tex.error, "detail": tex.info["error"]})
+            raise RepositoryVerificationFailed(
+                {"error": tex.error, "detail": tex.info["error"]})
 
         return {
             "__REPLACE__": True,
@@ -330,7 +334,7 @@ class SnapshotManager(BaseManager):
         "indexer": {
             "name": "local",
             "args": {
-                "timeout": 100,
+                "request_timeout": 100,
                 "max_retries": 5
             }
         },
@@ -463,7 +467,9 @@ class SnapshotManager(BaseManager):
             >>> snapshot_cleanup("s3_outbreak", keep=0)
         """
 
-        snapshots = cleaner.find(get_src_build(), env, keep, group_by, **filters)  # filters support dotfield.
+        # filters support dotfield.
+        snapshots = cleaner.find(get_src_build(), env,
+                                 keep, group_by, **filters)
 
         if dryrun:
             return "\n".join(
@@ -495,10 +501,12 @@ class SnapshotManager(BaseManager):
         jobs = []
         try:
             for environment, snapshot_names in snapshots_data.items():
-                job = self.job_manager.submit(partial(delete, environment, snapshot_names))
+                job = self.job_manager.submit(
+                    partial(delete, environment, snapshot_names))
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
             tasks.add_done_callback(done)
         except Exception as ex:
-            logging.exception("Error while deleting snapshots. error: %s", ex, extra={"notify": True})
+            logging.exception(
+                "Error while deleting snapshots. error: %s", ex, extra={"notify": True})
         return jobs
