@@ -114,7 +114,6 @@ docker_ssh_requires = [
 ]
 # extra requirements to develop biothings
 dev_requires = [
-    "pytest",
     "pytest-mock",
     "pre-commit==2.17.0",
 ]
