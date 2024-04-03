@@ -2,10 +2,10 @@
 
 ## This is the procedure we use for "biothings" package release
 
-1. requires both `wheel` and `twine` packages installed
+1. Install the build package:
 
    ```bash
-   pip install wheel twine
+   pip install build
    ```
 
 2. Update version number in [biothings/__init__.py](biothings/__init__.py).
@@ -15,18 +15,16 @@
 4. Build the package locally:
 
    ```bash
-   python setup.py sdist bdist_wheel
+   python -m build
    ```
 
-   Note: No need to add `--unversal` parameter, since `biothings` package now requires Python3, with no support of Python2 any more.
-
-5. Test the package built locally:
+5. Test the package built locally (update to the matching version in the file name):
 
    ```bash
    pip install dist/biothings-0.9.0-py3-none-any.whl
    ```
 
-   And run any local test as needed (e.g. run nosetests on a local BioThings API instance).
+   And run any local test as needed (e.g. run pytest on a local BioThings API instance).
 
 6. Prepare github repo for the release:
 
