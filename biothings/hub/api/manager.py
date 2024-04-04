@@ -4,6 +4,7 @@ import importlib
 import logging
 import os
 import socket
+import sys
 import time
 import types
 from datetime import datetime
@@ -107,6 +108,9 @@ class APIManager(BaseManager):
 
     def import_config_web(self):
         try:
+            self.logger.info("Original sys.path: %s", sys.path)
+            sys.path.append(btconfig.APITEST_CONFIG_ROOT)
+            self.logger.info("Updated sys.path: %s", sys.path)
             config_mod = importlib.import_module(btconfig.APITEST_CONFIG)
             self.logger.info("Imported %s as config_mod.", btconfig.APITEST_CONFIG)
         except (AttributeError, ImportError):
@@ -129,24 +133,30 @@ class APIManager(BaseManager):
     def test_api(self, api_id):
         """
         Run pytests for the given api id. If no pytest path is found in the config_web_local.py then log an error.
-        APITEST_PATH: path to the directory containing the pytests
+        APITEST_CONFIG_ROOT: root directory containing the config_web
         APITEST_CONFIG: name of the config file containing the api web configuration
+        APITEST_ROOT: root directory containing the conftest.py file for the pytests
+        APITEST_PATH: path to the directory containing the pytests
         """
         assert self.job_manager
         has_pytests = False
         try:
-            if btconfig.APITEST_PATH and btconfig.APITEST_CONFIG:
+            if btconfig.APITEST_CONFIG_ROOT and btconfig.APITEST_CONFIG and btconfig.APITEST_ROOT and btconfig.APITEST_PATH:
                 has_pytests = True
         except AttributeError:
-            self.logger.error("No APITEST_PATH or APITEST_CONFIG found in config. Skipping pytests for '%s'", api_id)
+            self.logger.error("Missing APIRTEST_CONFIG_ROOT or API_CONFIG or APITEST_ROOT or APITEST_PATH. Skipping pytests for '%s'", api_id)
 
         try:
+            old_dir = os.getcwd()
             #if has_pytest is true then run the pytests
             if has_pytests:
-                self.logger.info("APITEST_PATH found in config. Running pytests from %s.", btconfig.APITEST_PATH)
+                # have to change directory otherwise pytest will not find the conftest.py file
+                self.logger.info("Changing directory from %s to %s", old_dir, btconfig.APITEST_ROOT)
+                os.chdir(btconfig.APITEST_ROOT)
                 apidoc = self.api.find_one({"_id": api_id})
                 port = int(apidoc["config"]["port"])
                 APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
+                self.logger.info("APITEST_PATH found in config. Running pytests from %s.", APITEST_PATH)
 
                 async def run_pytests(path, port):
                     pinfo = self.get_pinfo()
@@ -169,12 +179,14 @@ class APIManager(BaseManager):
                     await job
                     if got_error:
                         raise got_error
-
                 job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
                 return job
         except Exception as e:
             self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
             raise
+        finally:
+            self.logger.info("Changing directory back to %s", old_dir)
+            os.chdir(old_dir)
 
 
     def start_api(self, api_id):
