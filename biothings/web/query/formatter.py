@@ -299,6 +299,9 @@ class ESResultFormatter(ResultFormatter):
                 self._always_list(path, obj, options.always_list)
             if options._sorted:
                 self._sorted(path, obj)
+            if options.jmespath:
+                self.trasform_jmespath(path, obj, doc, options)
+
         if options.dotfield:
             self._dotfield(doc, options)
 
@@ -399,6 +402,9 @@ class ESResultFormatter(ResultFormatter):
         }
 
         The arrow marked fields would not exist without the setting lines.
+
+        This method can be overridden to add more transformations in a
+        customized Formatter class.
         """
 
         licenses = self.licenses.get(options.biothing_type, {})
@@ -407,8 +413,6 @@ class ESResultFormatter(ResultFormatter):
         if path in licenses and isinstance(obj, dict):
             obj["_license"] = licenses[path]
 
-        if options.jmespath:
-            self.trasform_jmespath(path, obj, doc, options)
 
     @staticmethod
     def trasform_jmespath_obj(obj, parent_path: str, target_field: str, doc, jmes_query, jmespath_exclude_empty=False) -> None:
