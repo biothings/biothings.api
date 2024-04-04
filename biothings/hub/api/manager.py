@@ -109,7 +109,8 @@ class APIManager(BaseManager):
     def import_config_web(self):
         try:
             self.logger.info("Original sys.path: %s", sys.path)
-            sys.path.append(btconfig.APITEST_CONFIG_ROOT)
+            if btconfig.APITEST_CONFIG_ROOT not in sys.path:
+                sys.path.append(btconfig.APITEST_CONFIG_ROOT)
             self.logger.info("Updated sys.path: %s", sys.path)
             config_mod = importlib.import_module(btconfig.APITEST_CONFIG)
             self.logger.info("Imported %s as config_mod.", btconfig.APITEST_CONFIG)
@@ -155,7 +156,7 @@ class APIManager(BaseManager):
                 os.chdir(btconfig.APITEST_ROOT)
                 apidoc = self.api.find_one({"_id": api_id})
                 port = int(apidoc["config"]["port"])
-                APITEST_PATH = os.path.join(btconfig.APITEST_PATH)
+                APITEST_PATH = os.path.join(btconfig.APITEST_ROOT, btconfig.APITEST_PATH)
                 self.logger.info("APITEST_PATH found in config. Running pytests from %s.", APITEST_PATH)
 
                 async def run_pytests(path, port):
