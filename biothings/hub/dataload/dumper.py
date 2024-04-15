@@ -50,7 +50,7 @@ class DockerContainerException(Exception):
     pass
 
 
-class BaseDumper(object):
+class BaseDumper():
     # override in subclass accordingly
     SRC_NAME = None
     SRC_ROOT_FOLDER = None  # source folder (without version/dates)

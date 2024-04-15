@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import types
+from typing import Union
 from collections import OrderedDict
 from functools import partial, wraps
 from pprint import pformat
@@ -398,10 +399,11 @@ class BaseSourceManager(BaseManager):
             # from "from biothings.hub.... import aclass" statements and would be incorrectly registered
             # we only look for classes defined straight from the actual module
             if (
-                type(something) == type
+                isinstance(something, type)
                 and issubclass(something, self.__class__.SOURCE_CLASS)
                 and not something.__module__.startswith("biothings.hub")
             ):
+                breakpoint()
                 klass = something
                 if not self.filter_class(klass):
                     continue
@@ -414,34 +416,49 @@ class BaseSourceManager(BaseManager):
                 )
         return klasses
 
-    def register_source(self, src, fail_on_notfound=True):
-        """Register a new data source. src can be a module where some classes
+    def register_source(
+        self,
+        src: Union[str, dict, types.ModuleType],
+        fail_on_notfound: bool = True,
+        reload_module: bool = True
+    ):
+        """
+        Register a new data source. 
+
+        src can be a module where some classes
         are defined. It can also be a module path as a string, or just a source name
         in which case it will try to find information from default path.
         """
         if isinstance(src, str):
             try:
                 src_m = importlib.import_module(src)
-                src_m = importlib.reload(src_m)
-            except ImportError as ex:
-                logger.warning(ex)
+                if reload_module:
+                    src_m = importlib.reload(src_m)
+            except ImportError as import_err:
+                logger.warning((
+                    "Unable to import the module: [%s]."
+                    "Re-attempting with the default source path [%s]", src, self.default_src_path
+                ))
+                logger.exception(import_err)
                 try:
-                    src_m = importlib.import_module("%s.%s" % (self.default_src_path, src))
-                except ImportError as e:
-                    msg = "Can't find module '%s', even in '%s'" % (src, self.default_src_path)
-                    logger.error(msg)
-                    logger.warning(e)
-                    raise UnknownResource(msg)
+                    source_module_with_path = f"{self.default_src_path}.{src}"
+                    src_m = importlib.import_module(source_module_with_path)
+                except ImportError as inner_import_err:
+                    logger.exception(inner_import_err)
+                    import_err_msg = f"Unable to import the module: [{source_module_with_path}]"
+                    logger.error(import_err_msg)
+                    raise UnknownResource(import_err_msg) from inner_import_err
 
         elif isinstance(src, dict):
             # source is comprised of several other sub sources
             assert len(src) == 1, "Should have only one element in source dict '%s'" % src
             _, sub_srcs = list(src.items())[0]
             for src in sub_srcs:
-                self.register_source(src, fail_on_notfound)
+                self.register_source(src, fail_on_notfound, reload_module)
             return
         else:
             src_m = src
+
         # first try to find classes defined in __init__.py (in package) explicitely
         klasses = self.find_classes(src_m, fail_on_notfound)
         # then if none found, try to search within the package's modules

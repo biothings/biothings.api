@@ -8,8 +8,10 @@ import re
 import subprocess
 import sys
 import textwrap
+import types
 import urllib.parse
 from string import Template
+from typing import Optional
 
 # we switched to use black for code formatting
 # from yapf.yapflib import yapf_api
@@ -549,35 +551,53 @@ class AdvancedPluginLoader(BasePluginLoader):
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
-        if "__init__.py" in os.listdir(df):
-            return True
-        else:
-            return False
+        return "__init__.py" in os.listdir(df)
 
-    def load_plugin(self):
+
+    def load_plugin(
+        self,
+        module_reference: Optional[types.ModuleType] = None,
+        fail_on_notfound: bool = True,
+        reload_module: bool = True
+    ):
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
         if os.path.exists(df):
             # we assume there's a __init__ module exposing Dumper and Uploader classes
             # as necessary
-            modpath = df.split("/")[-1]
+            if module_reference is None:
+                module_reference = df.split("/")[-1]
+
             # before registering, process optional requirements.txt
             reqfile = os.path.join(df, "requirements.txt")
             if os.path.exists(reqfile):
                 self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile, self.plugin_name))
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", reqfile])
+
             # submit to managers to register datasources
-            self.logger.info("Registering '%s' to dump/upload managers" % modpath)
+            self.logger.info("Registering '%s' to dump/upload managers" % module_reference)
+
             # register dumpers if any
             try:
-                self.__class__.dumper_manager.register_source(modpath)
-            except Exception as e:
-                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath, e))
+                self.__class__.dumper_manager.register_source(
+                    src=module_reference,
+                    fail_on_notfound=fail_on_notfound,
+                    reload_module=reload_module
+                )
+            except Exception as gen_exc:
+                self.logger.exception(gen_exc)
+                self.logger.warning("Couldn't register dumper from module '%s'" % module_reference)
+
             # register uploaders if any
             try:
-                self.__class__.uploader_manager.register_source(modpath)
+                self.__class__.uploader_manager.register_source(
+                    src=module_reference,
+                    fail_on_notfound=fail_on_notfound,
+                    reload_module=reload_module
+                )
             except Exception as e:
-                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath, e))
+                self.logger.info("Couldn't register uploader from module '%s': %s" %
+                                 (module_reference, e))
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
