@@ -3,6 +3,8 @@ import logging
 import time
 import types
 
+from sqlite3 import IntegrityError
+
 from pymongo import InsertOne, ReplaceOne, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
@@ -215,6 +217,8 @@ class IgnoreDuplicatedStorage(BasicStorage):
                     "Inserted %s records, ignoring %d [%s]"
                     % (e.details["nInserted"], len(e.details["writeErrors"]), timesofar(tinner))
                 )
+            except IntegrityError as e:
+                self.logger.info(f"Skipping duplicate record. Details: {e}")
             except Exception:
                 raise
             tinner = time.time()
