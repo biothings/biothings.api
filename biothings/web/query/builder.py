@@ -184,17 +184,35 @@ class QStringParser:
             structured_patterns.append(self.default_pattern)
         return structured_patterns
 
-    def parse(self, q):
-        assert isinstance(q, str)
+    def parse(self, query: str):
+        """
+        Parsing method for the QStringParser object
+
+        Inputs
+        query: string query to search the elasticsearch instance
+
+        It greedily searchs the supplied regex patterns supplied
+        via <self.patterns>  to the first match in the list
+        """
+        logger.debug("Attempting to parse query string %s", query)
+
+        default_scope_fields = self.default
+        query_object = Query(query, default_scope_fields)
+
         for regex, fields in self.patterns:
-            match = re.fullmatch(regex, q)
+            match = re.fullmatch(regex, query)
             if match:
+                logger.debug(("Discovered regex-query match: regex [%s] | match [%s]", regex, match))
                 named_groups = match.groupdict()
-                q = named_groups.get(self.gpname.term) or q
-                _fields = named_groups.get(self.gpname.scopes)
-                fields = [_fields] if _fields else fields or self.default
-                return Query(q, fields)
-        return Query(q, self.default)
+                term_query = named_groups.get(self.gpname.term, query)
+                scope_fields = named_groups.get(self.gpname.scopes, default_scope_fields)
+                if not isinstance(scope_fields, Iterable):
+                    scope_fields = [scope_fields]
+                query_object = Query(term_query, fields)
+                break
+
+        logger.info("Generated query object: [%s]", query_object)
+        return query_object
 
 
 class ESScrollID(UserString):
