@@ -43,6 +43,7 @@ from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
+from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
@@ -70,15 +71,15 @@ class QStringParser:
         if default_scopes is None:
             default_scopes = ("_id",)
 
+        if gpnames is None:
+            gpnames = ("term", "scope")
+        self.gpname = Group(*gpnames)  # symbolic group name for term substitution
+
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
         self.default = default_scopes
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
-
-        if gpnames is None:
-            gpnames = ("term", "scope")
-        self.gpname = Group(*gpnames)  # symbolic group name for term substitution
 
     def _verify_default_regex_pattern(
         self, default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]]
@@ -203,6 +204,67 @@ class ESScrollID(UserString):
         assert self.data
 
 
+class ESUserQuery:
+    def __init__(self, path):
+        self._queries = {}
+        self._filters = {}
+        try:
+            for dirpath, dirnames, filenames in os.walk(path):
+                if dirnames:
+                    self.logger.info("User query folders: %s.", dirnames)
+                    continue
+                for filename in filenames:
+                    with open(os.path.join(dirpath, filename)) as text_file:
+                        if "query" in filename:
+                            ## alternative implementation  # noqa: E266
+                            # self._queries[os.path.basename(dirpath)] = text_file.read()
+                            ##
+                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                        elif "filter" in filename:
+                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+        except Exception:
+            self.logger.exception("Error loading user queries.")
+
+    def has_query(self, named_query):
+        return named_query in self._queries
+
+    def has_filter(self, named_query):
+        return named_query in self._filters
+
+    def get_query(self, named_query, **kwargs):
+        def in_place_sub(dic, kwargs):
+            for key in dic:
+                if isinstance(dic[key], dict):
+                    in_place_sub(dic[key], kwargs)
+                elif isinstance(dic[key], list):
+                    for item in dic[key]:
+                        in_place_sub(item, kwargs)
+                elif isinstance(dic[key], str):
+                    dic[key] = dic[key].format(**kwargs).format(**kwargs)  # {{q}}
+
+        dic = deepcopy(self._queries.get(named_query))
+        in_place_sub(dic, kwargs)
+        key, val = next(iter(dic.items()))
+        return Q(key, **val)
+
+        ## alternative implementation  # noqa: E266
+        # string = self._queries.get(named_query)
+        # string1 = re.sub(r"\}", "}}", string)
+        # string2 = re.sub(r"\{", "{{", string1)
+        # string3 = re.sub(r'\{\{\{\{(?P<var>.*?)\}\}\}\}', r'{\g<var>}', string2)
+        # return string3
+        ##
+
+    def get_filter(self, named_query):
+        dic = self._filters.get(named_query)
+        key, val = next(iter(dic.items()))
+        return Q(key, **val)
+
+    @property
+    def logger(self):
+        return logging.getLogger(__name__)
+
+
 #
 #             ES Query Builder Architecture
 # -------------------------------------------------------
@@ -232,18 +294,14 @@ class ESQueryBuilder:
 
     def __init__(
         self,
-        user_query=None,  # like a prepared statement in SQL
-        scopes_regexs=None,
-        scopes_default=("_id",),  # fallback used when scope inference fails
-        pattern_default=ANNOTATION_DEFAULT_REGEX_PATTERN,
-        allow_random_query=True,  # used for data exploration, can be expensive
-        allow_nested_query=False,  # nested aggregation can be expensive
-        metadata=None,  # access to data like total number of documents
+        user_query: Union[str, ESUserQuery] = None,  # like a prepared statement in SQL
+        scopes_regexs: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
+        scopes_default: Tuple[str] = ("_id",),  # fallback used when scope inference fails
+        pattern_default: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
+        allow_random_query: bool = True,  # used for data exploration, can be expensive
+        allow_nested_query: bool = False,  # nested aggregation can be expensive
+        metadata: BiothingsMetadata = None,  # access to data like total number of documents
     ):
-        self.parser = QStringParser(
-            default_scopes=scopes_default, patterns=scopes_regexs, default_pattern=pattern_default, gpnames=None
-        )
-
         # all settings below affect only query string queries
         if user_query is None:
             user_query = ESUserQuery("userquery")
@@ -254,6 +312,13 @@ class ESQueryBuilder:
 
         # currently metadata is only used for __any__ query
         self.metadata = metadata
+
+        self.parser = QStringParser(
+            default_scopes=scopes_default,
+            patterns=scopes_regexs,
+            default_pattern=pattern_default,
+            gpnames=("term", "scope"),
+        )
 
     def build(self, q=None, **options):
         """
@@ -345,7 +410,7 @@ class ESQueryBuilder:
             else:  # pseudo random by overriding 'from' value
                 search = search.query()
                 try:  # limit 'from' parameter to a valid result window
-                    metadata = self.metadata[options.biothing_type]
+                    metadata = self.metadata.biothings_metadata[options.biothing_type]
                     total = metadata["stats"]["total"]
                     fmax = total - options.get("size", 0)
                     from_ = randrange(fmax if fmax < 10000 else 10000)
@@ -552,64 +617,3 @@ class SQLQueryBuilder:
             raise RawQueryInterrupt(statements)
 
         return " ".join(statements)
-
-
-class ESUserQuery:
-    def __init__(self, path):
-        self._queries = {}
-        self._filters = {}
-        try:
-            for dirpath, dirnames, filenames in os.walk(path):
-                if dirnames:
-                    self.logger.info("User query folders: %s.", dirnames)
-                    continue
-                for filename in filenames:
-                    with open(os.path.join(dirpath, filename)) as text_file:
-                        if "query" in filename:
-                            ## alternative implementation  # noqa: E266
-                            # self._queries[os.path.basename(dirpath)] = text_file.read()
-                            ##
-                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
-                        elif "filter" in filename:
-                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
-        except Exception:
-            self.logger.exception("Error loading user queries.")
-
-    def has_query(self, named_query):
-        return named_query in self._queries
-
-    def has_filter(self, named_query):
-        return named_query in self._filters
-
-    def get_query(self, named_query, **kwargs):
-        def in_place_sub(dic, kwargs):
-            for key in dic:
-                if isinstance(dic[key], dict):
-                    in_place_sub(dic[key], kwargs)
-                elif isinstance(dic[key], list):
-                    for item in dic[key]:
-                        in_place_sub(item, kwargs)
-                elif isinstance(dic[key], str):
-                    dic[key] = dic[key].format(**kwargs).format(**kwargs)  # {{q}}
-
-        dic = deepcopy(self._queries.get(named_query))
-        in_place_sub(dic, kwargs)
-        key, val = next(iter(dic.items()))
-        return Q(key, **val)
-
-        ## alternative implementation  # noqa: E266
-        # string = self._queries.get(named_query)
-        # string1 = re.sub(r"\}", "}}", string)
-        # string2 = re.sub(r"\{", "{{", string1)
-        # string3 = re.sub(r'\{\{\{\{(?P<var>.*?)\}\}\}\}', r'{\g<var>}', string2)
-        # return string3
-        ##
-
-    def get_filter(self, named_query):
-        dic = self._filters.get(named_query)
-        key, val = next(iter(dic.items()))
-        return Q(key, **val)
-
-    @property
-    def logger(self):
-        return logging.getLogger(__name__)
