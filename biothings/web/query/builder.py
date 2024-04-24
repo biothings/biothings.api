@@ -67,7 +67,6 @@ class QStringParser:
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
         default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
         gpnames: Tuple[str] = None,
-        metadata: BiothingsMetadata = None,
     ):
         if default_scopes is None:
             default_scopes = ("_id",)
@@ -80,7 +79,6 @@ class QStringParser:
         assert all(isinstance(field, str) for field in default_scopes)
         self.default_scopes = default_scopes
 
-        self.metadata = metadata
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
 
@@ -368,7 +366,6 @@ class ESQueryBuilder:
             patterns=scopes_regexs,
             default_pattern=pattern_default,
             gpnames=("term", "scope"),
-            metadata=self.metadata,
         )
 
     def build(self, q=None, **options):
