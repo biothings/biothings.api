@@ -82,7 +82,7 @@ class QStringParser:
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
 
-    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> dict:
+    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> set[str]:
         """
         Extracts the field mappings stored in our "metadata" instance
 
@@ -100,10 +100,14 @@ class QStringParser:
         We need to extract the biothing_type from the metadata in order to the
         access this metadata
         """
-        metadata_fields = {}
+        metadata_fields = set()
         if metadata is not None:
             general_metadata = metadata.biothing_metadata[None]
             metadata_fields = metadata.get_mappings(general_metadata["biothing_type"])
+            for field, elasticsearch_mapping in metadata_fields.items():
+                field_index = elasticsearch_mapping.get("index", True)
+                if field_index:
+                    metadata_fields.add(field)
         return metadata_fields
 
     def _verify_default_regex_pattern(
@@ -240,7 +244,6 @@ class QStringParser:
                 if not isinstance(scope_fields, (list, tuple)):
                     scope_fields = [scope_fields]
                 query_object = Query(term_query, scope_fields)
-                print(locals())
                 break
 
         logger.info("Generated query object: [%s]", query_object)
