@@ -196,19 +196,25 @@ class QStringParser:
         """
         logger.debug("Attempting to parse query string %s", query)
 
-        default_scope_fields = self.default
-        query_object = Query(query, default_scope_fields)
+        fallback_scope_fields = self.default
+        query_object = Query(query, fallback_scope_fields)
 
-        for regex, fields in self.patterns:
+        for regex, pattern_fields in self.patterns:
             match = re.fullmatch(regex, query)
             if match:
                 logger.debug(("Discovered regex-query match: regex [%s] | match [%s]", regex, match))
+
                 named_groups = match.groupdict()
-                term_query = named_groups.get(self.gpname.term, query)
-                scope_fields = named_groups.get(self.gpname.scopes, default_scope_fields)
-                if not isinstance(scope_fields, Iterable):
+                match_term = named_groups.get(self.gpname.term, None)
+                matched_fields = named_groups.get(self.gpname.scopes, None)
+
+                term_query = match_term or query
+                scope_fields = matched_fields or pattern_fields or fallback_scope_fields
+
+                if not isinstance(scope_fields, (list, tuple)):
                     scope_fields = [scope_fields]
-                query_object = Query(term_query, fields)
+                query_object = Query(term_query, scope_fields)
+                print(locals())
                 break
 
         logger.info("Generated query object: [%s]", query_object)
