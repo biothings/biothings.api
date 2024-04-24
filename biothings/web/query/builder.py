@@ -243,7 +243,18 @@ class QStringParser:
 
                 if not isinstance(scope_fields, (list, tuple)):
                     scope_fields = [scope_fields]
-                query_object = Query(term_query, scope_fields)
+
+                if set(scope_fields) <= query_metadata:
+                    query_object = Query(term_query, scope_fields)
+                else:
+                    logger.info(
+                        (
+                            "Provided scope fields aren't a subset of the metadata elasticsearch fields. "
+                            "metadata fields: %s | scope fields %s",
+                            query_metadata,
+                            set(scope_fields),
+                        )
+                    )
                 break
 
         logger.info("Generated query object: [%s]", query_object)
