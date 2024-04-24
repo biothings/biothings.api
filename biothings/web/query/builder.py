@@ -67,6 +67,7 @@ class QStringParser:
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
         default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
         gpnames: Tuple[str] = None,
+        metadata: BiothingsMetadata = None,
     ):
         if default_scopes is None:
             default_scopes = ("_id",)
@@ -77,9 +78,35 @@ class QStringParser:
 
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
-        self.default = default_scopes
+        self.default_scopes = default_scopes
+
+        self.metadata = metadata
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
+
+    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> dict:
+        """
+        Extracts the field mappings stored in our "metadata" instance
+
+        BiothingsESMetadata is constructed in
+        biothings.web.services.namespace._configure_elasticsearch
+
+        We want to access the mappings stored in elasticsearch provided via
+        the biothing_mappings class property
+
+        -----------------------------------------------------------------
+            def get_mappings(self, biothing_type):
+                return self.biothing_mappings[biothing_type]
+        -----------------------------------------------------------------
+
+        We need to extract the biothing_type from the metadata in order to the
+        access this metadata
+        """
+        metadata_fields = {}
+        if metadata is not None:
+            general_metadata = metadata.biothing_metadata[None]
+            metadata_fields = metadata.get_mappings(general_metadata["biothing_type"])
+        return metadata_fields
 
     def _verify_default_regex_pattern(
         self, default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]]
@@ -184,7 +211,7 @@ class QStringParser:
             structured_patterns.append(self.default_pattern)
         return structured_patterns
 
-    def parse(self, query: str):
+    def parse(self, query: str, metadata: BiothingsMetadata):
         """
         Parsing method for the QStringParser object
 
@@ -195,14 +222,15 @@ class QStringParser:
         via <self.patterns>  to the first match in the list
         """
         logger.debug("Attempting to parse query string %s", query)
+        query_metadata = self._build_endpoint_metadata_fields(metadata)
 
-        fallback_scope_fields = self.default
+        fallback_scope_fields = self.default_scopes
         query_object = Query(query, fallback_scope_fields)
 
         for regex, pattern_fields in self.patterns:
             match = re.fullmatch(regex, query)
             if match:
-                logger.debug(("Discovered regex-query match: regex [%s] | match [%s]", regex, match))
+                logger.debug("Discovered regex-query match: regex [%s] | match [%s]", regex, match)
 
                 named_groups = match.groupdict()
                 match_term = named_groups.get(self.gpname.term, None)
@@ -289,26 +317,24 @@ class ESUserQuery:
         return logging.getLogger(__name__)
 
 
-#
-#             ES Query Builder Architecture
-# -------------------------------------------------------
-#                         build
-#                 (support multisearch)
-# --------------------------↓↓↓--------------------------
-#                        _build_one
-#  (dispatch basing on scopes, then apply_extras(..))
-# ------------↓↓↓------------------------↓↓↓-------------
-#    _build_string_query    |  _build_match_query
-#  (__all__, userquery,..)  | (compound match query)
-# ------------↓↓↓------------------------↓↓↓-------------
-#    default_string_query   |   default_match_query
-#  (map to ES query string) | (map to ES match query)
-# -------------------------------------------------------
-
-
 class ESQueryBuilder:
     """
     Build an Elasticsearch query with elasticsearch-dsl.
+
+                ES Query Builder Architecture
+    -------------------------------------------------------
+                            build
+                    (support multisearch)
+    --------------------------↓↓↓--------------------------
+                           _build_one
+     (dispatch basing on scopes, then apply_extras(..))
+    ------------↓↓↓------------------------↓↓↓-------------
+       _build_string_query    |  _build_match_query
+     (__all__, userquery,..)  | (compound match query)
+    ------------↓↓↓------------------------↓↓↓-------------
+       default_string_query   |   default_match_query
+     (map to ES query string) | (map to ES match query)
+    -------------------------------------------------------
     """
 
     # Different from other query pipelines, elasticsearch
@@ -342,6 +368,7 @@ class ESQueryBuilder:
             patterns=scopes_regexs,
             default_pattern=pattern_default,
             gpnames=("term", "scope"),
+            metadata=self.metadata,
         )
 
     def build(self, q=None, **options):
@@ -387,8 +414,9 @@ class ESQueryBuilder:
             else:  # str, int ...
                 search = self._build_one(q, options)
 
-        except IllegalOperation as exc:
-            raise ValueError(str(exc))  # ex. sorting by -_score
+        except IllegalOperation as illegal_operation_error:
+            logger.exception(illegal_operation_error)
+            raise ValueError from illegal_operation_error
 
         if options.get("rawquery"):
             raise RawQueryInterrupt(search.to_dict())
@@ -402,7 +430,7 @@ class ESQueryBuilder:
         if options.scopes:
             search = self._build_match_query(q, options.scopes, options)
         elif not isinstance(q, (list, tuple)) and options.autoscope:
-            q, scopes = self.parser.parse(str(q))
+            q, scopes = self.parser.parse(str(q), self.metadata)
             search = self._build_match_query(q, scopes, options)
         else:  # no scope provided and cannot derive from q
             search = self._build_string_query(q, options)
