@@ -68,7 +68,8 @@ opensearch_requires = [
 
 # minimal requirements for running biothings.hub, e.g. in CLI mode
 hubcore_requires = [
-    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    #"pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    "pymongo==4.6.3"
 ]
 
 # extra requirements to run a full biothings.hub
