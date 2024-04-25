@@ -172,13 +172,24 @@ class QStringParser:
         """
         metadata_fields = set()
         if metadata is not None:
-            general_metadata = metadata.biothing_metadata[None]
-            metadata_fields = metadata.get_mappings(general_metadata["biothing_type"])
-            breakpoint()
-            for field, elasticsearch_mapping in metadata_fields.items():
-                field_index = elasticsearch_mapping.get("index", True)
-                if field_index:
-                    metadata_fields.add(field)
+            # We use None as our general "_all" field access. See the constructor
+            # for BiothingsESMetadata in web.services.metadata.py
+            _all_metadata_key = None
+            general_metadata = metadata.biothing_metadata.get(_all_metadata_key, None)
+
+            if general_metadata is not None:
+                biothing_type = general_metadata.get("biothing_type", None)
+                try:
+                    metadata_fields = metadata.get_mappings(biothing_type)
+                except Exception as gen_exc:
+                    logger.exception(gen_exc)
+                    logger.error("Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type)
+                    metadata_fields = {}
+
+                for field, elasticsearch_mapping in metadata_fields.items():
+                    field_index = elasticsearch_mapping.get("index", True)
+                    if field_index:
+                        metadata_fields.add(field)
         return metadata_fields
 
     def _verify_default_regex_pattern(
