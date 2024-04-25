@@ -92,20 +92,89 @@ class QStringParser:
         We want to access the mappings stored in elasticsearch provided via
         the biothing_mappings class property
 
-        The biothing_mappings property is a cache pulled down from
+        Example entry for metadata.biothing_metadata
+        [doid]
+        defaultdict(
+            <class 'dict'>,
+            {
+                None: {
+                    "_biothing": "disease",
+                    "_indices": [
+                        "doid_20230601_gpycp0cq"
+                    ],
+                    "biothing_type": "disease",
+                    "build_date": "2023-06-01T18:26:14.250729-07:00",
+                    "build_version": "20230601",
+                    "src": {
+                        "doid": {
+                            "author": {
+                                "name": "Eric Zhou",
+                                "url": "https://github.com/ericz1803"
+                            },
+                            "code": {
+                                "branch": "main",
+                                "commit": "37c9bda",
+                                "repo": "https://github.com/ericz1803/doid",
+                                "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
+                            },
+                            "download_date": "2023-06-02T01:24:14.106000",
+                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "stats": {
+                                "doid": 11314
+                            },
+                            "upload_date": "2023-06-02T01:24:20.680000",
+                            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "version": "f360b43144cc9d7b05fd020ad8a0ce6da4419581738252a5b558ef68b00e4ae7"
+                        }
+                    },
+                    "stats": {
+                        "total": 11314
+                    }
+                },
+                "disease": {
+                    "_biothing": "disease",
+                    "_indices": [
+                        "doid_20230601_gpycp0cq"
+                    ],
+                    "biothing_type": "disease",
+                    "build_date": "2023-06-01T18:26:14.250729-07:00",
+                    "build_version": "20230601",
+                    "src": {
+                        "doid": {
+                            "author": {
+                                "name": "Eric Zhou",
+                                "url": "https://github.com/ericz1803"
+                            },
+                            "code": {
+                                "branch": "main",
+                                "commit": "37c9bda",
+                                "repo": "https://github.com/ericz1803/doid",
+                                "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
+                            },
+                            "download_date": "2023-06-02T01:24:14.106000",
+                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "stats": {
+                                "doid": 11314
+                            },
+                            "upload_date": "2023-06-02T01:24:20.680000",
+                            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "version": "f360b43144cc9d7b05fd020ad8a0ce6da4419581738252a5b558ef68b00e4ae7"
+                        }
+                    },
+                    "stats": {
+                        "total": 11314
+                    }
+                }
+            }
 
-        -----------------------------------------------------------------
-        def get_mappings(self, biothing_type):
-            return self.biothing_mappings[biothing_type]
-        -----------------------------------------------------------------
-
-        We need to extract the biothing_type from the metadata in order to the
-        access this metadata
         """
         metadata_fields = set()
         if metadata is not None:
             general_metadata = metadata.biothing_metadata[None]
             metadata_fields = metadata.get_mappings(general_metadata["biothing_type"])
+            breakpoint()
             for field, elasticsearch_mapping in metadata_fields.items():
                 field_index = elasticsearch_mapping.get("index", True)
                 if field_index:
