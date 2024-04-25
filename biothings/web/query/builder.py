@@ -92,9 +92,11 @@ class QStringParser:
         We want to access the mappings stored in elasticsearch provided via
         the biothing_mappings class property
 
+        The biothing_mappings property is a cache pulled down from
+
         -----------------------------------------------------------------
-            def get_mappings(self, biothing_type):
-                return self.biothing_mappings[biothing_type]
+        def get_mappings(self, biothing_type):
+            return self.biothing_mappings[biothing_type]
         -----------------------------------------------------------------
 
         We need to extract the biothing_type from the metadata in order to the
@@ -213,22 +215,65 @@ class QStringParser:
             structured_patterns.append(self.default_pattern)
         return structured_patterns
 
-    def parse(self, query: str, metadata: BiothingsMetadata):
+    def parse(self, query: str, metadata: BiothingsMetadata) -> Query:
         """
         Parsing method for the QStringParser object
 
         Inputs
         query: string query to search the elasticsearch instance
+        metadata: BiothingsMetadata object. Typically the BiothingsESMetadata
+        object defined in the namespace configuration
 
+        Flow:
+        1) It will first attempt to load the metadata fields associated
+        the endpoint we're querying against. There is a potential chance
+        that the cache for the BiothingsESMetadata object never refreshed due
+        to the asynchronous nature of the connection so we can't assume that the
+        data will be loaded
+        2) We then iterate over the provided regex patterns from the configuration.
         It greedily searchs the supplied regex patterns supplied
-        via <self.patterns>  to the first match in the list
+        via <self.patterns>  to the first match in the list. The search breaks after the first
+        match so the order of `self.patterns` is important when setting the configuration
+        3) If a match if found we then attempt to extract the two main matching groups
+        from the expression. We have the `gpname` property defined for the parser class
+        that is a namedtuple of the following structure:
+
+        >>> Group = namedtuple("Group", ("term", "scopes"))
+
+        The regex patterns typically define the pattern roughly of the following structure
+        of <term>:<scope>. With the <term> grouping referring to the search term and <scope>
+        group matching the different fields to search against. The matched regex pattern attempts
+        to find these defined groups and pull them out. However it isn't a requirement for either
+        term or scope so we have an order of precedence for storing the `term_query` and
+        `scope_fields`
+
+        <structure>
+        (highest priority[variable name] << higher priority << lower priority << lowest priority)
+
+        <term>
+        (regex term[self.gpname.term] << raw input query[query])
+
+        <scope>
+        (regex_scope[self.gpname.scopes] << regex pattern[pattern_fields] << default scope[self.default_scopes]
+
+        Using this priority structure, we build the Query object. This is also a named tuple with
+        the exact same structure as the previously defined Group
+
+        >>> Query = namedtuple("Query", ("term", "scopes"))
+
+        4) After exiting the loop we perform the metadata check. If we have metadata fields to
+        validate against we check to see if the generated scope fields are a subset of the metadata
+        fields. In the positive case, we do nothing and continue with the same `query_object`
+        instance. In the negative case, we reset the `query_object` to the default
+        5) The final check is see if we have a defined `query_object`. In the case of no regex
+        pattern matching against the query, we simply set the `query_object` to the default instance
+        6) We return the constructed Query instance to the caller
         """
         logger.debug("Attempting to parse query string %s", query)
         query_metadata = self._build_endpoint_metadata_fields(metadata)
 
         fallback_scope_fields = self.default_scopes
-        query_object = Query(query, fallback_scope_fields)
-
+        query_object = None
         for regex, pattern_fields in self.patterns:
             match = re.fullmatch(regex, query)
             if match:
@@ -244,18 +289,31 @@ class QStringParser:
                 if not isinstance(scope_fields, (list, tuple)):
                     scope_fields = [scope_fields]
 
-                if set(scope_fields) <= query_metadata:
-                    query_object = Query(term_query, scope_fields)
-                else:
-                    logger.info(
-                        (
-                            "Provided scope fields aren't a subset of the metadata elasticsearch fields. "
-                            "metadata fields: %s | scope fields %s",
-                            query_metadata,
-                            set(scope_fields),
-                        )
-                    )
+                query_object = Query(term_query, scope_fields)
                 break
+
+        if query_metadata is not None:
+            logger.debug(
+                (
+                    "Validating the scope fields against the metadata fields. "
+                    "scope fields [%s] | metadata fields [%s]",
+                    set(scope_fields),
+                    query_metadata,
+                )
+            )
+
+            if not set(scope_fields) <= query_metadata:
+                query_object = Query(query, fallback_scope_fields)
+                logger.warning(
+                    (
+                        "Provided scope fields aren't a subset of the metadata elasticsearch fields. "
+                        "Resetting query object instance to default [%s]",
+                        query_object,
+                    )
+                )
+        if query_object is None:
+            query_object = Query(query, fallback_scope_fields)
+            logger.debug(("No regex pattern match found. Setting query object instance to default [%s]", query_object))
 
         logger.info("Generated query object: [%s]", query_object)
         return query_object
