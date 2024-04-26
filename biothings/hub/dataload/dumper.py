@@ -1840,6 +1840,11 @@ class DockerContainerDumper(BaseDumper):
             - This command must run-able in both local Hub (for checking local file) and remote container (for checking remote file).
             - "{}" MUST exists in the command, it will be replace by the data file path when dumper runs,
                 ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
+        - volumes: (Optional) A list of volumes to be mounted to the container. The format is: {"local_path": {"bind": "/path/to/remote/folder"}} or ["local_path:/path/to/remote/folder"]
+        - named_volumes: (Optional) A list of named volumes to be created and mounted to the container.
+            - Example of using named_volumes in conjuction with volumes
+            named_volumes = {"name": "myvolume", "driver":"local", "driver_opts": {"type": "none", "o": "bind", "device": "/path/to/local/folder"}}
+            volumes = {"myvolume":{"bind": "/path/to/remote/folder"}}
     Ex:
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)"  # NOQA
       - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
@@ -1847,6 +1852,7 @@ class DockerContainerDumper(BaseDumper):
       - docker://localhost?image=dockstore_dumper&tag=latest&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&keep_container=True  # NOQA
       - docker://localhost?image=praqma/network-multitool&tag=latest&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
       - docker://localhost?container_name=<YOUR CONTAINER NAME>&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
+      - docker://localhost?image=dockstore_dumper&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&volumes={json.dumps(volumes)}&named_volumes={json.dumps(named_volumes)}
 
     Container metadata:
     - All above params in the data_url can be pre-config in the Dockerfile by adding LABELs. This config will be used as the fallback of the data_url params:
