@@ -180,13 +180,13 @@ class QStringParser:
             if general_metadata is not None:
                 biothing_type = general_metadata.get("biothing_type", None)
                 try:
-                    metadata_fields = metadata.get_mappings(biothing_type)
+                    metadata_mapping = metadata.get_mappings(biothing_type)
                 except Exception as gen_exc:
                     logger.exception(gen_exc)
                     logger.error("Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type)
-                    metadata_fields = {}
+                    metadata_mapping = {}
 
-                for field, elasticsearch_mapping in metadata_fields.items():
+                for field, elasticsearch_mapping in metadata_mapping.items():
                     field_index = elasticsearch_mapping.get("index", True)
                     if field_index:
                         metadata_fields.add(field)
@@ -209,9 +209,8 @@ class QStringParser:
         if default_pattern != ANNOTATION_DEFAULT_REGEX_PATTERN:
             logger.warning(
                 (
-                    "Default regex pattern changed to [%s]."
+                    f"Default regex pattern changed to [{ANNOTATION_DEFAULT_REGEX_PATTERN}]."
                     "Set by <ANNOTATION_DEFAULT_REGEX_PATTERN> in the configuration",
-                    ANNOTATION_DEFAULT_REGEX_PATTERN,
                 )
             )
 
@@ -228,9 +227,8 @@ class QStringParser:
                 logger.exception(gen_exc)
                 logger.error(
                     (
-                        "Invalid new regex pattern [%s]. Resetting to the default pattern [%s]",
-                        default_pattern,
-                        ANNOTATION_DEFAULT_REGEX_PATTERN,
+                        f"Invalid new regex pattern [{default_pattern}]. "
+                        f"Resetting to the default pattern [{ANNOTATION_DEFAULT_REGEX_PATTERN}]"
                     )
                 )
                 default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
@@ -353,7 +351,9 @@ class QStringParser:
         query_metadata = self._build_endpoint_metadata_fields(metadata)
 
         fallback_scope_fields = self.default_scopes
+        scope_fields = []
         query_object = None
+
         for regex, pattern_fields in self.patterns:
             match = re.fullmatch(regex, query)
             if match:
@@ -370,15 +370,15 @@ class QStringParser:
                     scope_fields = [scope_fields]
 
                 query_object = Query(term_query, scope_fields)
+                logger.info("Regex match generated query object: [%s]", query_object)
                 break
 
         if query_metadata is not None:
             logger.debug(
                 (
                     "Validating the scope fields against the metadata fields. "
-                    "scope fields [%s] | metadata fields [%s]",
-                    set(scope_fields),
-                    query_metadata,
+                    f"scope fields [{set(scope_fields)}] "
+                    f"| metadata fields [{query_metadata}]"
                 )
             )
 
@@ -387,13 +387,12 @@ class QStringParser:
                 logger.warning(
                     (
                         "Provided scope fields aren't a subset of the metadata elasticsearch fields. "
-                        "Resetting query object instance to default [%s]",
-                        query_object,
+                        f"Resetting query object instance to default [{query_object}]"
                     )
                 )
         if query_object is None:
             query_object = Query(query, fallback_scope_fields)
-            logger.debug(("No regex pattern match found. Setting query object instance to default [%s]", query_object))
+            logger.debug("No regex pattern match found. Setting query object instance to default [%s]", query_object)
 
         logger.info("Generated query object: [%s]", query_object)
         return query_object
