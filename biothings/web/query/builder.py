@@ -43,6 +43,7 @@ from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
+from biothings.web.query.formatter import ESResultFormatter
 from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
@@ -67,6 +68,7 @@ class QStringParser:
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
         default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
         gpnames: Tuple[str] = None,
+        formatter: ESResultFormatter = None,
     ):
         if default_scopes is None:
             default_scopes = ("_id",)
@@ -78,6 +80,10 @@ class QStringParser:
         assert isinstance(default_scopes, (tuple, list))
         assert all(isinstance(field, str) for field in default_scopes)
         self.default_scopes = default_scopes
+
+        if formatter is None:
+            formatter = ESResultFormatter()
+        self.metadata_field_formatter = formatter
 
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
@@ -180,7 +186,8 @@ class QStringParser:
             if general_metadata is not None:
                 biothing_type = general_metadata.get("biothing_type", None)
                 try:
-                    metadata_mapping = metadata.get_mappings(biothing_type)
+                    raw_metadata_mapping = metadata.get_mappings(biothing_type)
+                    metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
                 except Exception as gen_exc:
                     logger.exception(gen_exc)
                     logger.error("Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type)
@@ -347,6 +354,7 @@ class QStringParser:
         pattern matching against the query, we simply set the `query_object` to the default instance
         6) We return the constructed Query instance to the caller
         """
+        breakpoint()
         logger.debug("Attempting to parse query string %s", query)
         query_metadata = self._build_endpoint_metadata_fields(metadata)
 
@@ -500,6 +508,7 @@ class ESQueryBuilder:
         allow_random_query: bool = True,  # used for data exploration, can be expensive
         allow_nested_query: bool = False,  # nested aggregation can be expensive
         metadata: BiothingsMetadata = None,  # access to data like total number of documents
+        formatter: ESResultFormatter = None,
     ):
         # all settings below affect only query string queries
         if user_query is None:
@@ -512,11 +521,15 @@ class ESQueryBuilder:
         # currently metadata is only used for __any__ query
         self.metadata = metadata
 
+        if formatter is None:
+            formatter = ESResultFormatter()
+
         self.parser = QStringParser(
             default_scopes=scopes_default,
             patterns=scopes_regexs,
             default_pattern=pattern_default,
             gpnames=("term", "scope"),
+            formatter=formatter,
         )
 
     def build(self, q=None, **options):
@@ -758,7 +771,7 @@ class MongoQueryBuilder:
     def build(self, q, **options):
         fields = options.get("scopes", ())
         if not fields and q:
-            q, fields = self.parser.parse(q)
+            q, fields = self.parser.parse(q, metadata=None)
 
         assert isinstance(fields, (list, tuple))
         assert q is None and not fields or q and isinstance(q, str)
@@ -799,7 +812,7 @@ class SQLQueryBuilder:
 
         scopes = options.get("scopes")
         if not scopes:
-            q, scopes = self.parser.parse(q)
+            q, scopes = self.parser.parse(q, metadata=None)
 
         if scopes and q:
             assert isinstance(q, str)
