@@ -103,7 +103,7 @@ class BiothingsNamespace:
                 self.config.ANNOTATION_DEFAULT_REGEX_PATTERN,
                 self.config.ALLOW_RANDOM_QUERY,
                 self.config.ALLOW_NESTED_AGGS,
-                self.elasticsearch.metadata.biothing_metadata,
+                self.elasticsearch.metadata,
             ),
             load_class(self.config.ES_QUERY_BACKEND)(
                 self.elasticsearch.async_client,
