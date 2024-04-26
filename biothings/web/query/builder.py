@@ -354,7 +354,6 @@ class QStringParser:
         pattern matching against the query, we simply set the `query_object` to the default instance
         6) We return the constructed Query instance to the caller
         """
-        breakpoint()
         logger.debug("Attempting to parse query string %s", query)
         query_metadata = self._build_endpoint_metadata_fields(metadata)
 
