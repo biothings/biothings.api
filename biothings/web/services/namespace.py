@@ -122,8 +122,8 @@ class BiothingsNamespace:
         )
 
         self.elasticsearch.pipeline = load_class(self.config.ES_QUERY_PIPELINE)(
-            elasticsearch_query_backend,
             elasticsearch_query_builder,
+            elasticsearch_query_backend,
             elasticsearch_result_formatter,
             fetch_max_match=self.config.ANNOTATION_MAX_MATCH,
         )
