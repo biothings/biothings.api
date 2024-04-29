@@ -1,15 +1,16 @@
+import orjson
+import aiohttp
 import certifi
 import orjson
-from tornado.httpclient import HTTPRequest
+import asyncio  # Import the requests library
 
 from biothings.web.analytics.events import Event, Message
 
-
 class Channel:
-    def handles(self, event):
+    async def handles(self, event):
         raise NotImplementedError()
 
-    def send(self, event):
+    async def send(self, event):
         raise NotImplementedError()
 
 
@@ -17,22 +18,17 @@ class SlackChannel(Channel):
     def __init__(self, hook_urls):
         self.hooks = hook_urls
 
-    def handles(self, event):
+    async def handles(self, event):
         return isinstance(event, Message)
 
-    def send(self, message):
-        for url in self.hooks:
-            yield HTTPRequest(
-                url=url,
-                method="POST",
-                headers={"content-type": "application/json"},
-                body=orjson.dumps(message.to_slack_payload()).decode(),
-                ca_certs=certifi.where(),  # for Windows compatibility
-            )
+    async def send(self, message):
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.send_request(session, url, message) for url in self.hooks]
+            await asyncio.gather(*tasks)
 
-
-# Measurement Protocol (Universal Analytics)
-# https://developers.google.com/analytics/devguides/collection/protocol/v1/devguide
+    async def send_request(self, session, url, message):
+        async with session.post(url, json=message.to_slack_payload()) as response:
+            pass
 
 
 class GAChannel(Channel):
@@ -40,19 +36,20 @@ class GAChannel(Channel):
         self.tracking_id = tracking_id
         self.uid_version = uid_version
 
-    def handles(self, event):
+    async def handles(self, event):
         return isinstance(event, Event)
 
-    def send(self, payload):
+    async def send(self, payload):
         events = payload.to_GA_payload(self.tracking_id, self.uid_version)
-        # #batch-limitations section of the URL above
-        # A maximum of 20 hits can be specified per request.
-        for i in range(0, len(events), 20):
-            yield HTTPRequest(
-                "http://www.google-analytics.com/batch",
-                method="POST",
-                body="\n".join(events[i : i + 20]),  # noqa: E203
-            )
+        async with aiohttp.ClientSession() as session:
+            for i in range(0, len(events), 20):
+                data = "\n".join(events[i:i + 20])
+                url = "http://www.google-analytics.com/batch"
+                await self.send_request(session, url, data)
+
+    async def send_request(self, session, url, data):
+        async with session.post(url, data=data) as response:
+            pass
 
 
 class GA4Channel(Channel):
@@ -61,23 +58,21 @@ class GA4Channel(Channel):
         self.api_secret = api_secret
         self.uid_version = uid_version
 
-    def handles(self, event):
+    async def handles(self, event):
         return isinstance(event, Event)
 
-    def send(self, payload):
-        """
-
-        Limitations:
-        https://developers.google.com/analytics/devguides/collection/protocol/ga4/sending-events?client_type=gtag
-        """
+    async def send(self, payload):
         events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
-        # #batch-limitations section of the URL above
-        # A maximum of 25 hits can be specified per request.
         url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
-        for i in range(0, len(events), 25):
-            data = {
-                "client_id": str(payload._cid(self.uid_version)),
-                "user_id": str(payload._cid(1)),
-                "events": events[i : i + 25],  # noqa: E203
-            }
-            yield HTTPRequest(url, method="POST", body=orjson.dumps(data))
+        async with aiohttp.ClientSession() as session:
+            for i in range(0, len(events), 25):
+                data = {
+                    "client_id": str(payload._cid(self.uid_version)),
+                    "user_id": str(payload._cid(1)),
+                    "events": events[i:i + 25],
+                }
+                await self.send_request(session, url, orjson.dumps(data))
+
+    async def send_request(self, session, url, data):
+        async with session.post(url, data=data) as response:
+            pass
