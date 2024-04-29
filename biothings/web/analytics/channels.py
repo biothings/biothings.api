@@ -1,9 +1,6 @@
-import certifi
 import orjson
-from tornado.httpclient import HTTPRequest
 
 from biothings.web.analytics.events import Event, Message
-
 
 class Channel:
     def handles(self, event):
@@ -22,17 +19,14 @@ class SlackChannel(Channel):
 
     def send(self, message):
         for url in self.hooks:
-            yield HTTPRequest(
-                url=url,
-                method="POST",
-                headers={"content-type": "application/json"},
-                body=orjson.dumps(message.to_slack_payload()).decode(),
-                ca_certs=certifi.where(),  # for Windows compatibility
-            )
-
-
-# Measurement Protocol (Universal Analytics)
-# https://developers.google.com/analytics/devguides/collection/protocol/v1/devguide
+            request_data = {
+                "url": url,
+                "method": "POST",
+                "headers": {"content-type": "application/json"},
+                "data": orjson.dumps(message.to_slack_payload()).decode(),
+                # TODO: include other certificate param
+            }
+            yield request_data
 
 
 class GAChannel(Channel):
@@ -45,14 +39,13 @@ class GAChannel(Channel):
 
     def send(self, payload):
         events = payload.to_GA_payload(self.tracking_id, self.uid_version)
-        # #batch-limitations section of the URL above
-        # A maximum of 20 hits can be specified per request.
         for i in range(0, len(events), 20):
-            yield HTTPRequest(
-                "http://www.google-analytics.com/batch",
-                method="POST",
-                body="\n".join(events[i : i + 20]),  # noqa: E203
-            )
+            request_data = {
+                "url": "http://www.google-analytics.com/batch",
+                "method": "POST",
+                "data": "\n".join(events[i : i + 20]),
+            }
+            yield request_data
 
 
 class GA4Channel(Channel):
@@ -65,19 +58,17 @@ class GA4Channel(Channel):
         return isinstance(event, Event)
 
     def send(self, payload):
-        """
-
-        Limitations:
-        https://developers.google.com/analytics/devguides/collection/protocol/ga4/sending-events?client_type=gtag
-        """
         events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
-        # #batch-limitations section of the URL above
-        # A maximum of 25 hits can be specified per request.
         url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
         for i in range(0, len(events), 25):
             data = {
                 "client_id": str(payload._cid(self.uid_version)),
                 "user_id": str(payload._cid(1)),
-                "events": events[i : i + 25],  # noqa: E203
+                "events": events[i : i + 25],
             }
-            yield HTTPRequest(url, method="POST", body=orjson.dumps(data))
+            request_data = {
+                "url": url,
+                "method": "POST",
+                "data": orjson.dumps(data),
+            }
+            yield request_data

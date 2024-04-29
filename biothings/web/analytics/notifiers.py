@@ -1,3 +1,5 @@
+import requests
+
 from collections import defaultdict
 
 from tornado.httpclient import AsyncHTTPClient
@@ -34,45 +36,33 @@ class Notifier:
                 yield from channel.send(event)
 
 
-# Web Framework Support
-# ----------------------------
-
-
-# Tornado
-
-
-# https://www.tornadoweb.org/en/stable/httputil.html
-# #tornado.httputil.HTTPServerRequest.remote_ip
 class AnalyticsMixin(RequestHandler):
     def on_finish(self):
         super().on_finish()
 
-        if self.get_argument("no_tracking", False):
-            return  # this feature is undocumented
+        if self.get_argument("no_tracking", False) or self.settings.get("debug", False):
+            return
 
-        if self.settings.get("debug", False):
-            return  # for testing and development
-
-        # Make sure to start the server with xheaders=True so that
-        # remote_ip considers X-Real-Ip and X-Forwarded-For headers
-
-        request = defaultdict(type(None))
-        request["user_ip"] = self.request.remote_ip
-        request["user_agent"] = self.request.headers.get("User-Agent")
-        request["host"] = self.request.host
-        request["path"] = self.request.path
-        request["referer"] = self.request.headers.get("Referer")
-        self.event["__request__"] = request
+        request_info = defaultdict(type(None))
+        request_info["user_ip"] = self.request.remote_ip
+        request_info["user_agent"] = self.request.headers.get("User-Agent")
+        request_info["host"] = self.request.host
+        request_info["path"] = self.request.path
+        request_info["referer"] = self.request.headers.get("Referer")
+        self.event["__request__"] = request_info
 
         if hasattr(self, "biothings"):
-            client = AsyncHTTPClient()
             notifier = self.biothings.notifier
-            for request in notifier.broadcast(self.event):
-                client.fetch(request)
+            for channel in notifier.broadcast(self.event):
+                self.send_requests(channel)
 
-        else:  # need to initialize a notifier
-            raise NotImplementedError()
+    def send_requests(self, channel):
+        url = channel["url"]
+        method = channel["method"]
+        data = channel.get("data")
+        headers = channel.get("headers")
 
+        response = requests.request(method, url, data=data, headers=headers)
 
 # FastAPI
 
