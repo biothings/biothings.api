@@ -1,8 +1,8 @@
-import orjson
 import aiohttp
+import asyncio
 import certifi
+import logging
 import orjson
-import asyncio  # Import the requests library
 
 from biothings.web.analytics.events import Event, Message
 
@@ -57,6 +57,7 @@ class GA4Channel(Channel):
         self.measurement_id = measurement_id
         self.api_secret = api_secret
         self.uid_version = uid_version
+        self.max_retries = 1
 
     async def handles(self, event):
         return isinstance(event, Event)
@@ -74,5 +75,20 @@ class GA4Channel(Channel):
                 await self.send_request(session, url, orjson.dumps(data))
 
     async def send_request(self, session, url, data):
-        async with session.post(url, data=data) as response:
-            pass
+        retries = 0
+        while retries <= self.max_retries:
+            try:
+                async with session.post(url, data=data) as response:
+                    if response.status == 502:  # HTTP 502 - Bad Gateway
+                        logging.warning(f"GA4Channel: Received HTTP 502. Retrying ({retries+1}/{self.max_retries})...")
+                        await asyncio.sleep(1)  # Add a delay before retrying
+                        retries += 1
+                    else:
+                        return  # Return if successful or not 502
+            except aiohttp.ClientError as e:
+                logging.warning(f"GA4Channel: An error occurred Retrying (attempt {retries+1} of {self.max_retries}): {e}")
+                retries += 1
+                await asyncio.sleep(1)  # Add a delay before retrying
+
+        # If max retries reached without success, raise an exception
+        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
