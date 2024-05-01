@@ -1840,6 +1840,11 @@ class DockerContainerDumper(BaseDumper):
             - This command must run-able in both local Hub (for checking local file) and remote container (for checking remote file).
             - "{}" MUST exists in the command, it will be replace by the data file path when dumper runs,
                 ex: get_version_cmd="md5sum {} | awk '{ print $1 }'" will be run as: md5sum /path/to/remote_file | awk '{ print $1 }' and /path/to/local_file
+        - volumes: (Optional) A list of volumes to be mounted to the container. The format is: {"local_path": {"bind": "/path/to/remote/folder"}} or ["local_path:/path/to/remote/folder"]
+        - named_volumes: (Optional) A list of named volumes to be created and mounted to the container.
+            - Example of using named_volumes in conjuction with volumes
+            named_volumes = {"name": "myvolume", "driver":"local", "driver_opts": {"type": "none", "o": "bind", "device": "/path/to/local/folder"}}
+            volumes = {"myvolume":{"bind": "/path/to/remote/folder"}}
     Ex:
       - docker://CONNECTION_NAME?image=IMAGE_NAME&tag=IMAGE_TAG&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)"  # NOQA
       - docker://CONNECTION_NAME?container_name=CONTAINER_NAME&path=/path/to/remote_file(inside the container)&dump_command="run something with output is written to -O /path/to/remote_file (inside the container)&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
@@ -1847,6 +1852,7 @@ class DockerContainerDumper(BaseDumper):
       - docker://localhost?image=dockstore_dumper&tag=latest&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&keep_container=True  # NOQA
       - docker://localhost?image=praqma/network-multitool&tag=latest&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=false&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
       - docker://localhost?container_name=<YOUR CONTAINER NAME>&path=/tmp/annotations.zip&dump_command="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"&keep_container=true&get_version_cmd="md5sum {} | awk '{ print $1 }'"  # NOQA
+      - docker://localhost?image=dockstore_dumper&path=/data/dockstore_crawled/data.ndjson&dump_command="/home/biothings/run-dockstore.sh"&volumes={json.dumps(volumes)}&named_volumes={json.dumps(named_volumes)}
 
     Container metadata:
     - All above params in the data_url can be pre-config in the Dockerfile by adding LABELs. This config will be used as the fallback of the data_url params:
@@ -1870,6 +1876,8 @@ class DockerContainerDumper(BaseDumper):
     GET_VERSION_CMD = None
     KEEP_CONTAINER = False
     DATA_PATH = None
+    VOLUMES = None
+    NAMED_VOLUMES = None
     # set to 1 so we don't execute any docker command in parallel
     MAX_PARALLEL_DUMP = 1
     # default timeout to wait for container to start or stop
@@ -1888,6 +1896,7 @@ class DockerContainerDumper(BaseDumper):
         self.container = None
         self._source_info = {}  # parsed source_info dictionary from the SRC_URL string
         self.image_metadata = {}  # parsed LABEL metadata from the Docker image
+        self.volumes = None # volumes that is created by the NAMED_VOLUMES var
 
     @property
     def source_config(self):
@@ -1975,6 +1984,12 @@ class DockerContainerDumper(BaseDumper):
         if not self.DATA_PATH:
             raise DumperException('Missing the require "path" parameter')
 
+    def set_volumes(self):
+        self.VOLUMES = self.source_config.get("volumes") or self.image_metadata.get("volumes")
+
+    def set_named_volumes(self):
+        self.NAMED_VOLUMES = self.source_config.get("named_volumes") or self.image_metadata.get("named_volumes")
+
     def get_remote_file(self):
         """return the remote file path within the container.
         In most of cases, dump_command should either generate this file or check if it's ready if there is another
@@ -2016,6 +2031,8 @@ class DockerContainerDumper(BaseDumper):
         self.set_keep_container()
         self.set_get_version_cmd()
         self.set_data_path()
+        self.set_volumes()
+        self.set_named_volumes()
         if not self.CONTAINER_NAME:
             # when the container_name is not provided in the data plugin manifest,
             # we will check image_metadata to see if it's defined there.
@@ -2029,6 +2046,14 @@ class DockerContainerDumper(BaseDumper):
                 self.ORIGINAL_CONTAINER_STATUS = self.container.status
             except (NotFound, NullResource):
                 if self.DOCKER_IMAGE:
+                    # create volumes and store in a list for future reference for removal
+                    if self.NAMED_VOLUMES:
+                        if isinstance(self.NAMED_VOLUMES, list):
+                            self.volumes = []
+                            for named_volume in self.NAMED_VOLUMES:
+                                self.volumes.append(self.client.volumes.create(**named_volume))
+                        else:
+                            self.volumes = [self.client.volumes.create(**self.NAMED_VOLUMES)]
                     if self.CONTAINER_NAME:
                         self.logger.info(
                             'Can not find an existing container "%s", try to start a new one with this name.',
@@ -2044,6 +2069,7 @@ class DockerContainerDumper(BaseDumper):
                             entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
                             detach=True,
                             auto_remove=False,
+                            volumes=self.VOLUMES,
                         )
                     else:
                         self.logger.info("Start a docker container with a generic ENTRYPOINT: tail -f /dev/null")
@@ -2052,6 +2078,7 @@ class DockerContainerDumper(BaseDumper):
                             entrypoint="tail -f /dev/null",  # create a new container with a never end entrypoint
                             detach=True,
                             auto_remove=False,
+                            volumes=self.VOLUMES,
                         )
                         self.CONTAINER_NAME = self.container.name  # record the randomly generated container name
 
@@ -2281,6 +2308,9 @@ class DockerContainerDumper(BaseDumper):
                 self.container.stop()
                 self.container.wait(timeout=self.TIMEOUT)
                 self.container.remove(v=True)
+                if self.NAMED_VOLUMES:
+                    for volume in self.volumes:
+                        volume.remove()
 
     def post_dump(self, *args, **kwargs):
         """Delete container or restore the container status if necessary, called in the dump method after the dump is done (during the "post" step)"""
