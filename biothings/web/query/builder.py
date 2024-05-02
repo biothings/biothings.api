@@ -176,27 +176,27 @@ class QStringParser:
             }
 
         """
-        metadata_fields = set()
+        metadata_fields = None
         if metadata is not None:
-            # We use None as our general "_all" field access. See the constructor
-            # for BiothingsESMetadata in web.services.metadata.py
-            _all_metadata_key = None
-            general_metadata = metadata.biothing_metadata.get(_all_metadata_key, None)
+            index_metadata = list(metadata.biothing_metadata.values())
+            if index_metadata is not None:
+                metadata_fields = set()
+                for index_metadata_mapping in index_metadata:
+                    biothing_type = index_metadata_mapping.get("_biothing", None)
+                    try:
+                        raw_metadata_mapping = metadata.get_mappings(biothing_type)
+                        metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
+                    except Exception as gen_exc:
+                        logger.exception(gen_exc)
+                        logger.error(
+                            "Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type
+                        )
+                        metadata_mapping = {}
 
-            if general_metadata is not None:
-                biothing_type = general_metadata.get("biothing_type", None)
-                try:
-                    raw_metadata_mapping = metadata.get_mappings(biothing_type)
-                    metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
-                except Exception as gen_exc:
-                    logger.exception(gen_exc)
-                    logger.error("Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type)
-                    metadata_mapping = {}
-
-                for field, elasticsearch_mapping in metadata_mapping.items():
-                    field_index = elasticsearch_mapping.get("index", True)
-                    if field_index:
-                        metadata_fields.add(field)
+                    for field, elasticsearch_mapping in metadata_mapping.items():
+                        field_index = elasticsearch_mapping.get("index", True)
+                        if field_index:
+                            metadata_fields.add(field)
         return metadata_fields
 
     def _verify_default_regex_pattern(
