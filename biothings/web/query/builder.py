@@ -176,11 +176,10 @@ class QStringParser:
             }
 
         """
-        metadata_fields = None
+        metadata_fields = set()
         if metadata is not None:
             index_metadata = list(metadata.biothing_metadata.values())
             if index_metadata is not None:
-                metadata_fields = set()
                 for index_metadata_mapping in index_metadata:
                     biothing_type = index_metadata_mapping.get("_biothing", None)
                     try:
@@ -197,6 +196,9 @@ class QStringParser:
                         field_index = elasticsearch_mapping.get("index", True)
                         if field_index:
                             metadata_fields.add(field)
+
+        if len(metadata_fields) == 0:
+            metadata_fields = None
         return metadata_fields
 
     def _verify_default_regex_pattern(
