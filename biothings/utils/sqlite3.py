@@ -352,9 +352,7 @@ class Collection(object):
                 conn.execute(sql_statement, parameters)
             except sqlite3.IntegrityError as integrity_err:
                 logger.exception(integrity_err)
-                logger.error(
-                    ("Unable to complete transation (check the _id value for uniqueness). " f"Document: {doc}")
-                )
+                logger.error("Unable to complete transation (check the _id value for uniqueness). Document: %s", doc)
                 raise integrity_err
 
     def insert(self, docs: list[dict]) -> None:
@@ -394,9 +392,9 @@ class Collection(object):
                     logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
                 raise integrity_err
 
-    def bulk_write(self, docs, *args, **kwargs):
+    def bulk_write(self, docs: list[dict]) -> sqlite3.Cursor:
         doc_objs = [item._doc for item in docs]
-        self.insert(doc_objs, *args, **kwargs)
+        self.insert(doc_objs)
         return Cursor(len(doc_objs))
 
     def update_one(self, query, what, upsert=False):
