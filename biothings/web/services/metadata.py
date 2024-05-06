@@ -1,11 +1,14 @@
-import asyncio
-import logging
 from collections import defaultdict
 from datetime import datetime
 from functools import reduce
 from operator import add
+from typing import Union
+import asyncio
+import logging
+
 
 from dateutil.parser import parse as dtparse
+from elasticsearch import AsyncElasticsearch, Elasticsearch
 
 from biothings.utils.common import get_loop
 
@@ -58,7 +61,7 @@ class BiothingsMetadata:
 
 
 class BiothingsESMetadata(BiothingsMetadata):
-    def __init__(self, indices, client):
+    def __init__(self, indices: dict, client: Union[AsyncElasticsearch, Elasticsearch]):
         super().__init__()
 
         if not indices:
@@ -86,7 +89,7 @@ class BiothingsESMetadata(BiothingsMetadata):
     def types(self):  # biothing_type(s)
         return tuple(filter(None, self.indices.keys()))
 
-    def update(self, biothing_type, info, count):
+    def update(self, biothing_type: str, info, count):
         """
         Read ES index mappings for the corresponding biothing_type,
         Populate datasource info and field properties from mappings.
@@ -102,26 +105,26 @@ class BiothingsESMetadata(BiothingsMetadata):
                     break
 
         reader = _BiothingsESMetadataReader(_type, info, count)
+        logger.debug(reader)
         self.biothing_metadata[biothing_type] = reader.get_metadata()
         self.biothing_mappings[biothing_type] = reader.get_mappings()
         self.biothing_licenses[biothing_type] = reader.get_licenses()
 
-    def refresh(self, biothing_type=None):
-        from elasticsearch import AsyncElasticsearch, Elasticsearch
+    def refresh(self, biothing_type: str = None):
 
         if isinstance(self.client, Elasticsearch):
             return self._refresh(biothing_type)
         elif isinstance(self.client, AsyncElasticsearch):
             return self._async_refresh(biothing_type)
 
-    def _refresh(self, biothing_type):
+    def _refresh(self, biothing_type: str):
         index = self.indices[biothing_type]
         info = self.client.indices.get(index=index)
         count = self.client.count(index=index)
         self.update(biothing_type, info, count)
         return info
 
-    async def _async_refresh(self, biothing_type):
+    async def _async_refresh(self, biothing_type: str):
         index = self.indices[biothing_type]
         info = await self.client.indices.get(index=index)
         count = await self.client.count(index=index)
@@ -195,11 +198,20 @@ class _BiothingsESMetadataReader:
     If the pattern matches no index, then empty dictionaries are returned.
     """
 
-    def __init__(self, biothing_type, info, count):
+    def __init__(self, biothing_type: str, info, count):
         self.biothing_type = biothing_type
         self.document_count = count
 
         self.indices_info = {index: _ESIndex(biothing_type, **index_info) for index, index_info in info.items()}
+
+    def __repr__(self) -> str:
+        """
+        BiothingsESMetadataReader textual representation
+        """
+        object_repr = (
+            f"{self.__class__}[{id(self)}] " f"| type: {self.biothing_type} " f"| indices: {self.indices_info}"
+        )
+        return object_repr
 
     def get_mappings(self):
         """
