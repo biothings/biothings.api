@@ -349,7 +349,6 @@ class Collection(object):
             try:
                 parameters = (doc["_id"], json.dumps(doc, default=json_serial))
                 sql_statement = f"INSERT INTO {self.colname} (_id,document) VALUES (?,?)"
-                breakpoint()
                 conn.execute(sql_statement, parameters)
             except sqlite3.IntegrityError as integrity_err:
                 logger.exception(integrity_err)
@@ -381,7 +380,6 @@ class Collection(object):
         with self.get_conn() as conn:
             rendered_documents = [{"_id": doc["_id"], "repr": json.dumps(doc, default=json_serial)} for doc in docs]
             try:
-                breakpoint()
                 sql_statement = f"INSERT INTO {self.colname} (_id,document) VALUES (:_id, :repr)"
                 conn.executemany(sql_statement, rendered_documents)
             except sqlite3.IntegrityError as integrity_err:
