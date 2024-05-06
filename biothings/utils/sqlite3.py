@@ -1,3 +1,4 @@
+import collections
 import json
 import logging
 import os
@@ -335,23 +336,63 @@ class Collection(object):
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
-    def insert_one(self, doc):
-        assert "_id" in doc
-        with self.get_conn() as conn:
-            conn.execute(
-                "INSERT INTO %s (_id,document) VALUES (?,?)" % self.colname,
-                (doc["_id"], json.dumps(doc, default=json_serial)),
-            ).fetchone()
-            conn.commit()
+    def insert_one(self, doc: dict) -> None:
+        """
+        single-document insert into the database
 
-    def insert(self, docs, *args, **kwargs):
+        Leverages the execute function using the question mark style for specifying
+        the values to insert into the table
+        https://docs.python.org/3/library/sqlite3.html#sqlite3.Connection.execute
+        https://docs.python.org/3/library/sqlite3.html#how-to-use-placeholders-to-bind-values-in-sql-queries
+        """
         with self.get_conn() as conn:
-            for doc in docs:
-                conn.execute(
-                    "INSERT INTO %s (_id,document) VALUES (?,?)" % self.colname,
-                    (doc["_id"], json.dumps(doc, default=json_serial)),
-                ).fetchone()
-                conn.commit()
+            try:
+                parameters = ((doc["_id"], json.dumps(doc, default=json_serial)),)
+                sql_statement = f"INSERT INTO {self.colname} (_id,document) VALUES (?,?)"
+                conn.execute(sql_statement, parameters)
+            except sqlite3.IntegrityError as integrity_err:
+                logger.exception(integrity_err)
+                logger.error(
+                    ("Unable to complete transation (check the _id value for uniqueness). " f"Document: {doc}")
+                )
+                raise integrity_err
+
+    def insert(self, docs: list[dict]) -> None:
+        """
+        multi-document insert into the database
+
+        Leverages the executemany function using the named-placeholders for specifying
+        the values to insert into the table
+        https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany
+        https://docs.python.org/3/library/sqlite3.html#how-to-use-placeholders-to-bind-values-in-sql-queries
+
+        We first have to transform the list of documents into a representation we can handle
+        so we create a collection with the following structure:
+        {_id: <id>, repr: <json.dumps>}
+
+        We then call executemany to insert the entire collection into the database
+
+        If we get an integrity error, it's often due to an non-unique ID value associated with the
+        document. The integrity error instance itself doesn't give the actual failing ID associated
+        with the integrity error so we have to infer from the data we have to see if we can find
+        anything. We can create a collections.Counter to track the frequency of each _id in the set
+        that we're provided. If we find any nearby instances that are duplicated then we can log it
+        for debugging purposes
+        """
+        with self.get_conn() as conn:
+            rendered_documents = [{"_id": doc["_id"], "repr": json.dumps(doc, default=json_serial)} for doc in docs]
+            try:
+                sql_statement = f"INSERT INTO {self.colname} (_id,document) VALUES (:_id, :repr)"
+                conn.executemany(sql_statement, rendered_documents)
+            except sqlite3.IntegrityError as integrity_err:
+                logger.exception(integrity_err)
+                id_counter = collections.Counter([doc["_id"] for doc in rendered_documents])
+                discovered_non_unique_id = list(
+                    filter(lambda id_frequency: id_frequency[1] > 1, id_counter.most_common(10))
+                )
+                if len(discovered_non_unique_id) > 0:
+                    logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
+                raise integrity_err
 
     def bulk_write(self, docs, *args, **kwargs):
         doc_objs = [item._doc for item in docs]
