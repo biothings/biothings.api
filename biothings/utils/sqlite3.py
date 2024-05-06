@@ -336,7 +336,7 @@ class Collection(object):
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
-    def insert_one(self, doc: dict) -> None:
+    def insert_one(self, doc: dict, *args, **kwargs) -> None:
         """
         single-document insert into the database
 
@@ -355,7 +355,7 @@ class Collection(object):
                 logger.error("Unable to complete transation (check the _id value for uniqueness). Document: %s", doc)
                 raise integrity_err
 
-    def insert(self, docs: list[dict]) -> None:
+    def insert(self, docs: list[dict], *args, **kwargs) -> None:
         """
         multi-document insert into the database
 
@@ -392,7 +392,7 @@ class Collection(object):
                     logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
                 raise integrity_err
 
-    def bulk_write(self, docs: list[dict]) -> sqlite3.Cursor:
+    def bulk_write(self, docs: list[dict], *args, **kwargs) -> sqlite3.Cursor:
         doc_objs = [item._doc for item in docs]
         self.insert(doc_objs)
         return Cursor(len(doc_objs))
