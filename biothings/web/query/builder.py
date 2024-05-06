@@ -197,6 +197,11 @@ class QStringParser:
                         if field_index:
                             metadata_fields.add(field)
 
+                for field, elasticsearch_mapping in metadata_mapping.items():
+                    field_index = elasticsearch_mapping.get("index", True)
+                    if field_index:
+                        metadata_fields.add(field)
+
         if len(metadata_fields) == 0:
             metadata_fields = None
         return metadata_fields
