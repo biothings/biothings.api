@@ -1,19 +1,30 @@
-from pprint import pprint as print
+"""
+Tests for evaluating the module biothings.web.services.metadata
+"""
+
+import logging
+import re
 
 from biothings.web import connections
 from biothings.web.services.metadata import BiothingsESMetadata, BiothingsMongoMetadata
 
+import pytest
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 def test_es():
-    client = connections.get_es_client("localhost:9200")
-    indices = {None: "bts_test", "gene": "bts_test"}
+    client = connections.get_es_client("http://localhost:9200")
+    indices = {}
 
     metadata = BiothingsESMetadata(indices, client)
     metadata.refresh()
 
-    print(metadata.biothing_metadata)
-    print(metadata.biothing_mappings)
-    print(metadata.biothing_licenses)
+    logging.info(metadata.biothing_metadata)
+    logging.info(metadata.biothing_mappings)
+    logging.info(metadata.biothing_licenses)
 
 
 def test_mongo():
@@ -24,12 +35,8 @@ def test_mongo():
     }
 
     metadata = BiothingsMongoMetadata(collections, client)
-    metadata.refresh()
+    metadata.refresh(biothing_type=None)
 
-    print(metadata.get_metadata("old"))
-    print(metadata.get_mappings("old"))
-    print(metadata.get_licenses("old"))
-
-
-if __name__ == "__main__":
-    test_mongo()
+    logging.info(metadata.get_metadata("old"))
+    logging.info(metadata.get_mappings("old"))
+    logging.info(metadata.get_licenses("old"))

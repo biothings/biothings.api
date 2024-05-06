@@ -35,7 +35,7 @@ class TestDefaultQStringParser:
         """
         Tests miscellaneous entries with the default parser instance
         """
-        parser_result = self.parser.parse(query)
+        parser_result = self.parser.parse(query, None)
         assert isinstance(parser_result, Query)
         assert parser_result == expected_result
         assert parser_result.term == expected_result.term
@@ -55,8 +55,8 @@ class TestDefaultQStringParser:
         Comparison between the default parser for the ESQueryBuilder and the QStringParser
         itself to ensure we get similar results from the defaults
         """
-        external_parser_result = self.parser.parse(query)
-        internal_parser_result = self.builder.parser.parse(query)
+        external_parser_result = self.parser.parse(query, None)
+        internal_parser_result = self.builder.parser.parse(query, None)
 
         assert isinstance(external_parser_result, Query)
         assert isinstance(internal_parser_result, Query)
@@ -88,7 +88,7 @@ class TestSingularPatternQStringParser:
         Tests miscellaneous entries with a singular pattern set for the parser instance
         Representative of mygene queries
         """
-        parser_result = self.parser.parse(query)
+        parser_result = self.parser.parse(query, None)
         assert isinstance(parser_result, Query)
         assert parser_result == expected_result
         assert parser_result.term == expected_result.term
@@ -141,7 +141,7 @@ class TestGeneCurieQuery:
         Tests various CURIE ID based queries targetting the types of queries we'd expect
         to see with the mygene instance
         """
-        parser_result = self.parser.parse(query)
+        parser_result = self.parser.parse(query, None)
         assert isinstance(parser_result, Query)
         assert parser_result == expected_result
         assert parser_result.term == expected_result.term
@@ -180,7 +180,7 @@ class TestMultiplerPatternQStringParser:
         Tests miscellaneous entries with multiple patterns set for the parser instance
         Representative of mychem queries
         """
-        parser_result = self.parser.parse(query)
+        parser_result = self.parser.parse(query, None)
         assert isinstance(parser_result, Query)
         assert parser_result == expected_result
         assert parser_result.term == expected_result.term
