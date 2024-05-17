@@ -34,7 +34,7 @@ app = typer.Typer(
 
 @app.command(
     name="create",
-    help="Create a new data plugin from the tempplate",
+    help="Create a new data plugin from the template",
 )
 def create_data_plugin(
     name: Annotated[
@@ -234,3 +234,14 @@ def clean_data(
 ):
     """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
     utils.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+
+
+@app.command(
+    name="build",
+    help="Build a data plugin",
+)
+def build_plugin():
+    """
+    *build* command for building a data plugin
+    """
+    utils.do_build(plugin_name=None, logger=logger)

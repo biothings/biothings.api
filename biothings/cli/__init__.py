@@ -78,6 +78,13 @@ def setup_config():
     }
     _config.DATA_SRC_DATABASE = ".data_src_database"
     _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
+
+    HUB_DB_BACKEND = {
+        "module": "biothings.utils.mongo",
+        "uri": "mongodb://localhost:27017",
+        # "uri" : "mongodb://user:passwd@localhost:27017", # mongodb std URI
+    }
+
     # _config.LOG_FOLDER = ".biothings_hub/logs"
     _config.LOG_FOLDER = None  # disable file logging, only log to stdout
     _config.DATA_PLUGIN_FOLDER = f"{working_dir}"

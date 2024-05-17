@@ -130,6 +130,7 @@ def listing(
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
     """*list* command for listing dumped files and/or uploaded sources"""
+    breakpoint()
     utils.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
 
