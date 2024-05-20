@@ -27,7 +27,11 @@ class SlackChannel(Channel):
             await asyncio.gather(*tasks)
 
     async def send_request(self, session, url, message):
-        async with session.post(url, json=message.to_slack_payload()) as response:
+        async with session.post(
+                url,
+                json=message.to_slack_payload(),
+                verify=certifi.where()  # for Windows compatibility
+        ) as response:
             pass
 
 
