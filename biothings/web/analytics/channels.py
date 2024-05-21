@@ -70,7 +70,7 @@ class GA4Channel(Channel):
         events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
         url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
         async with aiohttp.ClientSession() as session:
-            for i in range(0, len(events), 25):
+            for i in range(0, len(events), 25): # TODO: Add reference to the page size
                 data = {
                     "client_id": str(payload._cid(self.uid_version)),
                     "user_id": str(payload._cid(1)),
@@ -80,19 +80,17 @@ class GA4Channel(Channel):
 
     async def send_request(self, session, url, data):
         retries = 0
+        base_delay = 1  # Base delay in seconds
         while retries <= self.max_retries:
-            try:
-                async with session.post(url, data=data) as response:
-                    if response.status == 502:  # HTTP 502 - Bad Gateway
-                        logging.warning(f"GA4Channel: Received HTTP 502. Retrying ({retries+1}/{self.max_retries})...")
-                        await asyncio.sleep(1)  # Add a delay before retrying
-                        retries += 1
-                    else:
-                        return  # Return if successful or not 502
-            except aiohttp.ClientError as e:
-                logging.warning(f"GA4Channel: An error occurred Retrying (attempt {retries+1} of {self.max_retries}): {e}")
-                retries += 1
-                await asyncio.sleep(1)  # Add a delay before retrying
+            async with session.post(url, data=data) as response:
+                if response.status == 502:  # HTTP 502 - Bad Gateway
+                    logging.warning(f"GA4Channel: Received HTTP 502. Retrying ({retries+1}/{self.max_retries})...")
+                    delay = base_delay * (2 ** (retries - 1))  # Exponential backoff
+                    await asyncio.sleep(delay)  # Add a delay before retrying
+                    retries += 1
+                else:
+                    return  # Return if successful or not 502
 
         # If max retries reached without success, raise an exception
+        logging.error("GA4Channel: Maximum retries reached. Unable to complete request.")
         raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
