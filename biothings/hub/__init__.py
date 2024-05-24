@@ -147,6 +147,7 @@ DIFFER_CATEGORY = "differ"
 DIFFMANAGER_CATEGORY = "diffmanager"
 SYNCER_CATEGORY = "syncer"
 INSPECTOR_CATEGORY = "inspector"
+APITESTER_CATEGORY = "apitester"
 
 # HUB_REFRESH_COMMANDS = hasattr(
 #     config, "HUB_REFRESH_COMMANDS"
@@ -759,7 +760,8 @@ class HubServer(object):
         from biothings.hub.api.manager import APIManager
 
         args = self.mixargs("api")
-        api_manager = APIManager(**args)
+        api_manager = APIManager(job_manager=self.managers["job_manager"], **args)
+        # api_manager = APIManager(**args)
         self.managers["api_manager"] = api_manager
 
     def configure_source_manager(self):
@@ -1292,7 +1294,8 @@ class HubServer(object):
             self.extra_commands["delete_api"] = CommandDefinition(command=self.managers["api_manager"].delete_api)
             self.extra_commands["create_api"] = CommandDefinition(command=self.managers["api_manager"].create_api)
             self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
-            self.extra_commands["stop_api"] = self.managers["api_manager"].stop_api
+            self.extra_commands["stop_api"] = CommandDefinition(command=self.managers["api_manager"].stop_api)
+            self.extra_commands["test_api"] = CommandDefinition(command=self.managers["api_manager"].test_api)
         if "upgrade" in self.DEFAULT_FEATURES:
 
             def upgrade(code_base):  # just a wrapper over dumper
@@ -1502,6 +1505,8 @@ class HubServer(object):
             )
         if "create_api" in cmdnames:
             self.api_endpoints["api"].append(EndpointDefinition(name="create_api", method="post", force_bodyargs=True))
+        if "test_api" in cmdnames:
+            self.api_endpoints["api"].append(EndpointDefinition(name="test_api", method="post", suffix="test"))
         if not self.api_endpoints["api"]:
             self.api_endpoints.pop("api")
         if "get_apis" in cmdnames:
