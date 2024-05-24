@@ -1,4 +1,22 @@
-v0.12.3 (2022/10/31)
+v0.12.4 (2024/04/02)
+    Highlights:
+        - New and updated tutorials and documentation
+        - CURIE id support in the annotation endpoint
+        - Added new jmespath_exclude_empty option
+    biothings.web improvements:
+        - Jmespath now handles list as parent_path field
+    biothings.hub improvements:
+        - Added Elasticsearch index selector
+    biothings.cli improvements:
+        - Fixed missing data plugin manifest template
+    documentation improvements:
+        - Added new tutorial for Biothings CLI
+        - Added tutorial for creating docker based data plugin
+    Misc improvements:
+        - Upgraded Tornado to 6.4.0
+        - Upgraded elasticsearch-py and elasticsearch-dsl to 8.x
+
+v0.12.3 (2023/10/31)
     Highlights:
         - Implemented the new filter parameter for the query handler (#296)
     biothings.web improvements:
@@ -12,19 +30,19 @@ v0.12.3 (2022/10/31)
         - Switched to use orjson in utils.dotfield module https://github.com/biothings/biothings.api/pull/300
         - Changed default release date format in DockerContainerDumper
 
-v0.12.2 (2022/07/17)
+v0.12.2 (2023/07/17)
     Bugfixes:
         - 7e9583ec Fix dict default vals to work with dicts. (#292)
         - 77c577cc Break Circular Dependency (#291)
         - 7044abba Set plugin name to the folder name for Advanced plugins. (#290)
 
-v0.12.1 (2022/07/05)
+v0.12.1 (2023/07/05)
     Bugfixes:
         - biothings.cli: fixed "logger is not defined" error when typer is not installed
         - biothings.web: fixed an error when build_date is None during the metadata merging
         - biothings.web: fixed an edge case when attempting to read ES6 mapping with doc_type
 
-v0.12.0 (2022/06/21)
+v0.12.0 (2023/06/21)
     Highlights:
         - New CLI feature for developing and testing data plugins https://github.com/newgene/biothings.api/pull/56
         - New Docker Dumper based data plugins https://github.com/newgene/biothings.api/pull/83

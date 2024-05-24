@@ -12,7 +12,8 @@ def pytest_sessionstart(session):
 
 
 def pytest_sessionfinish(session):
-    del os.environ["HUB_CONFIG"]
+    if "HUB_CONFIG" in os.environ:
+        del os.environ["HUB_CONFIG"]
     LOGGER.info("os.environ['HUB_CONFIG'] reset.")
 
     db_folder = HUB_DB_BACKEND.get("sqlite_db_folder", ".")

@@ -588,7 +588,7 @@ def sync_es_jsondiff_worker(
     eskwargs = {}
     # pass optional ES Indexer args
     if hasattr(btconfig, "ES_TIMEOUT"):
-        eskwargs["timeout"] = btconfig.ES_TIMEOUT
+        eskwargs["request_timeout"] = btconfig.ES_TIMEOUT
     if hasattr(btconfig, "ES_MAX_RETRY"):
         eskwargs["max_retries"] = btconfig.ES_MAX_RETRY
     if hasattr(btconfig, "ES_RETRY"):
@@ -690,7 +690,7 @@ def sync_es_coldhot_jsondiff_worker(
     eskwargs = {}
     # pass optional ES Indexer args
     if hasattr(btconfig, "ES_TIMEOUT"):
-        eskwargs["timeout"] = btconfig.ES_TIMEOUT
+        eskwargs["request_timeout"] = btconfig.ES_TIMEOUT
     if hasattr(btconfig, "ES_MAX_RETRY"):
         eskwargs["max_retries"] = btconfig.ES_MAX_RETRY
     if hasattr(btconfig, "ES_RETRY"):

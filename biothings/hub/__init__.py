@@ -129,7 +129,8 @@ if os.environ.get("HUB_VERBOSE", "0") != "1":
     # these prevent debug output in iPython console
     logging.getLogger("parso.python.diff").setLevel(logging.ERROR)
     logging.getLogger("parso.cache").setLevel(logging.ERROR)
-
+    # pymongo 4.7 added support for Python’s native logging library
+    logging.getLogger("pymongo").setLevel(logging.ERROR)
 
 # Keys used as category in pinfo (description of jobs submitted to JobManager)
 # Those are used in different places

@@ -175,7 +175,7 @@ class TornadoBiothingsAPI(tornado.web.Application):
             app._populate_optionsets(config, _handlers + handlers or [])
             app._populate_handlers(_handlers + handlers or [])
             return app
-        raise TypeError()
+        raise TypeError("Invalid config type. Must be a ConfigModule or ConfigPackage.")
 
     def _populate_optionsets(self, config, handlers):
         for handler in handlers:

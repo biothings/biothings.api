@@ -85,7 +85,7 @@ class ESHealth(DBHealth):
         if self.payload:
             document = await self.client.get(**self.payload)
             response.update({"payload": self.payload})
-            response.update({"document": document})
+            response.update({"document": document.body})
 
         return response.to_dict()
 

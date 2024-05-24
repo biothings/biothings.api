@@ -7,12 +7,15 @@
     one or more individual queries.
 
 """
-
 from collections import UserDict, defaultdict
 
-from biothings.utils.common import dotdict, traverse
+from elastic_transport import ObjectApiResponse
+
+from biothings.utils.common import dotdict, traverse, list_trim
 from biothings.utils.jmespath import options as jmp_options
 
+import logging
+logger = logging.getLogger(__name__)
 
 class FormatterDict(UserDict):
     def collapse(self, key):
@@ -172,8 +175,15 @@ class ESResultFormatter(ResultFormatter):
                     'msg': '12 query terms return > 1000 hits, using from=1000 to retrieve the remaining hits',
                     'hits': [...]
                 }
+            jmespath: passed as "<target_field>|<jmes_query>" to transform any target field in hit using
+                jmespath query syntax.
+            jmespath_exclude_empty: bool, if True, exclude the hit from the hits list if the transformed value
+                is empty (e.g. [] or None). Default is False.
         """
         options = dotdict(options)
+        if isinstance(response, ObjectApiResponse):
+            response = response.body
+
         if isinstance(response, list):
             max_total = 0
             count_query_exceed_max_size = 0
@@ -229,10 +239,6 @@ class ESResultFormatter(ResultFormatter):
 
             return response_
 
-        try:
-            response = response.body
-        except AttributeError as e:
-            pass
 
         if isinstance(response, dict):
             response = self._Hits(response)
@@ -247,7 +253,7 @@ class ESResultFormatter(ResultFormatter):
                 self._transform_hit(hit, options)
 
             if options.get("native", True):
-                response["hits"] = [hit.data for hit in response["hits"]]
+                response["hits"] = [hit.data for hit in response["hits"] if not (hit.__doc__ or "").startswith("__exclude__")]
                 response = response.data
 
             if "aggregations" in response:
@@ -269,7 +275,7 @@ class ESResultFormatter(ResultFormatter):
 
             return response
 
-        raise TypeError()
+        raise TypeError(f"Invalid response type of {type(response)}.")
 
     def _transform_hit(self, doc, options):
         """
@@ -284,14 +290,18 @@ class ESResultFormatter(ResultFormatter):
             doc.pop("_version", None)
         if not options.get("score", True):
             doc.pop("_score", None)
+
         for path, obj in self.traverse(doc):
-            self.transform_hit(path, obj, options)
+            self.transform_hit(path, obj, doc, options)
             if options.allow_null:
                 self._allow_null(path, obj, options.allow_null)
             if options.always_list:
                 self._always_list(path, obj, options.always_list)
             if options._sorted:
                 self._sorted(path, obj)
+            if options.jmespath:
+                self.trasform_jmespath(path, obj, doc, options)
+
         if options.dotfield:
             self._dotfield(doc, options)
 
@@ -353,7 +363,7 @@ class ESResultFormatter(ResultFormatter):
         dic.clear()
         dic.update(hit_)
 
-    def transform_hit(self, path, doc, options):
+    def transform_hit(self, path, obj, doc, options):
         """
         Transform an individual search hit result.
         By default add licenses for the configured fields.
@@ -392,48 +402,77 @@ class ESResultFormatter(ResultFormatter):
         }
 
         The arrow marked fields would not exist without the setting lines.
+
+        This method can be overridden to add more transformations in a
+        customized Formatter class.
         """
 
         licenses = self.licenses.get(options.biothing_type, {})
         if path in self.license_transform:
             path = self.license_transform[path]
-        if path in licenses and isinstance(doc, dict):
-            doc["_license"] = licenses[path]
+        if path in licenses and isinstance(obj, dict):
+            obj["_license"] = licenses[path]
 
-        if options.jmespath:
-            self.trasform_jmespath(path, doc, options)
 
-    def trasform_jmespath(self, path: str, doc, options) -> None:
-        """Transform any target field in doc using jmespath query syntax.
+    @staticmethod
+    def trasform_jmespath_obj(obj, parent_path: str, target_field: str, doc, jmes_query, jmespath_exclude_empty=False) -> None:
+        if not isinstance(obj, (dict, UserDict)):
+            raise ResultFormatterException(
+                f"\"parent_path\" in jmespath transformation cannot be non-dict type: \"{parent_path}\"({type(obj).__name__})"
+            )
+        target_field_value = obj.get(target_field) if target_field else obj
+        if target_field_value:
+            # pass jmp_options to include our own custom jmespath functions
+            transformed_field_value = jmes_query.search(target_field_value, options=jmp_options)
+            if not transformed_field_value and jmespath_exclude_empty:
+                # if transformed value is empty, mark the hit to be removed from the hits list
+                doc.__doc__ = "__exclude__"
+            if target_field:
+                obj[target_field] = transformed_field_value
+            else:
+                # if the target field is the root field, we need to replace the whole obj
+                # note that we cannot use `obj = transformed_field_value` here, because
+                # it will break the reference to the original obj object
+                obj.clear()
+                obj.update(transformed_field_value)
+
+    def trasform_jmespath(self, path: str, obj, doc, options) -> None:
+        """Transform any target field in obj using jmespath query syntax.
         The jmespath query parameter value should have the pattern of "<target_list_fieldname>|<jmespath_query_expression>"
-        <target_list_fieldname> can be any sub-field of the input doc using dot notation, e.g. "aaa.bbb".
+        <target_list_fieldname> can be any sub-field of the input obj using dot notation, e.g. "aaa.bbb".
           If empty or ".", it will be the root field.
-        The flexible jmespath syntax allows to filter/transform any nested objects in the input doc on the fly.
+        The flexible jmespath syntax allows to filter/transform any nested objects in the input obj on the fly.
         The output of the jmespath transformation will then be used to replace the original target field value.
         Examples:
              * filtering an array sub-field
                  jmespath=tags|[?name==`Metadata`]  # filter tags array by name field
                  jmespath=aaa.bbb|[?(sub_a==`val_a`||sub_a==`val_aa`)%26%26sub_b==`val_b`]    # use %26%26 for &&
+
+        obj: the object to be transformed, which corresponding to the current path
+        doc: the whole document we are traversing in the upstream _transform_hit method
+             passed here in case we need to make changes to the whole document.
         """
         # options.jmespath is already validated and processed as a tuple
         # see biothings.web.options.manager.Coverter.translate
         parent_path, target_field, jmes_query = options.jmespath
+        # mark the hit to be removed from the hits list, in transform method,
+        # if transformed value is empty
+        jmespath_exclude_empty = options.get("jmespath_exclude_empty", False)
 
         if path == parent_path:
             # we handle jmespath transformation at its parent field level,
             # so that we can set a transformed value
-            target_field_value = doc.get(target_field) if target_field else doc
-            if target_field_value:
-                # pass jmp_options to include our own custom jmespath functions
-                transformed_field_value = jmes_query.search(target_field_value, options=jmp_options)
-                if target_field:
-                    doc[target_field] = transformed_field_value
-                else:
-                    # if the target field is the root field, we need to replace the whole doc
-                    # note that we cannot use `doc = transformed_field_value` here, because
-                    # it will break the reference to the original doc object
-                    doc.clear()
-                    doc.update(transformed_field_value)
+            if isinstance(obj, list):
+                # each item in the obj list has already been transformed during the traversal
+                # in the else block below, so we only need to handle the list itself here
+                if jmespath_exclude_empty:
+                    idx_to_remove = [i for i, _obj in enumerate(obj) if not _obj[target_field]]
+                    list_trim(obj, idx_to_remove)   # remove item in-place from obj
+                    # if obj is empty, mark the hit to be removed from the hits list
+                    # otherwise, we make sure the hit does not have the __exclude__ mark
+                    doc.__doc__ = None if obj else "__exclude__"
+            else:
+                self.trasform_jmespath_obj(obj, parent_path, target_field, doc, jmes_query, jmespath_exclude_empty)
 
     def transform_aggs(self, res):
         """

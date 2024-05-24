@@ -11,7 +11,7 @@ import time
 from importlib import import_module
 from typing import List, Mapping, Optional
 
-from elasticsearch import Elasticsearch, NotFoundError, RequestError, TransportError, helpers, ApiError
+from elasticsearch import ApiError, Elasticsearch, NotFoundError, RequestError, TransportError, helpers
 from elasticsearch.serializer import JSONSerializer
 
 from biothings.utils.common import inf, iter_n, merge, nan, splitstr, traverse
@@ -145,7 +145,7 @@ class ESIndexer:
         self,
         index,
         doc_type="_doc",
-        es_host="localhost:9200",
+        es_host="http://localhost:9200",
         step=500,
         step_size=10,  # elasticsearch.helpers.bulk
         number_of_shards=1,

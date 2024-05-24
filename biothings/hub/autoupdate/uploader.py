@@ -89,7 +89,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         Used by self._get_repository, self._create_repository
         """
         es_conf = {
-            "timeout": 120,
+            "request_timeout": 120,
             "max_retries": 3,
             "retry_on_timeout": False,
         }

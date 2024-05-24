@@ -593,7 +593,7 @@ class IndexManager(BaseManager):
                     "host": "localhost:9200",
                     "indexer": {
                         "args": {
-                            "timeout": 300,
+                            "request_timeout": 300,
                             "retry_on_timeout": True,
                             "max_retries": 10,
                         },
@@ -637,7 +637,7 @@ class IndexManager(BaseManager):
         # During heavy indexing, the following settings
         # significantly increase the one-pass success rate.
         esargs = {
-            "timeout": 300,
+            "request_timeout": 300,
             "retry_on_timeout": True,
             "max_retries": 10,
         }
@@ -755,7 +755,7 @@ class IndexManager(BaseManager):
             async with AsyncElasticsearch(**env["args"]) as client:
                 doc_type = None
                 if int((await client.info())["version"]["number"].split(".")[0]) < 7:
-                    mappings = client.indices.get_mapping(index_name)
+                    mappings = client.indices.get_mapping(index=index_name)
                     mappings = mappings[index_name]["mappings"]
                     doc_type = next(iter(mappings.keys()))
 
