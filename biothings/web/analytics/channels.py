@@ -31,7 +31,7 @@ class SlackChannel(Channel):
                 url,
                 json=message.to_slack_payload(),
                 verify=certifi.where()  # for Windows compatibility
-        ) as response:
+        ) as _:
             pass
 
 
@@ -52,7 +52,7 @@ class GAChannel(Channel):
                 await self.send_request(session, url, data)
 
     async def send_request(self, session, url, data):
-        async with session.post(url, data=data) as response:
+        async with session.post(url, data=data) as _:
             pass
 
 
