@@ -21,15 +21,15 @@ class SlackChannel(Channel):
     async def handles(self, event):
         return isinstance(event, Message)
 
-    async def send(self, message):
+    async def send(self, event):
         async with aiohttp.ClientSession() as session:
-            tasks = [self.send_request(session, url, message) for url in self.hooks]
+            tasks = [self.send_request(session, url, event) for url in self.hooks]
             await asyncio.gather(*tasks)
 
-    async def send_request(self, session, url, message):
+    async def send_request(self, session, url, event):
         async with session.post(
                 url,
-                json=message.to_slack_payload(),
+                json=event.to_slack_payload(),
                 verify=certifi.where()  # for Windows compatibility
         ) as _:
             pass
