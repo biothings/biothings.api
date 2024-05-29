@@ -18,13 +18,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from biothings import config as btconfig
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
 from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
+import biothings.utils.inspect as btinspect
 
 
 def get_logger(name=None):
@@ -68,7 +68,7 @@ def load_plugin_managers(
     """
     Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)
     """
-    from biothings import config as btconfig
+    from biothings import config
     from biothings.hub.dataload.dumper import DumperManager
     from biothings.hub.dataload.uploader import UploaderManager
     from biothings.hub.dataplugin.assistant import LocalAssistant
@@ -76,7 +76,7 @@ def load_plugin_managers(
     from biothings.utils.hub_db import get_data_plugin
 
     _plugin_path = pathlib.Path(plugin_path).resolve()
-    btconfig.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
+    config.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
     sys.path.append(str(_plugin_path.parent))
 
     if plugin_name is None:
@@ -95,7 +95,7 @@ def load_plugin_managers(
     LocalAssistant.uploader_manager = upload_manager
 
     assistant = LocalAssistant(f"local://{plugin_name}")
-    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), btconfig.DATA_PLUGIN_FOLDER)
+    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), config.DATA_PLUGIN_FOLDER)
 
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
