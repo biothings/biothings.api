@@ -18,13 +18,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from biothings import config as btconfig
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
+import biothings.utils.inspect as btinspect
 
 
 def get_logger(name=None):
@@ -68,7 +67,7 @@ def load_plugin_managers(
     """
     Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)
     """
-    from biothings import config as btconfig
+    from biothings import config
     from biothings.hub.dataload.dumper import DumperManager
     from biothings.hub.dataload.uploader import UploaderManager
     from biothings.hub.dataplugin.assistant import LocalAssistant
@@ -76,7 +75,7 @@ def load_plugin_managers(
     from biothings.utils.hub_db import get_data_plugin
 
     _plugin_path = pathlib.Path(plugin_path).resolve()
-    btconfig.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
+    config.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
     sys.path.append(str(_plugin_path.parent))
 
     if plugin_name is None:
@@ -95,7 +94,7 @@ def load_plugin_managers(
     LocalAssistant.uploader_manager = upload_manager
 
     assistant = LocalAssistant(f"local://{plugin_name}")
-    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), btconfig.DATA_PLUGIN_FOLDER)
+    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), config.DATA_PLUGIN_FOLDER)
 
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
@@ -308,7 +307,12 @@ def do_dump_and_upload(plugin_name, logger=None):
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
-    """Perform inspect for the given source. It's used in do_inspect function below"""
+    """
+    Perform inspect for the given source. It's used in do_inspect function below
+    """
+    from biothings import config
+    from biothings.utils import hub_db
+
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
     if "jsonschema" in mode:
@@ -325,14 +329,14 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     t0 = time.time()
     data_provider = ("src", source_name)
 
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     pre_mapping = "mapping" in mode
     src_cols = src_db[source_name]
     inspected = {}
     converters, mode = btinspect.get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
-    cur = src_cols.findv2()
+    cur = src_cols.find()
     res = btinspect.inspect_docs(
         cur,
         mode=mode,
@@ -606,10 +610,15 @@ def get_uploaded_collections(src_db, uploaders):
 
 
 def show_uploaded_sources(working_dir, plugin_name):
-    """A helper function to show the uploaded sources from given plugin."""
+    """
+    A helper function to show the uploaded sources from given plugin.
+    """
+    from biothings import config
+    from biothings.utils import hub_db
+
     console = Console()
     uploaders = get_uploaders(working_dir)
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
     if not uploaded_sources:
         console.print(
@@ -703,10 +712,14 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
 
 
 def serve(host, port, plugin_name, table_space):
-    """Serve a simple API server to query the data plugin source."""
+    """
+    Serve a simple API server to query the data plugin source.
+    """
     from .web_app import main
+    from biothings import config
+    from biothings.utils import hub_db
 
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
     asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
@@ -757,8 +770,11 @@ def do_clean_dumped_files(data_folder, plugin_name):
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
     """Remove all uploaded sources by a data plugin in the working directory."""
+    from biothings import config
+    from biothings.utils import hub_db
+
     uploaders = get_uploaders(working_dir)
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     uploaded_sources = []
     for item in src_db.collection_names():
         if item in uploaders:
