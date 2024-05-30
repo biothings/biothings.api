@@ -70,7 +70,10 @@ class GA4Channel(Channel):
         events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
         url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
         async with aiohttp.ClientSession() as session:
-            for i in range(0, len(events), 25): # TODO: Add reference to the page size
+            # The pagination of 25 is defined according to the context of the current application
+            # Usually, each client request is going to make just 1 request to the GA4 API.
+            # However, it's possible to collect data to GA4 in other parts of the application.
+            for i in range(0, len(events), 25):
                 data = {
                     "client_id": str(payload._cid(self.uid_version)),
                     "user_id": str(payload._cid(1)),
