@@ -47,6 +47,9 @@ class GAChannel(Channel):
     async def send(self, payload):
         events = payload.to_GA_payload(self.tracking_id, self.uid_version)
         async with aiohttp.ClientSession() as session:
+            # The pagination of 20 is defined according to the context of the current application
+            # Usually, each client request is going to make just 1 request to the GA API.
+            # However, it's possible to collect data to GA in other parts of the application.
             for i in range(0, len(events), 20):
                 data = "\n".join(events[i:i + 20])
                 await self.send_request(session, self.url, data)
