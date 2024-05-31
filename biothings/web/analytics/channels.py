@@ -39,6 +39,7 @@ class GAChannel(Channel):
     def __init__(self, tracking_id, uid_version=1):
         self.tracking_id = tracking_id
         self.uid_version = uid_version
+        self.url = "http://www.google-analytics.com/batch"
 
     async def handles(self, event):
         return isinstance(event, Event)
@@ -48,8 +49,7 @@ class GAChannel(Channel):
         async with aiohttp.ClientSession() as session:
             for i in range(0, len(events), 20):
                 data = "\n".join(events[i:i + 20])
-                url = "http://www.google-analytics.com/batch"
-                await self.send_request(session, url, data)
+                await self.send_request(session, self.url, data)
 
     async def send_request(self, session, url, data):
         async with session.post(url, data=data) as _:
@@ -62,13 +62,13 @@ class GA4Channel(Channel):
         self.api_secret = api_secret
         self.uid_version = uid_version
         self.max_retries = 1
+        self.url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
 
     async def handles(self, event):
         return isinstance(event, Event)
 
     async def send(self, payload):
         events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
-        url = f"https://www.google-analytics.com/mp/collect?measurement_id={self.measurement_id}&api_secret={self.api_secret}"
         async with aiohttp.ClientSession() as session:
             # The pagination of 25 is defined according to the context of the current application
             # Usually, each client request is going to make just 1 request to the GA4 API.
@@ -79,7 +79,7 @@ class GA4Channel(Channel):
                     "user_id": str(payload._cid(1)),
                     "events": events[i:i + 25],
                 }
-                await self.send_request(session, url, orjson.dumps(data))
+                await self.send_request(session, self.url, orjson.dumps(data))
 
     async def send_request(self, session, url, data):
         retries = 0
