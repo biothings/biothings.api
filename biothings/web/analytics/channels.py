@@ -44,8 +44,8 @@ class GAChannel(Channel):
     async def handles(self, event):
         return isinstance(event, Event)
 
-    async def send(self, payload):
-        events = payload.to_GA_payload(self.tracking_id, self.uid_version)
+    async def send(self, event):
+        events = event.to_GA_payload(self.tracking_id, self.uid_version)
         async with aiohttp.ClientSession() as session:
             # The pagination of 20 is defined according to the context of the current application
             # Usually, each client request is going to make just 1 request to the GA API.
@@ -70,16 +70,16 @@ class GA4Channel(Channel):
     async def handles(self, event):
         return isinstance(event, Event)
 
-    async def send(self, payload):
-        events = payload.to_GA4_payload(self.measurement_id, self.uid_version)
+    async def send(self, event):
+        events = event.to_GA4_payload(self.measurement_id, self.uid_version)
         async with aiohttp.ClientSession() as session:
             # The pagination of 25 is defined according to the context of the current application
             # Usually, each client request is going to make just 1 request to the GA4 API.
             # However, it's possible to collect data to GA4 in other parts of the application.
             for i in range(0, len(events), 25):
                 data = {
-                    "client_id": str(payload._cid(self.uid_version)),
-                    "user_id": str(payload._cid(1)),
+                    "client_id": str(event._cid(self.uid_version)),
+                    "user_id": str(event._cid(1)),
                     "events": events[i:i + 25],
                 }
                 await self.send_request(session, self.url, orjson.dumps(data))
