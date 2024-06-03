@@ -89,8 +89,8 @@ class GA4Channel(Channel):
         base_delay = 1  # Base delay in seconds
         while retries <= self.max_retries:
             async with session.post(url, data=data) as response:
-                if response.status == 502:  # HTTP 502 - Bad Gateway
-                    logging.warning("GA4Channel: Received HTTP 502. Retrying (%d/%d)..." % (retries+1, self.max_retries))
+                if response.status >= 500:  # HTTP 5xx
+                    logging.warning("GA4Channel: Received HTTP %d. Retrying (%d/%d)..." % (response.status, retries+1, self.max_retries))
                     delay = base_delay * (2 ** (retries - 1))  # Exponential backoff (1s, 2s, 4s, 8s, etc.)
                     await asyncio.sleep(delay)  # Add a delay before retrying
                     retries += 1
