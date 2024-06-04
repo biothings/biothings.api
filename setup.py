@@ -114,13 +114,12 @@ docker_ssh_requires = [
 ]
 # extra requirements to develop biothings
 dev_requires = [
-    "pytest",
     "pytest-mock",
     "pre-commit==2.17.0",
 ]
 
 # extra requirements for building docs
-docs_requires = ["sphinx>=7.2.6", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
+docs_requires = ["sphinx>=5.3.0", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
 
 
 setup(

@@ -95,28 +95,36 @@ class BiothingsNamespace:
             self.config.ES_INDICES,
             self.elasticsearch.async_client,
         )
+
+        elasticsearch_result_formatter = load_class(self.config.ES_RESULT_TRANSFORM)(
+            self.elasticsearch.metadata.biothing_licenses,
+            self.config.LICENSE_TRANSFORM,
+            self.fieldnote.get_field_notes(),
+            self.config.AVAILABLE_FIELDS_EXCLUDED,
+        )
+
+        elasticsearch_query_backend = load_class(self.config.ES_QUERY_BACKEND)(
+            self.elasticsearch.async_client,
+            self.config.ES_INDICES,
+            self.config.ES_SCROLL_TIME,
+            self.config.ES_SCROLL_SIZE,
+        )
+
+        elasticsearch_query_builder = load_class(self.config.ES_QUERY_BUILDER)(
+            self.elasticsearch.userquery,
+            self.config.ANNOTATION_ID_REGEX_LIST,
+            self.config.ANNOTATION_DEFAULT_SCOPES,
+            self.config.ANNOTATION_DEFAULT_REGEX_PATTERN,
+            self.config.ALLOW_RANDOM_QUERY,
+            self.config.ALLOW_NESTED_AGGS,
+            self.elasticsearch.metadata,
+            elasticsearch_result_formatter,
+        )
+
         self.elasticsearch.pipeline = load_class(self.config.ES_QUERY_PIPELINE)(
-            load_class(self.config.ES_QUERY_BUILDER)(
-                self.elasticsearch.userquery,
-                self.config.ANNOTATION_ID_REGEX_LIST,
-                self.config.ANNOTATION_DEFAULT_SCOPES,
-                self.config.ANNOTATION_DEFAULT_REGEX_PATTERN,
-                self.config.ALLOW_RANDOM_QUERY,
-                self.config.ALLOW_NESTED_AGGS,
-                self.elasticsearch.metadata.biothing_metadata,
-            ),
-            load_class(self.config.ES_QUERY_BACKEND)(
-                self.elasticsearch.async_client,
-                self.config.ES_INDICES,
-                self.config.ES_SCROLL_TIME,
-                self.config.ES_SCROLL_SIZE,
-            ),
-            load_class(self.config.ES_RESULT_TRANSFORM)(
-                self.elasticsearch.metadata.biothing_licenses,
-                self.config.LICENSE_TRANSFORM,
-                self.fieldnote.get_field_notes(),
-                self.config.AVAILABLE_FIELDS_EXCLUDED,
-            ),
+            elasticsearch_query_builder,
+            elasticsearch_query_backend,
+            elasticsearch_result_formatter,
             fetch_max_match=self.config.ANNOTATION_MAX_MATCH,
         )
         self.elasticsearch.health = ESHealth(self.elasticsearch.async_client, self.config.STATUS_CHECK)

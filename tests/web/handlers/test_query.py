@@ -693,7 +693,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert len_0 > 0
         # apply jmespath transformation to filter rna list to those contain either NM_ or XM_
         res = self.request(
-            "/v1/query?q=symbol:cdk2&species=human&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]"
+            "/v1/query?q=symbol:cdk2&species=human&fields=accession.rna&jmespath=accession.rna|[?contains(@, 'NM_') || contains(@, 'XM_')]"
         ).json()
         transformed_rna = res["hits"][0]["accession"]["rna"]
         assert len(transformed_rna) > 0
@@ -728,7 +728,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
                 "scopes": "entrezgene",
                 "fields": "pathway.reactome",
                 # filter reactome pathways that contain DNA in their name
-                "jmespath": "pathway.reactome|[?contains(name, `DNA`)]",
+                "jmespath": "pathway.reactome|[?contains(name, 'DNA')]",
             },
         ).json()
         assert len(res) == 2
@@ -738,7 +738,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
 
         # jmespath should work the same if passed as a query parameter
         res2 = self.request(
-            "/v1/query?jmespath=pathway.reactome|[?contains(name, `DNA`)]",
+            "/v1/query?jmespath=pathway.reactome|[?contains(name, 'DNA')]",
             method="POST",
             json={
                 "q": [1017, 406715],
@@ -748,6 +748,42 @@ class TestQueryKeywords(BiothingsWebAppTest):
         ).json()
         assert res2 == res
 
+    def test_37_jmespath_nested(self):
+        res_0 = self.request(
+            "/v1/query?q=_id:1017&fields=exons.position"
+        ).json()
+        a_pos = res_0["hits"][0]["exons"][1]["position"][4][1]   #should be 55969576
+        res_1 = self.request(
+            f"/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]"
+        ).json()
+        pos_1 = [x["position"] for x in res_1["hits"][0]["exons"]]
+        assert pos_1 == [[], [[55969474, 55969576]], []]
+        res_2 = self.request(
+            f"/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]&jmespath_exclude_empty=1"
+        ).json()
+        pos_2 = [x["position"] for x in res_2["hits"][0]["exons"]]
+        assert pos_2 == [[[55969474, 55969576]]]
+        res_3 = self.request(
+            "/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`0`]&jmespath_exclude_empty=1"
+        ).json()
+        hits_3 = res_3["hits"]
+        assert hits_3 == []
+
+    def test_38_jmespath_exclude_empty(self):
+        res = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna=='NM_052827.4']").json()
+        assert len(res["hits"]) == 10
+        res2 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna=='NM_052827.4']").json()
+        assert len(res2["hits"]) == 1
+
+    def test_39_jmespath_invalid(self):
+        # invalid jmespath query should return 400
+        res = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation.rna|()", expect=400).json()
+        assert res["success"] is False
+
+        # unknown target_field should leave the response untouched
+        res_0 = self.request("/v1/query?q=_exists_:accession&fields=accession").json()
+        res_1 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
+        assert res_0["hits"] == res_1["hits"]
 
 class TestQueryString(BiothingsWebAppTest):
     def test_00_all(self):

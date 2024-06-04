@@ -1165,7 +1165,7 @@ async def %s():
         for child in tchildren:
             res[child.name] = {
                 "is_alive": child.is_alive(),
-                "is_daemon": child.isDaemon(),
+                "is_daemon": child.daemon,
             }
 
             if child.name in running_tids:

@@ -203,6 +203,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
             exception = kwargs["exc_info"][1]
             if isinstance(exception.args[0], dict):
                 message.update(exception.args[0])
+            elif isinstance(exception.args[0], str):
+                message["details"] = exception.args[0]
         except Exception:
             pass
 
