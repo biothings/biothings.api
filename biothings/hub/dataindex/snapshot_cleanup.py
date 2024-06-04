@@ -134,8 +134,8 @@ def _delete(collection, snapshot, envs):
         client = Elasticsearch(**env["args"])
 
     client.snapshot.delete(
-        snapshot.attrs["conf"]["repository"]["name"],
-        snapshot.attrs["_id"],
+        repository=snapshot.attrs["conf"]["repository"]["name"],
+        snapshot=snapshot.attrs["_id"],
     )
 
     collection.update_one(
