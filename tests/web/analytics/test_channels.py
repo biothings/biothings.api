@@ -1,10 +1,14 @@
-from tornado.httpclient import HTTPClient
+import aiohttp
+import orjson
+import pytest
 
+from aioresponses import aioresponses
 from biothings.web.analytics.channels import GA4Channel, GAChannel
 from biothings.web.analytics.events import GAEvent
 
 
-def test_1():
+@pytest.mark.asyncio
+async def test_send_GA():
     event = GAEvent(
         {
             "__request__": {
@@ -20,15 +24,19 @@ def test_1():
             "value": 60,
         }
     )
-    channel = GAChannel("UA-107372303-1", 2)
-    assert channel.handles(event)
+    channel = GAChannel("G-XXXXXX", 2)
+    assert await channel.handles(event)
 
-    client = HTTPClient()
-    for request in channel.send(event):
-        print(client.fetch(request))
+    with aioresponses() as responses:
+        # Mock the URL to return a 200 OK response
+        responses.post(channel.url, status=200)
+
+        # If the function completes without raising an exception, the test will pass
+        await channel.send(event)
 
 
-def test_2():
+@pytest.mark.asyncio
+async def test_send_GA4():
     event = GAEvent(
         {
             "__request__": {
@@ -45,13 +53,55 @@ def test_2():
         }
     )
     channel = GA4Channel("GA4_MEASUREMENT_ID", "GA4_API_SECRET", 1)
-    assert channel.handles(event)
+    assert await channel.handles(event)
 
-    client = HTTPClient()
-    for request in channel.send(event):
-        print(client.fetch(request))
+    with aioresponses() as responses:
+        # Mock the URL to return a 200 OK response
+        responses.post(channel.url, status=200)
+
+        # If the function completes without raising an exception, the test will pass
+        await channel.send(event)
+
+
+@pytest.mark.asyncio
+async def test_send_GA4_request_retries():
+    channel = GA4Channel("G-XXXXXX", "SECRET")
+    url = channel.url
+    data = orjson.dumps({"test": "data"})
+
+    async with aiohttp.ClientSession() as session:
+        with aioresponses() as responses:
+            # Mock the URL to return HTTP 500 on the first call and HTTP 200 on the second call
+            responses.post(url, status=500)
+            responses.post(url, status=200)
+
+            await channel.send_request(session, url, data)
+
+            assert responses._responses[0].status == 500
+            assert responses._responses[1].status == 200
+
+
+@pytest.mark.asyncio
+async def test_send_GA4_request_max_retries():
+    channel = GA4Channel("G-XXXXXX", "SECRET")
+    url = channel.url
+    data = orjson.dumps({"test": "data"})
+
+    async with aiohttp.ClientSession() as session:
+        with aioresponses() as responses:
+            # Mock the URL to always return a 500 response
+            responses.post(url, status=500)
+            responses.post(url, status=500)
+
+            with pytest.raises(Exception, match="GA4Channel: Maximum retries reached. Unable to complete request."):
+                await channel.send_request(session, url, data)
+
+            # Ensure the post method was called max_retries + 1 times
+            assert len(responses._responses) == channel.max_retries + 1
 
 
 if __name__ == "__main__":
-    test_1()
-    test_2()
+    test_send_GA()
+    test_send_GA4()
+    test_send_GA4_request_retries()
+    test_send_GA4_request_max_retries()
