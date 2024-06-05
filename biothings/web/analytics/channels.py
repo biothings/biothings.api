@@ -3,6 +3,7 @@ import asyncio
 import certifi
 import logging
 import orjson
+import ssl
 
 from biothings.web.analytics.events import Event, Message
 
@@ -27,10 +28,11 @@ class SlackChannel(Channel):
             await asyncio.gather(*tasks)
 
     async def send_request(self, session, url, event):
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
         async with session.post(
                 url,
                 json=event.to_slack_payload(),
-                verify=certifi.where()  # for Windows compatibility
+                ssl=ssl_context  # for Windows compatibility
         ) as _:
             pass
 
