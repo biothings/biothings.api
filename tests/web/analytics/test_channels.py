@@ -21,8 +21,8 @@ async def test_send_Slack():
          patch("certifi.where") as mock_certifi:
         mock_post.return_value.__aenter__.return_value.status = 200
         mock_certifi.return_value = "fake_cert_path"
-        with aioresponses() as m:
-            m.post(url, status=200)
+        with aioresponses() as responses:
+            responses.post(url, status=200)
             await channel.send(message)
 
 
