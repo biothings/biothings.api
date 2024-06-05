@@ -1,10 +1,29 @@
 import aiohttp
+import asyncio
 import orjson
 import pytest
 
 from aioresponses import aioresponses
-from biothings.web.analytics.channels import GA4Channel, GAChannel
-from biothings.web.analytics.events import GAEvent
+from biothings.web.analytics.channels import SlackChannel, GA4Channel, GAChannel
+from biothings.web.analytics.events import GAEvent, Message
+from unittest.mock import patch
+
+
+@pytest.mark.asyncio
+async def test_send_Slack():
+    message = Message()
+    url = "http://example.com"
+    channel = SlackChannel([url])
+
+    assert await channel.handles(message)
+
+    with patch("aiohttp.ClientSession.post") as mock_post, \
+         patch("certifi.where") as mock_certifi:
+        mock_post.return_value.__aenter__.return_value.status = 200
+        mock_certifi.return_value = "fake_cert_path"
+        with aioresponses() as m:
+            m.post(url, status=200)
+            await channel.send(message)
 
 
 @pytest.mark.asyncio
@@ -101,7 +120,8 @@ async def test_send_GA4_request_max_retries():
 
 
 if __name__ == "__main__":
-    test_send_GA()
-    test_send_GA4()
-    test_send_GA4_request_retries()
-    test_send_GA4_request_max_retries()
+    asyncio.run(test_send_GA())
+    asyncio.run(test_send_GA4())
+    asyncio.run(test_send_GA4_request_retries())
+    asyncio.run(test_send_GA4_request_max_retries())
+    print("Tests passed!")
