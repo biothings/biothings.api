@@ -181,6 +181,7 @@ class QStringParser:
             index_metadata = list(metadata.biothing_metadata.values())
             if index_metadata is not None:
                 for index_metadata_mapping in index_metadata:
+                    metadata_mapping = {}
                     biothing_type = index_metadata_mapping.get("_biothing", None)
                     try:
                         raw_metadata_mapping = metadata.get_mappings(biothing_type)
@@ -196,11 +197,6 @@ class QStringParser:
                         field_index = elasticsearch_mapping.get("index", True)
                         if field_index:
                             metadata_fields.add(field)
-
-                for field, elasticsearch_mapping in metadata_mapping.items():
-                    field_index = elasticsearch_mapping.get("index", True)
-                    if field_index:
-                        metadata_fields.add(field)
 
         if len(metadata_fields) == 0:
             metadata_fields = None
