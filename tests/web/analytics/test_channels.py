@@ -18,9 +18,14 @@ async def test_send_Slack():
     assert await channel.handles(message)
 
     with patch("aiohttp.ClientSession.post") as mock_post, \
-         patch("certifi.where") as mock_certifi:
+         patch("certifi.where") as mock_certifi, \
+         patch("ssl.create_default_context") as mock_ssl_context:
+
+        # Mocking the post request response and certifi.where
         mock_post.return_value.__aenter__.return_value.status = 200
-        mock_certifi.return_value = "fake_cert_path"
+        mock_certifi.return_value = "/path/to/fake_cert.pem"  # Any dummy path
+        mock_ssl_context.return_value = None  # Return None to bypass actual SSL context
+
         with aioresponses() as responses:
             responses.post(url, status=200)
             await channel.send(message)
