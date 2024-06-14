@@ -289,10 +289,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 confdict["UNCOMPRESS"] = dumper_section.get("uncompress") or False
                 pystr = tpl.substitute(confdict)
                 # print(pystr)
-                import imp
-
                 code = compile(pystr, "<string>", "exec")
-                mod = imp.new_module(self.plugin_name)
+                spec = importlib.util.spec_from_loader(self.plugin_name, loader=None)
+                mod = importlib.util.module_from_spec(spec)
                 exec(code, mod.__dict__, mod.__dict__)
                 dklass = getattr(mod, dumper_name)
                 # we need to inherit from a class here in this file so it can be pickled
@@ -448,10 +447,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
                 pystr = tpl.substitute(confdict)
                 # print(pystr)
-                import imp
-
                 code = compile(pystr, "<string>", "exec")
-                mod = imp.new_module(self.plugin_name + sub_source_name)
+                spec = importlib.util.spec_from_loader(self.plugin_name + sub_source_name, loader=None)
+                mod = importlib.util.module_from_spec(spec)
                 exec(code, mod.__dict__, mod.__dict__)
                 uklass = getattr(mod, uploader_name)
                 # we need to inherit from a class here in this file so it can be pickled
