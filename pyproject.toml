@@ -1,7 +1,10 @@
 [tool.black]
 line-length = 120
 target-version = ['py36', 'py37', 'py38', 'py39', 'py310']
-extend-exclude = [
+extend-exclude = '''
+# A regex preceded with ^/ will apply only to files and directories
+# in the root of the project.
+(
     # 3rd party code, don't touch
     "biothings/utils/jsondiff.py",
     "biothings/utils/jsonpatch.py",
@@ -11,7 +14,8 @@ extend-exclude = [
     "biothings/utils/shelve.py",
     "biothings/hub/dataload/sync.py",
     "biothings/hub/dataload/validator.py",
-]
+)
+'''
 
 [tool.isort]
 profile = "black"
