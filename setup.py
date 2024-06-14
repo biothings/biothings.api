@@ -40,7 +40,7 @@ install_requires = [
     "requests>=2.21.0",
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.0; python_version >= "3.8.0"',
+    'tornado==6.4.1; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
     "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
@@ -115,6 +115,8 @@ docker_ssh_requires = [
 # extra requirements to develop biothings
 dev_requires = [
     "pytest-mock",
+    "pytest-asyncio",
+    "aioresponses",
     "pre-commit==2.17.0",
 ]
 
