@@ -1,17 +1,18 @@
+from functools import partial
 import asyncio
 import copy
 import datetime
 import inspect
 import os
 import time
-from functools import partial
+from typing import Iterable
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseSourceManager, ResourceNotFound
+from biothings.utils.manager import BaseSourceManager, JobManager, ResourceNotFound
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -59,6 +60,8 @@ class BaseSourceUploader(object):
     # different colleciton, regex_name should be specified so all those split
     # collections can be found using it (used when selecting mappers for instance)
     regex_name = None
+
+    batch_size = 10000
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
@@ -271,12 +274,13 @@ class BaseSourceUploader(object):
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
-    def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
-        """Override as needed to perform operations after
-        data has been uploaded"""
+    def post_update_data(self, steps, force: bool, batch_size: int, job_manager: JobManager, **kwargs):
+        """
+        Override as needed to perform operations after data has been uploaded
+        """
         pass
 
-    async def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size: int, job_manager: JobManager):
         """
         Iterate over load_data() to pull data and store it
         """
@@ -414,10 +418,10 @@ class BaseSourceUploader(object):
 
     async def load(
         self,
-        steps=("data", "post", "master", "clean"),
-        force=False,
-        batch_size=10000,
-        job_manager=None,
+        steps: Iterable[str] = ("data", "post", "master", "clean"),
+        force: bool = False,
+        batch_size: int = None,
+        job_manager: JobManager = None,
         **kwargs,
     ):
         """
@@ -428,6 +432,9 @@ class BaseSourceUploader(object):
         - "master" : will register the master document in src_master
         """
         try:
+            if batch_size is None:
+                batch_size = self.batch_size
+
             # check what to do
             if isinstance(steps, tuple):
                 steps = list(
@@ -562,7 +569,7 @@ class DummySourceUploader(BaseSourceUploader):
         # bypass checks about src_dump
         pass
 
-    async def update_data(self, batch_size, job_manager=None, release=None):
+    async def update_data(self, batch_size: int = None, job_manager: JobManager = None, release=None):
         assert release is not None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
@@ -580,7 +587,10 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         """
         raise NotImplementedError("implement me in subclass")
 
-    async def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size: int, job_manager: JobManager=None):
+        if batch_size is None:
+            batch_size = self.batch_size
+
         jobs = []
         job_params = self.jobs()
         got_error = False
@@ -659,7 +669,7 @@ class NoDataSourceUploader(BaseSourceUploader):
 
     storage_class = NoStorage
 
-    async def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size: int, job_manager: JobManager):
         self.logger.debug("No data to upload, skip")
 
 

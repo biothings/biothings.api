@@ -159,6 +159,9 @@ class MergerStorage(BasicStorage):
 
                 self.temp_collection.bulk_write(bulk, ordered=False)
                 self.logger.info("OK [%s]" % timesofar(tinner))
+            except sqlite3.IntegrityError as integrity_error:
+                breakpoint()
+                pass
             assert nbinsert == toinsert, "nb %s to %s" % (nbinsert, toinsert)
             # end of loop so it counts the time spent in doc_iterator
             tinner = time.time()

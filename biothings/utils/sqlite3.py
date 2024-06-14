@@ -1,9 +1,12 @@
+from functools import wraps
+from typing import Any, Iterable, Optional, Union, cast
 import collections
 import json
 import logging
 import os
 import sqlite3
-from functools import wraps
+
+from pymongo import InsertOne, ReplaceOne, UpdateOne
 
 from biothings.utils.common import find_value_in_doc, json_serial
 from biothings.utils.dataload import update_dict_recur
@@ -183,6 +186,75 @@ class DatabaseClient(IDatabase):
         return Database(self.sqlite_db_folder, name)
 
 
+class Sqlite3BulkWriteResult():
+    """
+    An object wrapper for bulk API write results
+
+    This mimics the structure defined by pymongo defined
+    by `pymongo.results.BulkWriteResult`
+    """
+    __slots__ = ("__bulk_api_result",)
+
+    def __init__(self, bulk_api_result: Iterable[Any]):
+        self.__bulk_api_result = bulk_api_result
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.__bulk_api_result!r}"
+
+    @property
+    def bulk_api_result(self) -> Iterable[Any]:
+        """
+        The raw bulk API result
+        """
+        return self.__bulk_api_result
+
+    @property
+    def inserted_count(self) -> int:
+        """
+        The number of documents inserted
+        """
+        return len(self.__bulk_api_result)
+
+    @property
+    def matched_count(self) -> int:
+        """
+        The number of documents matched for an update
+        """
+        logger.warning("sqlite3 has no concept of a match counted")
+        return 0
+
+    @property
+    def modified_count(self) -> int:
+        """
+        The number of documents modified
+        """
+        return cast(int, self.__bulk_api_result.get("nModified"))
+
+    @property
+    def deleted_count(self) -> int:
+        """
+        The number of documents deleted
+        """
+        return cast(int, self.__bulk_api_result.get("nRemoved"))
+
+    @property
+    def upserted_count(self) -> int:
+        """
+        The number of documents upserted
+        """
+        logger.warning("sqlite3 has no concept of a upserted counted")
+        return 0
+
+    @property
+    def upserted_ids(self) -> Optional[dict[int, Any]]:
+        """
+        A map of operation index to the _id of the upserted document
+        """
+        if self.__bulk_api_result:
+            return {upsert["index"]: upsert["_id"] for upsert in self.bulk_api_result["upserted"]}
+        return None
+
+
 class Collection(object):
     def __init__(self, colname, db):
         self.colname = colname
@@ -355,7 +427,7 @@ class Collection(object):
                 logger.error("Unable to complete transation (check the _id value for uniqueness). Document: %s", doc)
                 raise integrity_err
 
-    def insert(self, docs: list[dict], *args, **kwargs) -> None:
+    def insert(self, docs: Iterable[dict], *args, **kwargs) -> None:
         """
         multi-document insert into the database
 
@@ -392,10 +464,32 @@ class Collection(object):
                     logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
                 raise integrity_err
 
-    def bulk_write(self, docs: list[dict], *args, **kwargs) -> sqlite3.Cursor:
-        doc_objs = [item._doc for item in docs]
-        self.insert(doc_objs)
-        return Cursor(len(doc_objs))
+    def bulk_write(
+        self, docs: Iterable[Union[dict, InsertOne, ReplaceOne, UpdateOne]], *args,**kwargs
+    ) -> Sqlite3BulkWriteResult:
+        """
+        "Overridden method" to mimic the structure of mongodb as our design followed a lot of
+        patterns dictated by mongodb initially. If we wish to support sqlite3 with the command line
+        tooling then we have to structure this method similarly.
+
+        Across our codebase we have several potential different operations that are normally
+        associated with pymongo that are used with bulk_write. These are `InsertOne`, 'ReplaceOne`,
+        and 'UpdateOne`. We have to ensure on the sqlite3 version of bulk_write to expect handling
+        documents of this type
+        """
+        raw_documents = []
+        for document in docs:
+            try:
+                raw_documents.append(document._doc)
+            except Exception as gen_exp:
+                breakpoint()
+                pass
+
+        try:
+            self.insert(raw_documents)
+        except sqlite3.IntegrityError as integrity_error:
+            raise integrity_error
+        return Sqlite3BulkWriteResult(raw_documents)
 
     def update_one(self, query, what, upsert=False):
         assert len(what) == 1 and (
@@ -483,3 +577,4 @@ class Collection(object):
 class Cursor(object):
     def __init__(self, inserted_count):
         self.inserted_count = inserted_count
+

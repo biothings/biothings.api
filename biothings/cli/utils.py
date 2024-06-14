@@ -278,7 +278,7 @@ def do_upload(plugin_name=None, show_uploaded=True, logger=None):
                 uploader.__class__.storage_class,
                 uploader.load_data,
                 uploader.temp_collection_name,
-                10000,
+                500000,
                 1,
                 uploader.data_folder,
                 db=uploader.db,
