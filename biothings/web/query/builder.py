@@ -36,7 +36,7 @@ from random import randrange
 import logging
 import os
 import re
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
@@ -88,7 +88,7 @@ class QStringParser:
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
 
-    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> set[str]:
+    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> Set[str]:
         """
         Extracts the field mappings stored in our "metadata" instance
 
