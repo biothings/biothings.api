@@ -263,7 +263,6 @@ def do_upload(plugin_name=None, show_uploaded=True, logger=None):
     _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
     for uploader_cls in _plugin.uploader_classes:
         uploader = uploader_cls.create(db_conn_info="")
-        breakpoint()
         uploader.make_temp_collection()
         uploader.prepare()
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
