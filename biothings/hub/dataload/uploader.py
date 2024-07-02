@@ -889,7 +889,7 @@ class UploaderManager(BaseSourceManager):
         """List all previous successful dumps for selection"""
         src_dump = get_src_dump()
         dumps = src_dump.find({"_id": src_name, "upload.jobs": {"$exists": True}})
-        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get(self.name, {}).get("status") == "success"]
+        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get(src_name, {}).get("status") == "success"]
         return successful_dumps
 
 
