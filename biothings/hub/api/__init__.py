@@ -23,8 +23,13 @@ class SuccessfulDumpsHandler(tornado.web.RequestHandler):
         self.shell = kwargs.get('shell', None)
 
     def get(self):
-        # Find the documents synchronously
-        dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}}))
+        datasource = self.get_argument('datasource', None)
+        if not datasource:
+            self.set_status(400)
+            self.write({"error": "datasource parameter is required"})
+            return
+
+        dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}, "source": datasource}))
         successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
         self.write({"successful_dumps": successful_dumps})
 
