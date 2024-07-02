@@ -7,6 +7,7 @@ import time
 import types
 from functools import partial
 
+import motor.motor_tornado
 import tornado.web
 from pymongo import MongoClient
 
@@ -22,8 +23,9 @@ class SuccessfulDumpsHandler(tornado.web.RequestHandler):
         self.db = db
         self.shell = kwargs.get('shell', None)
 
-    async def get(self):
-        dumps = await self.db['src_dump'].find({"upload.jobs": {"$exists": True}}).to_list(length=None)
+    def get(self):
+        # Find the documents synchronously
+        dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}}))
         successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
         self.write({"successful_dumps": successful_dumps})
 
