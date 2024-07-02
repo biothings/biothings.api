@@ -62,7 +62,7 @@ class BaseSourceUploader(object):
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
+    def __init__(self, db_conn_info, collection_name=None, log_folder=None, selected_dump=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
         # non-pickable attributes (see __getattr__, prepare() and unprepare())
@@ -82,6 +82,7 @@ class BaseSourceUploader(object):
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
+        self.selected_dump = selected_dump
 
     @property
     def fullname(self):
@@ -152,6 +153,13 @@ class BaseSourceUploader(object):
         self.prepared = False
         return state
 
+    def list_previous_successful_dumps(self):
+        """List all previous successful dumps for selection"""
+        src_dump = self.prepare_src_dump()
+        dumps = src_dump.find({"_id": self.main_source, "upload.jobs": {"$exists": True}})
+        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get(self.name, {}).get("status") == "success"]
+        return successful_dumps
+
     def get_predicates(self):
         """
         Return a list of predicates (functions returning true/false, as in math logic)
@@ -208,6 +216,8 @@ class BaseSourceUploader(object):
     def check_ready(self, force=False):
         if not self.src_doc:
             raise ResourceNotReady(f"Missing information for source '{self.main_source}' to start upload")
+        if self.selected_dump:
+            self.src_doc = self._state["src_dump"].find_one({"_id": self.main_source, "upload.jobs": {self.name: {"last_success": self.selected_dump}}}) or self.src_doc
         if not self.src_doc.get("download", {}).get("data_folder"):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
         if not force and not self.src_doc.get("download", {}).get("status") == "success":
@@ -494,7 +504,10 @@ class BaseSourceUploader(object):
         """Sync with src_dump collection, collection information (src_doc)
         Return src_dump collection"""
         src_dump = get_src_dump()
-        self.src_doc = src_dump.find_one({"_id": self.main_source}) or {}
+        if self.selected_dump:
+            self.src_doc = src_dump.find_one({"_id": self.main_source, "upload.jobs": {self.name: {"last_success": self.selected_dump}}}) or {}
+        else:
+            self.src_doc = src_dump.find_one({"_id": self.main_source}) or {}
         return src_dump
 
     def setup_log(self):

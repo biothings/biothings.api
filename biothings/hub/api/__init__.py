@@ -13,6 +13,12 @@ from biothings.hub.api.handlers.base import GenericHandler
 from biothings.utils.hub import CommandDefinition, CommandError, CommandInformation
 
 
+class SuccessfulDumpsHandler(GenericHandler):
+    async def get(self):
+        dumps = await self.application.db['src_dump'].find({"upload.jobs": {"$exists": True}}).to_list(length=None)
+        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
+        self.write({"successful_dumps": successful_dumps})
+
 class EndpointDefinition(dict):
     pass
 
@@ -276,6 +282,10 @@ def create_handlers(shell, command_defs):
 # def generate_api_routes(shell, commands, settings={}):
 def generate_api_routes(shell, commands):
     routes = create_handlers(shell, commands)
+
+    # Add the new route for the SuccessfulDumpsHandler
+    routes.append((r"/successful-dumps", SuccessfulDumpsHandler, {"shell": shell}))
+
     return routes
 
 
