@@ -18,8 +18,9 @@ db = client['mydisease_hubdb']
 
 
 class SuccessfulDumpsHandler(tornado.web.RequestHandler):
-    def initialize(self, db):
+    def initialize(self, db, **kwargs):
         self.db = db
+        self.shell = kwargs.get('shell', None)
 
     async def get(self):
         dumps = await self.db['src_dump'].find({"upload.jobs": {"$exists": True}}).to_list(length=None)
