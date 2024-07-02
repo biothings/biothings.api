@@ -90,12 +90,12 @@ class QueryHandler(BaseHandler):
             limit = int(limit)
             start = int(start)
             # entries, total_hit = src_cols.find_with_count(query_params, start=start, limit=limit)
-            entries, total_hit = src_cols.findv2(
+            entries, total_hit = src_cols.find(
                 query_params, start=start, limit=limit, return_total=True, return_list=True
             )
         else:
             # entries, total_hit = src_cols.find_with_count(query_params)
-            entries, total_hit = src_cols.findv2(query_params, return_total=True)
+            entries, total_hit = src_cols.find(query_params, return_total=True)
         if not entries:
             entries = []
 
