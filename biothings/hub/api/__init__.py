@@ -7,7 +7,6 @@ import time
 import types
 from functools import partial
 
-import motor.motor_tornado
 import tornado.web
 from pymongo import MongoClient
 
