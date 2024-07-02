@@ -292,7 +292,7 @@ def generate_api_routes(shell, commands):
     routes = create_handlers(shell, commands)
 
     # Add the new route for the SuccessfulDumpsHandler
-    routes.append((r"/successful-dumps", SuccessfulDumpsHandler, {"shell": shell}))
+    routes.append((r"/successful-dumps", SuccessfulDumpsHandler, dict(db=db)))
 
     return routes
 
