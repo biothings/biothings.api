@@ -22,7 +22,7 @@ class SuccessfulDumpsHandler(tornado.web.RequestHandler):
         self.db = db
         self.shell = kwargs.get('shell', None)
 
-    def get(self):
+    def post(self):
         datasource = self.get_argument('datasource', None)
         if not datasource:
             self.set_status(400)
