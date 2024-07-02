@@ -8,14 +8,21 @@ import types
 from functools import partial
 
 import tornado.web
+from pymongo import MongoClient
 
 from biothings.hub.api.handlers.base import GenericHandler
 from biothings.utils.hub import CommandDefinition, CommandError, CommandInformation
 
+client = MongoClient('su04', 27017)
+db = client['mydisease_hubdb']
 
-class SuccessfulDumpsHandler(GenericHandler):
+
+class SuccessfulDumpsHandler(tornado.web.RequestHandler):
+    def initialize(self, db):
+        self.db = db
+
     async def get(self):
-        dumps = await self.application.db['src_dump'].find({"upload.jobs": {"$exists": True}}).to_list(length=None)
+        dumps = await self.db['src_dump'].find({"upload.jobs": {"$exists": True}}).to_list(length=None)
         successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
         self.write({"successful_dumps": successful_dumps})
 
