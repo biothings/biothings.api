@@ -153,13 +153,6 @@ class BaseSourceUploader(object):
         self.prepared = False
         return state
 
-    def list_previous_successful_dumps(self):
-        """List all previous successful dumps for selection"""
-        src_dump = self.prepare_src_dump()
-        dumps = src_dump.find({"_id": self.main_source, "upload.jobs": {"$exists": True}})
-        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get(self.name, {}).get("status") == "success"]
-        return successful_dumps
-
     def get_predicates(self):
         """
         Return a list of predicates (functions returning true/false, as in math logic)
@@ -891,6 +884,13 @@ class UploaderManager(BaseSourceManager):
         for name, klasses in self.register.items():
             res[name] = [klass.__name__ for klass in klasses]
         return res
+
+    def list_previous_successful_dumps(self):
+        """List all previous successful dumps for selection"""
+        src_dump = get_src_dump()
+        dumps = src_dump.find({"_id": self.main_source, "upload.jobs": {"$exists": True}})
+        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get(self.name, {}).get("status") == "success"]
+        return successful_dumps
 
 
 def set_pending_to_upload(src_name):
