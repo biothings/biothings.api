@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import inspect
+import json
 import logging
 import socket
 import time
@@ -23,15 +24,20 @@ class SuccessfulDumpsHandler(tornado.web.RequestHandler):
         self.shell = kwargs.get('shell', None)
 
     def post(self):
-        datasource = self.get_argument('datasource', None)
-        if not datasource:
-            self.set_status(400)
-            self.write({"error": "datasource parameter is required"})
-            return
+        try:
+            data = json.loads(self.request.body)
+            datasource = data.get('datasource')
+            if not datasource:
+                self.set_status(400)
+                self.write({"error": "datasource parameter is required"})
+                return
 
-        dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}, "source": datasource}))
-        successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
-        self.write({"successful_dumps": successful_dumps})
+            dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}, "source": datasource}))
+            successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
+            self.write({"successful_dumps": successful_dumps})
+        except json.JSONDecodeError:
+            self.set_status(400)
+            self.write({"error": "Invalid JSON"})
 
 class EndpointDefinition(dict):
     pass
