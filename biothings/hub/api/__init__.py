@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import inspect
-import json
 import logging
 import socket
 import time
@@ -9,35 +8,10 @@ import types
 from functools import partial
 
 import tornado.web
-from pymongo import MongoClient
 
 from biothings.hub.api.handlers.base import GenericHandler
 from biothings.utils.hub import CommandDefinition, CommandError, CommandInformation
 
-client = MongoClient('su04', 27017)
-db = client['mydisease_hubdb']
-
-
-class SuccessfulDumpsHandler(tornado.web.RequestHandler):
-    def initialize(self, db, **kwargs):
-        self.db = db
-        self.shell = kwargs.get('shell', None)
-
-    def post(self):
-        try:
-            data = json.loads(self.request.body)
-            datasource = data.get('datasource')
-            if not datasource:
-                self.set_status(400)
-                self.write({"error": "datasource parameter is required"})
-                return
-
-            dumps = list(self.db['src_dump'].find({"upload.jobs": {"$exists": True}, "source": datasource}))
-            successful_dumps = [d for d in dumps if d["upload"]["jobs"].get("name", {}).get("status") == "success"]
-            self.write({"successful_dumps": successful_dumps})
-        except json.JSONDecodeError:
-            self.set_status(400)
-            self.write({"error": "Invalid JSON"})
 
 class EndpointDefinition(dict):
     pass
@@ -302,10 +276,6 @@ def create_handlers(shell, command_defs):
 # def generate_api_routes(shell, commands, settings={}):
 def generate_api_routes(shell, commands):
     routes = create_handlers(shell, commands)
-
-    # Add the new route for the SuccessfulDumpsHandler
-    routes.append((r"/successful-dumps", SuccessfulDumpsHandler, dict(db=db)))
-
     return routes
 
 
