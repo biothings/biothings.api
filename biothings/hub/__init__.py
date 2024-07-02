@@ -1418,7 +1418,7 @@ class HubServer(object):
             self.api_endpoints["source"].append(EndpointDefinition(name="upload", method="put", suffix="upload"))
         if "list_previous_successful_dumps" in cmdnames:
             self.api_endpoints["list_previous_successful_dumps"] = EndpointDefinition(
-                name="list_previous_successful_dumps", method="put", suffix="upload"
+                name="list_previous_successful_dumps", method="post", force_bodyargs=True, suffix="upload"
             )
         if "update_source_meta" in cmdnames:
             self.api_endpoints["source"].append(
