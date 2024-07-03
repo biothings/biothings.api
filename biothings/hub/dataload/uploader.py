@@ -291,7 +291,7 @@ class BaseSourceUploader(object):
             match = date_pattern.search(selected_collection)
             if match:
                 date_str = match.group(1)
-                date = datetime.strptime(date_str, '%Y%m%d')
+                date = datetime.datetime.strptime(date_str, '%Y%m%d')
                 release = date.strftime('%Y-%m-%d')
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
             return
