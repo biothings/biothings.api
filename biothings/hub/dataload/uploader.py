@@ -258,7 +258,8 @@ class BaseSourceUploader(object):
             self.db[colname].drop()
 
     def switch_collection(self):
-        """after a successful loading, rename temp_collection to regular collection name,
+        """
+        after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
