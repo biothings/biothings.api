@@ -260,17 +260,18 @@ class BaseSourceUploader(object):
         """after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+        if self.selected_collection:
+            self.temp_collection_name = self.selected_collection
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
-            target_collection = self.selected_collection if self.selected_collection else self.collection_name
-            if target_collection in self.db.collection_names():
+            if self.collection_name in self.db.collection_names():
                 # renaming existing collections
-                new_name = "_".join([target_collection, "archive", get_timestamp(), get_random_string()])
+                new_name = "_".join([self.collection_name, "archive", get_timestamp(), get_random_string()])
                 self.logger.info(
-                    "Renaming collection '%s' to '%s' for archiving purpose." % (target_collection, new_name)
+                    "Renaming collection '%s' to '%s' for archiving purpose." % (self.collection_name, new_name)
                 )
-                self.db[target_collection].rename(new_name, dropTarget=True)
-            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, target_collection)
-            self.db[self.temp_collection_name].rename(target_collection)
+                self.collection.rename(new_name, dropTarget=True)
+            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
+            self.db[self.temp_collection_name].rename(self.collection_name)
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
