@@ -279,10 +279,22 @@ class BaseSourceUploader(object):
         data has been uploaded"""
         pass
 
-    async def update_data(self, batch_size, job_manager):
+    async def update_data(self, batch_size, job_manager, **kwargs):
         """
         Iterate over load_data() to pull data and store it
         """
+        # get self.selected_collection from kwargs
+        selected_collection = kwargs.get("selected_collection")
+        if selected_collection:
+            import re
+            date_pattern = re.compile(r'_(\d{8})_')
+            match = date_pattern.search(selected_collection)
+            if match:
+                date_str = match.group(1)
+                date = datetime.strptime(date_str, '%Y%m%d')
+                release = date.strftime('%Y-%m-%d')
+            self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
+            return
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
         got_error = False
