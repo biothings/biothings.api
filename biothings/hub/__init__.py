@@ -1105,7 +1105,7 @@ class HubServer(object):
             self.commands["upload"] = self.managers["upload_manager"].upload_src
             self.commands["upload_all"] = self.managers["upload_manager"].upload_all
             self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
-            self.commands["list_previous_successful_dumps"] = self.managers["upload_manager"].list_previous_successful_dumps
+            self.commands["list_previous_successful_uploads"] = self.managers["upload_manager"].list_previous_successful_uploads
         # building/merging
         if self.managers.get("build_manager"):
             self.commands["whatsnew"] = CommandDefinition(
@@ -1416,9 +1416,9 @@ class HubServer(object):
             )
         if "upload" in cmdnames:
             self.api_endpoints["source"].append(EndpointDefinition(name="upload", method="put", suffix="upload"))
-        if "list_previous_successful_dumps" in cmdnames:
-            self.api_endpoints["list_previous_successful_dumps"] = EndpointDefinition(
-                name="list_previous_successful_dumps", method="post", force_bodyargs=True, suffix="upload"
+        if "list_previous_successful_uploads" in cmdnames:
+            self.api_endpoints["list_previous_successful_uploads"] = EndpointDefinition(
+                name="list_previous_successful_uploads", method="post", force_bodyargs=True, suffix="upload"
             )
         if "update_source_meta" in cmdnames:
             self.api_endpoints["source"].append(

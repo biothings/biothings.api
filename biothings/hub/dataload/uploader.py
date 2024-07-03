@@ -885,11 +885,9 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    def list_previous_successful_dumps(self, src_name):
+    def list_previous_successful_uploads(self, src_name):
         """List all previous successful dumps for selection"""
-        src_dump = get_src_dump()
-        dumps = src_dump.find({"_id": src_name, f"upload.jobs.{src_name}.status": "success"})
-        successful_dumps = [d["upload"]["jobs"][src_name]["last_success"] for d in dumps if "last_success" in d["upload"]["jobs"][src_name]]
+        successful_dumps = sorted([collection for collection in self.conn[config.DATA_SRC_DATABASE].list_collection_names() if collection.startswith(f'{src_name}') or collection == src_name])
         return successful_dumps
 
 
