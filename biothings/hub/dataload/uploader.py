@@ -294,7 +294,9 @@ class BaseSourceUploader(object):
                 date = datetime.datetime.strptime(date_str, '%Y%m%d')
                 release = date.strftime('%Y-%m-%d')
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
+            self.switch_collection()
             return
+
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
         got_error = False
