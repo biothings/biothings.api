@@ -62,7 +62,7 @@ class BaseSourceUploader(object):
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, db_conn_info, collection_name=None, log_folder=None, selected_dump=None, *args, **kwargs):
+    def __init__(self, db_conn_info, collection_name=None, log_folder=None, selected_collection=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
         # non-pickable attributes (see __getattr__, prepare() and unprepare())
@@ -82,7 +82,7 @@ class BaseSourceUploader(object):
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
-        self.selected_dump = selected_dump
+        self.selected_collection = selected_collection
 
     @property
     def fullname(self):
@@ -126,7 +126,8 @@ class BaseSourceUploader(object):
             return
         self._state["conn"] = get_src_conn()
         self._state["db"] = self._state["conn"][self.__class__.__database__]
-        self._state["collection"] = self._state["db"][self.collection_name]
+        collection_to_use = self.selected_collection if self.selected_collection else self.collection_name
+        self._state["collection"] = self._state["db"][collection_to_use]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
         self._state["logger"], self.logfile = self.setup_log()
@@ -209,8 +210,6 @@ class BaseSourceUploader(object):
     def check_ready(self, force=False):
         if not self.src_doc:
             raise ResourceNotReady(f"Missing information for source '{self.main_source}' to start upload")
-        if self.selected_dump:
-            self.src_doc = self._state["src_dump"].find_one({"_id": self.main_source, "upload.jobs": {self.name: {"last_success": self.selected_dump}}}) or self.src_doc
         if not self.src_doc.get("download", {}).get("data_folder"):
             raise ResourceNotReady("No data folder found for resource '%s'" % self.name)
         if not force and not self.src_doc.get("download", {}).get("status") == "success":
@@ -262,15 +261,16 @@ class BaseSourceUploader(object):
         and renaming existing collection to a temp name for archiving purpose.
         """
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
-            if self.collection_name in self.db.collection_names():
+            target_collection = self.selected_collection if self.selected_collection else self.collection_name
+            if target_collection in self.db.collection_names():
                 # renaming existing collections
-                new_name = "_".join([self.collection_name, "archive", get_timestamp(), get_random_string()])
+                new_name = "_".join([target_collection, "archive", get_timestamp(), get_random_string()])
                 self.logger.info(
-                    "Renaming collection '%s' to '%s' for archiving purpose." % (self.collection_name, new_name)
+                    "Renaming collection '%s' to '%s' for archiving purpose." % (target_collection, new_name)
                 )
-                self.collection.rename(new_name, dropTarget=True)
-            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
-            self.db[self.temp_collection_name].rename(self.collection_name)
+                self.db[target_collection].rename(new_name, dropTarget=True)
+            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, target_collection)
+            self.db[self.temp_collection_name].rename(target_collection)
         else:
             raise ResourceError("No temp collection (or it's empty)")
 
@@ -497,10 +497,7 @@ class BaseSourceUploader(object):
         """Sync with src_dump collection, collection information (src_doc)
         Return src_dump collection"""
         src_dump = get_src_dump()
-        if self.selected_dump:
-            self.src_doc = src_dump.find_one({"_id": self.main_source, "upload.jobs": {self.name: {"last_success": self.selected_dump}}}) or {}
-        else:
-            self.src_doc = src_dump.find_one({"_id": self.main_source}) or {}
+        self.src_doc = src_dump.find_one({"_id": self.main_source}) or {}
         return src_dump
 
     def setup_log(self):
