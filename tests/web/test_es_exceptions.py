@@ -12,6 +12,7 @@ from biothings.web.query.pipeline import (
     ConflictError,
     AuthenticationException,
     AuthorizationException,
+    TransportError,
 )
 
 
@@ -170,15 +171,15 @@ async def test_generic_exception():
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
     assert exc_info.value.code == 500
-    assert exc_info.value.summary == "index_not_found_exception"
-    assert exc_info.value.details == None
+    assert exc_info.value.summary == "ElasticsearchException"
+    assert exc_info.value.details == "test_generic_exception"
 
 
 @pytest.mark.asyncio
 async def test_search_phase_execution_exception_rejected_execution():
     @capturesESExceptions
     async def func():
-        exc = Exception("test_generic_exception")
+        exc = TransportError("test_generic_exception")
         exc.status_code = 500
         exc.info = {"error": {"type": "search_phase_execution_exception", "reason": "rejected execution"}}
         raise exc
@@ -194,7 +195,7 @@ async def test_search_phase_execution_exception_rejected_execution():
 async def test_search_phase_execution_exception_not_rejected_execution():
     @capturesESExceptions
     async def func():
-        exc = Exception("test_generic_exception")
+        exc = TransportError("test_generic_exception")
         exc.status_code = 500
         exc.error = "test_generic_exception"
         exc.info = {
@@ -218,7 +219,7 @@ async def test_search_phase_execution_exception_not_rejected_execution():
 async def test_too_many_requests_error():
     @capturesESExceptions
     async def func():
-        exc = Exception({
+        exc = TransportError({
             "status_code": 429,
         })
         exc.status_code = 429

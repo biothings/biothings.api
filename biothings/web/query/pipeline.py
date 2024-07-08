@@ -10,6 +10,7 @@ from elasticsearch.exceptions import (
     ConflictError,
     AuthenticationException,
     AuthorizationException,
+    TransportError,
 )
 
 from biothings.web.query.builder import RawQueryInterrupt
@@ -104,7 +105,6 @@ def capturesESExceptions(func):
             RawQueryInterrupt,  # correspond to 'rawquery' option
             EndScrollInterrupt,
         ) as exc:
-            logger.debug("QueryPipelineInterrupt: %s", exc.data)
             raise QueryPipelineInterrupt(exc.data)
         except RawResultInterrupt as exc:  # correspond to 'raw' option
             raise QueryPipelineInterrupt(exc.data.body)
@@ -126,7 +126,10 @@ def capturesESExceptions(func):
             raise QueryPipelineException(409, *_simplify_ES_exception(exc))
         except (AuthenticationException, AuthorizationException) as exc:
             raise QueryPipelineException(403, *_simplify_ES_exception(exc))
-        except Exception as exc:
+        # this case and most of the handling below can be further studied.
+        # most of the exception handlings from this point on are based on
+        # experience. further documentation in details will be helpful.
+        except TransportError as exc:
             status_code = getattr(exc, 'status_code', None)
             if status_code in (429, "N/A"):
                 raise QueryPipelineException(503)
@@ -137,6 +140,8 @@ def capturesESExceptions(func):
                 reason = error_info.get("reason", "")
 
                 if error_type == "search_phase_execution_exception":
+                    # indicates that the search request was rejected due to resource
+                    # constraints, like a node overload.
                     if "rejected execution" in reason:
                         raise QueryPipelineException(503)
                 elif error_type == "index_not_found_exception":
@@ -144,7 +149,7 @@ def capturesESExceptions(func):
 
                 # For unexpected errors, provide additional information
                 raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
-
+        except Exception as exc:
             # Fallback for any other unexpected exceptions
             raise QueryPipelineException(500, "ElasticsearchException", str(exc))
 
