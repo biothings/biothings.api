@@ -106,58 +106,47 @@ def capturesESExceptions(func):
         ) as exc:
             logger.debug("QueryPipelineInterrupt: %s", exc.data)
             raise QueryPipelineInterrupt(exc.data)
-
         except RawResultInterrupt as exc:  # correspond to 'raw' option
             raise QueryPipelineInterrupt(exc.data.body)
-
         except AssertionError as exc:
             # in our application, AssertionError should be internal
             # the individual components raising the error should instead
             # raise exceptions like ValueError and TypeError for bad input
             logger.exception("FIXME: Unexpected Assertion Error.", exc_info=exc)
             raise QueryPipelineException(500, str(exc) or "N/A")
-
         except (ValueError, TypeError, ResultFormatterException) as exc:
             raise QueryPipelineException(400, type(exc).__name__, str(exc))
-
-        except ConnectionError:  # like timeouts..
+        except ConnectionError:
             raise QueryPipelineException(503)
-
-        except RequestError as exc:  # 400s
+        except RequestError as exc:
             raise QueryPipelineException(400, *_simplify_ES_exception(exc))
-
         except NotFoundError as exc:
             raise QueryPipelineException(404, *_simplify_ES_exception(exc))
-
         except ConflictError as exc:
             raise QueryPipelineException(409, *_simplify_ES_exception(exc))
-
         except (AuthenticationException, AuthorizationException) as exc:
             raise QueryPipelineException(403, *_simplify_ES_exception(exc))
+        except Exception as exc:
+            status_code = getattr(exc, 'status_code', None)
+            if status_code in (429, "N/A"):
+                raise QueryPipelineException(503)
 
-        except Exception as exc:  # Generic Elasticsearch exceptions
-            if hasattr(exc, 'status_code'):
-                if exc.status_code in (429, "N/A"):
-                    raise QueryPipelineException(503)
-            else:
-                raise QueryPipelineException(500, "ElasticsearchException", str(exc))
+            if hasattr(exc, 'info') and isinstance(exc.info, dict):
+                error_info = exc.info.get("error", {})
+                error_type = error_info.get("type", "")
+                reason = error_info.get("reason", "")
 
-            # Check for specific error types
-            if exc.info and isinstance(exc.info, dict):
-                error_type = exc.info.get("error", {}).get("type", "")
-                reason = exc.info.get("error", {}).get("reason", "")
                 if error_type == "search_phase_execution_exception":
                     if "rejected execution" in reason:
                         raise QueryPipelineException(503)
-                    else:  # unexpected, provide additional information for debug
-                        raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
-
                 elif error_type == "index_not_found_exception":
                     raise QueryPipelineException(500, error_type)
-                else:  # unexpected
-                    raise QueryPipelineException(500, *_simplify_ES_exception(exc))
-            else:
-                raise QueryPipelineException(500, "ElasticsearchException", str(exc))
+
+                # For unexpected errors, provide additional information
+                raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
+
+            # Fallback for any other unexpected exceptions
+            raise QueryPipelineException(500, "ElasticsearchException", str(exc))
 
     return _
 
