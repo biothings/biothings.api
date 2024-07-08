@@ -572,9 +572,3 @@ class Collection(object):
     def __getstate__(self):
         self.__dict__.pop("db", None)
         return self.__dict__
-
-
-class Cursor(object):
-    def __init__(self, inserted_count):
-        self.inserted_count = inserted_count
-
