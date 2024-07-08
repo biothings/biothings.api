@@ -3,7 +3,15 @@ import logging
 from collections import Counter
 from dataclasses import dataclass
 
-import elasticsearch
+from elasticsearch.exceptions import (
+    ConnectionError,
+    RequestError,
+    NotFoundError,
+    ConflictError,
+    AuthenticationException,
+    AuthorizationException,
+    TransportError,
+)
 
 from biothings.web.query.builder import RawQueryInterrupt
 from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
@@ -86,7 +94,6 @@ def _simplify_ES_exception(exc, debug=False):
 
     if debug:  # raw ES error response
         result["debug"] = exc.info
-
     return exc.error, result
 
 
@@ -98,54 +105,53 @@ def capturesESExceptions(func):
             RawQueryInterrupt,  # correspond to 'rawquery' option
             EndScrollInterrupt,
         ) as exc:
-            logger.debug("QueryPipelineInterrupt: %s", exc.data)
             raise QueryPipelineInterrupt(exc.data)
-
-
         except RawResultInterrupt as exc:  # correspond to 'raw' option
             raise QueryPipelineInterrupt(exc.data.body)
-
-
         except AssertionError as exc:
             # in our application, AssertionError should be internal
             # the individual components raising the error should instead
-            # rasie exceptions like ValueError and TypeError for bad input
-            logging.exception("FIXME: Unexpected Assertion Error.", exc_info=exc)
+            # raise exceptions like ValueError and TypeError for bad input
+            logger.exception("FIXME: Unexpected Assertion Error.", exc_info=exc)
             raise QueryPipelineException(500, str(exc) or "N/A")
-
         except (ValueError, TypeError, ResultFormatterException) as exc:
             raise QueryPipelineException(400, type(exc).__name__, str(exc))
-
-        except elasticsearch.ConnectionError:  # like timeouts..
+        except ConnectionError:
             raise QueryPipelineException(503)
-
-        except elasticsearch.RequestError as exc:  # 400s
+        except RequestError as exc:
             raise QueryPipelineException(400, *_simplify_ES_exception(exc))
-
-        # it seems like the managed Elasticsearch service by AWS
-        # may provide slightly different exceptions when the server
-        # is overloaded comparing to that of self-managed ES.
-
+        except NotFoundError as exc:
+            raise QueryPipelineException(404, *_simplify_ES_exception(exc))
+        except ConflictError as exc:
+            raise QueryPipelineException(409, *_simplify_ES_exception(exc))
+        except (AuthenticationException, AuthorizationException) as exc:
+            raise QueryPipelineException(403, *_simplify_ES_exception(exc))
         # this case and most of the handling below can be further studied.
         # most of the exception handlings from this point on are based on
         # experience. further documentation in details will be helpful.
-
-        except elasticsearch.TransportError as exc:  # >400
-            if exc.error == "search_phase_execution_exception":
-                reason = exc.info.get("caused_by", {}).get("reason", "")
-
-                if "rejected execution" in reason:
-                    raise QueryPipelineException(503)
-                else:  # unexpected, provide additional information for debug
-                    raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
-
-            elif exc.error == "index_not_found_exception":
-                raise QueryPipelineException(500, exc.error)
-
-            elif exc.status_code in (429, "N/A"):
+        except TransportError as exc:
+            status_code = getattr(exc, 'status_code', None)
+            if status_code in (429, "N/A"):
                 raise QueryPipelineException(503)
-            else:  # unexpected
-                raise
+
+            if hasattr(exc, 'info') and isinstance(exc.info, dict):
+                error_info = exc.info.get("error", {})
+                error_type = error_info.get("type", "")
+                reason = error_info.get("reason", "")
+
+                if error_type == "search_phase_execution_exception":
+                    # indicates that the search request was rejected due to resource
+                    # constraints, like a node overload.
+                    if "rejected execution" in reason:
+                        raise QueryPipelineException(503)
+                elif error_type == "index_not_found_exception":
+                    raise QueryPipelineException(500, error_type)
+
+                # For unexpected errors, provide additional information
+                raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
+        except Exception as exc:
+            # Fallback for any other unexpected exceptions
+            raise QueryPipelineException(500, "ElasticsearchException", str(exc))
 
     return _
 
