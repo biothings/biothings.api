@@ -49,7 +49,7 @@ class CheckSizeStorage(BaseStorage):
 
 class BasicStorage(BaseStorage):
     def doc_iterator(self, doc_d, batch: bool=True, batch_size: int=10000):
-        if (isinstance(doc_d, (types.GeneratorType, list)) and batch:
+        if isinstance(doc_d, (types.GeneratorType, list)) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li

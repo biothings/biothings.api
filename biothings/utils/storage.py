@@ -1,9 +1,11 @@
+import collections
 import copy
 import logging
 import time
 import types
 from typing import Iterable
 
+import sqlite3
 from sqlite3 import IntegrityError
 
 from pymongo import InsertOne, ReplaceOne, UpdateOne
@@ -12,13 +14,14 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 from biothings.utils.common import iter_n, timesofar
 from biothings.utils.dataload import merge_root_keys, merge_struct
 from biothings.utils.mongo import check_document_size, get_src_db
+from biothings.utils.sqlite3 import Sqlite3BulkWriteError
 
 
 class StorageException(Exception):
     pass
 
 
-class BaseStorage(object):
+class BaseStorage():
     def __init__(self, db, dest_col_name, logger=logging):
         db = db or get_src_db()
         self.temp_collection = db[dest_col_name]
@@ -150,7 +153,7 @@ class MergerStorage(BasicStorage):
                         continue
                     assert "_id" in existing
                     _id = errdoc.pop("_id")
-                    merged = self.__class__.merge_func(errdoc, existing, aslistofdict=aslistofdict)
+                    merged = self.merge_func(errdoc, existing, aslistofdict=aslistofdict)
                     # update previously fetched doc. if several errors are about the same doc id,
                     # we would't merged things properly without an updated document
                     assert "_id" in merged
@@ -160,13 +163,72 @@ class MergerStorage(BasicStorage):
 
                 self.temp_collection.bulk_write(bulk, ordered=False)
                 self.logger.info("OK [%s]" % timesofar(tinner))
-            except sqlite3.IntegrityError as integrity_error:
+            except Sqlite3BulkWriteError as sqlite3_bulk_error:
+                self.logger.debug(
+                    "Attempting to correct sqlite3 uniqueness constraint for the id column"
+                )
+
+                """
+                internal collection -> entries already in the sqlite3 database
+                external collection -> entries in the batch for the bulk_write
+
+                Conflict 2) id value in the external collection collides with a separate id in the
+                internal collection
+
+                Conflict 1) id value in the external collection collides with the id in the internal
+                collection
+
+                Handle the merge for conflict 2 before isolating conflict 1
+                """
+                # external batch insert id collisions
+                aggregation_mapping = collections.defaultdict(list)
+                for entry in bulk:
+                    document = entry._doc
+                    aggregation_mapping[document["_id"]].append(document)
                 breakpoint()
-                pass
-            assert nbinsert == toinsert, "nb %s to %s" % (nbinsert, toinsert)
-            # end of loop so it counts the time spent in doc_iterator
-            tinner = time.time()
-            total += nbinsert
+                entry_collisions = {eid: collection for eid, collection in aggregation_mapping.items() if len(collection) > 1}
+
+                for conflict in external_conflicts:
+                    breakpoint()
+                    pass
+                    # errdoc = err["op"]
+                    # existing = document_id_mapping[errdoc["_id"]]
+                    # if errdoc is existing:
+                    #     # if the same document has been yielded twice,
+                    #     # they could be the same, so we ignore it but
+                    #     # count it as processed (see assert below)
+                    #     nbinsert += 1
+                    #     continue
+                    # _id = errdoc.pop("_id")
+                    # merged = self.merge_func(errdoc, existing, aslistofdict=aslistofdict)
+                    # # update previously fetched doc. if several errors are about the same doc id,
+                    # # we would't merged things properly without an updated document
+                    # assert "_id" in merged
+                    # bulk.append(UpdateOne({"_id": _id}, {"$set": merged}))
+                    # document_id_mapping[_id] = merged
+                    # nbinsert += 1
+
+                # internal database id collisions
+                database_conflicts = self.bulk_id_search(id_collection=sqlite3_bulk_error.id_collection)
+
+                # docs = self.temp_collection.find(
+                #     {
+                #         "_id": 
+                #         {
+                #             "$in": ids
+                #         }
+                #     }
+                # )
+                # document_id_mapping = {}
+                # for doc in docs:
+                #     document_id_mapping[doc["_id"]] = doc
+
+                # self.temp_collection.bulk_write(bulk, ordered=False)
+                # self.logger.info("OK [%s]" % timesofar(tinner))
+            # assert nbinsert == toinsert, "nb %s to %s" % (nbinsert, toinsert)
+            # # end of loop so it counts the time spent in doc_iterator
+            # tinner = time.time()
+            # total += nbinsert
 
         self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
 
@@ -311,7 +373,7 @@ class UpsertStorage(BasicStorage):
         return total
 
 
-class NoStorage(object):
+class NoStorage():
     """
     This a kind of a place-holder, this storage will just store nothing...
     (but it will respect storage interface)

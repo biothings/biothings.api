@@ -7,6 +7,8 @@ import os
 import sqlite3
 
 from pymongo import InsertOne, ReplaceOne, UpdateOne
+from typing import Any, Mapping, TypeVar
+from functools import wraps
 
 from biothings.utils.common import find_value_in_doc, json_serial
 from biothings.utils.dataload import update_dict_recur
@@ -17,6 +19,8 @@ from biothings.utils.serializer import json_loads
 config = None
 
 logger = logging.getLogger(__name__)
+
+DocumentType = TypeVar("DocumentType", bound=Mapping[str, Any])
 
 
 def requires_config(func):
@@ -254,6 +258,15 @@ class Sqlite3BulkWriteResult():
             return {upsert["index"]: upsert["_id"] for upsert in self.bulk_api_result["upserted"]}
         return None
 
+class Sqlite3BulkWriteError(Exception):
+    """
+    Bulk write error specifically targetting the sqlite3
+    database backend. We won't get any metrics on the failed insertion
+    other than the table and the column, we'll have to do a bit more processing
+    on the documents that were attempted to be written. Thus we have a Exception
+    that is essentially a wrapper around sqlite3.IntegrityError
+    """
+
 
 class Collection(object):
     def __init__(self, colname, db):
@@ -408,6 +421,32 @@ class Collection(object):
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
+    def bulk_id_search(self, id_collection: list[str]) -> list[tuple]:
+        """
+        Method for bulk searching against the _id column in the database.
+        Primarily used for determining the culprit to the uniqueness integrity violation
+        from a bulk write.
+
+        args:
+            id_collection: list of strings representing the document _id value
+
+        output:
+        """
+        # Format (ID0,ID1, ..., ID(N))
+        id_collection_repr = (
+            "("
+            f"{','.join(id_collection)[0:-1]}"
+            ")"
+        )
+        id_search_query = (
+            "SELECT _id, document FROM %s WHERE _id IN %s",
+            self.name, id_collection_repr
+        )
+        with self.get_conn() as conn:
+            query_result = conn.execute(id_search_query).fetchall()
+            return query_result
+
+
     def insert_one(self, doc: dict, *args, **kwargs) -> None:
         """
         single-document insert into the database
@@ -460,6 +499,7 @@ class Collection(object):
                 discovered_non_unique_id = list(
                     filter(lambda id_frequency: id_frequency[1] > 1, id_counter.most_common(10))
                 )
+                breakpoint()
                 if len(discovered_non_unique_id) > 0:
                     logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
                 raise integrity_err
@@ -488,7 +528,7 @@ class Collection(object):
         try:
             self.insert(raw_documents)
         except sqlite3.IntegrityError as integrity_error:
-            raise integrity_error
+            raise Sqlite3BulkWriteError from integrity_error
         return Sqlite3BulkWriteResult(raw_documents)
 
     def update_one(self, query, what, upsert=False):
