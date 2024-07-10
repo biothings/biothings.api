@@ -882,8 +882,8 @@ class DataBuilder(object):
 
         src_master = self.source_backend.master
         meta = src_master.find_one({"_id": src_name}) or {}
-        collection_name = meta.get("default_collection", src_name)
-        self.logger.debug("Using collection name '%s' for source '%s'", collection_name, src_name)
+        default_collection = meta.get("default_collection", src_name)
+        self.logger.debug("Using collection name '%s' for source '%s'", default_collection, src_name)
         merger = meta.get("merger", "upsert")
         self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
         merger_kwargs = meta.get("merger_kwargs")
@@ -917,7 +917,7 @@ class DataBuilder(object):
                     pinfo,
                     partial(
                         merger_worker,
-                        self.source_backend[collection_name].name,
+                        default_collection or self.source_backend[src_name].name,
                         self.target_backend.target_name,
                         doc_ids,
                         self.get_mapper_for_source(src_name, init=False),
