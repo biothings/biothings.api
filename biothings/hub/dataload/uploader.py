@@ -302,8 +302,7 @@ class BaseSourceUploader(object):
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
             self.selected_collection = selected_collection
             cnt = self.db[selected_collection].count()
-            self.register_status("success", count=cnt, err=None, tb=None)
-            return
+            return cnt
 
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
