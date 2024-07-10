@@ -904,6 +904,8 @@ class DataBuilder(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
+                self.logger.debug(f'default_collection: {default_collection}')
+                self.logger.debug(f'src_name: {src_name}')
                 self.logger.info(
                     "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
                     bnum,
@@ -1028,9 +1030,11 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
 
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
+        logging.debug("Merging batch #%d for source '%s' into '%s'", batch_num, col_name, dest_name)
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
+        logging.debug(f'col: {col}')
         dest = DocMongoBackend(tgt, tgt[dest_name])
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
         if cleaner:
