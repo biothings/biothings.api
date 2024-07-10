@@ -882,8 +882,8 @@ class DataBuilder(object):
 
         src_master = self.source_backend.master
         meta = src_master.find_one({"_id": src_name}) or {}
-        default_collection = meta.get("default_collection", src_name)
-        self.logger.debug("Using collection name '%s' for source '%s'", default_collection, src_name)
+        collection_to_merge = meta.get("default_collection", src_name)
+        self.logger.debug("Using collection name '%s' for source '%s'", collection_to_merge, src_name)
         merger = meta.get("merger", "upsert")
         self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
         merger_kwargs = meta.get("merger_kwargs")
@@ -904,8 +904,7 @@ class DataBuilder(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = src_name
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
-                self.logger.debug(f'default_collection: {default_collection}')
-                self.logger.debug(f'src_name: {src_name}')
+                self.logger.debug(f'collection_to_merge: {collection_to_merge}')
                 self.logger.info(
                     "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
                     bnum,
@@ -919,7 +918,7 @@ class DataBuilder(object):
                     pinfo,
                     partial(
                         merger_worker,
-                        default_collection or self.source_backend[src_name].name,
+                        collection_to_merge,
                         self.target_backend.target_name,
                         doc_ids,
                         self.get_mapper_for_source(src_name, init=False),
