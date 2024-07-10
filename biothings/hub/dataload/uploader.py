@@ -83,6 +83,7 @@ class BaseSourceUploader(object):
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
         self.selected_collection = selected_collection
+        self.logger.debug(f"selected_collection in __init__: {self.selected_collection}")
 
     @property
     def fullname(self):
@@ -126,7 +127,10 @@ class BaseSourceUploader(object):
             return
         self._state["conn"] = get_src_conn()
         self._state["db"] = self._state["conn"][self.__class__.__database__]
+        self.logger.debug(f"selected_collection: {self.selected_collection}")
+        self.logger.debug(f"collection_name: {self.collection_name}")
         collection_to_use = self.selected_collection if self.selected_collection else self.collection_name
+        self.logger.debug(f"collection_to_use: {collection_to_use}")
         self._state["collection"] = self._state["db"][collection_to_use]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
@@ -260,8 +264,11 @@ class BaseSourceUploader(object):
         """after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+        self.logger.debug("Switching collection")
+        self.logger.debug(f"selected_collection in switch_collection: {self.selected_collection}")
         if self.selected_collection:
             self.temp_collection_name = self.selected_collection
+            self.logger.debug(f"temp_collection_name in switch_collection: {self.temp_collection_name}")
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -286,6 +293,7 @@ class BaseSourceUploader(object):
         """
         # get self.selected_collection from kwargs
         selected_collection = kwargs.get("selected_collection")
+        self.logger.debug(f"selected_collection in update_data: {selected_collection}")
         if selected_collection:
             import re
             date_pattern = re.compile(r'_(\d{8})_')
