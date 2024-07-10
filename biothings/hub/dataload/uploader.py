@@ -127,10 +127,7 @@ class BaseSourceUploader(object):
             return
         self._state["conn"] = get_src_conn()
         self._state["db"] = self._state["conn"][self.__class__.__database__]
-        self.logger.debug(f"selected_collection: {self.selected_collection}")
-        self.logger.debug(f"collection_name: {self.collection_name}")
         collection_to_use = self.selected_collection if self.selected_collection else self.collection_name
-        self.logger.debug(f"collection_to_use: {collection_to_use}")
         self._state["collection"] = self._state["db"][collection_to_use]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
@@ -303,7 +300,7 @@ class BaseSourceUploader(object):
                 date = datetime.datetime.strptime(date_str, '%Y%m%d')
                 release = date.strftime('%Y-%m-%d')
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
-            self.switch_collection()
+            self.selected_collection = selected_collection
             return
 
         pinfo = self.get_pinfo()
@@ -359,6 +356,9 @@ class BaseSourceUploader(object):
         info = get_source_code_info(src_file)
         if info:
             _doc.setdefault("src_meta", {}).update({"code": info})
+        if self.selected_collection:
+            self.logger.debug(f"selected_collection in generate_doc_src_master: {self.selected_collection}")
+            _doc["default_collection"] = self.selected_collection
         return _doc
 
     def get_current_and_new_master(self):
