@@ -440,6 +440,7 @@ class BaseSourceUploader(object):
             # Update last success upload time only when the success
             if status == "success":
                 upd["%s.last_success" % job_key] = (src_doc["upload"]["jobs"].get(self.name) or {}).get("started_at")
+            self.logger.debug(f'upd: {upd}')
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
     async def load(
