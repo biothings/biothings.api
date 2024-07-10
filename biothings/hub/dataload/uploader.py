@@ -426,7 +426,9 @@ class BaseSourceUploader(object):
             # only register time when it's a final state
             # also, keep previous uploading information
             upd = {}
+            self.logger.info(f'extra: {extra}')
             for k, v in upload_info.items():
+                self.logger.debug(f'upload_info: {k}={v}')
                 upd["%s.%s" % (job_key, k)] = v
             t1 = round(time.time() - self.t0, 0)
             upd["%s.status" % job_key] = status
