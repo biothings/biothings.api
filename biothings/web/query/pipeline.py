@@ -151,7 +151,7 @@ def capturesESExceptions(func):
                 raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
         except Exception as exc:
             # Fallback for any other unexpected exceptions
-            raise QueryPipelineException(500, "ElasticsearchException", str(exc))
+            raise
 
     return _
 
