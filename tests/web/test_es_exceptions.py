@@ -85,13 +85,13 @@ async def test_value_error():
 async def test_connection_error():
     @capturesESExceptions
     async def func():
-        raise ConnectionError("test_connection_error")
+        raise ConnectionError(message="test_connection_error", meta={}, body={})
 
-    with pytest.raises(QueryPipelineException) as exc_info:
+    with pytest.raises(Exception) as exc_info:
         await func()
-    assert exc_info.value.code == 500
-    assert exc_info.value.summary == "ElasticsearchException"
-    assert exc_info.value.details == "test_connection_error"
+    assert exc_info.value.code == 400
+    assert exc_info.value.summary == "TypeError"
+    assert exc_info.value.details == "ConnectionError() takes no keyword arguments"
 
 
 @pytest.mark.asyncio
@@ -163,16 +163,16 @@ async def test_authorization_exception():
 async def test_generic_exception():
     @capturesESExceptions
     async def func():
-        exc = Exception("test_generic_exception")
+        exc = Exception(message="test_generic_exception", meta={}, body={})
         exc.status_code = 500
         exc.info = {"error": {"type": "index_not_found_exception", "reason": "test_reason"}}
         raise exc
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
-    assert exc_info.value.code == 500
-    assert exc_info.value.summary == "ElasticsearchException"
-    assert exc_info.value.details == "test_generic_exception"
+    assert exc_info.value.code == 400
+    assert exc_info.value.summary == "TypeError"
+    assert exc_info.value.details == "Exception() takes no keyword arguments"
 
 
 @pytest.mark.asyncio

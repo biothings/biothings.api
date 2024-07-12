@@ -130,10 +130,6 @@ def capturesESExceptions(func):
         # most of the exception handlings from this point on are based on
         # experience. further documentation in details will be helpful.
         except TransportError as exc:
-            status_code = getattr(exc, 'status_code', None)
-            if status_code in (429, "N/A"):
-                raise QueryPipelineException(503)
-
             if hasattr(exc, 'info') and isinstance(exc.info, dict):
                 error_info = exc.info.get("error", {})
                 error_type = error_info.get("type", "")
@@ -144,14 +140,25 @@ def capturesESExceptions(func):
                     # constraints, like a node overload.
                     if "rejected execution" in reason:
                         raise QueryPipelineException(503)
+
+                    else:  # unexpected, provide additional information for debug
+                        raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
+
                 elif error_type == "index_not_found_exception":
                     raise QueryPipelineException(500, error_type)
 
-                # For unexpected errors, provide additional information
-                raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
-        except Exception as exc:
+                else:  # unexpected
+                    raise
+
+            elif getattr(exc, 'status_code', None) in (429, "N/A"):
+                raise QueryPipelineException(503)
+
+            else:  # unexpected
+                raise
+
+        except Exception:
             # Fallback for any other unexpected exceptions
-            raise QueryPipelineException(500, "ElasticsearchException", str(exc))
+            raise
 
     return _
 
