@@ -136,7 +136,14 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         # also includes versions
         src_meta = {}
         srcs = []
+        logging.debug(f"self: {self}")
+        # logging.debug(self
+        # make self an object to see it in logs:
+        for attr, value in self.__dict__.items():
+            self.logger.info(f"{attr}: {value}")
         if self.sources_accessed:
+            import logging
+            logging.debug("Sources accessed: %s" % self.sources_accessed)
             for src in self.sources_accessed:
                 fullname = get_source_fullname(src)
                 main_name = fullname.split(".")[0]
