@@ -493,6 +493,8 @@ class DataBuilder(object):
 
     def update_src_meta_stats(self):
         for src, count in self.merge_stats.items():
+            if 'archive' in src:
+                src = src.split('_archive')[0]
             mainsrc = get_source_fullname(src).split(".")[0]
             self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
             self.src_meta[mainsrc]["stats"].update({src: count})
