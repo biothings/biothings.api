@@ -136,10 +136,8 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         # also includes versions
         src_meta = {}
         srcs = []
-        import logging
-        logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger(__name__)
-        logger.debug(f"self: {self}")
+        from biothings import config as btconfig
+        logger = btconfig.logger
         # logger.debug(self
         # make self an object to see it in logs:
         for attr, value in vars(self).items():
