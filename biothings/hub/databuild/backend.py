@@ -146,8 +146,8 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             logger.debug("Sources accessed: %s" % self.sources_accessed)
             for src in self.sources_accessed:
                 logger.debug(f"src in hub_db: {src}")
-                if 'archive' in fullname:
-                    main_name = fullname.split('_archive')[0]
+                if 'archive' in src:
+                    src = src.split('_archive')[0]
                 fullname = get_source_fullname(src)
                 import inspect
                 logger.debug(f'inspect get_source_fullname: {inspect.getsource(get_source_fullname)}')
