@@ -476,6 +476,8 @@ class DataBuilder(object):
         self.target_backend.post_merge()
         self.logger.debug(f"store_metadata: {res}")
         self.logger.debug(f"self.source_backend: {self.source_backend}")
+        for attr, value in vars(self.source_backend).items():
+            self.logger.debug(f"{attr}: {value}")
         self.src_meta = self.source_backend.get_src_metadata()
         # now that we have merge stats (count/srcs) + all src involved
         # we can propagate stats
