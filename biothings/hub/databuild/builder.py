@@ -1032,8 +1032,10 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         logging.debug("Merging batch #%d for source '%s' into '%s'", batch_num, col_name, dest_name)
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
+        logging.debug(f'col_name: {col_name}')
+        logging.debug(f'src: {src}')
         col = src[col_name]
-        logging.debug(f'col: {col}')
+        logging.debug(f'col in merge_worker: {col}')
         dest = DocMongoBackend(tgt, tgt[dest_name])
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
         if cleaner:
