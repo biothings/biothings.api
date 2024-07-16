@@ -827,12 +827,17 @@ class DataBuilder(object):
         # (update or insert, but do something)
         defined_root_sources = self.get_root_document_sources()
         upsert = not defined_root_sources or src_name in defined_root_sources
+        src_master = self.source_backend.master
+        meta = src_master.find_one({"_id": src_name}) or {}
+        collection_to_merge = meta.get("default_collection", src_name)
+        self.logger.debug("Using collection name '%s' for source '%s'", collection_to_merge, src_name)
+
         if not upsert:
             self.logger.debug(
                 "Documents from source '%s' will be stored only if a previous document exists with same _id", src_name
             )
         jobs = []
-        total = self.source_backend[src_name].count()
+        total = self.source_backend[collection_to_merge].count()
         btotal = math.ceil(total / batch_size)
         bnum = 1
         cnt = 0
@@ -849,11 +854,11 @@ class DataBuilder(object):
         else:
             self.logger.info(
                 "Fetch _ids from '%s' with batch_size=%d, and create merger job with batch_size=%d",
-                src_name,
+                collection_to_merge,
                 id_batch_size,
                 batch_size,
             )
-            id_provider = id_feeder(self.source_backend[src_name], batch_size=id_batch_size, logger=self.logger)
+            id_provider = id_feeder(self.source_backend[collection_to_merge], batch_size=id_batch_size, logger=self.logger)
 
         if _query and ids is not None:
             self.logger.info("Query/filter involved, but also specific list of _ids. Ignoring query and use _ids")
@@ -864,7 +869,7 @@ class DataBuilder(object):
             id_provider = map(
                 lambda docs: [d["_id"] for d in docs],
                 doc_feeder(
-                    self.source_backend[src_name],
+                    self.source_backend[collection_to_merge],
                     query=_query,
                     step=batch_size,
                     inbatch=True,
@@ -877,13 +882,9 @@ class DataBuilder(object):
             id_provider = (
                 ids
                 and iter_n(ids, int(batch_size / 100))
-                or id_feeder(self.source_backend[src_name], batch_size=id_batch_size, logger=self.logger)
+                or id_feeder(self.source_backend[collection_to_merge], batch_size=id_batch_size, logger=self.logger)
             )
 
-        src_master = self.source_backend.master
-        meta = src_master.find_one({"_id": src_name}) or {}
-        collection_to_merge = meta.get("default_collection", src_name)
-        self.logger.debug("Using collection name '%s' for source '%s'", collection_to_merge, src_name)
         merger = meta.get("merger", "upsert")
         self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
         merger_kwargs = meta.get("merger_kwargs")
