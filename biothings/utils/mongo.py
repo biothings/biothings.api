@@ -337,9 +337,11 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         True for a cursor. See https://www.mongodb.com/docs/manual/reference/command/refreshSessions/ and
         https://www.mongodb.com/docs/manual/reference/method/cursor.noCursorTimeout/#session-idle-timeout-overrides-nocursortimeout
     """
-
+    logger.debug(f"before isinstance(collection, DocMongoBackend): {collection}")
     if isinstance(collection, DocMongoBackend):
+        logger.debug(f"inside isinstance: {collection}")
         collection = collection.target_collection
+    logger.debug(f"after isinstance(collection, DocMongoBackend): {collection}")
 
     # Determine the partition of the collection we iterate over.
     # E.g. when s = 10000 and e = 15000, the collection partition is range(10000, 15000) and the partition size is 10000 - 15000 = 5000.
