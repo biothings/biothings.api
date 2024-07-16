@@ -141,7 +141,7 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         # logging.debug(self
         # make self an object to see it in logs:
         for attr, value in self.__dict__.items():
-            self.logger.info(f"{attr}: {value}")
+            logging.debug(f"{attr}: {value}")
         if self.sources_accessed:
             logging.debug("Sources accessed: %s" % self.sources_accessed)
             for src in self.sources_accessed:
