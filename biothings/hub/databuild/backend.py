@@ -137,19 +137,20 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         src_meta = {}
         srcs = []
         import logging
-        logging.debug(f"self: {self}")
-        # logging.debug(self
+        logging.basicConfig(level=logging.DEBUG)
+        logger = logging.getLogger(__name__)
+        logger.debug(f"self: {self}")
+        # logger.debug(self
         # make self an object to see it in logs:
         for attr, value in vars(self).items():
-            logging.debug(f"{attr}: {value}")
+            logger.debug(f"{attr}: {value}")
         if self.sources_accessed:
-            logging.debug("Sources accessed: %s" % self.sources_accessed)
+            logger.debug("Sources accessed: %s" % self.sources_accessed)
             for src in self.sources_accessed:
-                logging.debug(f"src in hub_db: {src}")
+                logger.debug(f"src in hub_db: {src}")
                 fullname = get_source_fullname(src)
                 import inspect
-                logging.debug(f'inspect get_source_fullname: {inspect.getsource(get_source_fullname)}')
-                logging.debug()
+                logger.debug(f'inspect get_source_fullname: {inspect.getsource(get_source_fullname)}')
                 main_name = fullname.split(".")[0]
                 doc = self.dump.find_one({"_id": main_name})
                 srcs.append(doc["_id"])
