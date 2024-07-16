@@ -886,16 +886,16 @@ class DataBuilder(object):
             )
 
         merger = meta.get("merger", "upsert")
-        self.logger.info("Documents from source '%s' will be merged using %s", src_name, merger)
+        self.logger.info("Documents from source '%s' will be merged using %s", collection_to_merge, merger)
         merger_kwargs = meta.get("merger_kwargs")
         if merger_kwargs:
             self.logger.info(
                 "Documents from source '%s' will be using these extra parameters during the merge %s",
-                src_name,
+                collection_to_merge,
                 merger_kwargs,
             )
 
-        doc_cleaner = self.document_cleaner(src_name)
+        doc_cleaner = self.document_cleaner(collection_to_merge)
         for big_doc_ids in id_provider:
             for doc_ids in iter_n(big_doc_ids, batch_size):
                 # try to put some async here to give control back
@@ -903,14 +903,14 @@ class DataBuilder(object):
                 await asyncio.sleep(0.1)
                 cnt += len(doc_ids)
                 pinfo = self.get_pinfo()
-                pinfo["step"] = src_name
+                pinfo["step"] = collection_to_merge
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
                 self.logger.debug(f'collection_to_merge: {collection_to_merge}')
                 self.logger.info(
                     "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
                     bnum,
                     btotal,
-                    src_name,
+                    collection_to_merge,
                     cnt,
                     total,
                     (cnt / total * 100.0),
@@ -922,7 +922,7 @@ class DataBuilder(object):
                         collection_to_merge,
                         self.target_backend.target_name,
                         doc_ids,
-                        self.get_mapper_for_source(src_name, init=False),
+                        self.get_mapper_for_source(collection_to_merge, init=False),
                         doc_cleaner,
                         upsert,
                         merger,
@@ -935,7 +935,7 @@ class DataBuilder(object):
                     nonlocal got_error
                     if type(f.result()) != int:
                         got_error = Exception(
-                            "Batch #%s failed while merging source '%s' [%s]" % (batch_num, src_name, f.result())
+                            "Batch #%s failed while merging source '%s' [%s]" % (batch_num, collection_to_merge, f.result())
                         )
 
                 job.add_done_callback(partial(batch_merged, batch_num=bnum))
@@ -960,7 +960,7 @@ class DataBuilder(object):
         if got_error:
             raise got_error
         else:
-            return {"%s" % src_name: cnt}
+            return {"%s" % collection_to_merge: cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
