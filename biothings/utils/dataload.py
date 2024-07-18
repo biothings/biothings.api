@@ -2,6 +2,7 @@
 Utility functions for parsing flatfiles,
 mapping to JSON, cleaning.
 """
+
 import csv
 
 # see tabfile_feeder(coerce_unicode) if needed
@@ -942,6 +943,10 @@ def merge_struct(v1, v2, aslistofdict=None, include=None, exclude=None):
     :param include: when given a list of strings, only merge these keys (optional)
     :param exclude: when given a list of strings, exclude these keys from merging (optional)
     """
+
+    # https://docs.python.org/3/library/stdtypes.html
+    supported_primitive_types = (int, float, complex, str, bool, type(None))
+
     if isinstance(v1, list):
         if isinstance(v2, list):
             v1 = v1 + [x for x in v2 if x not in v1]
@@ -984,8 +989,8 @@ def merge_struct(v1, v2, aslistofdict=None, include=None, exclude=None):
             else:
                 v1[k] = v2[k]
 
-    elif isinstance(v1, str) or isinstance(v1, int) or isinstance(v1, float):
-        if isinstance(v2, str) or isinstance(v2, int) or isinstance(v2, float):
+    elif isinstance(v1, supported_primitive_types):
+        if isinstance(v2, supported_primitive_types):
             if v1 != v2:
                 v1 = [v1, v2]
             else:
@@ -993,7 +998,8 @@ def merge_struct(v1, v2, aslistofdict=None, include=None, exclude=None):
         else:
             return merge_struct(v2, v1)
     else:
-        raise TypeError("dunno how to merge type %s" % type(v1))
+        error_message = f"Unknown type {type(v1)} while attempting to merge structures"
+        raise TypeError(error_message)
 
     return v1
 

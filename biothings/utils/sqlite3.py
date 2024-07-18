@@ -190,13 +190,14 @@ class DatabaseClient(IDatabase):
         return Database(self.sqlite_db_folder, name)
 
 
-class Sqlite3BulkWriteResult():
+class Sqlite3BulkWriteResult:
     """
     An object wrapper for bulk API write results
 
     This mimics the structure defined by pymongo defined
     by `pymongo.results.BulkWriteResult`
     """
+
     __slots__ = ("__bulk_api_result",)
 
     def __init__(self, bulk_api_result: Iterable[Any]):
@@ -257,6 +258,7 @@ class Sqlite3BulkWriteResult():
         if self.__bulk_api_result:
             return {upsert["index"]: upsert["_id"] for upsert in self.bulk_api_result["upserted"]}
         return None
+
 
 class Sqlite3BulkWriteError(Exception):
     """
@@ -421,7 +423,7 @@ class Collection(object):
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
-    def bulk_id_search(self, id_collection: list[str]) -> list[tuple]:
+    def id_search(self, id_collection: list[str]) -> list[tuple]:
         """
         Method for bulk searching against the _id column in the database.
         Primarily used for determining the culprit to the uniqueness integrity violation
@@ -432,20 +434,16 @@ class Collection(object):
 
         output:
         """
-        # Format (ID0,ID1, ..., ID(N))
-        id_collection_repr = (
-            "("
-            f"{','.join(id_collection)[0:-1]}"
-            ")"
-        )
-        id_search_query = (
-            "SELECT _id, document FROM %s WHERE _id IN %s",
-            self.name, id_collection_repr
-        )
+        discovered_id = []
         with self.get_conn() as conn:
-            query_result = conn.execute(id_search_query).fetchall()
-            return query_result
-
+            for id_value in id_collection:
+                try:
+                    id_verification_query = f"SELECT _id, document FROM {self.colname} WHERE _id = '{id_value}'"
+                    discovered_id.extend(conn.execute(id_verification_query).fetchall())
+                except Exception as gen_exp:
+                    logger.exception(gen_exp)
+                    logger.warning("Skipping %s for id search", id_value)
+        return discovered_id
 
     def insert_one(self, doc: dict, *args, **kwargs) -> None:
         """
@@ -499,13 +497,12 @@ class Collection(object):
                 discovered_non_unique_id = list(
                     filter(lambda id_frequency: id_frequency[1] > 1, id_counter.most_common(10))
                 )
-                breakpoint()
                 if len(discovered_non_unique_id) > 0:
                     logger.error("Discovered non-unique id values: %s", discovered_non_unique_id)
                 raise integrity_err
 
     def bulk_write(
-        self, docs: Iterable[Union[dict, InsertOne, ReplaceOne, UpdateOne]], *args,**kwargs
+        self, docs: Iterable[Union[dict, InsertOne, ReplaceOne, UpdateOne]], *args, **kwargs
     ) -> Sqlite3BulkWriteResult:
         """
         "Overridden method" to mimic the structure of mongodb as our design followed a lot of
