@@ -36,13 +36,15 @@ from random import randrange
 import logging
 import os
 import re
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
+from biothings.web.query.formatter import ESResultFormatter
+from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 
@@ -66,19 +68,139 @@ class QStringParser:
         patterns: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
         default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
         gpnames: Tuple[str] = None,
+        formatter: ESResultFormatter = None,
     ):
         if default_scopes is None:
             default_scopes = ("_id",)
 
-        assert isinstance(default_scopes, (tuple, list))
-        assert all(isinstance(field, str) for field in default_scopes)
-        self.default = default_scopes
-        self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
-        self.patterns = self._build_regex_pattern_collection(patterns=patterns)
-
         if gpnames is None:
             gpnames = ("term", "scope")
         self.gpname = Group(*gpnames)  # symbolic group name for term substitution
+
+        assert isinstance(default_scopes, (tuple, list))
+        assert all(isinstance(field, str) for field in default_scopes)
+        self.default_scopes = default_scopes
+
+        if formatter is None:
+            formatter = ESResultFormatter()
+        self.metadata_field_formatter = formatter
+
+        self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
+        self.patterns = self._build_regex_pattern_collection(patterns=patterns)
+
+    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> Set[str]:
+        """
+        Extracts the field mappings stored in our "metadata" instance
+
+        BiothingsESMetadata is constructed in
+        biothings.web.services.namespace._configure_elasticsearch
+
+        We want to access the mappings stored in elasticsearch provided via
+        the biothing_mappings class property
+
+        Example entry for metadata.biothing_metadata
+        [doid]
+        defaultdict(
+            <class 'dict'>,
+            {
+                None: {
+                    "_biothing": "disease",
+                    "_indices": [
+                        "doid_20230601_gpycp0cq"
+                    ],
+                    "biothing_type": "disease",
+                    "build_date": "2023-06-01T18:26:14.250729-07:00",
+                    "build_version": "20230601",
+                    "src": {
+                        "doid": {
+                            "author": {
+                                "name": "Eric Zhou",
+                                "url": "https://github.com/ericz1803"
+                            },
+                            "code": {
+                                "branch": "main",
+                                "commit": "37c9bda",
+                                "repo": "https://github.com/ericz1803/doid",
+                                "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
+                            },
+                            "download_date": "2023-06-02T01:24:14.106000",
+                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "stats": {
+                                "doid": 11314
+                            },
+                            "upload_date": "2023-06-02T01:24:20.680000",
+                            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "version": "f360b43144cc9d7b05fd020ad8a0ce6da4419581738252a5b558ef68b00e4ae7"
+                        }
+                    },
+                    "stats": {
+                        "total": 11314
+                    }
+                },
+                "disease": {
+                    "_biothing": "disease",
+                    "_indices": [
+                        "doid_20230601_gpycp0cq"
+                    ],
+                    "biothing_type": "disease",
+                    "build_date": "2023-06-01T18:26:14.250729-07:00",
+                    "build_version": "20230601",
+                    "src": {
+                        "doid": {
+                            "author": {
+                                "name": "Eric Zhou",
+                                "url": "https://github.com/ericz1803"
+                            },
+                            "code": {
+                                "branch": "main",
+                                "commit": "37c9bda",
+                                "repo": "https://github.com/ericz1803/doid",
+                                "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
+                            },
+                            "download_date": "2023-06-02T01:24:14.106000",
+                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "stats": {
+                                "doid": 11314
+                            },
+                            "upload_date": "2023-06-02T01:24:20.680000",
+                            "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+                            "version": "f360b43144cc9d7b05fd020ad8a0ce6da4419581738252a5b558ef68b00e4ae7"
+                        }
+                    },
+                    "stats": {
+                        "total": 11314
+                    }
+                }
+            }
+
+        """
+        metadata_fields = set()
+        if metadata is not None:
+            index_metadata = list(metadata.biothing_metadata.values())
+            if index_metadata is not None:
+                for index_metadata_mapping in index_metadata:
+                    metadata_mapping = {}
+                    biothing_type = index_metadata_mapping.get("_biothing", None)
+                    try:
+                        raw_metadata_mapping = metadata.get_mappings(biothing_type)
+                        metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
+                    except Exception as gen_exc:
+                        logger.exception(gen_exc)
+                        logger.error(
+                            "Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type
+                        )
+                        metadata_mapping = {}
+
+                    for field, elasticsearch_mapping in metadata_mapping.items():
+                        field_index = elasticsearch_mapping.get("index", True)
+                        if field_index:
+                            metadata_fields.add(field)
+
+        if len(metadata_fields) == 0:
+            metadata_fields = None
+        return metadata_fields
 
     def _verify_default_regex_pattern(
         self, default_pattern: Tuple[Union[str, re.Pattern], Union[str, Iterable]]
@@ -97,9 +219,8 @@ class QStringParser:
         if default_pattern != ANNOTATION_DEFAULT_REGEX_PATTERN:
             logger.warning(
                 (
-                    "Default regex pattern changed to [%s]."
+                    f"Default regex pattern changed to [{ANNOTATION_DEFAULT_REGEX_PATTERN}]."
                     "Set by <ANNOTATION_DEFAULT_REGEX_PATTERN> in the configuration",
-                    ANNOTATION_DEFAULT_REGEX_PATTERN,
                 )
             )
 
@@ -116,9 +237,8 @@ class QStringParser:
                 logger.exception(gen_exc)
                 logger.error(
                     (
-                        "Invalid new regex pattern [%s]. Resetting to the default pattern [%s]",
-                        default_pattern,
-                        ANNOTATION_DEFAULT_REGEX_PATTERN,
+                        f"Invalid new regex pattern [{default_pattern}]. "
+                        f"Resetting to the default pattern [{ANNOTATION_DEFAULT_REGEX_PATTERN}]"
                     )
                 )
                 default_regex_pattern = ANNOTATION_DEFAULT_REGEX_PATTERN[0]
@@ -183,17 +303,109 @@ class QStringParser:
             structured_patterns.append(self.default_pattern)
         return structured_patterns
 
-    def parse(self, q):
-        assert isinstance(q, str)
-        for regex, fields in self.patterns:
-            match = re.fullmatch(regex, q)
+    def parse(self, query: str, metadata: BiothingsMetadata) -> Query:
+        """
+        Parsing method for the QStringParser object
+
+        Inputs
+        query: string query to search the elasticsearch instance
+        metadata: BiothingsMetadata object. Typically the BiothingsESMetadata
+        object defined in the namespace configuration
+
+        Flow:
+        1) It will first attempt to load the metadata fields associated
+        the endpoint we're querying against. There is a potential chance
+        that the cache for the BiothingsESMetadata object never refreshed due
+        to the asynchronous nature of the connection so we can't assume that the
+        data will be loaded
+        2) We then iterate over the provided regex patterns from the configuration.
+        It greedily searchs the supplied regex patterns supplied
+        via <self.patterns>  to the first match in the list. The search breaks after the first
+        match so the order of `self.patterns` is important when setting the configuration
+        3) If a match if found we then attempt to extract the two main matching groups
+        from the expression. We have the `gpname` property defined for the parser class
+        that is a namedtuple of the following structure:
+
+        >>> Group = namedtuple("Group", ("term", "scopes"))
+
+        The regex patterns typically define the pattern roughly of the following structure
+        of <term>:<scope>. With the <term> grouping referring to the search term and <scope>
+        group matching the different fields to search against. The matched regex pattern attempts
+        to find these defined groups and pull them out. However it isn't a requirement for either
+        term or scope so we have an order of precedence for storing the `term_query` and
+        `scope_fields`
+
+        <structure>
+        (highest priority[variable name] << higher priority << lower priority << lowest priority)
+
+        <term>
+        (regex term[self.gpname.term] << raw input query[query])
+
+        <scope>
+        (regex_scope[self.gpname.scopes] << regex pattern[pattern_fields] << default scope[self.default_scopes]
+
+        Using this priority structure, we build the Query object. This is also a named tuple with
+        the exact same structure as the previously defined Group
+
+        >>> Query = namedtuple("Query", ("term", "scopes"))
+
+        4) After exiting the loop we perform the metadata check. If we have metadata fields to
+        validate against we check to see if the generated scope fields are a subset of the metadata
+        fields. In the positive case, we do nothing and continue with the same `query_object`
+        instance. In the negative case, we reset the `query_object` to the default
+        5) The final check is see if we have a defined `query_object`. In the case of no regex
+        pattern matching against the query, we simply set the `query_object` to the default instance
+        6) We return the constructed Query instance to the caller
+        """
+        logger.debug("Attempting to parse query string %s", query)
+        query_metadata = self._build_endpoint_metadata_fields(metadata)
+
+        fallback_scope_fields = self.default_scopes
+        scope_fields = []
+        query_object = None
+
+        for regex, pattern_fields in self.patterns:
+            match = re.fullmatch(regex, query)
             if match:
+                logger.debug("Discovered regex-query match: regex [%s] | match [%s]", regex, match)
+
                 named_groups = match.groupdict()
-                q = named_groups.get(self.gpname.term) or q
-                _fields = named_groups.get(self.gpname.scopes)
-                fields = [_fields] if _fields else fields or self.default
-                return Query(q, fields)
-        return Query(q, self.default)
+                match_term = named_groups.get(self.gpname.term, None)
+                matched_fields = named_groups.get(self.gpname.scopes, None)
+
+                term_query = match_term or query
+                scope_fields = matched_fields or pattern_fields or fallback_scope_fields
+
+                if not isinstance(scope_fields, (list, tuple)):
+                    scope_fields = [scope_fields]
+
+                query_object = Query(term_query, scope_fields)
+                logger.info("Regex match generated query object: [%s]", query_object)
+                break
+
+        if query_metadata is not None:
+            logger.debug(
+                (
+                    "Validating the scope fields against the metadata fields. "
+                    f"scope fields [{set(scope_fields)}] "
+                    f"| metadata fields [{query_metadata}]"
+                )
+            )
+
+            if not set(scope_fields) <= query_metadata:
+                query_object = Query(query, fallback_scope_fields)
+                logger.warning(
+                    (
+                        "Provided scope fields aren't a subset of the metadata elasticsearch fields. "
+                        f"Resetting query object instance to default [{query_object}]"
+                    )
+                )
+        if query_object is None:
+            query_object = Query(query, fallback_scope_fields)
+            logger.debug("No regex pattern match found. Setting query object instance to default [%s]", query_object)
+
+        logger.info("Generated query object: [%s]", query_object)
+        return query_object
 
 
 class ESScrollID(UserString):
@@ -203,26 +415,85 @@ class ESScrollID(UserString):
         assert self.data
 
 
-#
-#             ES Query Builder Architecture
-# -------------------------------------------------------
-#                         build
-#                 (support multisearch)
-# --------------------------↓↓↓--------------------------
-#                        _build_one
-#  (dispatch basing on scopes, then apply_extras(..))
-# ------------↓↓↓------------------------↓↓↓-------------
-#    _build_string_query    |  _build_match_query
-#  (__all__, userquery,..)  | (compound match query)
-# ------------↓↓↓------------------------↓↓↓-------------
-#    default_string_query   |   default_match_query
-#  (map to ES query string) | (map to ES match query)
-# -------------------------------------------------------
+class ESUserQuery:
+    def __init__(self, path):
+        self._queries = {}
+        self._filters = {}
+        try:
+            for dirpath, dirnames, filenames in os.walk(path):
+                if dirnames:
+                    self.logger.info("User query folders: %s.", dirnames)
+                    continue
+                for filename in filenames:
+                    with open(os.path.join(dirpath, filename)) as text_file:
+                        if "query" in filename:
+                            ## alternative implementation  # noqa: E266
+                            # self._queries[os.path.basename(dirpath)] = text_file.read()
+                            ##
+                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                        elif "filter" in filename:
+                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+        except Exception:
+            self.logger.exception("Error loading user queries.")
+
+    def has_query(self, named_query):
+        return named_query in self._queries
+
+    def has_filter(self, named_query):
+        return named_query in self._filters
+
+    def get_query(self, named_query, **kwargs):
+        def in_place_sub(dic, kwargs):
+            for key in dic:
+                if isinstance(dic[key], dict):
+                    in_place_sub(dic[key], kwargs)
+                elif isinstance(dic[key], list):
+                    for item in dic[key]:
+                        in_place_sub(item, kwargs)
+                elif isinstance(dic[key], str):
+                    dic[key] = dic[key].format(**kwargs).format(**kwargs)  # {{q}}
+
+        dic = deepcopy(self._queries.get(named_query))
+        in_place_sub(dic, kwargs)
+        key, val = next(iter(dic.items()))
+        return Q(key, **val)
+
+        ## alternative implementation  # noqa: E266
+        # string = self._queries.get(named_query)
+        # string1 = re.sub(r"\}", "}}", string)
+        # string2 = re.sub(r"\{", "{{", string1)
+        # string3 = re.sub(r'\{\{\{\{(?P<var>.*?)\}\}\}\}', r'{\g<var>}', string2)
+        # return string3
+        ##
+
+    def get_filter(self, named_query):
+        dic = self._filters.get(named_query)
+        key, val = next(iter(dic.items()))
+        return Q(key, **val)
+
+    @property
+    def logger(self):
+        return logging.getLogger(__name__)
 
 
 class ESQueryBuilder:
     """
     Build an Elasticsearch query with elasticsearch-dsl.
+
+                ES Query Builder Architecture
+    -------------------------------------------------------
+                            build
+                    (support multisearch)
+    --------------------------↓↓↓--------------------------
+                           _build_one
+     (dispatch basing on scopes, then apply_extras(..))
+    ------------↓↓↓------------------------↓↓↓-------------
+       _build_string_query    |  _build_match_query
+     (__all__, userquery,..)  | (compound match query)
+    ------------↓↓↓------------------------↓↓↓-------------
+       default_string_query   |   default_match_query
+     (map to ES query string) | (map to ES match query)
+    -------------------------------------------------------
     """
 
     # Different from other query pipelines, elasticsearch
@@ -232,18 +503,15 @@ class ESQueryBuilder:
 
     def __init__(
         self,
-        user_query=None,  # like a prepared statement in SQL
-        scopes_regexs=None,
-        scopes_default=("_id",),  # fallback used when scope inference fails
-        pattern_default=ANNOTATION_DEFAULT_REGEX_PATTERN,
-        allow_random_query=True,  # used for data exploration, can be expensive
-        allow_nested_query=False,  # nested aggregation can be expensive
-        metadata=None,  # access to data like total number of documents
+        user_query: Union[str, ESUserQuery] = None,  # like a prepared statement in SQL
+        scopes_regexs: Iterable[Tuple[Union[str, re.Pattern], Union[str, Iterable]]] = None,
+        scopes_default: Tuple[str] = ("_id",),  # fallback used when scope inference fails
+        pattern_default: Tuple[Union[str, re.Pattern], Union[str, Iterable]] = ANNOTATION_DEFAULT_REGEX_PATTERN,
+        allow_random_query: bool = True,  # used for data exploration, can be expensive
+        allow_nested_query: bool = False,  # nested aggregation can be expensive
+        metadata: BiothingsMetadata = None,  # access to data like total number of documents
+        formatter: ESResultFormatter = None,
     ):
-        self.parser = QStringParser(
-            default_scopes=scopes_default, patterns=scopes_regexs, default_pattern=pattern_default, gpnames=None
-        )
-
         # all settings below affect only query string queries
         if user_query is None:
             user_query = ESUserQuery("userquery")
@@ -254,6 +522,17 @@ class ESQueryBuilder:
 
         # currently metadata is only used for __any__ query
         self.metadata = metadata
+
+        if formatter is None:
+            formatter = ESResultFormatter()
+
+        self.parser = QStringParser(
+            default_scopes=scopes_default,
+            patterns=scopes_regexs,
+            default_pattern=pattern_default,
+            gpnames=("term", "scope"),
+            formatter=formatter,
+        )
 
     def build(self, q=None, **options):
         """
@@ -298,8 +577,9 @@ class ESQueryBuilder:
             else:  # str, int ...
                 search = self._build_one(q, options)
 
-        except IllegalOperation as exc:
-            raise ValueError(str(exc))  # ex. sorting by -_score
+        except IllegalOperation as illegal_operation_error:
+            logger.exception(illegal_operation_error)
+            raise ValueError from illegal_operation_error
 
         if options.get("rawquery"):
             raise RawQueryInterrupt(search.to_dict())
@@ -313,7 +593,7 @@ class ESQueryBuilder:
         if options.scopes:
             search = self._build_match_query(q, options.scopes, options)
         elif not isinstance(q, (list, tuple)) and options.autoscope:
-            q, scopes = self.parser.parse(str(q))
+            q, scopes = self.parser.parse(str(q), self.metadata)
             search = self._build_match_query(q, scopes, options)
         else:  # no scope provided and cannot derive from q
             search = self._build_string_query(q, options)
@@ -345,7 +625,7 @@ class ESQueryBuilder:
             else:  # pseudo random by overriding 'from' value
                 search = search.query()
                 try:  # limit 'from' parameter to a valid result window
-                    metadata = self.metadata[options.biothing_type]
+                    metadata = self.metadata.biothings_metadata[options.biothing_type]
                     total = metadata["stats"]["total"]
                     fmax = total - options.get("size", 0)
                     from_ = randrange(fmax if fmax < 10000 else 10000)
@@ -493,7 +773,7 @@ class MongoQueryBuilder:
     def build(self, q, **options):
         fields = options.get("scopes", ())
         if not fields and q:
-            q, fields = self.parser.parse(q)
+            q, fields = self.parser.parse(q, metadata=None)
 
         assert isinstance(fields, (list, tuple))
         assert q is None and not fields or q and isinstance(q, str)
@@ -534,7 +814,7 @@ class SQLQueryBuilder:
 
         scopes = options.get("scopes")
         if not scopes:
-            q, scopes = self.parser.parse(q)
+            q, scopes = self.parser.parse(q, metadata=None)
 
         if scopes and q:
             assert isinstance(q, str)
@@ -552,64 +832,3 @@ class SQLQueryBuilder:
             raise RawQueryInterrupt(statements)
 
         return " ".join(statements)
-
-
-class ESUserQuery:
-    def __init__(self, path):
-        self._queries = {}
-        self._filters = {}
-        try:
-            for dirpath, dirnames, filenames in os.walk(path):
-                if dirnames:
-                    self.logger.info("User query folders: %s.", dirnames)
-                    continue
-                for filename in filenames:
-                    with open(os.path.join(dirpath, filename)) as text_file:
-                        if "query" in filename:
-                            ## alternative implementation  # noqa: E266
-                            # self._queries[os.path.basename(dirpath)] = text_file.read()
-                            ##
-                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
-                        elif "filter" in filename:
-                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
-        except Exception:
-            self.logger.exception("Error loading user queries.")
-
-    def has_query(self, named_query):
-        return named_query in self._queries
-
-    def has_filter(self, named_query):
-        return named_query in self._filters
-
-    def get_query(self, named_query, **kwargs):
-        def in_place_sub(dic, kwargs):
-            for key in dic:
-                if isinstance(dic[key], dict):
-                    in_place_sub(dic[key], kwargs)
-                elif isinstance(dic[key], list):
-                    for item in dic[key]:
-                        in_place_sub(item, kwargs)
-                elif isinstance(dic[key], str):
-                    dic[key] = dic[key].format(**kwargs).format(**kwargs)  # {{q}}
-
-        dic = deepcopy(self._queries.get(named_query))
-        in_place_sub(dic, kwargs)
-        key, val = next(iter(dic.items()))
-        return Q(key, **val)
-
-        ## alternative implementation  # noqa: E266
-        # string = self._queries.get(named_query)
-        # string1 = re.sub(r"\}", "}}", string)
-        # string2 = re.sub(r"\{", "{{", string1)
-        # string3 = re.sub(r'\{\{\{\{(?P<var>.*?)\}\}\}\}', r'{\g<var>}', string2)
-        # return string3
-        ##
-
-    def get_filter(self, named_query):
-        dic = self._filters.get(named_query)
-        key, val = next(iter(dic.items()))
-        return Q(key, **val)
-
-    @property
-    def logger(self):
-        return logging.getLogger(__name__)

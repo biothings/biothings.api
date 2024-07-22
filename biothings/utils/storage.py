@@ -2,6 +2,9 @@ import copy
 import logging
 import time
 import types
+from typing import Iterable
+
+from sqlite3 import IntegrityError
 
 from pymongo import InsertOne, ReplaceOne, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError
@@ -204,10 +207,8 @@ class IgnoreDuplicatedStorage(BasicStorage):
                 break
             batch_num += 1
             try:
-                bulk = []
-                for d in doc_li:
-                    bulk.append(InsertOne(d))
-                res = self.temp_collection.bulk_write(bulk, ordered=False)
+                bulk_set = [InsertOne(document) for document in self.unique_documents(doc_li)]
+                res = self.temp_collection.bulk_write(bulk_set, ordered=False)
                 total += res.inserted_count
                 self.logger.info("Inserted %s records [%s]" % (res.inserted_count, timesofar(tinner)))
             except BulkWriteError as e:
@@ -215,17 +216,35 @@ class IgnoreDuplicatedStorage(BasicStorage):
                     "Inserted %s records, ignoring %d [%s]"
                     % (e.details["nInserted"], len(e.details["writeErrors"]), timesofar(tinner))
                 )
-            except Exception:
-                raise
+            except IntegrityError as integrity_error:
+                self.logger.warning(f"Skipping duplicate record. Details: {integrity_error}")
+            except Exception as gen_exp:
+                self.logger.exception(gen_exp)
+                raise gen_exp
             tinner = time.time()
         self.logger.info("Done[%s]" % timesofar(t0))
 
         return total
 
+    def unique_documents(self, documents: Iterable[dict]) -> list[dict]:
+        """
+        Generates the set of id values from the provided batch of documents
+        due to our documents being unhashable
+
+        We then filter the documents to only the unique ID values which should eliminate
+        any uniqueness constraint issues when uploading to the database
+
+        Returns a list of filtered documents
+        """
+        unique_documents = list({document["_id"]: document for document in documents}.values())
+        if len(unique_documents) < len(documents):
+            self.logger.debug("Filtered %s documents before upload", len(documents) - len(unique_documents))
+        return unique_documents
+
 
 class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     """
-    You should use IgnoreDuplicatedStorag, which works using batch
+    You should use IgnoreDuplicatedStorage, which works using batch
     and is thus way faster...
     """
 

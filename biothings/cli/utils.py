@@ -4,9 +4,11 @@ import math
 import os
 import pathlib
 import shutil
+import sys
 import time
 from pprint import pformat
 from types import SimpleNamespace
+from typing import Union
 
 import tornado.template
 import typer
@@ -16,17 +18,19 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-import biothings.utils.inspect as btinspect
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.utils.sqlite3 import get_src_db
 from biothings.utils.workers import upload_worker
+import biothings.utils.inspect as btinspect
 
 
 def get_logger(name=None):
-    """Get a logger with the given name. If name is None, return the root logger."""
+    """
+    Get a logger with the given name.
+    If name is None, return the root logger.
+    """
     # basicConfig has been setup in cli.py, so we don't need to do it again here
     # If everything works as expected, we can delete this block.
     # logging.basicConfig(
@@ -35,8 +39,11 @@ def get_logger(name=None):
     #     datefmt="[%X]",
     #     handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
     # )
-    logger = logging.getLogger(name=None)
+    logger = logging.getLogger(name)
     return logger
+
+
+logger = get_logger(name=__name__)
 
 
 def run_sync_or_async_job(func, *args, **kwargs):
@@ -54,14 +61,29 @@ def run_sync_or_async_job(func, *args, **kwargs):
         return func(*args, **kwargs)
 
 
-def load_plugin_managers(plugin_path, plugin_name=None, data_folder=None):
-    """Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)"""
-    from biothings import config as btconfig
+def load_plugin_managers(
+    plugin_path: Union[str, pathlib.Path], plugin_name: str = None, data_folder: Union[str, pathlib.Path] = None
+):
+    """
+    Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)
+    """
+    from biothings import config
     from biothings.hub.dataload.dumper import DumperManager
     from biothings.hub.dataload.uploader import UploaderManager
     from biothings.hub.dataplugin.assistant import LocalAssistant
     from biothings.hub.dataplugin.manager import DataPluginManager
     from biothings.utils.hub_db import get_data_plugin
+
+    _plugin_path = pathlib.Path(plugin_path).resolve()
+    config.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
+    sys.path.append(str(_plugin_path.parent))
+
+    if plugin_name is None:
+        plugin_name = _plugin_path.name
+
+    if data_folder is None:
+        data_folder = pathlib.Path(f"./{plugin_name}")
+    data_folder = pathlib.Path(data_folder).resolve().absolute()
 
     plugin_manager = DataPluginManager(job_manager=None)
     dmanager = DumperManager(job_manager=None)
@@ -71,12 +93,9 @@ def load_plugin_managers(plugin_path, plugin_name=None, data_folder=None):
     LocalAssistant.dumper_manager = dmanager
     LocalAssistant.uploader_manager = upload_manager
 
-    _plugin_path = pathlib.Path(plugin_path).resolve()
-    btconfig.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
-    plugin_name = plugin_name or _plugin_path.name
-    data_folder = data_folder or f"./{plugin_name}"
     assistant = LocalAssistant(f"local://{plugin_name}")
-    # print(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), btconfig.DATA_PLUGIN_FOLDER)
+    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), config.DATA_PLUGIN_FOLDER)
+
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
     dp.insert_one(
@@ -88,7 +107,7 @@ def load_plugin_managers(plugin_path, plugin_name=None, data_folder=None):
                 "active": True,
             },
             "download": {
-                "data_folder": data_folder,  # tmp path to your data plugin
+                "data_folder": str(data_folder),  # tmp path to your data plugin
             },
         }
     )
@@ -115,39 +134,39 @@ def get_plugin_name(plugin_name=None, with_working_dir=True):
     return plugin_name, working_dir if with_working_dir else plugin_name
 
 
-def is_valid_data_plugin_dir(data_plugin_dir):
-    """Return True/False if the given folder is a valid data plugin folder (contains either manifest.yaml or manifest.json)"""
-    return (
-        pathlib.Path(data_plugin_dir, "manifest.yaml").exists()
-        or pathlib.Path(data_plugin_dir, "manifest.json").exists()
-    )
-
-
-def load_plugin(plugin_name=None, dumper=True, uploader=True, logger=None):
-    """Return a plugin object for the given plugin_name.
+def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = True, logger: logging.Logger = None):
+    """
+    Return a plugin object for the given plugin_name.
     If dumper is True, include a dumper instance in the plugin object.
     If uploader is True, include uploader_classes in the plugin object.
 
     If <plugin_name> is not valid, raise the proper error and exit.
     """
     logger = logger or get_logger(__name__)
+
     _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
-    data_plugin_dir = pathlib.Path(working_dir) if plugin_name is None else pathlib.Path(working_dir, _plugin_name)
-    if not is_valid_data_plugin_dir(data_plugin_dir):
+    if plugin_name is None:
+        # current working_dir has the data plugin
+        data_plugin_dir = pathlib.Path(working_dir)
+        data_folder = pathlib.Path(".").resolve().absolute()
+        plugin_args = {"plugin_path": working_dir, "plugin_name": None, "data_folder": data_folder}
+    else:
+        data_plugin_dir = pathlib.Path(working_dir, _plugin_name)
+        plugin_args = {"plugin_path": _plugin_name, "plugin_name": None, "data_folder": None}
+    try:
+        dumper_manager, uploader_manager = load_plugin_managers(**plugin_args)
+    except Exception as gen_exc:
+        logger.exception(gen_exc)
         if plugin_name is None:
-            err = (
+            plugin_loading_error_message = (
                 "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
             )
         else:
-            err = f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
-        logger.error(err, extra={"markup": True})
+            plugin_loading_error_message = (
+                f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
+            )
+        logger.error(plugin_loading_error_message, extra={"markup": True})
         raise typer.Exit(1)
-
-    if plugin_name is None:
-        # current working_dir has the data plugin
-        dumper_manager, uploader_manager = load_plugin_managers(working_dir, data_folder=".")
-    else:
-        dumper_manager, uploader_manager = load_plugin_managers(_plugin_name)
 
     current_plugin = SimpleNamespace(
         plugin_name=_plugin_name,
@@ -288,7 +307,12 @@ def do_dump_and_upload(plugin_name, logger=None):
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
-    """Perform inspect for the given source. It's used in do_inspect function below"""
+    """
+    Perform inspect for the given source. It's used in do_inspect function below
+    """
+    from biothings import config
+    from biothings.utils import hub_db
+
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
     if "jsonschema" in mode:
@@ -305,14 +329,14 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     t0 = time.time()
     data_provider = ("src", source_name)
 
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     pre_mapping = "mapping" in mode
     src_cols = src_db[source_name]
     inspected = {}
     converters, mode = btinspect.get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
-    cur = src_cols.findv2()
+    cur = src_cols.find()
     res = btinspect.inspect_docs(
         cur,
         mode=mode,
@@ -500,18 +524,24 @@ def do_inspect(
             process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
 
 
-def get_manifest_content(working_dir):
-    """return the manifest content of the data plugin in the working directory"""
-    manifest_file_yml = os.path.join(working_dir, "manifest.yaml")
-    manifest_file_json = os.path.join(working_dir, "manifest.json")
-    if os.path.isfile(manifest_file_yml):
-        manifest = yaml.safe_load(open(manifest_file_yml))
-        return manifest
-    elif os.path.isfile(manifest_file_json):
-        manifest = load_json(open(manifest_file_json).read())
-        return manifest
+def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
+    """
+    return the manifest content of the data plugin in the working directory
+    """
+    working_dir = pathlib.Path(working_dir).resolve().absolute()
+    manifest_file_yml = working_dir.joinpath("manifest.yaml")
+    manifest_file_json = working_dir.joinpath("manifest.json")
+
+    manifest = {}
+    if manifest_file_yml.exists():
+        with open(manifest_file_yml, "r", encoding="utf-8") as yaml_handle:
+            manifest = yaml.safe_load(yaml_handle)
+    elif manifest_file_json.exists():
+        with open(manifest_file_json, "r", encoding="utf-8") as json_handle:
+            manifest = load_json(json_handle)
     else:
-        raise FileNotFoundError("manifest file does not exits in current working directory")
+        logger.info("No manifest file discovered")
+    return manifest
 
 
 ########################
@@ -520,14 +550,21 @@ def get_manifest_content(working_dir):
 
 
 def get_uploaders(working_dir: pathlib.Path):
-    """A helper function to get the uploaders from the manifest file in the working directory, used in show_uploaded_sources function below"""
+    """
+    A helper function to get the uploaders from the manifest file in the working directory
+    used in show_uploaded_sources function below
+    """
     data_plugin_name = working_dir.name
+
     manifest = get_manifest_content(working_dir)
-    upload_section = manifest.get("uploader")
-    table_space = [data_plugin_name]
-    if not upload_section:
-        upload_sections = manifest.get("uploaders")
+    upload_section = manifest.get("uploader", None)
+    upload_sections = manifest.get("uploaders", None)
+
+    if upload_section is None and upload_sections is None:
+        table_space = [data_plugin_name]
+    elif upload_section is None and upload_sections is not None:
         table_space = [item["name"] for item in upload_sections]
+
     return table_space
 
 
@@ -573,10 +610,15 @@ def get_uploaded_collections(src_db, uploaders):
 
 
 def show_uploaded_sources(working_dir, plugin_name):
-    """A helper function to show the uploaded sources from given plugin."""
+    """
+    A helper function to show the uploaded sources from given plugin.
+    """
+    from biothings import config
+    from biothings.utils import hub_db
+
     console = Console()
     uploaders = get_uploaders(working_dir)
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
     if not uploaded_sources:
         console.print(
@@ -670,10 +712,14 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
 
 
 def serve(host, port, plugin_name, table_space):
-    """Serve a simple API server to query the data plugin source."""
+    """
+    Serve a simple API server to query the data plugin source.
+    """
     from .web_app import main
+    from biothings import config
+    from biothings.utils import hub_db
 
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
     asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
@@ -724,8 +770,11 @@ def do_clean_dumped_files(data_folder, plugin_name):
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
     """Remove all uploaded sources by a data plugin in the working directory."""
+    from biothings import config
+    from biothings.utils import hub_db
+
     uploaders = get_uploaders(working_dir)
-    src_db = get_src_db()
+    src_db = hub_db.get_src_db()
     uploaded_sources = []
     for item in src_db.collection_names():
         if item in uploaders:
