@@ -1,3 +1,29 @@
+
+v0.12.5 (2024/07/21)
+    Highlights:
+        - Added options for Docker dumper (named) volumes
+        - Allow running web API tests directly in the hub settings
+        - Added advanced plugin support for Biothings CLI
+        - Support Python 3.12 and dropped Python 3.7 support
+    biothings.web improvements:
+        - Moved jmespath after other transformations (#323 #324 #325)
+        - Added metadata validation in our query builder
+        - Fixed the async HTTP client issues when sending GA4 notifications
+    biothings.hub improvements:
+        - Allow setting a custom config file to run test API in the hub
+        - Replaced deprecated imp module with importlib in plugin assistant
+        - Updated pymongo version to prevent log leaking
+    biothings.cli improvements:
+        - Added MongoDB backend support in Biothings CLI
+    biothings.utils improvements:
+        - Added proper handling for duplicate ID's in IgnoreDuplicateStorage
+        - Added more performant bulk document write for sqlite3 backend
+    Misc improvements:
+        - Upgraded Tornado to 6.4.1
+        - Corrected keyword argument for compability with elasticsearch 8.x client
+        - Fixed error handling for compability with elasticsearch 8.x client
+
+
 v0.12.4 (2024/04/02)
     Highlights:
         - New and updated tutorials and documentation
