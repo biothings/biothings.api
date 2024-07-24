@@ -83,7 +83,6 @@ class BaseSourceUploader(object):
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
         self.selected_collection = selected_collection
-        self.logger.debug(f"selected_collection in __init__: {self.selected_collection}")
 
     @property
     def fullname(self):
@@ -261,11 +260,8 @@ class BaseSourceUploader(object):
         """after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
-        self.logger.debug("Switching collection")
-        self.logger.debug(f"selected_collection in switch_collection: {self.selected_collection}")
         if self.selected_collection:
             self.temp_collection_name = self.selected_collection
-            self.logger.debug(f"temp_collection_name in switch_collection: {self.temp_collection_name}")
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -290,7 +286,6 @@ class BaseSourceUploader(object):
         """
         # get self.selected_collection from kwargs
         selected_collection = kwargs.get("selected_collection")
-        self.logger.debug(f"selected_collection in update_data: {selected_collection}")
         if selected_collection:
             import re
             date_pattern = re.compile(r'_(\d{8})_')
@@ -358,7 +353,6 @@ class BaseSourceUploader(object):
         if info:
             _doc.setdefault("src_meta", {}).update({"code": info})
         if self.selected_collection:
-            self.logger.debug(f"selected_collection in generate_doc_src_master: {self.selected_collection}")
             _doc["default_collection"] = self.selected_collection
         return _doc
 
@@ -425,9 +419,7 @@ class BaseSourceUploader(object):
             # only register time when it's a final state
             # also, keep previous uploading information
             upd = {}
-            self.logger.info(f'extra: {extra}')
             for k, v in upload_info.items():
-                self.logger.debug(f'upload_info: {k}={v}')
                 upd["%s.%s" % (job_key, k)] = v
             t1 = round(time.time() - self.t0, 0)
             upd["%s.status" % job_key] = status
@@ -439,7 +431,6 @@ class BaseSourceUploader(object):
             # Update last success upload time only when the success
             if status == "success":
                 upd["%s.last_success" % job_key] = (src_doc["upload"]["jobs"].get(self.name) or {}).get("started_at")
-            self.logger.debug(f'upd: {upd}')
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
     async def load(

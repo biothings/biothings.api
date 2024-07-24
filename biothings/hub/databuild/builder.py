@@ -474,10 +474,6 @@ class DataBuilder(object):
 
     def store_metadata(self, res, sources, job_manager):
         self.target_backend.post_merge()
-        self.logger.debug(f"store_metadata: {res}")
-        self.logger.debug(f"self.source_backend: {self.source_backend}")
-        for attr, value in vars(self.source_backend).items():
-            self.logger.debug(f"{attr}: {value}")
         self.src_meta = self.source_backend.get_src_metadata()
         # now that we have merge stats (count/srcs) + all src involved
         # we can propagate stats
@@ -1039,10 +1035,7 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         logging.debug("Merging batch #%d for source '%s' into '%s'", batch_num, col_name, dest_name)
         src = mongo.get_src_db()
         tgt = mongo.get_target_db()
-        logging.debug(f'col_name: {col_name}')
-        logging.debug(f'src: {src}')
         col = src[col_name]
-        logging.debug(f'col in merge_worker: {col}')
         dest = DocMongoBackend(tgt, tgt[dest_name])
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
         if cleaner:

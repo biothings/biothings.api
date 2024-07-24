@@ -136,21 +136,11 @@ class SourceDocMongoBackend(SourceDocBackendBase):
         # also includes versions
         src_meta = {}
         srcs = []
-        from biothings import config as btconfig
-        logger = btconfig.logger
-        # logger.debug(self
-        # make self an object to see it in logs:
-        for attr, value in vars(self).items():
-            logger.debug(f"{attr}: {value}")
         if self.sources_accessed:
-            logger.debug("Sources accessed: %s" % self.sources_accessed)
             for src in self.sources_accessed:
-                logger.debug(f"src in hub_db: {src}")
                 if 'archive' in src:
                     src = src.split('_archive')[0]
                 fullname = get_source_fullname(src)
-                import inspect
-                logger.debug(f'inspect get_source_fullname: {inspect.getsource(get_source_fullname)}')
                 main_name = fullname.split(".")[0]
                 doc = self.dump.find_one({"_id": main_name})
                 srcs.append(doc["_id"])
