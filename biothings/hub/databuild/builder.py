@@ -907,7 +907,6 @@ class DataBuilder(object):
                 pinfo = self.get_pinfo()
                 pinfo["step"] = collection_to_merge
                 pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
-                self.logger.debug(f'collection_to_merge: {collection_to_merge}')
                 self.logger.info(
                     "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
                     bnum,
