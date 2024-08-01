@@ -483,7 +483,7 @@ class Indexer:
             # when one batch failed, and job scheduling has not completed,
             # stop scheduling and cancel all on-going jobs, to fail quickly.
 
-            if error:
+            if isinstance(error, Exception):
                 for job in jobs:
                     if not job.done():
                         job.cancel()

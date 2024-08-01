@@ -37,12 +37,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
     @property
     def target_backend(self):
         if not self._target_backend:
-            if type(self.__class__.TARGET_BACKEND) == partial:
+            if isinstance(self.__class__.TARGET_BACKEND, partial):
                 self._target_backend = self.__class__.TARGET_BACKEND()
             else:
                 self._target_backend = self.__class__.TARGET_BACKEND
             assert (
-                type(self._target_backend) == DocESBackend
+                isinstance(self._target_backend, DocESBackend)
             ), "Only ElasticSearch backend is supported (got %s)" % type(self._target_backend)
         return self._target_backend
 

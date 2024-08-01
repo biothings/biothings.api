@@ -301,7 +301,7 @@ class BaseSourceUploader(object):
 
         def uploaded(f):
             nonlocal got_error
-            if type(f.result()) != int:
+            if not isinstance(f.result(), int):
                 got_error = Exception(f"upload error (should have a int as returned value got {repr(f.result())}")
 
         job.add_done_callback(uploaded)
@@ -634,7 +634,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                 # (see comment above, before loop)
                 nonlocal got_error
                 try:
-                    if type(f.result()) != int:
+                    if not isinstance(f.result(), int):
                         got_error = Exception(
                             "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
                         )
@@ -825,7 +825,7 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        if type(insts) != list:
+        if not isinstance(insts, list):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
