@@ -62,7 +62,7 @@ class BaseSourceUploader(object):
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
-    def __init__(self, db_conn_info, collection_name=None, log_folder=None, selected_collection=None, *args, **kwargs):
+    def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
         # non-pickable attributes (see __getattr__, prepare() and unprepare())
@@ -82,7 +82,6 @@ class BaseSourceUploader(object):
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
-        self.selected_collection = selected_collection
 
     @property
     def fullname(self):
@@ -126,8 +125,7 @@ class BaseSourceUploader(object):
             return
         self._state["conn"] = get_src_conn()
         self._state["db"] = self._state["conn"][self.__class__.__database__]
-        collection_to_use = self.selected_collection if self.selected_collection else self.collection_name
-        self._state["collection"] = self._state["db"][collection_to_use]
+        self._state["collection"] = self._state["db"][self.collection_name]
         self._state["src_dump"] = self.prepare_src_dump()
         self._state["src_master"] = get_src_master()
         self._state["logger"], self.logfile = self.setup_log()
@@ -260,8 +258,6 @@ class BaseSourceUploader(object):
         """after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
-        if self.selected_collection:
-            self.temp_collection_name = self.selected_collection
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -902,7 +898,7 @@ class UploaderManager(BaseSourceManager):
 
     def list_previous_successful_uploads(self, src_name):
         """List all previous successful dumps for selection"""
-        successful_dumps = sorted([collection for collection in self.conn[config.DATA_SRC_DATABASE].list_collection_names() if collection.startswith(f'{src_name}') or collection == src_name])
+        successful_dumps = sorted([collection for collection in self.conn[config.DATA_SRC_DATABASE].list_collection_names() if collection.startswith(f'{src_name}_archive') or collection == src_name])
         return successful_dumps
 
 
