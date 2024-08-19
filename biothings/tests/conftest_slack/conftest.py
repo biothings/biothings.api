@@ -124,85 +124,105 @@ def store_build_version_s3(build_version_hub):
     else:
         print(" └─ No valid build version found, not storing to S3.")
 
-# Hook to conditionally skip pytest tests
+# # Hook to conditionally skip pytest tests
+# @pytest.hookimpl(tryfirst=True)
+# def pytest_sessionstart(session):
+#     build_version_s3 = fetch_build_version_s3()
+#     build_version_hub = fetch_build_version_hub()
+#     github_event_name = os.getenv("GITHUB_EVENT_NAME", "")
+
+#     # Check if pytest should run
+#     if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
+#         pytest.exit("No need to run the tests. The S3 and Hub build versions are the same.")
+
+#     # Store new build version if tests are going to run
+#     store_build_version_s3(build_version_hub)
+
 @pytest.hookimpl(tryfirst=True)
-def pytest_sessionstart(session):
+def pytest_collection_modifyitems(config, items):
+    """Skip all tests if certain conditions are met."""
     build_version_s3 = fetch_build_version_s3()
     build_version_hub = fetch_build_version_hub()
     github_event_name = os.getenv("GITHUB_EVENT_NAME", "")
+    os.environ["SEND_SLACK_NOTIFICATION?"] = "True"
 
-    # Check if pytest should run
     if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
-        pytest.exit("No need to run the tests. The S3 and Hub build versions are the same.")
+        os.environ["SEND_SLACK_NOTIFICATION?"] = "False"
+        print("No need to run the tests. The S3 and Hub build versions are the same.")
+        # Skip all tests
+        for item in items:
+            item.add_marker(pytest.mark.skip(reason="Skipped due to matching build versions"))
 
     # Store new build version if tests are going to run
     store_build_version_s3(build_version_hub)
+
 
 # Hook to run pytest and send Slack notification
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int, config):
     """Customize pytest terminal summary and send to Slack."""
     
-    SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-    SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
-    SLACK_USERNAME = os.getenv("APPLICATION_NAME")
+    if os.getenv("SEND_SLACK_NOTIFICATION") == "True":
+        SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+        SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
+        SLACK_USERNAME = os.getenv("APPLICATION_NAME")
 
-    # Collect test summary information
-    total_tests = terminalreporter.stats.get('passed', []) + \
-                  terminalreporter.stats.get('failed', []) + \
-                  terminalreporter.stats.get('error', []) + \
-                  terminalreporter.stats.get('skipped', [])
+        # Collect test summary information
+        total_tests = terminalreporter.stats.get('passed', []) + \
+                    terminalreporter.stats.get('failed', []) + \
+                    terminalreporter.stats.get('error', []) + \
+                    terminalreporter.stats.get('skipped', [])
 
-    passed_tests = len(terminalreporter.stats.get('passed', []))
-    failed_tests = len(terminalreporter.stats.get('failed', []))
-    error_tests = len(terminalreporter.stats.get('error', []))
-    skipped_tests = len(terminalreporter.stats.get('skipped', []))
+        passed_tests = len(terminalreporter.stats.get('passed', []))
+        failed_tests = len(terminalreporter.stats.get('failed', []))
+        error_tests = len(terminalreporter.stats.get('error', []))
+        skipped_tests = len(terminalreporter.stats.get('skipped', []))
 
-    # Prepare error details
-    error_details = ""
-    for test in terminalreporter.stats.get('failed', []) + terminalreporter.stats.get('error', []):
-        error_details += f"• *Test*: `{test.nodeid}`\n"
-        error_details += f"  _Details:_\n```\n{''.join(test.longreprtext.splitlines(keepends=True)[-10:])}```\n\n"
-    error_details = "*Error Details:*\n" + error_details if error_details else ""
+        # Prepare error details
+        error_details = ""
+        for test in terminalreporter.stats.get('failed', []) + terminalreporter.stats.get('error', []):
+            error_details += f"• *Test*: `{test.nodeid}`\n"
+            error_details += f"  _Details:_\n```\n{''.join(test.longreprtext.splitlines(keepends=True)[-10:])}```\n\n"
+        error_details = "*Error Details:*\n" + error_details if error_details else ""
 
-    # Determine status emoji and color
-    status_emoji = ":thumbsup:" if failed_tests == 0 and error_tests == 0 else ":thumbsdown:"
-    bug_emoji = "" if failed_tests == 0 and error_tests == 0 else ":bug-happy:"
-    status_color = "good" if failed_tests == 0 and error_tests == 0 else "danger"
+        # Determine status emoji and color
+        status_emoji = ":thumbsup:" if failed_tests == 0 and error_tests == 0 else ":thumbsdown:"
+        bug_emoji = "" if failed_tests == 0 and error_tests == 0 else ":bug-happy:"
+        status_color = "good" if failed_tests == 0 and error_tests == 0 else "danger"
 
-    # Check if there's anything to report
-    if len(total_tests) == 0:
-        terminalreporter.write("No tests were run, skipping Slack notification.\n")
-        return
+        # Check if there's anything to report
+        if len(total_tests) == 0:
+            terminalreporter.write("No tests were run, skipping Slack notification.\n")
+            return
 
-    # Create the payload for Slack
-    slack_data = {
-        "channel": SLACK_CHANNEL,
-        "username": SLACK_USERNAME,
-        "icon_emoji": f"{status_emoji}",
-        "attachments": [
-            {
-                "color": status_color,
-                "title": f"{bug_emoji} Pytest Summary",
-                "text": f"Total Tests: *{len(total_tests)}*\n"
-                        f"Passed: *{passed_tests}* :white_check_mark:\n"
-                        f"Failed: *{failed_tests}* :x:\n"
-                        f"Errors: *{error_tests}* :exclamation:\n"
-                        f"Skipped: *{skipped_tests}* :fast_forward:\n\n"
-                        f"{error_details}"
-            }
-        ]
-    }
+        # Create the payload for Slack
+        slack_data = {
+            "channel": SLACK_CHANNEL,
+            "username": SLACK_USERNAME,
+            "icon_emoji": f"{status_emoji}",
+            "attachments": [
+                {
+                    "color": status_color,
+                    "title": f"{bug_emoji} Pytest Summary",
+                    "text": f"Total Tests: *{len(total_tests)}*\n"
+                            f"Passed: *{passed_tests}* :white_check_mark:\n"
+                            f"Failed: *{failed_tests}* :x:\n"
+                            f"Errors: *{error_tests}* :exclamation:\n"
+                            f"Skipped: *{skipped_tests}* :fast_forward:\n\n"
+                            f"{error_details}"
+                }
+            ]
+        }
 
-    # Send to Slack
-    if SLACK_WEBHOOK_URL:
-        response = requests.post(SLACK_WEBHOOK_URL, json=slack_data)
-        if response.status_code == 200:
-            terminalreporter.write("Slack notification sent successfully.\n")
+        # Send to Slack
+        if SLACK_WEBHOOK_URL:
+            response = requests.post(SLACK_WEBHOOK_URL, json=slack_data)
+            if response.status_code == 200:
+                terminalreporter.write("Slack notification sent successfully.\n")
+            else:
+                terminalreporter.write(f"Failed to send message to Slack: {response.status_code}, {response.text}\n")
         else:
-            terminalreporter.write(f"Failed to send message to Slack: {response.status_code}, {response.text}\n")
-    else:
-        terminalreporter.write("Slack webhook URL not provided, skipping notification.\n")
+            terminalreporter.write("Slack webhook URL not provided, skipping notification.\n")
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_addoption(parser):
