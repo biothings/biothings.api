@@ -177,12 +177,6 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
         bug_emoji = "" if failed_tests == 0 and error_tests == 0 else ":bug-happy:"
         status_color = "good" if failed_tests == 0 and error_tests == 0 else "danger"
 
-        # Check if there's anything to report
-        if len(total_tests) == 0:
-            # terminalreporter.write("No tests were run, skipping Slack notification.\n")
-            print("No tests were run, skipping Slack notification.")
-            return
-
         # Create the payload for Slack
         slack_data = {
             "channel": SLACK_CHANNEL,
@@ -206,18 +200,11 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
         print("Sending Slack notification...")
         if SLACK_WEBHOOK_URL:
             response = requests.post(SLACK_WEBHOOK_URL, json=slack_data)
-            print(slack_data)
-            print(response)
-            print(response.status_code)
-            print(response.text)
             if response.status_code == 200:
-                # terminalreporter.write("Slack notification sent successfully.\n")
                 print(" └─ Slack notification sent successfully.")
             else:
-                # terminalreporter.write(f"Failed to send message to Slack: {response.status_code}, {response.text}\n")
                 print(f" └─ Failed to send message to Slack: {response.status_code}, {response.text}")
         else:
-            # terminalreporter.write("Slack webhook URL not provided, skipping notification.\n")
             print(" └─ Slack webhook URL not provided, skipping notification.")
 
 @pytest.hookimpl(tryfirst=True)
