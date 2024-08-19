@@ -124,20 +124,6 @@ def store_build_version_s3(build_version_hub):
     else:
         print(" └─ No valid build version found, not storing to S3.")
 
-# # Hook to conditionally skip pytest tests
-# @pytest.hookimpl(tryfirst=True)
-# def pytest_sessionstart(session):
-#     build_version_s3 = fetch_build_version_s3()
-#     build_version_hub = fetch_build_version_hub()
-#     github_event_name = os.getenv("GITHUB_EVENT_NAME", "")
-
-#     # Check if pytest should run
-#     if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
-#         pytest.exit("No need to run the tests. The S3 and Hub build versions are the same.")
-
-#     # Store new build version if tests are going to run
-#     store_build_version_s3(build_version_hub)
-
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
     """Skip all tests if certain conditions are met."""
@@ -156,13 +142,12 @@ def pytest_collection_modifyitems(config, items):
     # Store new build version if tests are going to run
     store_build_version_s3(build_version_hub)
 
-
 # Hook to run pytest and send Slack notification
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int, config):
     """Customize pytest terminal summary and send to Slack."""
     
-    if os.getenv("SEND_SLACK_NOTIFICATION") == "True":
+    if os.getenv("SEND_SLACK_NOTIFICATION?") == "True":
         SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
         SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
         SLACK_USERNAME = os.getenv("APPLICATION_NAME")
