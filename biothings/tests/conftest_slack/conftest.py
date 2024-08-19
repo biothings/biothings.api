@@ -2,6 +2,7 @@ import pytest
 import boto3
 import os
 import requests
+import sys
 from _pytest.terminal import TerminalReporter
 
 
@@ -133,8 +134,9 @@ def pytest_sessionstart(session):
 
     # Check if pytest should run
     if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
-        pytest.skip("No need to run the tests. The S3 and Hub build versions are the same.")
-    
+        print("No need to run the tests. The S3 and Hub build versions are the same.")
+        sys.exit(0)
+
     # Store new build version if tests are going to run
     store_build_version_s3(build_version_hub)
 
