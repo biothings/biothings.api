@@ -28,6 +28,7 @@ Key Features:
    - `GITHUB_EVENT_NAME`: GitHub event name, used to trigger tests manually (workflow_dispatch) or based on specific conditions.
    - `PYTEST_PATH`: Path to the Pytest test files.
    - `APPLICATION_METADATA_PATH`: Path to the application metadata, typically a URL.
+   - `APPLICATION_METADATA_FIELD`: Notation to the build version field. Ex.: "metadata.build_version"
 
 2. **Slack Notification Integration:**
    The script integrates Slack notifications into the Pytest workflow. After tests are executed, a summary of the 
@@ -60,7 +61,8 @@ pytest -s -vv \
        --application-name=<value> \
        --github-event-name=<value> \
        --pytest-path=<value> \
-       --application-metadata-path=<value>
+       --application-metadata-path=<value> \
+       --application-metadata-field=<value>
 """
 
 # Function to fetch build version from S3
@@ -78,6 +80,18 @@ def fetch_build_version_s3():
         print(f" └─ No {build_version_file} found in S3, assuming first run. Error: {str(e)}")
         return ""
 
+def get_nested_build_version_field_value(d, notation):
+    keys = notation.split('.')
+    value = d
+    try:
+        for key in keys:
+            value = value[key]
+        return value
+    except KeyError:
+        raise KeyError(f" └─ Key '{key}' not found in dictionary")
+    except TypeError:
+        raise TypeError(" └─ Invalid path or non-dictionary value encountered")
+
 # Function to fetch build version from the Hub
 def fetch_build_version_hub():
     print("Fetching build version from the Hub...")
@@ -85,7 +99,8 @@ def fetch_build_version_hub():
         metadata_path = os.getenv('APPLICATION_METADATA_PATH')
         response = requests.get(metadata_path)
         response.raise_for_status()
-        build_version_hub = response.json().get('build_version', "")
+        build_version_field = os.getenv('APPLICATION_METADATA_FIELD')
+        build_version_hub = get_nested_build_version_field_value(response.json(), build_version_field)
         print(f" └─ BUILD_VERSION_HUB={build_version_hub}")
         return build_version_hub
     except requests.exceptions.RequestException as e:
@@ -128,9 +143,9 @@ def pytest_sessionstart(session):
 def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int, config):
     """Customize pytest terminal summary and send to Slack."""
     
-    SLACK_WEBHOOK_URL = config.getoption('--slack-webhook-url')
-    SLACK_CHANNEL = config.getoption('--slack-channel')
-    SLACK_USERNAME = config.getoption('--application-name')
+    SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+    SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
+    SLACK_USERNAME = os.getenv("APPLICATION_NAME")
 
     # Collect test summary information
     total_tests = terminalreporter.stats.get('passed', []) + \
@@ -204,17 +219,32 @@ def pytest_addoption(parser):
     parser.addoption("--github-event-name", action="store", help="GitHub Event Name")
     parser.addoption("--pytest-path", action="store", help="Pytest Path")
     parser.addoption("--application-metadata-path", action="store", help="Application Metadata Path")
+    parser.addoption("--application-metadata-field", action="store", help="Application Metadata Field")
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
-    """Configure environment variables from command-line options."""
-    os.environ["AWS_ACCESS_KEY_ID"] = config.getoption('--aws-access-key-id')
-    os.environ["AWS_SECRET_ACCESS_KEY"] = config.getoption('--aws-secret-access-key')
-    os.environ["AWS_DEFAULT_REGION"] = config.getoption('--aws-region')
-    os.environ["AWS_S3_BUCKET"] = config.getoption('--aws-s3-bucket')
-    os.environ["SLACK_WEBHOOK_URL"] = config.getoption('--slack-webhook-url')
-    os.environ["SLACK_CHANNEL"] = config.getoption('--slack-channel')
-    os.environ["APPLICATION_NAME"] = config.getoption('--application-name')
-    os.environ["GITHUB_EVENT_NAME"] = config.getoption('--github-event-name')
-    os.environ["PYTEST_PATH"] = config.getoption('--pytest-path')
-    os.environ["APPLICATION_METADATA_PATH"] = config.getoption('--application-metadata-path')
+    """Configure environment variables from command-line options, fallback to existing environment variables."""
+
+    def set_env_var(env_var_name, option_name):
+        option_value = config.getoption(option_name)
+        if option_value is not None:
+            os.environ[env_var_name] = option_value
+
+    # Set environment variables using command-line options or fallback to existing environment variables
+    set_env_var("AWS_ACCESS_KEY_ID", '--aws-access-key-id')
+    set_env_var("AWS_SECRET_ACCESS_KEY", '--aws-secret-access-key')
+    set_env_var("AWS_DEFAULT_REGION", '--aws-region')
+    set_env_var("AWS_S3_BUCKET", '--aws-s3-bucket')
+    set_env_var("SLACK_WEBHOOK_URL", '--slack-webhook-url')
+    set_env_var("SLACK_CHANNEL", '--slack-channel')
+    set_env_var("APPLICATION_NAME", '--application-name')
+    set_env_var("GITHUB_EVENT_NAME", '--github-event-name')
+    set_env_var("PYTEST_PATH", '--pytest-path')
+    set_env_var("APPLICATION_METADATA_PATH", '--application-metadata-path')
+    set_env_var("APPLICATION_METADATA_FIELD", '--application-metadata-field')
+
+    # Print out the values for debugging
+    for var_name in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION", "AWS_S3_BUCKET", 
+                     "SLACK_WEBHOOK_URL", "SLACK_CHANNEL", "APPLICATION_NAME", "GITHUB_EVENT_NAME", 
+                     "PYTEST_PATH", "APPLICATION_METADATA_PATH", "APPLICATION_METADATA_FIELD"]:
+        print(f"{var_name}: {os.environ.get(var_name)}")
