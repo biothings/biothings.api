@@ -17,7 +17,7 @@ Key Features:
 1. **Environment Variable Configuration:**
    The script configures essential environment variables for AWS S3, Slack, and the application under test.
    The following variables can be passed as command-line options:
-   
+
    - `AWS_ACCESS_KEY_ID`: AWS Access Key ID.
    - `AWS_SECRET_ACCESS_KEY`: AWS Secret Access Key.
    - `AWS_DEFAULT_REGION`: AWS Default Region.
@@ -114,7 +114,7 @@ def store_build_version_s3(build_version_hub):
     if build_version_hub:
         with open(build_version_file, 'w') as file:
             file.write(build_version_hub)
-        
+
         s3 = boto3.client('s3')
         try:
             s3.upload_file(build_version_file, os.getenv('AWS_S3_BUCKET'), build_version_file)
@@ -134,19 +134,20 @@ def pytest_collection_modifyitems(config, items):
 
     if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
         os.environ["SEND_SLACK_NOTIFICATION?"] = "False"
-        print("No need to run the tests. The S3 and Hub build versions are the same.")
+        print("No need to run the tests.")
+        print(" └─ The S3 and Hub build versions are the same.")
         # Skip all tests
         for item in items:
             item.add_marker(pytest.mark.skip(reason="Skipped due to matching build versions"))
-
-    # Store new build version if tests are going to run
-    store_build_version_s3(build_version_hub)
+    else:
+        # Store new build version if tests are going to run
+        store_build_version_s3(build_version_hub)
 
 # Hook to run pytest and send Slack notification
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int, config):
     """Customize pytest terminal summary and send to Slack."""
-    
+
     if os.getenv("SEND_SLACK_NOTIFICATION?") == "True":
         SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
         SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
@@ -177,7 +178,8 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
 
         # Check if there's anything to report
         if len(total_tests) == 0:
-            terminalreporter.write("No tests were run, skipping Slack notification.\n")
+            # terminalreporter.write("No tests were run, skipping Slack notification.\n")
+            print("No tests were run, skipping Slack notification.")
             return
 
         # Create the payload for Slack
@@ -200,14 +202,22 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
         }
 
         # Send to Slack
+        print("Sending Slack notification...")
         if SLACK_WEBHOOK_URL:
             response = requests.post(SLACK_WEBHOOK_URL, json=slack_data)
+            print(slack_data)
+            print(response)
+            print(response.status_code)
+            print(response.text)
             if response.status_code == 200:
-                terminalreporter.write("Slack notification sent successfully.\n")
+                # terminalreporter.write("Slack notification sent successfully.\n")
+                print(" └─ Slack notification sent successfully.")
             else:
-                terminalreporter.write(f"Failed to send message to Slack: {response.status_code}, {response.text}\n")
+                # terminalreporter.write(f"Failed to send message to Slack: {response.status_code}, {response.text}\n")
+                print(f" └─ Failed to send message to Slack: {response.status_code}, {response.text}")
         else:
-            terminalreporter.write("Slack webhook URL not provided, skipping notification.\n")
+            # terminalreporter.write("Slack webhook URL not provided, skipping notification.\n")
+            print(" └─ Slack webhook URL not provided, skipping notification.")
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_addoption(parser):
