@@ -67,6 +67,7 @@ pytest -s -vv \
 
 # Function to fetch build version from S3
 def fetch_build_version_s3():
+    print("")
     print("Fetching build version from the S3...")
     build_version_file = f"{os.getenv('APPLICATION_NAME')}.txt"
     s3 = boto3.client('s3')
@@ -222,10 +223,9 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
 @pytest.hookimpl(tryfirst=True)
 def pytest_addoption(parser):
     """Add command-line options for Slack integration and environment variables."""
-    parser.addoption("--slack-webhook-url", action="store", default=None, help="Slack webhook URL to send messages")
-    parser.addoption("--slack-channel", action="store", default="#general", help="Slack channel to send messages")
-    parser.addoption("--slack-username", action="store", default="Biothings (Default)", help="Slack username to send messages as")
-
+    parser.addoption("--slack-webhook-url", action="store", help="Slack webhook URL to send messages")
+    parser.addoption("--slack-channel", action="store", help="Slack channel to send messages")
+    parser.addoption("--slack-username", action="store", help="Slack username to send messages as")
     parser.addoption("--aws-access-key-id", action="store", help="AWS Access Key ID")
     parser.addoption("--aws-secret-access-key", action="store", help="AWS Secret Access Key")
     parser.addoption("--aws-region", action="store", help="AWS Region")
