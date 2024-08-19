@@ -130,7 +130,7 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
     
     SLACK_WEBHOOK_URL = config.getoption('--slack-webhook-url')
     SLACK_CHANNEL = config.getoption('--slack-channel')
-    SLACK_USERNAME = config.getoption('--slack-username')
+    SLACK_USERNAME = config.getoption('--application-name')
 
     # Collect test summary information
     total_tests = terminalreporter.stats.get('passed', []) + \
