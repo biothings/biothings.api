@@ -242,9 +242,3 @@ def pytest_configure(config):
     set_env_var("PYTEST_PATH", '--pytest-path')
     set_env_var("APPLICATION_METADATA_PATH", '--application-metadata-path')
     set_env_var("APPLICATION_METADATA_FIELD", '--application-metadata-field')
-
-    # Print out the values for debugging
-    for var_name in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION", "AWS_S3_BUCKET", 
-                     "SLACK_WEBHOOK_URL", "SLACK_CHANNEL", "APPLICATION_NAME", "GITHUB_EVENT_NAME", 
-                     "PYTEST_PATH", "APPLICATION_METADATA_PATH", "APPLICATION_METADATA_FIELD"]:
-        print(f"{var_name}: {os.environ.get(var_name)}")
