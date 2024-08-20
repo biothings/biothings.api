@@ -1,11 +1,5 @@
-import dataclasses
 import math
 from typing import Union
-
-
-# @dataclasses.dataclass(frozen=True)
-# def ScheduleState
-#     ":
 
 
 class Schedule:
@@ -57,7 +51,7 @@ class Schedule:
         return suffix_repr
 
     def completed(self):
-        if self.finished != self.total:
+        if not self.finished == self.total:
             raise ValueError(self.finished, self.total)
         self._state = "done"
 
@@ -68,6 +62,7 @@ class Schedule:
         if self.scheduled >= self.total:
             self._state = "pending, waiting for completion,"
             raise StopIteration()
+
         self.scheduled += self._batch_size
         self.scheduled = min(self.scheduled, self.total)
         self._state = self.suffix("running, on batch") + ","
