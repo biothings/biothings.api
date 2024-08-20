@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name='biothings-pytest-plugin',
+    name='biothings_pytest_plugin',
     version='0.1',
     py_modules=['biothings_pytest_plugin'],
     entry_points={
