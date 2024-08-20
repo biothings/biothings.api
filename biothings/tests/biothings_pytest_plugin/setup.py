@@ -1,8 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='biothings_pytest_plugin',
     version='0.1',
+    packages=find_packages(where='biothings_pytest_plugin'),
+    package_dir={'': 'biothings_pytest_plugin'},
     py_modules=['biothings_pytest_plugin'],
     entry_points={
         'pytest11': [
