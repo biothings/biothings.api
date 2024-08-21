@@ -16,7 +16,7 @@ setup(
     py_modules=['biothings_pytest_plugin'],
     entry_points={
         'pytest11': [
-            'biothings_pytest_plugin = biothings_pytest_plugin.plugin',
+            'biothings_pytest_plugin = plugin',
         ],
     },
     description='A pytest plugin for biothings',
