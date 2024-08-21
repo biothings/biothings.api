@@ -1,4 +1,12 @@
+import os
+
 from setuptools import setup, find_packages
+
+
+if os.path.exists('README.md'):
+    long_description = open('README.md').read()
+else:
+    long_description = "Project description not available."
 
 setup(
     name='biothings_pytest_plugin',
@@ -12,7 +20,7 @@ setup(
         ],
     },
     description='A pytest plugin for biothings',
-    long_description=open('README.md').read(),
+    long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/biothings/biothings.api/tree/master/biothings/tests/biothings_pytest_plugin',
     author='The BioThings Team',
