@@ -12,7 +12,6 @@ setup(
     name='biothings_pytest_plugin',
     version='0.1',
     packages=find_packages(where='biothings_pytest_plugin'),
-    package_dir={'': 'biothings_pytest_plugin'},
     entry_points={
         'pytest11': [
             'biothings-pytest-plugin = plugin',
