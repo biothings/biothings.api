@@ -13,7 +13,7 @@ setup(
     version='0.1',
     entry_points={
         'pytest11': [
-            'biothings-pytest-plugin = plugin',
+            'biothings-pytest-plugin = biothings_pytest_plugin',
         ],
     },
     description='A pytest plugin for biothings',
