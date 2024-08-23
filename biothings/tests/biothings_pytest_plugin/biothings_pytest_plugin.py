@@ -38,12 +38,14 @@ def fetch_build_version_hub():
     print("Fetching build version from the Hub...")
     try:
         metadata_path = os.getenv('APPLICATION_METADATA_URL')
-        response = requests.get(metadata_path)
+        response = requests.get(metadata_path, timeout=30)
         response.raise_for_status()
         build_version_field = os.getenv('APPLICATION_METADATA_FIELD')
         build_version_hub = get_nested_build_version_field_value(response.json(), build_version_field)
         print(f" └─ BUILD_VERSION_HUB={build_version_hub}")
         return build_version_hub
+    except requests.exceptions.Timeout:
+        print(f" └─ Request timed out: {metadata_path}")
     except requests.exceptions.RequestException as e:
         print(f" └─ Failed to fetch build version from HUB. Error: {str(e)}")
         return ""
@@ -140,11 +142,16 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
         # Send to Slack
         print("Sending Slack notification...")
         if SLACK_WEBHOOK_URL:
-            response = requests.post(SLACK_WEBHOOK_URL, json=slack_data)
-            if response.status_code == 200:
-                print(" └─ Slack notification sent successfully.")
-            else:
-                print(f" └─ Failed to send message to Slack: {response.status_code}, {response.text}")
+            try:
+                response = requests.post(SLACK_WEBHOOK_URL, json=slack_data, timeout=10)
+                if response.status_code == 200:
+                    print(" └─ Slack notification sent successfully.")
+                else:
+                    print(f" └─ Failed to send message to Slack: {response.status_code}, {response.text}")
+            except requests.exceptions.Timeout:
+                print(" └─ Request timed out to Slack WebHook URL.")
+            except requests.exceptions.RequestException as e:
+                print(f" └─ Failed to send Slack notification. Error: {str(e)}")
         else:
             print(" └─ Slack webhook URL not provided, skipping notification.")
 
