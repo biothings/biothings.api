@@ -19,8 +19,8 @@ Key Features:
    - `--aws-secret-access-key`: AWS Secret Access Key (Environment Variable: `AWS_SECRET_ACCESS_KEY`).
      Example: `--aws-secret-access-key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`
 
-   - `--aws-region`: AWS Region (Environment Variable: `AWS_DEFAULT_REGION`).
-     Example: `--aws-region="us-east-1"`
+   - `--aws-default-region`: AWS Region (Environment Variable: `AWS_DEFAULT_REGION`).
+     Example: `--aws-default-region="us-east-1"`
 
    - `--aws-s3-bucket`: AWS S3 Bucket for storing application metadata (Environment Variable: `AWS_S3_BUCKET`).
      Example: `--aws-s3-bucket="my-app-bucket"`
@@ -62,7 +62,7 @@ To run Pytest with the custom environment variables and see the print statements
 ```bash
 pytest --aws-access-key-id="AKIAIOSFODNN7EXAMPLE" \
        --aws-secret-access-key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" \
-       --aws-region="us-east-1" \
+       --aws-default-region="us-east-1" \
        --aws-s3-bucket="my-app-bucket" \
        --slack-webhook-url="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX" \
        --slack-channel="#ci-cd-notifications" \
@@ -227,7 +227,7 @@ def pytest_addoption(parser):
     """Add command-line options for Slack integration and environment variables."""
     parser.addoption("--aws-access-key-id", action="store", help="AWS Access Key ID")
     parser.addoption("--aws-secret-access-key", action="store", help="AWS Secret Access Key")
-    parser.addoption("--aws-region", action="store", help="AWS Region (e.g., us-east-1")
+    parser.addoption("--aws-default-region", action="store", help="AWS Region (e.g., us-east-1")
     parser.addoption("--aws-s3-bucket", action="store", help="AWS S3 Bucket (e.g., test-bucket")
     parser.addoption("--slack-webhook-url", action="store", help="Slack webhook URL to send messages (e.g., https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX")
     parser.addoption("--slack-channel", action="store", help="Slack channel to send messages (e.g., #general")
@@ -256,7 +256,7 @@ def pytest_configure(config):
     required_env_vars = [
         ("AWS_ACCESS_KEY_ID", '--aws-access-key-id'),
         ("AWS_SECRET_ACCESS_KEY", '--aws-secret-access-key'),
-        ("AWS_DEFAULT_REGION", '--aws-region'),
+        ("AWS_DEFAULT_REGION", '--aws-default-region'),
         ("AWS_S3_BUCKET", '--aws-s3-bucket'),
         ("SLACK_WEBHOOK_URL", '--slack-webhook-url'),
         ("SLACK_CHANNEL", '--slack-channel'),
@@ -291,7 +291,7 @@ def pytest_configure(config):
             "\n\nExample usage:\n\n"
             "    pytest --aws-access-key-id=\"AKIAIOSFODNN7EXAMPLE\" \\\n"
             "           --aws-secret-access-key=\"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\" \\\n"
-            "           --aws-region=\"us-east-1\" \\\n"
+            "           --aws-default-region=\"us-east-1\" \\\n"
             "           --aws-s3-bucket=\"my-app-bucket\" \\\n"
             "           --slack-webhook-url=\"https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX\" \\\n"
             "           --slack-channel=\"#ci-cd-notifications\" \\\n"
