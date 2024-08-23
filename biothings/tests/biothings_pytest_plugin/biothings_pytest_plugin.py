@@ -12,34 +12,34 @@ Key Features:
    Command-line options and corresponding environment variables:
 
    - `--aws-access-key-id`: AWS Access Key ID (Environment Variable: `AWS_ACCESS_KEY_ID`).
-     Example: `--aws-access-key-id=AKIAIOSFODNN7EXAMPLE`
+     Example: `--aws-access-key-id="AKIAIOSFODNN7EXAMPLE"`
 
    - `--aws-secret-access-key`: AWS Secret Access Key (Environment Variable: `AWS_SECRET_ACCESS_KEY`).
-     Example: `--aws-secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`
+     Example: `--aws-secret-access-key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`
 
    - `--aws-region`: AWS Region (Environment Variable: `AWS_DEFAULT_REGION`).
-     Example: `--aws-region=us-east-1`
+     Example: `--aws-region="us-east-1"`
 
    - `--aws-s3-bucket`: AWS S3 Bucket for storing application metadata (Environment Variable: `AWS_S3_BUCKET`).
-     Example: `--aws-s3-bucket=my-app-bucket`
+     Example: `--aws-s3-bucket="my-app-bucket"`
 
    - `--slack-webhook-url`: Slack webhook URL for sending notifications (Environment Variable: `SLACK_WEBHOOK_URL`).
-     Example: `--slack-webhook-url=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`
+     Example: `--slack-webhook-url="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"`
 
    - `--slack-channel`: Slack channel where notifications will be posted (Environment Variable: `SLACK_CHANNEL`).
-     Example: `--slack-channel=#ci-cd-notifications`
+     Example: `--slack-channel="#ci-cd-notifications"`
 
    - `--application-name`: The name of the application under test. Just to show in the Slack message. (Environment Variable: `APPLICATION_NAME`).
-     Example: `--application-name=my-app`
-
-   - `--github-event-name`: GitHub event name to trigger tests manually or based on specific conditions. Use the value `workflow_dispatch` to force a run with no build version check. (Environment Variable: `GITHUB_EVENT_NAME`).
-     Example: `--github-event-name=workflow_dispatch`
+     Example: `--application-name="my-app"`
 
    - `--application-metadata-url`: URL to the application metadata, typically used to retrieve the build version (Environment Variable: `APPLICATION_METADATA_URL`).
-     Example: `--application-metadata-url=https://my-app.com/metadata`
+     Example: `--application-metadata-url="https://my-app.com/metadata"`
 
    - `--application-metadata-field`: JSON field in the metadata to retrieve the build version (Environment Variable: `APPLICATION_METADATA_FIELD`).
-     Example: `--application-metadata-field=metadata.build_version`
+     Example: `--application-metadata-field="metadata.build_version"`
+
+   - `--bypass-version-check`: (Optional) Set to `False` to skip the build version check. Default is `True`. (Environment Variable: `BYPASS_VERSION_PASS`).
+     Example: `--bypass-version-check="False"`
 
 2. **Slack Notification Integration:**
    The script integrates Slack notifications into the Pytest workflow. After the tests are executed, a summary of the results, including passed, failed, and skipped tests, is sent to the specified Slack channel. Detailed error messages are included for any failed tests to facilitate quick resolution.
@@ -65,9 +65,9 @@ pytest --aws-access-key-id="AKIAIOSFODNN7EXAMPLE" \
        --slack-webhook-url="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX" \
        --slack-channel="#ci-cd-notifications" \
        --application-name="my-app" \
-       --github-event-name="workflow_dispatch" \
        --application-metadata-url="https://my-app.com/metadata" \
-       --application-metadata-field="metadata.build_version"
+       --application-metadata-field="metadata.build_version" \
+       --bypass-version-check="True"
 """
 
 import pytest
@@ -143,18 +143,19 @@ def pytest_collection_modifyitems(config, items):
     build_version_s3 = fetch_build_version_s3()
     build_version_hub = fetch_build_version_hub()
     github_event_name = os.getenv("GITHUB_EVENT_NAME", "")
+    bypass_version_check = os.getenv("BYPASS_VERSION_PASS", "False")
     os.environ["SEND_SLACK_NOTIFICATION?"] = "True"
 
-    if build_version_hub == build_version_s3 and github_event_name != "workflow_dispatch":
+    if build_version_hub != build_version_s3 or github_event_name == "workflow_dispatch" or bypass_version_check == "True":
+        # Store new build version if tests are going to run
+        store_build_version_s3(build_version_hub)
+    else:
         os.environ["SEND_SLACK_NOTIFICATION?"] = "False"
         print("No need to run the tests.")
         print(" └─ The S3 and Hub build versions are the same.")
         # Skip all tests
         for item in items:
             item.add_marker(pytest.mark.skip(reason="Skipped due to matching build versions"))
-    else:
-        # Store new build version if tests are going to run
-        store_build_version_s3(build_version_hub)
 
 # Hook to run pytest and send Slack notification
 @pytest.hookimpl(tryfirst=True)
@@ -229,7 +230,7 @@ def pytest_addoption(parser):
     parser.addoption("--slack-webhook-url", action="store", help="Slack webhook URL to send messages (e.g., https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX")
     parser.addoption("--slack-channel", action="store", help="Slack channel to send messages (e.g., #general")
     parser.addoption("--application-name", action="store", help="Application Name (e.g. mygene.info")
-    parser.addoption("--github-event-name", action="store", help="GitHub Event Name. To trigger a manual run, use 'workflow_dispatch'; otherwise, leave it empty.")
+    parser.addoption("--bypass-version-check", action="store", help="(Optional) Use the value `False` to force a run with no build version check. Default is `True`.")
     parser.addoption("--application-metadata-url", action="store", help="Application Metadata URL (e.g., https://mygene.info/metadata")
     parser.addoption("--application-metadata-field", action="store", help="Application Metadata Field (e.g., build_version")
 
@@ -264,7 +265,7 @@ def pytest_configure(config):
 
     # List of optional environment variables
     optional_env_vars = [
-        ("GITHUB_EVENT_NAME", '--github-event-name')
+        ("BYPASS_VERSION_PASS", '--bypass-version-check')
     ]
 
     missing_vars = []
@@ -293,9 +294,9 @@ def pytest_configure(config):
             "           --slack-webhook-url=\"https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX\" \\\n"
             "           --slack-channel=\"#ci-cd-notifications\" \\\n"
             "           --application-name=\"my-app\" \\\n"
-            "           --github-event-name=\"workflow_dispatch\" \\\n"
             "           --application-metadata-url=\"https://my-app.com/metadata\" \\\n"
-            "           --application-metadata-field=\"metadata.build_version\""
+            "           --application-metadata-field=\"metadata.build_version\" \\\n"
+            "           --bypass-version-check=\"True\""
         )
 
         pytest.exit(f"Error: The following environment variables are not set: {missing_vars_str}{example_usage}", returncode=1)
