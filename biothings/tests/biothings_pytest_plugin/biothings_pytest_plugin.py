@@ -3,6 +3,8 @@ README: Pytest Plugin for GitHub Action and Slack Integration
 
 This script enhances the Pytest testing framework with custom hooks and environment configurations tailored for Slack notifications and AWS S3 interactions. It's designed for seamless integration within a CI/CD pipeline, especially when using GitHub Actions.
 
+When running in a GitHub Action, the plugin checks the environment variable GITHUB_EVENT_NAME (present in the GitHub Action environment) to bypass the build version check if the value is workflow_dispatch.
+
 Key Features:
 --------------
 
