@@ -1,6 +1,6 @@
 # Biothings Pytest Plugin
 
-The `biothings_pytest_plugin` is a custom Pytest plugin designed to integrate Slack notifications and AWS S3 interactions into your testing workflow. It allows you to automate the process of sending test results to a Slack channel and managing application metadata stored in AWS S3.
+The `slack_test_notification` is a custom Pytest plugin designed to integrate Slack notifications and AWS S3 interactions into your testing workflow. It allows you to automate the process of sending test results to a Slack channel and managing application metadata stored in AWS S3.
 
 When running in a GitHub Action, the plugin checks the environment variable `GITHUB_EVENT_NAME` (present in the GitHub Action environment) to bypass the build version check if the value is `workflow_dispatch`.
 
