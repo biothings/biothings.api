@@ -1,6 +1,7 @@
-import pytest
-import boto3
 import os
+
+import boto3
+import pytest
 import requests
 from _pytest.terminal import TerminalReporter
 
@@ -10,10 +11,10 @@ def fetch_build_version_s3():
     print("")
     print("Fetching build version from the S3...")
     build_version_file = f"{os.getenv('APPLICATION_NAME')}.txt"
-    s3 = boto3.client('s3')
+    s3 = boto3.client("s3")
     try:
-        s3.download_file(os.getenv('AWS_S3_BUCKET'), build_version_file, build_version_file)
-        with open(build_version_file, 'r') as file:
+        s3.download_file(os.getenv("AWS_S3_BUCKET"), build_version_file, build_version_file)
+        with open(build_version_file, "r") as file:
             build_version_s3 = file.read().strip()
         print(f" └─ BUILD_VERSION_S3={build_version_s3}")
         return build_version_s3
@@ -21,8 +22,9 @@ def fetch_build_version_s3():
         print(f" └─ No {build_version_file} found in S3, assuming first run. Error: {str(e)}")
         return ""
 
+
 def get_nested_build_version_field_value(d, notation):
-    keys = notation.split('.')
+    keys = notation.split(".")
     value = d
     try:
         for key in keys:
@@ -33,14 +35,15 @@ def get_nested_build_version_field_value(d, notation):
     except TypeError:
         raise TypeError(" └─ Invalid path or non-dictionary value encountered")
 
+
 # Function to fetch build version from the Hub
 def fetch_build_version_hub():
     print("Fetching build version from the Hub...")
     try:
-        metadata_path = os.getenv('APPLICATION_METADATA_URL')
+        metadata_path = os.getenv("APPLICATION_METADATA_URL")
         response = requests.get(metadata_path, timeout=30)
         response.raise_for_status()
-        build_version_field = os.getenv('APPLICATION_METADATA_FIELD')
+        build_version_field = os.getenv("APPLICATION_METADATA_FIELD")
         build_version_hub = get_nested_build_version_field_value(response.json(), build_version_field)
         print(f" └─ BUILD_VERSION_HUB={build_version_hub}")
         return build_version_hub
@@ -50,22 +53,24 @@ def fetch_build_version_hub():
         print(f" └─ Failed to fetch build version from HUB. Error: {str(e)}")
         return ""
 
+
 # Function to store new build version to S3
 def store_build_version_s3(build_version_hub):
     print("Storing build version to the S3...")
     build_version_file = f"{os.getenv('APPLICATION_NAME')}.txt"
     if build_version_hub:
-        with open(build_version_file, 'w') as file:
+        with open(build_version_file, "w") as file:
             file.write(build_version_hub)
 
-        s3 = boto3.client('s3')
+        s3 = boto3.client("s3")
         try:
-            s3.upload_file(build_version_file, os.getenv('AWS_S3_BUCKET'), build_version_file)
+            s3.upload_file(build_version_file, os.getenv("AWS_S3_BUCKET"), build_version_file)
             print(" └─ Stored new build version to S3.")
         except Exception as e:
             print(f" └─ Failed to store build version in S3. Error: {str(e)}")
     else:
         print(" └─ No valid build version found, not storing to S3.")
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
@@ -76,7 +81,11 @@ def pytest_collection_modifyitems(config, items):
     bypass_version_check = os.getenv("BYPASS_VERSION_PASS", "False")
     os.environ["SEND_SLACK_NOTIFICATION?"] = "True"
 
-    if build_version_hub != build_version_s3 or github_event_name == "workflow_dispatch" or bypass_version_check == "True":
+    if (
+        build_version_hub != build_version_s3
+        or github_event_name == "workflow_dispatch"
+        or bypass_version_check == "True"
+    ):
         # Store new build version if tests are going to run
         store_build_version_s3(build_version_hub)
     else:
@@ -87,30 +96,29 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             item.add_marker(pytest.mark.skip(reason="Skipped due to matching build versions"))
 
+
 # Hook to run pytest and send Slack notification
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int, config):
     """Customize pytest terminal summary and send to Slack."""
 
     if os.getenv("SEND_SLACK_NOTIFICATION?") == "True":
-        SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-        SLACK_CHANNEL = os.getenv("SLACK_CHANNEL")
-        SLACK_USERNAME = os.getenv("APPLICATION_NAME")
-
         # Collect test summary information
-        total_tests = terminalreporter.stats.get('passed', []) + \
-                    terminalreporter.stats.get('failed', []) + \
-                    terminalreporter.stats.get('error', []) + \
-                    terminalreporter.stats.get('skipped', [])
+        total_tests = (
+            terminalreporter.stats.get("passed", [])
+            + terminalreporter.stats.get("failed", [])
+            + terminalreporter.stats.get("error", [])
+            + terminalreporter.stats.get("skipped", [])
+        )
 
-        passed_tests = len(terminalreporter.stats.get('passed', []))
-        failed_tests = len(terminalreporter.stats.get('failed', []))
-        error_tests = len(terminalreporter.stats.get('error', []))
-        skipped_tests = len(terminalreporter.stats.get('skipped', []))
+        passed_tests = len(terminalreporter.stats.get("passed", []))
+        failed_tests = len(terminalreporter.stats.get("failed", []))
+        error_tests = len(terminalreporter.stats.get("error", []))
+        skipped_tests = len(terminalreporter.stats.get("skipped", []))
 
         # Prepare error details
         error_details = ""
-        for test in terminalreporter.stats.get('failed', []) + terminalreporter.stats.get('error', []):
+        for test in terminalreporter.stats.get("failed", []) + terminalreporter.stats.get("error", []):
             error_details += f"• *Test*: `{test.nodeid}`\n"
             error_details += f"  _Details:_\n```\n{''.join(test.longreprtext.splitlines(keepends=True)[-10:])}```\n\n"
         error_details = "*Error Details:*\n" + error_details if error_details else ""
@@ -122,28 +130,28 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
 
         # Create the payload for Slack
         slack_data = {
-            "channel": SLACK_CHANNEL,
-            "username": SLACK_USERNAME,
+            "channel": os.getenv("SLACK_CHANNEL"),
+            "username": os.getenv("APPLICATION_NAME"),
             "icon_emoji": f"{status_emoji}",
             "attachments": [
                 {
                     "color": status_color,
                     "title": f"{bug_emoji} Pytest Summary",
                     "text": f"Total Tests: *{len(total_tests)}*\n"
-                            f"Passed: *{passed_tests}* :white_check_mark:\n"
-                            f"Failed: *{failed_tests}* :x:\n"
-                            f"Errors: *{error_tests}* :exclamation:\n"
-                            f"Skipped: *{skipped_tests}* :fast_forward:\n\n"
-                            f"{error_details}"
+                    f"Passed: *{passed_tests}* :white_check_mark:\n"
+                    f"Failed: *{failed_tests}* :x:\n"
+                    f"Errors: *{error_tests}* :exclamation:\n"
+                    f"Skipped: *{skipped_tests}* :fast_forward:\n\n"
+                    f"{error_details}",
                 }
-            ]
+            ],
         }
 
         # Send to Slack
         print("Sending Slack notification...")
-        if SLACK_WEBHOOK_URL:
+        if os.getenv("SLACK_WEBHOOK_URL"):
             try:
-                response = requests.post(SLACK_WEBHOOK_URL, json=slack_data, timeout=10)
+                response = requests.post(os.getenv("SLACK_WEBHOOK_URL"), json=slack_data, timeout=10)
                 if response.status_code == 200:
                     print(" └─ Slack notification sent successfully.")
                 else:
@@ -155,6 +163,7 @@ def pytest_terminal_summary(terminalreporter: TerminalReporter, exitstatus: int,
         else:
             print(" └─ Slack webhook URL not provided, skipping notification.")
 
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_addoption(parser):
     """Add command-line options for Slack integration and environment variables."""
@@ -162,12 +171,27 @@ def pytest_addoption(parser):
     parser.addoption("--aws-secret-access-key", action="store", help="AWS Secret Access Key")
     parser.addoption("--aws-default-region", action="store", help="AWS Region (e.g., us-east-1")
     parser.addoption("--aws-s3-bucket", action="store", help="AWS S3 Bucket (e.g., test-bucket")
-    parser.addoption("--slack-webhook-url", action="store", help="Slack webhook URL to send messages (e.g., https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX")
+    parser.addoption(
+        "--slack-webhook-url",
+        action="store",
+        help="Slack webhook URL to send messages (e.g., https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+    )
     parser.addoption("--slack-channel", action="store", help="Slack channel to send messages (e.g., #general")
     parser.addoption("--application-name", action="store", help="Application Name (e.g. mygene.info")
-    parser.addoption("--bypass-version-check", action="store", help="(Optional) Use the value `False` to force a run with no build version check. Default is `True`.")
-    parser.addoption("--application-metadata-url", action="store", help="Application Metadata URL (e.g., https://mygene.info/metadata")
-    parser.addoption("--application-metadata-field", action="store", help="Application Metadata Field (e.g., build_version")
+    parser.addoption(
+        "--bypass-version-check",
+        action="store",
+        help="(Optional) Use the value `False` to force a run with no build version check. Default is `True`.",
+    )
+    parser.addoption(
+        "--application-metadata-url",
+        action="store",
+        help="Application Metadata URL (e.g., https://mygene.info/metadata",
+    )
+    parser.addoption(
+        "--application-metadata-field", action="store", help="Application Metadata Field (e.g., build_version"
+    )
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
@@ -187,21 +211,19 @@ def pytest_configure(config):
 
     # List of required environment variables
     required_env_vars = [
-        ("AWS_ACCESS_KEY_ID", '--aws-access-key-id'),
-        ("AWS_SECRET_ACCESS_KEY", '--aws-secret-access-key'),
-        ("AWS_DEFAULT_REGION", '--aws-default-region'),
-        ("AWS_S3_BUCKET", '--aws-s3-bucket'),
-        ("SLACK_WEBHOOK_URL", '--slack-webhook-url'),
-        ("SLACK_CHANNEL", '--slack-channel'),
-        ("APPLICATION_NAME", '--application-name'),
-        ("APPLICATION_METADATA_URL", '--application-metadata-url'),
-        ("APPLICATION_METADATA_FIELD", '--application-metadata-field')
+        ("AWS_ACCESS_KEY_ID", "--aws-access-key-id"),
+        ("AWS_SECRET_ACCESS_KEY", "--aws-secret-access-key"),
+        ("AWS_DEFAULT_REGION", "--aws-default-region"),
+        ("AWS_S3_BUCKET", "--aws-s3-bucket"),
+        ("SLACK_WEBHOOK_URL", "--slack-webhook-url"),
+        ("SLACK_CHANNEL", "--slack-channel"),
+        ("APPLICATION_NAME", "--application-name"),
+        ("APPLICATION_METADATA_URL", "--application-metadata-url"),
+        ("APPLICATION_METADATA_FIELD", "--application-metadata-field"),
     ]
 
     # List of optional environment variables
-    optional_env_vars = [
-        ("BYPASS_VERSION_PASS", '--bypass-version-check')
-    ]
+    optional_env_vars = [("BYPASS_VERSION_PASS", "--bypass-version-check")]
 
     missing_vars = []
 
@@ -222,16 +244,18 @@ def pytest_configure(config):
         missing_vars_str = ", ".join(missing_vars)
         example_usage = (
             "\n\nExample usage:\n\n"
-            "    pytest --aws-access-key-id=\"AKIAIOSFODNN7EXAMPLE\" \\\n"
-            "           --aws-secret-access-key=\"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\" \\\n"
-            "           --aws-default-region=\"us-east-1\" \\\n"
-            "           --aws-s3-bucket=\"my-app-bucket\" \\\n"
-            "           --slack-webhook-url=\"https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX\" \\\n"
-            "           --slack-channel=\"#ci-cd-notifications\" \\\n"
-            "           --application-name=\"my-app\" \\\n"
-            "           --application-metadata-url=\"https://my-app.com/metadata\" \\\n"
-            "           --application-metadata-field=\"metadata.build_version\" \\\n"
-            "           --bypass-version-check=\"True\""
+            '    pytest --aws-access-key-id="AKIAIOSFODNN7EXAMPLE" \\\n'
+            '           --aws-secret-access-key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" \\\n'
+            '           --aws-default-region="us-east-1" \\\n'
+            '           --aws-s3-bucket="my-app-bucket" \\\n'
+            '           --slack-webhook-url="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX" \\\n'
+            '           --slack-channel="#ci-cd-notifications" \\\n'
+            '           --application-name="my-app" \\\n'
+            '           --application-metadata-url="https://my-app.com/metadata" \\\n'
+            '           --application-metadata-field="metadata.build_version" \\\n'
+            '           --bypass-version-check="True"'
         )
 
-        pytest.exit(f"Error: The following environment variables are not set: {missing_vars_str}{example_usage}", returncode=1)
+        pytest.exit(
+            f"Error: The following environment variables are not set: {missing_vars_str}{example_usage}", returncode=1
+        )
