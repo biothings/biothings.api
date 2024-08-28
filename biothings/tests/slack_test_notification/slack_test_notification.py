@@ -78,7 +78,7 @@ def pytest_collection_modifyitems(config, items):
     build_version_s3 = fetch_build_version_s3()
     build_version_hub = fetch_build_version_hub()
     github_event_name = os.getenv("GITHUB_EVENT_NAME", "")
-    bypass_version_check = os.getenv("BYPASS_VERSION_PASS", "False")
+    bypass_version_check = os.getenv("BYPASS_VERSION_CHECK", "False")
     os.environ["SEND_SLACK_NOTIFICATION?"] = "True"
 
     if (
@@ -223,7 +223,7 @@ def pytest_configure(config):
     ]
 
     # List of optional environment variables
-    optional_env_vars = [("BYPASS_VERSION_PASS", "--bypass-version-check")]
+    optional_env_vars = [("BYPASS_VERSION_CHECK", "--bypass-version-check")]
 
     missing_vars = []
 
