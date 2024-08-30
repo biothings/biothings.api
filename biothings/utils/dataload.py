@@ -251,52 +251,66 @@ def rec_handler(infile, block_end="\n", skip=0, include_block_end=False, as_list
 # ===============================================================================
 
 
-# if dict value is a list of length 1, unlist
 def unlist(d):
+    """Recursively unlist elements in a dictionary.
+
+    If an element in a list is a dictionary, apply the unlist function to it recursively.
+    If a list contains only one element, replace the list with that single element.
+    The function operates on all keys within the dictionary.
+
+    :param d: a dictionary to unlist
+    :return: the modified dictionary with unlisted elements
+    """
     for key, val in d.items():
         if isinstance(val, list):
-            if len(val) == 1:
-                d[key] = val[0]
+            d[key] = [unlist(v) if isinstance(v, dict) else v for v in val]
+            if len(d[key]) == 1:
+                d[key] = d[key][0]
         elif isinstance(val, dict):
-            unlist(val)
+            d[key] = unlist(val)
     return d
 
 
 def unlist_incexcl(d, include_keys=None, exclude_keys=None):
     """Unlist elements in a document.
 
-    If there is 1 value in the list, set the element to that value.  Otherwise,
+    If there is 1 value in the list, set the element to that value. Otherwise,
     leave the list unchanged.
 
-    By default, traverse all keys
-    If include_keys is specified, only traverse the list from include_keys a.b, a.b.c
-    If exclude_keys is specified, only exclude the list from exclude_keys
+    By default, traverse all keys.
+    If include_keys is specified, only traverse the list for keys in include_keys.
+    If exclude_keys is specified, exclude the list for keys in exclude_keys.
 
     :param d: a dictionary to unlist
     :param include_keys: only unlist these keys (optional)
     :param exclude_keys: exclude all other keys except these keys (optional)
-    :return: generate key, value pairs
+    :return: the modified dictionary
     """
 
-    def unlist_helper(d, include_keys=None, exclude_keys=None, keys=None):
-        include_keys = include_keys or []
-        exclude_keys = exclude_keys or []
+    def should_unlist(path):
+        if include_keys is not None and exclude_keys is not None:
+            return path in include_keys and path not in exclude_keys
+        elif include_keys is not None:
+            return path in include_keys
+        elif exclude_keys is not None:
+            return path not in exclude_keys
+        return True
+
+    def unlist_helper(d, keys=None):
         keys = keys or []
         if isinstance(d, dict):
-            for key, val in d.items():
+            for key, val in list(d.items()):
+                path = ".".join(keys + [key])
                 if isinstance(val, list):
-                    if len(val) == 1:
-                        path = ".".join(keys + [key])
-                        if include_keys:
-                            if path in include_keys:
-                                d[key] = val[0]
-                        elif path not in exclude_keys:
-                            d[key] = val[0]
+                    if len(val) == 1 and should_unlist(path):
+                        d[key] = unlist_helper(val[0], keys + [key])
+                    else:
+                        d[key] = [unlist_helper(item, keys + [key]) for item in val]
                 elif isinstance(val, dict):
-                    unlist_helper(val, include_keys, exclude_keys, keys + [key])
+                    d[key] = unlist_helper(val, keys + [key])
+        return d
 
-    unlist_helper(d, include_keys, exclude_keys, [])
-    return d
+    return unlist_helper(d)
 
 
 def list_split(d, sep):
