@@ -22,15 +22,12 @@ def test_schedule_iteration(total: int, batch_size: int):
         suffix_repr = f"{suffix_value} #{schedule._batch}/{schedule._batches} {schedule._percentage}"
         assert suffix_repr == schedule.suffix(suffix_value)
 
-    schedule.completed()
-
 
 def test_schedule_mismatch_error():
     """
     Verifies that we raise a SchedulerMismatchError if we prematurely or erroneously
     call the `Scheduler.completed` method prior to completing the scheduler indexing process
     """
-
     total = 100
     batch_size = 10
     schedule = Schedule(total, batch_size)
@@ -48,5 +45,5 @@ def test_schedule_mismatch_error():
         suffix_repr = f"{suffix_value} #{schedule._batch}/{schedule._batches} {schedule._percentage}"
         assert suffix_repr == schedule.suffix(suffix_value)
 
-    with pytest.raises(SchedulerMismatchError) as schedule_error:
+    with pytest.raises(SchedulerMismatchError):
         schedule.completed()
