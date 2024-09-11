@@ -2,6 +2,28 @@ import math
 from typing import Union
 
 
+class SchedulerMismatchError(Exception):
+    """
+    Exception for indicating a mismatch in the number of expected
+    documents versus the total number of actually uploaded documents
+    to the target database
+    """
+
+    def __init__(self, completed_documents: int, expected_documents: int):
+
+        self.completed_documents = completed_documents
+        self.expected_documents = expected_documents
+
+        message = (
+            f"Difference found between the number of completed documents [{self.completed_documents}] "
+            f"in the indexing process and the number of expected documents [{self.expected_documents}] "
+            "to be indexed based off the collection size. "
+            "This error can occur if the documents uploaded don't have an _id field with MongoDB. "
+            "Please verify the document structure at the upload phase"
+        )
+        super().__init__(message)
+
+
 class Schedule:
     def __init__(self, total: int, batch_size: int):
         self._batch_size = batch_size
@@ -52,7 +74,7 @@ class Schedule:
 
     def completed(self):
         if not self.finished == self.total:
-            raise ValueError(self.finished, self.total)
+            raise SchedulerMismatchError(self.finished, self.total)
         self._state = "done"
 
     def __iter__(self):
