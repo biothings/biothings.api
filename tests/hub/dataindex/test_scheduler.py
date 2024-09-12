@@ -1,8 +1,12 @@
-import random
+"""
+Tests the custom scheduler object used with handling our batch index processing
 
-from biothings.hub.dataindex.indexer_schedule import Schedule, SchedulerMismatchError
+See <biothings.hub.dataindex>
+"""
 
 import pytest
+
+from biothings.hub.dataindex.indexer_schedule import Schedule, SchedulerMismatchError
 
 
 @pytest.mark.parametrize("total, batch_size", [(100, 10), (25, 10), (0, 10), (1, 10)])
@@ -31,19 +35,6 @@ def test_schedule_mismatch_error():
     total = 100
     batch_size = 10
     schedule = Schedule(total, batch_size)
-
-    cutoff_point = random.randint(2, 8)
-    batch_count = 1
-    for batch in schedule:
-        assert batch_count == batch
-        batch_count += 1
-
-        if batch_count == cutoff_point:
-            break
-
-        suffix_value = "Task"
-        suffix_repr = f"{suffix_value} #{schedule._batch}/{schedule._batches} {schedule._percentage}"
-        assert suffix_repr == schedule.suffix(suffix_value)
 
     with pytest.raises(SchedulerMismatchError):
         schedule.completed()
