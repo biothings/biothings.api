@@ -6,10 +6,13 @@ from collections import UserDict
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
+import json
 from typing import NamedTuple, Optional
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
+
+from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
@@ -276,6 +279,103 @@ class IndexerCumulativeResult(_IndexerResult):
 class IndexerStepResult(_IndexerResult):
     ...
 
+class QuickIndexer:
+    """
+    Basic indexer for converting our mongodb data
+    to the elasticsearch index
+
+    For datasource developers
+    """
+
+    def __init__(self, build_manager: BuilderManager, index_manager: IndexManager):
+        self.build_manager = build_manager
+        self.index_manager = index_manager
+
+    async def _perform_quick_index(
+        self, 
+        build_configuration_name: str
+
+    ):
+        """
+        The job method for performing the quick index operation
+
+        Currently exclusive to QuickIndex.quick_index method call
+        > asyncio.ensure_future(self._perform_quick_index())
+        """
+        if extra_index_settings:
+            build_config_params["extra_index_settings"] = extra_index_settings
+            try:
+                # create a temporary build configuration:
+                builder_class = None
+                for build_class_name in self.build_manager.builder_classes.keys():
+                    if build_class_name.endswith("LinkDataBuilder"):
+                        builder_class = build_class_name
+                        break
+                    self.build_manager.create_build_configuration(
+                        build_configuration_name,
+                        doc_type=doc_type,
+                        sources=[datasource_name] if not subsource else [subsource],
+                        builder_class=builder_class,
+                        params=build_config_params,
+                    )
+
+                    # create a temporary build
+                    await self.build_manager.merge(
+                        build_name=build_configuration_name,
+                        target_name=build_name,
+                        force=True,
+                    )
+
+                    # Wait for merging process to finish
+                    await self.index_manager.index(
+                        indexer_env,
+                        build_name,
+                        index_name=index_name,
+                        **kwargs
+                    )
+            finally:
+                # delete temporary build
+                self.build_manager.delete_merge(build_name)
+
+                # delete temporary build configuration
+                self.build_manager.delete_build_configuration(build_configuration_name)
+
+    def quick_index(
+        self,
+        datasource_name,
+        doc_type,
+        indexer_env,
+        subsource=None,
+        index_name=None,
+        **kwargs,
+    ):
+        """
+        Intention for datasource developers to quickly create an index to test their datasources.
+        Automatically create temporary build config, build collection
+        Then call the index method with the temporary build collection's name
+        """
+        extra_index_settings = kwargs.pop("extra_index_settings", "{}")
+        extra_index_settings = json.loads(extra_index_settings)
+
+        build_config_params = {}
+        build_config_params["num_shards"] = int(kwargs.pop("num_shards", 1))
+        build_config_params["num_replicas"] = int(kwargs.pop("num_replicas", 0))
+
+        random_string = f"{get_timestamp()}_{get_random_string()}"
+
+        # generate random build_configuration name
+        subsource_str = f"_{subsource}" if subsource else ""
+        build_configuration_name = f"{datasource_name}{subsource_str}_configuration_{random_string}"
+
+        # generate random build name
+        build_name = f"{datasource_name}{subsource_str}_{random_string}"
+
+        # # generate index_name if needed
+        if not index_name:
+            index_name = build_name
+        index_name = index_name.lower()
+
+        return asyncio.ensure_future(self._perform_quick_index())
 
 class Indexer:
     """
