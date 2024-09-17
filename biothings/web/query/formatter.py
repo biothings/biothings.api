@@ -83,6 +83,8 @@ class ESResultFormatter(ResultFormatter):
             super().__init__(*args, **kwargs)
             # make sure the document is coming from
             # elasticsearch at initialization time
+            if "hits" not in self.data:
+                logger.error(f"Error loading elasticsearch result. {self.data}")
             assert "hits" in self.data
             assert "total" in self.data["hits"]
             assert "hits" in self.data["hits"]
