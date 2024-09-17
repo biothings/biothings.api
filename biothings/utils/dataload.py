@@ -270,6 +270,34 @@ def unlist(d):
     return d
 
 
+def _should_unlist(path, include_keys=None, exclude_keys=None):
+    if include_keys is not None and exclude_keys is not None:
+        return path in include_keys and path not in exclude_keys
+    elif include_keys is not None:
+        return path in include_keys
+    elif exclude_keys is not None:
+        return path not in exclude_keys
+    return True
+
+
+def _unlist_helper(d, include_keys=None, exclude_keys=None, keys=None):
+    keys = keys or []
+    if isinstance(d, dict):
+        for key, val in list(d.items()):
+            path = ".".join(keys + [key])
+            if isinstance(val, list):
+                if len(val) == 1 and _should_unlist(path, include_keys, exclude_keys):
+                    d[key] = _unlist_helper(
+                        val[0], include_keys, exclude_keys, keys + [key])
+                else:
+                    d[key] = [_unlist_helper(
+                        item, include_keys, exclude_keys, keys + [key]) for item in val]
+            elif isinstance(val, dict):
+                d[key] = _unlist_helper(
+                    val, include_keys, exclude_keys, keys + [key])
+    return d
+
+
 def unlist_incexcl(d, include_keys=None, exclude_keys=None):
     """Unlist elements in a document.
 
@@ -285,32 +313,8 @@ def unlist_incexcl(d, include_keys=None, exclude_keys=None):
     :param exclude_keys: exclude all other keys except these keys (optional)
     :return: the modified dictionary
     """
-
-    def should_unlist(path):
-        if include_keys is not None and exclude_keys is not None:
-            return path in include_keys and path not in exclude_keys
-        elif include_keys is not None:
-            return path in include_keys
-        elif exclude_keys is not None:
-            return path not in exclude_keys
-        return True
-
-    def unlist_helper(d, keys=None):
-        keys = keys or []
-        if isinstance(d, dict):
-            for key, val in list(d.items()):
-                path = ".".join(keys + [key])
-                if isinstance(val, list):
-                    if len(val) == 1 and should_unlist(path):
-                        d[key] = unlist_helper(val[0], keys + [key])
-                    else:
-                        d[key] = [unlist_helper(item, keys + [key]) for item in val]
-                elif isinstance(val, dict):
-                    d[key] = unlist_helper(val, keys + [key])
-        return d
-
-    return unlist_helper(d)
-
+    return _unlist_helper(d, include_keys, exclude_keys)
+    
 
 def list_split(d, sep):
     """Split fields by sep into comma separated lists, strip."""
