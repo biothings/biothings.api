@@ -269,7 +269,7 @@ def unlist(d):
             d[key] = unlist(val)
     return d
 
-
+# Internal helper function called by unlist_incexcl
 def _should_unlist(path, include_keys=None, exclude_keys=None):
     if include_keys is not None and exclude_keys is not None:
         return path in include_keys and path not in exclude_keys
@@ -279,7 +279,7 @@ def _should_unlist(path, include_keys=None, exclude_keys=None):
         return path not in exclude_keys
     return True
 
-
+# Internal helper function called by unlist_incexcl
 def _unlist_helper(d, include_keys=None, exclude_keys=None, keys=None):
     keys = keys or []
     if isinstance(d, dict):
