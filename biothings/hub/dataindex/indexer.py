@@ -24,7 +24,7 @@ from biothings.utils.mongo import DatabaseClient, id_feeder
 from .indexer_cleanup import Cleaner
 from .indexer_payload import DEFAULT_INDEX_MAPPINGS, DEFAULT_INDEX_SETTINGS, IndexMappings, IndexSettings
 from .indexer_registrar import IndexJobStateRegistrar, MainIndexJSR, PostIndexJSR, PreIndexJSR
-from .indexer_schedule import Schedule
+from .indexer_schedule import Schedule, SchedulerMismatchError
 from .indexer_task import dispatch
 
 # Summary
@@ -42,8 +42,7 @@ from .indexer_task import dispatch
 # Multi-layer logging
 
 
-class IndexerException(Exception):
-    ...
+class IndexerException(Exception): ...
 
 
 class ProcessInfo:
@@ -269,12 +268,10 @@ class _IndexerResult(UserDict):
         return f"{type(self).__name__}({str(self.data)})"
 
 
-class IndexerCumulativeResult(_IndexerResult):
-    ...
+class IndexerCumulativeResult(_IndexerResult): ...
 
 
-class IndexerStepResult(_IndexerResult):
-    ...
+class IndexerStepResult(_IndexerResult): ...
 
 
 class Indexer:
@@ -282,7 +279,7 @@ class Indexer:
     MongoDB -> Elasticsearch Indexer.
     """
 
-    def __init__(self, build_doc, indexer_env, index_name):
+    def __init__(self, build_doc: dict, indexer_env: dict, index_name: str):
         # build_doc primarily describes the source.
         # indexer_env primarily describes the destination.
 
@@ -474,7 +471,7 @@ class Indexer:
             try:
                 schedule.finished += future.result()
             except Exception as exc:
-                self.logger.warning(exc)
+                self.logger.error(exc)
                 error = exc
 
         for batch_num, ids in zip(schedule, id_provider):
@@ -512,12 +509,21 @@ class Indexer:
         self.logger.info(schedule)
         await asyncio.gather(*jobs)
 
-        schedule.completed()
+        try:
+            schedule.completed()
+        except SchedulerMismatchError as schedule_error:
+            scheduler_error_message = (
+                f"mongo client configuration: {self.mongo_client_args} | "
+                f"mongo database: {self.mongo_database_name} | "
+                f"mongo collection: {self.mongo_collection_name} "
+            )
+            self.logger.error(scheduler_error_message)
+            raise schedule_error
+
         self.logger.notify(schedule)
         return {"count": total, "created_at": datetime.now().astimezone()}
 
-    async def post_index(self, *args, **kwargs):
-        ...
+    async def post_index(self, *args, **kwargs): ...
 
 
 class ColdHotIndexer:
