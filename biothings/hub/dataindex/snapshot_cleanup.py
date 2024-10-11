@@ -53,7 +53,12 @@ def find(collection, env=None, keep=3, group_by=None, return_db_cols=False, **fi
     groups = list(
         collection.aggregate(
             [
-                {"$project": {"build_config": "$build_config._id", "snapshot": {"$objectToArray": "$snapshot"}}},
+                {
+                    "$project": {
+                        "build_config": "$build_config._id",
+                        "snapshot": {"$objectToArray": "$snapshot"},
+                    }
+                },
                 {"$unwind": {"path": "$snapshot"}},
                 {
                     "$addFields": {
@@ -64,6 +69,8 @@ def find(collection, env=None, keep=3, group_by=None, return_db_cols=False, **fi
                 },
                 {"$replaceRoot": {"newRoot": "$snapshot.v"}},
                 {"$match": {"environment": env, **filters} if env else filters},
+                # Exclude cloud credentials
+                {"$unset": ["conf.cloud.access_key", "conf.cloud.secret_key"]},
                 {"$sort": {"created_at": 1}},
                 {"$group": {"_id": group_by, "items": {"$push": "$$ROOT"}}},
             ]
