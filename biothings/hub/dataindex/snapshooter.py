@@ -479,8 +479,13 @@ class SnapshotManager(BaseManager):
         """
 
         # filters support dotfield.
-        snapshots = cleaner.find(get_src_build(), env,
-                                 keep, group_by, **filters)
+        snapshots = cleaner.find(
+            get_src_build(),
+            env=env,
+            keep=keep,
+            group_by=group_by,
+            **filters
+        )
 
         if dryrun:
             return "\n".join(
