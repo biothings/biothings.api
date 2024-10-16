@@ -10,7 +10,7 @@ from functools import partial
 import boto3
 from config import logger as logging
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import TransportError
+from elasticsearch.exceptions import TransportError, NotFoundError
 
 from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY
@@ -299,6 +299,17 @@ class SnapshotEnv:
         set_pending_to_release_note(build_id)
         return {}
 
+    def snapshot_exists(self, snapshot_name, build_doc):
+        cfg = self.repcfg.format(build_doc)
+        snapshot = Snapshot(self.client, cfg.repo, snapshot_name)
+        try:
+            return snapshot.exists()
+        except NotFoundError:
+            return False
+        except Exception as e:
+            logging.exception(f"Error checking if snapshot '{snapshot_name}' exists: {e}")
+            raise
+
 
 class SnapshotManager(BaseManager):
     """
@@ -499,3 +510,43 @@ class SnapshotManager(BaseManager):
         except Exception as ex:
             logging.exception("Error while deleting snapshots. error: %s", ex, extra={"notify": True})
         return jobs
+
+    def delete_snapshot_from_db(self, build_name, snapshot_name):
+        collection = get_src_build()
+        collection.update_one(
+            {"_id": build_name},
+            {"$unset": {f"snapshot.{snapshot_name}": 1}},
+        )
+        logging.info(f"Snapshot '{snapshot_name}' deleted from build '{build_name}' in MongoDB")
+
+    def sync_snapshots(self):
+        logging.info("Starting synchronization of snapshots...")
+        collection = get_src_build()
+        snapshots = self.list_snapshots(return_db_cols=True)
+
+        for group in snapshots:
+            for snapshot_data in group['items']:
+                snapshot_name = snapshot_data['_id']
+                build_name = snapshot_data['build_name']
+                environment = snapshot_data.get('environment')
+
+                if not environment or environment not in self.register:
+                    logging.warning(f"Environment '{environment}' not found for snapshot '{snapshot_name}'")
+                    continue
+
+                env = self.register[environment]
+
+                build_doc = collection.find_one({'_id': build_name})
+
+                if not build_doc:
+                    logging.warning(f"Build document '{build_name}' not found for snapshot '{snapshot_name}'")
+                    continue
+
+                try:
+                    exists = env.snapshot_exists(snapshot_name, build_doc)
+                    if not exists:
+                        logging.info(f"Deleting snapshot '{snapshot_name}' from MongoDB")
+                        self.delete_snapshot_from_db(build_name, snapshot_name)
+                except Exception as e:
+                    logging.exception(f"Error checking snapshot '{snapshot_name}': {e}")
+        logging.info("Synchronization of snapshots completed.")
