@@ -99,10 +99,12 @@ class _UserString(UserString):
         return f"{type(self).__name__}({self.data})"
 
 
-class TemplateStr(_UserString): ...
+class TemplateStr(_UserString):
+    ...
 
 
-class RenderedStr(_UserString): ...
+class RenderedStr(_UserString):
+    ...
 
 
 class RepositoryConfig(UserDict):
@@ -160,10 +162,12 @@ class _SnapshotResult(UserDict):
         return f"{type(self).__name__}({str(self.data)})"
 
 
-class CumulativeResult(_SnapshotResult): ...
+class CumulativeResult(_SnapshotResult):
+    ...
 
 
-class StepResult(_SnapshotResult): ...
+class StepResult(_SnapshotResult):
+    ...
 
 
 class SnapshotEnv:
@@ -471,7 +475,13 @@ class SnapshotManager(BaseManager):
         """
 
         # filters support dotfield.
-        snapshots = cleaner.find(get_src_build(), env, keep, group_by, **filters)
+        snapshots = cleaner.find(
+            get_src_build(),
+            env=env,
+            keep=keep,
+            group_by=group_by,
+            **filters
+        )
 
         if dryrun:
             return "\n".join(
