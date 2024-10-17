@@ -140,7 +140,7 @@ def _delete(collection, snapshot, envs):
         try:
             env = envs.index_manager[env]
         except KeyError:
-            raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Manual deletion is required.")
+            raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required.")
         client = Elasticsearch(**env["args"])
 
     client.snapshot.delete(
