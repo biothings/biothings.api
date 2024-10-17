@@ -453,7 +453,7 @@ class SnapshotManager(BaseManager):
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
 
-    def list_snapshots(self, env=None, return_db_cols=False, **filters):
+    def list_snapshots(self, env=None, return_db_cols=True, **filters):
         return cleaner.find( # filters support dotfield
             get_src_build(),
             env=env,
@@ -479,8 +479,9 @@ class SnapshotManager(BaseManager):
         """
 
         # filters support dotfield.
-        snapshots = cleaner.find(get_src_build(), env,
-                                 keep, group_by, **filters)
+        snapshots = cleaner.find(
+            get_src_build(), env=env, keep=keep, group_by=group_by, **filters
+        )
 
         if dryrun:
             return "\n".join(
