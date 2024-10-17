@@ -495,6 +495,8 @@ class SnapshotManager(BaseManager):
 
     def delete_snapshots(self, snapshots_data):
         async def delete(environment, snapshot_names):
+            if environment == "__no_env__":
+                environment = None
             return self.cleanup(env=environment, keep=0, dryrun=False, _id={"$in": snapshot_names})
 
         def done(f):
