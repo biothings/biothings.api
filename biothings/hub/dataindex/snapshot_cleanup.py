@@ -127,16 +127,16 @@ def delete(collection, element, envs):
 def _delete(collection, snapshot, envs):
     assert snapshot.tag == "Snapshot"
 
-    if "environment" in snapshot.attrs:
-        env = snapshot.attrs["environment"]
-        client = envs[env].client
-    else:  # legacy format
-        env = snapshot.attrs["conf"]["indexer"]["env"]
-        try:
+    try:
+        if "environment" in snapshot.attrs:
+            env = snapshot.attrs["environment"]
+            client = envs[env].client
+        else:  # legacy format
+            env = snapshot.attrs["conf"]["indexer"]["env"]
             env = envs.index_manager[env]
-        except KeyError:
-            raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required.")
-        client = Elasticsearch(**env["args"])
+            client = Elasticsearch(**env["args"])
+    except KeyError:
+        raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required.")
 
     client.snapshot.delete(
         repository=snapshot.attrs["conf"]["repository"]["name"],
