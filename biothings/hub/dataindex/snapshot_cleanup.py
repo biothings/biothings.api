@@ -5,7 +5,7 @@ from xml.etree import ElementTree
 
 from elasticsearch import Elasticsearch
 from pymongo.collection import Collection
-
+from config import logger as logging
 
 class _Ele(NamedTuple):  # Cleanup Element
     tag: str
@@ -137,7 +137,10 @@ def _delete(collection, snapshot, envs):
         client = envs[env].client
     else:  # legacy format
         env = snapshot.attrs["conf"]["indexer"]["env"]
-        env = envs.index_manager[env]
+        try:
+            env = envs.index_manager[env]
+        except KeyError:
+            raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Manual deletion is required.")
         client = Elasticsearch(**env["args"])
 
     client.snapshot.delete(
