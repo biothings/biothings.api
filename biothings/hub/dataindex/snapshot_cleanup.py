@@ -6,6 +6,7 @@ from xml.etree import ElementTree
 from elasticsearch import Elasticsearch
 from pymongo.collection import Collection
 from config import logger as logging
+from elasticsearch.exceptions import NotFoundError
 
 class _Ele(NamedTuple):  # Cleanup Element
     tag: str
@@ -138,10 +139,13 @@ def _delete(collection, snapshot, envs):
     except KeyError:
         raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required.")
 
-    client.snapshot.delete(
-        repository=snapshot.attrs["conf"]["repository"]["name"],
-        snapshot=snapshot.attrs["_id"],
-    )
+    try:
+        client.snapshot.delete(
+            repository=snapshot.attrs["conf"]["repository"]["name"],
+            snapshot=snapshot.attrs["_id"],
+        )
+    except NotFoundError:
+        raise ValueError(f"Snapshot '{snapshot.attrs['_id']}' does not exist in the repository '{snapshot.attrs['conf']['repository']['name']}'. Validate the snapshots to remove this snapshot from the database.")
 
     collection.update_one(
         {"_id": snapshot.attrs["build_name"]},
