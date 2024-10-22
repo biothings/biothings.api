@@ -528,33 +528,59 @@ class SnapshotManager(BaseManager):
         logging.info(f"Snapshot '{snapshot_name}' deleted from build '{build_name}' in MongoDB")
 
     def sync_snapshots(self):
-        logging.info("Starting synchronization of snapshots...")
-        collection = get_src_build()
-        snapshots = self.list_snapshots(return_db_cols=True)
+        async def sync():
+            logging.info("Starting synchronization of snapshots...")
+            collection = get_src_build()
+            snapshots = self.list_snapshots(return_db_cols=True)
+            errors = []
 
-        for group in snapshots:
-            for snapshot_data in group['items']:
-                snapshot_name = snapshot_data['_id']
-                build_name = snapshot_data['build_name']
-                environment = snapshot_data.get('environment')
+            for group in snapshots:
+                for snapshot_data in group['items']:
+                    snapshot_name = snapshot_data['_id']
+                    build_name = snapshot_data['build_name']
+                    environment = snapshot_data.get('environment') or snapshot_data['conf']['indexer']['env']
 
-                if not environment or environment not in self.register:
-                    logging.warning(f"Environment '{environment}' not found for snapshot '{snapshot_name}'")
-                    continue
+                    if not environment:
+                        msg = f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment associated with it. Skipping synchronization."
+                        logging.warning(msg)
+                        errors.append(msg)
+                        continue
 
-                env = self.register[environment]
+                    try:
+                        env = self.register[environment]
+                    except KeyError:
+                        msg = f"[{snapshot_name}] Environment '{environment}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required."
+                        logging.error(msg)
+                        errors.append(msg)
+                        continue
 
-                build_doc = collection.find_one({'_id': build_name})
+                    build_doc = collection.find_one({'_id': build_name})
 
-                if not build_doc:
-                    logging.warning(f"Build document '{build_name}' not found for snapshot '{snapshot_name}'")
-                    continue
+                    try:
+                        exists = env.snapshot_exists(snapshot_name, build_doc)
+                        if not exists:
+                            logging.info(f"Deleting snapshot '{snapshot_name}' from MongoDB")
+                            self.delete_snapshot_from_db(build_name, snapshot_name)
+                    except Exception as e:
+                        msg = f"Error checking snapshot '{snapshot_name}': {str(e)}"
+                        logging.exception(msg)
+                        errors.append(msg)
+            logging.info("Synchronization of snapshots completed.")
+            if errors:
+                raise ValueError("Errors occurred during synchronization:\n" + "\n".join(errors))
 
-                try:
-                    exists = env.snapshot_exists(snapshot_name, build_doc)
-                    if not exists:
-                        logging.info(f"Deleting snapshot '{snapshot_name}' from MongoDB")
-                        self.delete_snapshot_from_db(build_name, snapshot_name)
-                except Exception as e:
-                    logging.exception(f"Error checking snapshot '{snapshot_name}': {e}")
-        logging.info("Synchronization of snapshots completed.")
+        def done(f):
+            try:
+                f.result()
+                logging.info("Synchronization successful", extra={"notify": True})
+            except Exception as e:
+                logging.exception(f"Synchronization failed: {e}", extra={"notify": True})
+
+
+        try:
+            job = self.job_manager.submit(sync)
+            job.add_done_callback(done)
+        except Exception as ex:
+            logging.exception(
+                f"Error while submitting synchronization job: {ex}", extra={"notify": True})
+        return job
