@@ -533,12 +533,13 @@ class SnapshotManager(BaseManager):
         )
         logging.info(f"Snapshot '{snapshot_name}' deleted from build '{build_name}' in MongoDB")
 
-    def sync_snapshots(self):
-        async def sync():
-            logging.info("Starting synchronization of snapshots...")
+    def validate_snapshots(self):
+        async def validate():
+            logging.info("Starting validation of snapshots...")
             collection = get_src_build()
             snapshots = self.list_snapshots(return_db_cols=True)
             errors = []
+            snapshots_deleted = 0
 
             for group in snapshots:
                 for snapshot_data in group['items']:
@@ -547,7 +548,7 @@ class SnapshotManager(BaseManager):
                     environment = snapshot_data.get('environment') or snapshot_data['conf']['indexer']['env']
 
                     if not environment:
-                        msg = f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment associated with it. Skipping synchronization."
+                        msg = f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment associated with it. Skipping validation."
                         logging.warning(msg)
                         errors.append(msg)
                         continue
@@ -555,7 +556,7 @@ class SnapshotManager(BaseManager):
                     try:
                         env = self.register[environment]
                     except KeyError:
-                        msg = f"[{snapshot_name}] Environment '{environment}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required."
+                        msg = f"[{snapshot_name}] Environment '{environment}' is not registered and connection details are unavailable. Consider adding it to the hub configuration otherwise manual deletion is required."
                         logging.error(msg)
                         errors.append(msg)
                         continue
@@ -567,26 +568,35 @@ class SnapshotManager(BaseManager):
                         if not exists:
                             logging.info(f"Deleting snapshot '{snapshot_name}' from MongoDB")
                             self.delete_snapshot_from_db(build_name, snapshot_name)
+                            snapshots_deleted += 1
                     except Exception as e:
                         msg = f"Error checking snapshot '{snapshot_name}': {str(e)}"
                         logging.exception(msg)
                         errors.append(msg)
-            logging.info("Synchronization of snapshots completed.")
-            if errors:
-                raise ValueError("Errors occurred during synchronization:\n" + "\n".join(errors))
+            logging.info("Validation of snapshots completed.")
+            return {
+                "snapshots_deleted": snapshots_deleted,
+                "errors": errors
+            }
 
         def done(f):
             try:
-                f.result()
-                logging.info("Synchronization successful", extra={"notify": True})
+                result = f.result()
+                snapshots_deleted = result.get("snapshots_deleted", 0)
+                errors = result.get("errors", [])
+                if errors:
+                    error_message = "\n".join(errors)
+                    logging.error(f"Validation completed with errors:\n{error_message}", extra={"notify": True})
+                else:
+                    logging.info(f"Validation successful, {snapshots_deleted} snapshots deleted.", extra={"notify": True})
             except Exception as e:
-                logging.exception(f"Synchronization failed: {e}", extra={"notify": True})
+                logging.exception(f"Validation failed: {e}", extra={"notify": True})
 
 
         try:
-            job = self.job_manager.submit(sync)
+            job = self.job_manager.submit(validate)
             job.add_done_callback(done)
         except Exception as ex:
             logging.exception(
-                f"Error while submitting synchronization job: {ex}", extra={"notify": True})
+                f"Error while submitting validation job: {ex}", extra={"notify": True})
         return job
