@@ -468,6 +468,7 @@ class SnapshotManager(BaseManager):
         keep=3,  # the number of most recent snapshots to keep in one group
         group_by="build_config",  # the attr of which its values form groups
         dryrun=True,  # display the snapshots to be deleted without deleting them
+        ignoreErrors=False,  # continue deleting snapshots even if an error occurs
         **filters,  # a set of criterions to limit which snapshots are to be cleaned
     ):
         """Delete past snapshots and keep only the most recent ones.
@@ -495,13 +496,16 @@ class SnapshotManager(BaseManager):
             )
 
         # return the number of snapshots successfully deleted
-        return cleaner.delete(get_src_build(), snapshots, self)
+        return cleaner.delete(get_src_build(), snapshots, self, ignoreErrors)
 
-    def delete_snapshots(self, snapshots_data):
+    def delete_snapshots(self, data):
+        snapshots_data = data.get('snapshots_data', {})
+        ignoreErrors = data.get('ignoreErrors', False)
+
         async def delete(environment, snapshot_names):
             if environment == "__no_env__":
                 environment = None
-            return self.cleanup(env=environment, keep=0, dryrun=False, _id={"$in": snapshot_names})
+            return self.cleanup(env=environment, keep=0, dryrun=False, ignoreErrors=ignoreErrors, _id={"$in": snapshot_names})
 
         def done(f):
             try:
