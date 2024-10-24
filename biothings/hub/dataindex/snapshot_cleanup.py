@@ -118,19 +118,19 @@ def _remove(doc, keep):
 # because SnapshotEnv.client is not async
 
 
-def delete(collection, element, envs):
+def delete(collection, element, envs, ignoreErrors=False):
     cnt = 0
     assert element.tag == "CleanUps"
     for group in element.elems:
-        for catagory in group.elems:
-            if catagory.tag == "Remove":
-                for snapshot in catagory.elems:
-                    _delete(collection, snapshot, envs)
+        for category in group.elems:
+            if category.tag == "Remove":
+                for snapshot in category.elems:
+                    _delete(collection, snapshot, envs, ignoreErrors)
                     cnt += 1
     return cnt
 
 
-def _delete(collection, snapshot, envs):
+def _delete(collection, snapshot, envs, ignoreErrors=False):
     assert snapshot.tag == "Snapshot"
 
     try:
@@ -142,7 +142,17 @@ def _delete(collection, snapshot, envs):
             env = envs.index_manager[env]
             client = Elasticsearch(**env["args"])
     except KeyError:
-        raise ValueError(f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required.")
+        message = f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required."
+        if ignoreErrors:
+            logging.error(message)
+            logging.info(f"Ignoring error and continuing to delete snapshot '{snapshot.attrs['_id']}'")
+            collection.update_one(
+                {"_id": snapshot.attrs["build_name"]},
+                {"$unset": {f"snapshot.{snapshot.attrs['_id']}": 1}},
+            )
+            return
+        else:
+            raise ValueError(message)
 
     try:
         client.snapshot.delete(
