@@ -494,10 +494,7 @@ class SnapshotManager(BaseManager):
         # return the number of snapshots successfully deleted
         return cleaner.delete(get_src_build(), snapshots, self, ignoreErrors)
 
-    def delete_snapshots(self, data):
-        snapshots_data = data.get('snapshots_data', {})
-        ignoreErrors = data.get('ignoreErrors', False)
-
+    def delete_snapshots(self, snapshots_data, ignoreErrors=False):
         async def delete(environment, snapshot_names):
             if environment == "__no_env__":
                 environment = None
