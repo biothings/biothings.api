@@ -379,5 +379,6 @@ class SourceManager(BaseSourceManager):
 
         mapping = self.get_mapping(subsrc)
 
-        logging.debug("Getting Pydantic model for source '%s'", name)
-        logging.debug("Mapping: %s", mapping)
+        logging.info("Getting Pydantic model for source '%s'", name)
+        logging.info("Mapping: %s", mapping)
+        return mapping
