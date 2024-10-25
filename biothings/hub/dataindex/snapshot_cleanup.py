@@ -65,8 +65,6 @@ def find(collection, *, env=None, keep=3, group_by=None, return_db_cols=False, *
                 },
                 {"$replaceRoot": {"newRoot": "$snapshot.v"}},
                 {"$match": {"environment": env, **filters} if env else filters},
-                # Exclude cloud credentials
-                {"$unset": ["conf.cloud.access_key", "conf.cloud.secret_key"]},
                 {"$sort": {"created_at": 1}},
                 {"$group": {"_id": group_by, "items": {"$push": "$$ROOT"}}},
             ]
