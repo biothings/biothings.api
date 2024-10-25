@@ -4,6 +4,10 @@ import os
 import sys
 import types
 from pprint import pformat
+from typing import Any, Dict, List, Union
+
+from dateutil.parser import parse
+from pydantic import BaseModel, ValidationError, create_model, field_validator
 
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.manager import BaseSourceManager
@@ -356,3 +360,24 @@ class SourceManager(BaseSourceManager):
         except KeyError as e:
             logging.exception(e)
             raise ValueError(f"Can't delete information, not found in document: {e}")
+
+    def get_mapping(self, name):
+        logging.debug("Getting mapping for source '%s'", name)
+        # either given a fully qualified source or just sub-source
+        try:
+            m = self.src_master.find_one({"_id": name})
+            return m.get("mapping")
+        except AttributeError:
+            raise ValueError("No mapping found for source '%s'" % name)
+
+    def get_pydantic_model(self, name):
+        # either given a fully qualified source or just sub-source
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+
+        mapping = self.get_mapping(subsrc)
+
+        logging.debug("Getting Pydantic model for source '%s'", name)
+        logging.debug("Mapping: %s", mapping)

@@ -1212,6 +1212,9 @@ class HubServer(object):
             self.extra_commands["source_save_mapping"] = CommandDefinition(
                 command=self.managers["source_manager"].save_mapping
             )
+            self.extra_commands["source_pydantic_model"] = CommandDefinition(
+                command=self.managers["source_manager"].get_pydantic_model
+            )
         if self.managers.get("dump_manager"):
             self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"], tracked=False)
             self.extra_commands["dump_info"] = CommandDefinition(
@@ -1422,6 +1425,10 @@ class HubServer(object):
         if "source_save_mapping" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="source_save_mapping", method="put", suffix="mapping")
+            )
+        if "source_pydantic_model" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="source_pydantic_model", method="put", suffix="pydantic_model")
             )
         if not self.api_endpoints["source"]:
             self.api_endpoints.pop("source")
