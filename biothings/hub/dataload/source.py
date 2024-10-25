@@ -33,6 +33,7 @@ class SourceManager(BaseSourceManager):
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
         self.log_folder = btconfig.LOG_FOLDER
+        self.setup()
 
     def setup(self):
         self.setup_log()
