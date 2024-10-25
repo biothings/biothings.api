@@ -28,7 +28,7 @@ class Snapshot:
             body={
                 "indices": indices,
                 "include_global_state": False,
-            }
+            },
         )
 
     def state(self):
