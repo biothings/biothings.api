@@ -9,7 +9,9 @@ from typing import Any, Dict, List, Union
 from dateutil.parser import parse
 from pydantic import BaseModel, ValidationError, create_model, field_validator
 
+from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
+from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager
 
 
@@ -30,6 +32,13 @@ class SourceManager(BaseSourceManager):
         self.src_dump = get_src_dump()
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
+        self.log_folder = btconfig.LOG_FOLDER
+
+    def setup(self):
+        self.setup_log()
+
+    def setup_log(self):
+        self.logger, _ = get_logger("sourcemanager")
 
     def reload(self):
         # clear registers
@@ -379,6 +388,6 @@ class SourceManager(BaseSourceManager):
 
         mapping = self.get_mapping(subsrc)
 
-        logging.info("Getting Pydantic model for source '%s'", name)
-        logging.info("Mapping: %s", mapping)
+        self.logger.info("Getting Pydantic model for source '%s'", name)
+        self.logger.info("Mapping: %s", mapping)
         return mapping
