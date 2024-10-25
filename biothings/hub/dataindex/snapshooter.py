@@ -526,7 +526,7 @@ class SnapshotManager(BaseManager):
             {"_id": build_name},
             {"$unset": {f"snapshot.{snapshot_name}": 1}},
         )
-        logging.info(f"Snapshot '{snapshot_name}' deleted from build '{build_name}' in MongoDB")
+        logging.info("Snapshot '%s' deleted from build '%s' in MongoDB", snapshot_name, build_name)
 
     def validate_snapshots(self):
         async def validate():
@@ -561,7 +561,7 @@ class SnapshotManager(BaseManager):
                     try:
                         exists = env.snapshot_exists(snapshot_name, build_doc)
                         if not exists:
-                            logging.info(f"Deleting snapshot '{snapshot_name}' from MongoDB")
+                            logging.info("Deleting snapshot '%s' from MongoDB", snapshot_name)
                             self.delete_snapshot_from_db(build_name, snapshot_name)
                             snapshots_deleted += 1
                     except Exception as e:
@@ -581,17 +581,16 @@ class SnapshotManager(BaseManager):
                 errors = result.get("errors", [])
                 if errors:
                     error_message = "\n".join(errors)
-                    logging.error(f"Validation completed with errors:\n{error_message}", extra={"notify": True})
+                    logging.error("Validation completed with errors:\n%s", error_message, extra={"notify": True})
                 else:
-                    logging.info(f"Validation successful, {snapshots_deleted} snapshots deleted.", extra={"notify": True})
+                    logging.info("Validation successful, %d snapshots deleted.", snapshots_deleted, extra={"notify": True})
             except Exception as e:
-                logging.exception(f"Validation failed: {e}", extra={"notify": True})
-
+                logging.exception("Validation failed: %s", e, extra={"notify": True})
 
         try:
             job = self.job_manager.submit(validate)
             job.add_done_callback(done)
         except Exception as ex:
             logging.exception(
-                f"Error while submitting validation job: {ex}", extra={"notify": True})
+                "Error while submitting validation job: %s", ex, extra={"notify": True})
         return job
