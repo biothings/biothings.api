@@ -390,7 +390,7 @@ class SourceManager(BaseSourceManager):
         except Exception as e:
             raise ValueError(f"Invalid date format: {v}") from e
 
-    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str) -> BaseModel
+    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str) -> BaseModel:
         es_to_pydantic = {
             "text": str,
             "keyword": str,
@@ -418,9 +418,7 @@ class SourceManager(BaseSourceManager):
             validators = {}
             for field_name, field_info in schema.items():
                 if "properties" in field_info:
-                    nested_fields, nested_validators = parse_schema(
-                        field_info["properties"]
-                    )
+                    nested_fields, nested_validators = parse_schema(field_info["properties"])
                     # create a nested model
                     nested_model = create_model(
                         field_name.capitalize(),
@@ -437,16 +435,13 @@ class SourceManager(BaseSourceManager):
                     py_type = Union[py_type, List[py_type]]
                     fields[field_name] = (py_type, ...)
                     if es_type == "date":
-                        validators[f"validate_{field_name}"] = field_validator(field_name)(
-                            self.date_validator
-                        )
+                        validators[f"validate_{field_name}"] = field_validator(field_name)(self.date_validator)
             return fields, validators
 
         fields, validators = parse_schema(schema)
         model = create_model(model_name, **fields, __validators__=validators)
 
         return model, model.model_json_schema()
-
 
     def run_pydantic_validation(self, name):
         # either given a fully qualified source or just sub-source
