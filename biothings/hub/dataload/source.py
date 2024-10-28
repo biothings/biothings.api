@@ -10,7 +10,7 @@ from dateutil.parser import parse
 from pydantic import BaseModel, ValidationError, create_model, field_validator
 
 from biothings import config as btconfig
-from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
+from biothings.utils.hub_db import get_data_plugin, get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager
 
@@ -30,6 +30,7 @@ class SourceManager(BaseSourceManager):
         self.reload()
         self.src_master = get_src_master()
         self.src_dump = get_src_dump()
+        self.src_conn = get_src_conn()
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
         self.log_folder = btconfig.LOG_FOLDER
@@ -457,4 +458,18 @@ class SourceManager(BaseSourceManager):
         self.logger.info("Getting Pydantic model for source '%s'", name)
         model, model_schema = self.create_pydantic_model(schema=mapping, model_name=subsrc)
         self.logger.info("Model schema: %s", model_schema)
+
+        upk = self.upload_manager[name]
+        assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+        upk = upk.pop()
+        if not upk.prepared:
+            self.logger.info("Preparing uploader for source '%s'", name)
+            upk.prepare()
+        src_collection = upk._state["collection"]
+        self.logger.info("Retrieving documents from collection '%s'", src_collection)
+        docs = src_collection.find({}, no_cursor_timeout=True)
+        for doc in docs:
+            self.logger.info("Validating document: %s", doc)
+            break
+
         return mapping
