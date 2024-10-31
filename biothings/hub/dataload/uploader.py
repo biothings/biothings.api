@@ -893,18 +893,38 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    def validate_src(self, klass, model):
+    # def validate_src(self, klass, model):
+    #     insts = self.create_instance(klass)
+    #     insts.prepare()
+    #     session = insts._state["conn"].start_session()
+    #     src_collection = insts._state["collection"]
+    #     logging.info("Validating documents from collection '%s'", src_collection)
+    #     errors = []
+    #     with session:
+    #         cursor = src_collection.find({}, no_cursor_timeout=True)
+    #         for doc in cursor:
+    #             try:
+    #                 model.model_validate(doc)
+    #                 logging.info("Document '%s' is valid", doc["_id"])
+    #             except ValidationError as e:
+    #                 for error in e.errors():
+    #                     if "Input should be a valid list" not in error["msg"]:
+    #                         errors.append(error)
+    #                 break
+    #     if errors:
+    #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+
+    async def create_and_validate(self, klass, model):
         insts = self.create_instance(klass)
         insts.prepare()
-        session = insts._state["conn"].start_session()
+        session = await insts._state["conn"].start_session()
         src_collection = insts._state["collection"]
         logging.info("Validating documents from collection '%s'", src_collection)
         errors = []
-        with session:
-            cursor = src_collection.find({}, no_cursor_timeout=True)
-            for doc in cursor:
+        async with session:
+            async for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
                 try:
-                    model.model_validate(doc)
+                    await model.model_validate(doc)
                     logging.info("Document '%s' is valid", doc["_id"])
                 except ValidationError as e:
                     for error in e.errors():
@@ -913,6 +933,24 @@ class UploaderManager(BaseSourceManager):
                     break
         if errors:
             raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+
+    def validate_src(self, klass, model, *args, **kwargs):
+        try:
+            job = self.job_manager.submit(self.create_and_validate, klass, model)
+
+            def done(f):
+                try:
+                    # just consume the result to raise exception
+                    f.result()
+                    logging.info("success", extra={"notify": True})
+                except Exception as e:
+                    logging.exception("failed: %s" % e, extra={"notify": True})
+
+            job.add_done_callback(done)
+            return job
+        except Exception as e:
+            logging.exception("Error while validating '%s': %s" % (klass, e), extra={"notify": True})
+            raise
 
 
 def set_pending_to_upload(src_name):
