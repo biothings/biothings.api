@@ -936,7 +936,7 @@ class UploaderManager(BaseSourceManager):
 
     def validate_src(self, klass, model, *args, **kwargs):
         try:
-            job = self.job_manager.submit(self.create_and_validate, klass, model)
+            job = self.job_manager.submit(partial(self.create_and_validate, klass, model, *args, **kwargs))
 
             def done(f):
                 try:
