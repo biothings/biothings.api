@@ -434,7 +434,7 @@ class SourceManager(BaseSourceManager):
                     es_type = field_info.get("type")
                     py_type = es_to_pydantic.get(es_type, Any)
                     py_type = Union[Optional[py_type], Optional[List[py_type]]]
-                    fields[field_name] = (py_type, ...)
+                    fields[field_name] = (py_type, None)
                     if es_type == "date":
                         validators[f"validate_{field_name}"] = field_validator(field_name)(self.date_validator)
             return fields, validators
