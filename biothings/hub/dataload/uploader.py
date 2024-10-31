@@ -6,6 +6,8 @@ import os
 import time
 from functools import partial
 
+from pydantic import ValidationError
+
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
@@ -896,13 +898,21 @@ class UploaderManager(BaseSourceManager):
         insts.prepare()
         session = insts._state["conn"].start_session()
         src_collection = insts._state["collection"]
-        logging.info("Retrieving documents from collection '%s'", src_collection)
+        logging.info("Validating documents from collection '%s'", src_collection)
+        errors = []
         with session:
-            docs = src_collection.find({}, no_cursor_timeout=True)
-            for doc in docs:
-                logging.info("Validating document: %s", doc)
-                return doc
-                break
+            cursor = src_collection.find({}, no_cursor_timeout=True)
+            for doc in cursor:
+                try:
+                    model.model_validate(doc)
+                    logging.info("Document '%s' is valid", doc["_id"])
+                except ValidationError as e:
+                    for error in e.errors():
+                        if "Input should be a valid list" not in error["msg"]:
+                            errors.append(error)
+                    break
+        if errors:
+            raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
 
 def set_pending_to_upload(src_name):
