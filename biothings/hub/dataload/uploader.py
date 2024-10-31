@@ -891,6 +891,18 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
+    def validate_src(self, klass, model):
+        insts = self.create_instance(klass)
+        insts.prepare()
+        session = insts._state["conn"].start_session()
+        src_collection = insts._state["collection"]
+        self.logger.info("Retrieving documents from collection '%s'", src_collection)
+        with session:
+            docs = src_collection.find({}, no_cursor_timeout=True)
+            for doc in docs:
+                self.logger.info("Validating document: %s", doc)
+                break
+
 
 def set_pending_to_upload(src_name):
     src_dump = get_src_dump()
