@@ -4,10 +4,10 @@ import os
 import sys
 import types
 from pprint import pformat
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from dateutil.parser import parse
-from pydantic import BaseModel, ValidationError, create_model, field_validator
+from pydantic import BaseModel, create_model, field_validator
 
 from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
@@ -427,13 +427,13 @@ class SourceManager(BaseSourceManager):
                         __validators__=nested_validators,
                     )
                     fields[field_name] = (
-                        Union[nested_model, List[nested_model]],
-                        ...,
+                        Union[Optional[nested_model], Optional[List[nested_model]]],
+                        None,
                     )
                 else:
                     es_type = field_info.get("type")
                     py_type = es_to_pydantic.get(es_type, Any)
-                    py_type = Union[py_type, List[py_type]]
+                    py_type = Union[Optional[py_type], Optional[List[py_type]]]
                     fields[field_name] = (py_type, ...)
                     if es_type == "date":
                         validators[f"validate_{field_name}"] = field_validator(field_name)(self.date_validator)
