@@ -462,6 +462,7 @@ class SourceManager(BaseSourceManager):
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
-        self.upload_manager.validate_src(upk, model)
+        test_doc = self.upload_manager.validate_src(upk, model)
+        self.logger.info("Test document: %s", test_doc)
 
         return mapping

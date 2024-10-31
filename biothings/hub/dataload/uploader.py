@@ -896,11 +896,12 @@ class UploaderManager(BaseSourceManager):
         insts.prepare()
         session = insts._state["conn"].start_session()
         src_collection = insts._state["collection"]
-        self.logger.info("Retrieving documents from collection '%s'", src_collection)
+        logging.info("Retrieving documents from collection '%s'", src_collection)
         with session:
             docs = src_collection.find({}, no_cursor_timeout=True)
             for doc in docs:
-                self.logger.info("Validating document: %s", doc)
+                logging.info("Validating document: %s", doc)
+                return doc
                 break
 
 
