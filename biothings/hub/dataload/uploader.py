@@ -6,7 +6,7 @@ import os
 import time
 from functools import partial
 
-from motor.motor_asyncio import AsyncIOMotorClient
+# from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import ValidationError
 
 from biothings import config
