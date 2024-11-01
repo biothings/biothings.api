@@ -6,6 +6,7 @@ import os
 import time
 from functools import partial
 
+from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import ValidationError
 
 from biothings import config
@@ -914,17 +915,17 @@ class UploaderManager(BaseSourceManager):
     #     if errors:
     #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    async def create_and_validate(self, klass, model):
+    def create_and_validate(self, klass, model):
         insts = self.create_instance(klass)
         insts.prepare()
-        session = await insts._state["conn"].start_session()
+        session = insts._state["conn"].start_session()
         src_collection = insts._state["collection"]
         logging.info("Validating documents from collection '%s'", src_collection)
         errors = []
-        async with session:
-            async for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+        with session:
+            for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
                 try:
-                    await model.model_validate(doc)
+                    model.model_validate(doc)
                     logging.info("Document '%s' is valid", doc["_id"])
                 except ValidationError as e:
                     for error in e.errors():
@@ -934,9 +935,72 @@ class UploaderManager(BaseSourceManager):
         if errors:
             raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
+    # async def create_and_validate(self, klass, model):
+    #     insts = self.create_instance(klass)
+    #     insts.prepare()
+
+    #     # Retrieve connection details from the existing synchronous client
+    #     sync_client = insts._state["collection"]
+    #     host = sync_client.HOST
+    #     port = sync_client.PORT
+    #     database_name = sync_client.DATABASE
+    #     collection_name = sync_client.COLLECTION
+
+    #     # Create an asynchronous client using motor
+    #     async_client = AsyncIOMotorClient(f"mongodb://{host}:{port}")
+    #     src_collection = async_client[database_name][collection_name]
+
+    #     logging.info("Validating documents from collection '%s'", src_collection.name)
+    #     errors = []
+    #     async with async_client.start_session() as session:
+    #         async for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+    #             try:
+    #                 await model.model_validate(doc)
+    #                 logging.info("Document '%s' is valid", doc["_id"])
+    #             except ValidationError as e:
+    #                 for error in e.errors():
+    #                     if "Input should be a valid list" not in error["msg"]:
+    #                         errors.append(error)
+    #                 break
+    #     if errors:
+    #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+
+    async def validate_process(self, klass, model):
+        insts = self.create_instance(klass)
+        insts.prepare()
+        pinfo = insts.get_pinfo()
+        pinfo["category"] = "uploadermanager"
+        pinfo["step"] = "pydantic_validation"
+        pinfo["description"] = "Validating documents from collection '%s'" % pinfo["source"]
+        got_error = None
+        job = await self.job_manager.defer_to_process(
+            pinfo,
+            partial(
+                self.create_and_validate,
+                klass,
+                model,
+            ),
+        )
+
+        def done(f):
+            nonlocal got_error
+            try:
+                # just consume the result to raise exception
+                # if there were an error... (what an api...)
+                f.result()
+                logging.info("success", extra={"notify": True})
+            except Exception as e:
+                logging.exception("failed: %s" % e, extra={"notify": True})
+                got_error = e
+
+        job.add_done_callback(done)
+        await job
+        if got_error:
+            raise got_error
+
     def validate_src(self, klass, model, *args, **kwargs):
         try:
-            job = self.job_manager.submit(partial(self.create_and_validate, klass, model, *args, **kwargs))
+            job = self.job_manager.submit(partial(self.validate_process, klass, model, *args, **kwargs))
 
             def done(f):
                 try:
