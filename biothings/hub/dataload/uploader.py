@@ -522,41 +522,37 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
-    async def validate_src(self, model, job_manager):
-        def validate(model):
-            self.prepare()
-            session = self._state["conn"].start_session()
-            src_collection = self._state["collection"]
-            self.logger.info("Validating documents from collection '%s'", src_collection)
-            errors = []
-            with session:
-                for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
-                    try:
-                        model.model_validate(doc)
-                        logging.info("Document '%s' is valid", doc["_id"])
-                    except ValidationError as e:
-                        for error in e.errors():
-                            if "Input should be a valid list" not in error["msg"]:
-                                errors.append(error)
-                        break
-            if errors:
-                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+    def validate(self, model):
+        self.prepare()
+        session = self._state["conn"].start_session()
+        src_collection = self._state["collection"]
+        self.logger.info("Validating documents from collection '%s'", src_collection)
+        errors = []
+        with session:
+            for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+                try:
+                    model.model_validate(doc)
+                    logging.info("Document '%s' is valid", doc["_id"])
+                except ValidationError as e:
+                    for error in e.errors():
+                        if "Input should be a valid list" not in error["msg"]:
+                            errors.append(error)
+                    break
+        if errors:
+            raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
+    async def validate_src(self, model, job_manager=None):
         self.prepare()
         pinfo = self.get_pinfo()
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
-        model = None
-        job = await job_manager.defer_to_process(pinfo, partial(validate, model))
+        job = await job_manager.defer_to_process(pinfo, partial(self.validate, model))
 
         def done(f):
-            try:
-                # just consume the result to raise exception
-                f.result()
-                logging.info("success", extra={"notify": True})
-            except Exception as e:
-                logging.exception("failed: %s" % e, extra={"notify": True})
+            nonlocal got_error
+            if f.exception():
+                got_error = f.exception()
 
         job.add_done_callback(done)
         await job
