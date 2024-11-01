@@ -542,6 +542,7 @@ class BaseSourceUploader(object):
             if errors:
                 raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
+        self.prepare()
         pinfo = self.get_pinfo()
         pinfo["step"] = "validate_src"
         got_error = False
