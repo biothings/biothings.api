@@ -547,6 +547,7 @@ class BaseSourceUploader(object):
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
+        model = None
         job = await job_manager.defer_to_process(pinfo, partial(self.validate, model))
 
         def done(f):
