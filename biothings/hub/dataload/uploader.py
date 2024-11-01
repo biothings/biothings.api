@@ -522,6 +522,45 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
+    async def validate_src(self, model, job_manager):
+        def validate(model):
+            self.prepare()
+            session = self._state["conn"].start_session()
+            src_collection = self._state["collection"]
+            self.logger.info("Validating documents from collection '%s'", src_collection)
+            errors = []
+            with session:
+                for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+                    try:
+                        model.model_validate(doc)
+                        logging.info("Document '%s' is valid", doc["_id"])
+                    except ValidationError as e:
+                        for error in e.errors():
+                            if "Input should be a valid list" not in error["msg"]:
+                                errors.append(error)
+                        break
+            if errors:
+                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+
+        pinfo = self.get_pinfo()
+        pinfo["step"] = "validate_src"
+        got_error = False
+        self.unprepare()
+        job = await job_manager.defer_to_process(pinfo, partial(validate, model))
+
+        def done(f):
+            try:
+                # just consume the result to raise exception
+                f.result()
+                logging.info("success", extra={"notify": True})
+            except Exception as e:
+                logging.exception("failed: %s" % e, extra={"notify": True})
+
+        job.add_done_callback(done)
+        await job
+        if got_error:
+            raise got_error
+
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
     """Same as default uploader, but will store records and ignore if
@@ -915,25 +954,9 @@ class UploaderManager(BaseSourceManager):
     #     if errors:
     #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    def create_and_validate(self, klass, model):
+    async def create_and_validate(self, klass, model):
         insts = self.create_instance(klass)
-        insts.prepare()
-        session = insts._state["conn"].start_session()
-        src_collection = insts._state["collection"]
-        logging.info("Validating documents from collection '%s'", src_collection)
-        errors = []
-        with session:
-            for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
-                try:
-                    model.model_validate(doc)
-                    logging.info("Document '%s' is valid", doc["_id"])
-                except ValidationError as e:
-                    for error in e.errors():
-                        if "Input should be a valid list" not in error["msg"]:
-                            errors.append(error)
-                    break
-        if errors:
-            raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+        await insts.validate_src(model, job_manager=self.job_manager)
 
     # async def create_and_validate(self, klass, model):
     #     insts = self.create_instance(klass)
@@ -965,42 +988,9 @@ class UploaderManager(BaseSourceManager):
     #     if errors:
     #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    async def validate_process(self, klass, model):
-        insts = self.create_instance(klass)
-        insts.prepare()
-        pinfo = insts.get_pinfo()
-        pinfo["category"] = "uploadermanager"
-        pinfo["step"] = "pydantic_validation"
-        pinfo["description"] = "Validating documents from collection '%s'" % pinfo["source"]
-        got_error = None
-        job = await self.job_manager.defer_to_process(
-            pinfo,
-            partial(
-                self.create_and_validate,
-                klass,
-                model,
-            ),
-        )
-
-        def done(f):
-            nonlocal got_error
-            try:
-                # just consume the result to raise exception
-                # if there were an error... (what an api...)
-                f.result()
-                logging.info("success", extra={"notify": True})
-            except Exception as e:
-                logging.exception("failed: %s" % e, extra={"notify": True})
-                got_error = e
-
-        job.add_done_callback(done)
-        await job
-        if got_error:
-            raise got_error
-
     def validate_src(self, klass, model, *args, **kwargs):
         try:
-            job = self.job_manager.submit(partial(self.validate_process, klass, model, *args, **kwargs))
+            job = self.job_manager.submit(partial(self.create_and_validate, klass, model, *args, **kwargs))
 
             def done(f):
                 try:
