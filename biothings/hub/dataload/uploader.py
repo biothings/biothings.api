@@ -529,6 +529,7 @@ class BaseSourceUploader(object):
             self.logger.info("Getting mapping for uploader source '%s'", self.fullname)
             mapping = self._state["src_master"].find_one({"_id": self.collection_name})
             self.logger.info("Mapping found for uploader source '%s'", self.fullname)
+            self.logger.info("Mapping: %s", mapping.get("mapping"))
             return mapping.get("mapping")
         except AttributeError:
             raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
