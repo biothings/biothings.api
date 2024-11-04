@@ -446,23 +446,24 @@ class SourceManager(BaseSourceManager):
 
     def run_pydantic_validation(self, name):
         # either given a fully qualified source or just sub-source
-        try:
-            subsrc = name.split(".")[1]
-        except IndexError:
-            subsrc = name
+        # try:
+        #     subsrc = name.split(".")[1]
+        # except IndexError:
+        #     subsrc = name
 
-        self.logger.info("Retrieving mapping for source '%s'", name)
-        mapping = self.get_mapping(subsrc)
-        self.logger.info("Mapping: %s", mapping)
+        # self.logger.info("Retrieving mapping for source '%s'", name)
+        # mapping = self.get_mapping(subsrc)
+        # self.logger.info("Mapping: %s", mapping)
 
-        self.logger.info("Getting Pydantic model for source '%s'", name)
-        model, model_schema = self.create_pydantic_model(schema=mapping, model_name=subsrc)
-        self.logger.info("Model schema: %s", model_schema)
+        # self.logger.info("Getting Pydantic model for source '%s'", name)
+        # model, model_schema = self.create_pydantic_model(schema=mapping, model_name=subsrc)
+        # self.logger.info("Model schema: %s", model_schema)
 
+        self.logger.info("Get all the sources in the upload manager %s", self.upload_manager.get_source_ids())
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
-        test_doc = self.upload_manager.validate_src(upk, model)
+        test_doc = self.upload_manager.validate_src(upk)
         self.logger.info("Test document: %s", test_doc)
 
-        return mapping
+        return test_doc

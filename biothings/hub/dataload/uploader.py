@@ -522,8 +522,17 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
-    def validate(self, model):
+    def validate(self):
         self.prepare()
+
+        try:
+            self.logger.info("Getting mapping for uploader source '%s'", self.fullname)
+            mapping = self._state["src_master"].find_one({"_id": self.collection_name})
+            self.logger.info("Mapping found for uploader source '%s'", self.fullname)
+            return mapping.get("mapping")
+        except AttributeError:
+            raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
+
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
         self.logger.info("Validating documents from collection '%s'", src_collection)
@@ -541,14 +550,13 @@ class BaseSourceUploader(object):
         if errors:
             raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    async def validate_src(self, model, job_manager=None):
+    async def validate_src(self, job_manager=None):
         self.prepare()
         pinfo = self.get_pinfo()
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
-        model = None
-        job = await job_manager.defer_to_process(pinfo, partial(self.validate, model))
+        job = await job_manager.defer_to_process(pinfo, partial(self.validate))
 
         def done(f):
             nonlocal got_error
@@ -953,9 +961,10 @@ class UploaderManager(BaseSourceManager):
     #     if errors:
     #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    async def create_and_validate(self, klass, model):
+    async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        await insts.validate_src(model, job_manager=self.job_manager)
+        kwargs["job_manager"] = self.job_manager
+        await insts.validate_src(*args, **kwargs)
 
     # async def create_and_validate(self, klass, model):
     #     insts = self.create_instance(klass)
@@ -987,9 +996,9 @@ class UploaderManager(BaseSourceManager):
     #     if errors:
     #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    def validate_src(self, klass, model, *args, **kwargs):
+    def validate_src(self, klass, *args, **kwargs):
         try:
-            job = self.job_manager.submit(partial(self.create_and_validate, klass, model, *args, **kwargs))
+            job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
 
             def done(f):
                 try:
