@@ -463,7 +463,7 @@ class SourceManager(BaseSourceManager):
         self.logger.info("print uploader_manager %s", self.upload_manager["chembl"])
         self.logger.info("print uploader_manager %s", self.upload_manager["chembl.chembl"])
         self.logger.info("print uploader_manager %s", self.upload_manager["entrez"])
-        self.logger.info("print uploader_manager %s", self.upload_manager["entrez.gene"])
+        self.logger.info("print uploader_manager %s", self.upload_manager["entrez.entrez_gene"])
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
