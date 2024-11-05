@@ -4,7 +4,7 @@ import psycopg2
 import psycopg2.errors
 import pytest
 
-from biothings.utils import Collection, Database
+from biothings.utils.postgresql import Collection, Database
 
 @pytest.fixture(scope='module')
 def db():
