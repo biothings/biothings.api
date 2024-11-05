@@ -599,8 +599,8 @@ class BaseSourceUploader(object):
         except AttributeError:
             raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
 
-        model = self.create_pydantic_model(mapping, self.collection_name)[0]
-        self.logger.info("Model schema: %s", model[1])
+        model, model_schema = self.create_pydantic_model(mapping, self.collection_name)
+        self.logger.info("Model schema: %s", model_schema)
 
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
