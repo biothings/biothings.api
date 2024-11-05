@@ -609,6 +609,7 @@ class BaseSourceUploader(object):
         with session:
             for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
                 try:
+                    doc = {"_id": "test_id", "chembl": {"chembl_target": 123}}
                     model.model_validate(doc)
                     self.logger.info("Document '%s' is valid", doc["_id"])
                     return
