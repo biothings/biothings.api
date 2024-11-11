@@ -36,7 +36,7 @@ from random import randrange
 import logging
 import os
 import re
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch_dsl import MultiSearch, Q, Search
 from elasticsearch_dsl.exceptions import IllegalOperation
@@ -88,7 +88,7 @@ class QStringParser:
         self.default_pattern = self._verify_default_regex_pattern(default_pattern=default_pattern)
         self.patterns = self._build_regex_pattern_collection(patterns=patterns)
 
-    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> set[str]:
+    def _build_endpoint_metadata_fields(self, metadata: BiothingsMetadata) -> Set[str]:
         """
         Extracts the field mappings stored in our "metadata" instance
 
@@ -178,25 +178,28 @@ class QStringParser:
         """
         metadata_fields = set()
         if metadata is not None:
-            # We use None as our general "_all" field access. See the constructor
-            # for BiothingsESMetadata in web.services.metadata.py
-            _all_metadata_key = None
-            general_metadata = metadata.biothing_metadata.get(_all_metadata_key, None)
-
-            if general_metadata is not None:
-                biothing_type = general_metadata.get("biothing_type", None)
-                try:
-                    raw_metadata_mapping = metadata.get_mappings(biothing_type)
-                    metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
-                except Exception as gen_exc:
-                    logger.exception(gen_exc)
-                    logger.error("Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type)
+            index_metadata = list(metadata.biothing_metadata.values())
+            if index_metadata is not None:
+                for index_metadata_mapping in index_metadata:
                     metadata_mapping = {}
+                    biothing_type = index_metadata_mapping.get("_biothing", None)
+                    try:
+                        raw_metadata_mapping = metadata.get_mappings(biothing_type)
+                        metadata_mapping = self.metadata_field_formatter.transform_mapping(raw_metadata_mapping)
+                    except Exception as gen_exc:
+                        logger.exception(gen_exc)
+                        logger.error(
+                            "Unable to retrieve elasticsearch field mappings. biothing_type: [%s]", biothing_type
+                        )
+                        metadata_mapping = {}
 
-                for field, elasticsearch_mapping in metadata_mapping.items():
-                    field_index = elasticsearch_mapping.get("index", True)
-                    if field_index:
-                        metadata_fields.add(field)
+                    for field, elasticsearch_mapping in metadata_mapping.items():
+                        field_index = elasticsearch_mapping.get("index", True)
+                        if field_index:
+                            metadata_fields.add(field)
+
+        if len(metadata_fields) == 0:
+            metadata_fields = None
         return metadata_fields
 
     def _verify_default_regex_pattern(
