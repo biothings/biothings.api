@@ -538,7 +538,7 @@ def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
             manifest = yaml.safe_load(yaml_handle)
     elif manifest_file_json.exists():
         with open(manifest_file_json, "r", encoding="utf-8") as json_handle:
-            manifest = load_json(json_handle)
+            manifest = load_json(json_handle.read())
     else:
         logger.info("No manifest file discovered")
     return manifest
