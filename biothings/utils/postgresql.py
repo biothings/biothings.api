@@ -22,7 +22,7 @@ class Database:
         self.collections = {}
 
     def __getitem__(self, name):
-        return Collection(self, name)
+        return Collection(name, self)
 
     def close(self):
         self.connection.close()
@@ -68,13 +68,16 @@ class Collection:
         params = []
         for key, value in query.items():
             if key == '_id':
-                clauses.append("_id = %s")
+                clauses.append(sql.SQL("{} = %s").format(sql.Identifier('_id')))
                 params.append(value)
             else:
                 # Handle JSONB field querying
-                clauses.append(f"document ->> %s = %s")
+                clauses.append("document ->> %s = %s")
                 params.extend([key, str(value)])
-        where_clause = "WHERE " + " AND ".join(clauses) if clauses else ""
+        if clauses:
+            where_clause = sql.SQL("WHERE ") + sql.SQL(" AND ").join(map(sql.SQL, clauses))
+        else:
+            where_clause = sql.SQL("")
         return where_clause, params
 
     def find_one(self, query: Optional[Dict[str, Any]] = None):
@@ -83,8 +86,11 @@ class Collection:
         """
         with self.get_cursor() as cursor:
             where_clause, params = self._build_where_clause(query or {})
-            sql = f"SELECT document FROM {self.colname} {where_clause} LIMIT 1"
-            cursor.execute(sql, params)
+            sql_query = sql.SQL("SELECT document FROM {} {} LIMIT 1").format(
+                sql.Identifier(self.colname),
+                where_clause
+            )
+            cursor.execute(sql_query, params)
             result = cursor.fetchone()
             return result['document'] if result else None
 
@@ -94,12 +100,15 @@ class Collection:
         """
         with self.get_cursor() as cursor:
             where_clause, params = self._build_where_clause(query or {})
-            sql = f"SELECT document FROM {self.colname} {where_clause}"
-            cursor.execute(sql, params)
+            sql_query = sql.SQL("SELECT document FROM {} {}").format(
+                sql.Identifier(self.colname),
+                where_clause
+            )
+            cursor.execute(sql_query, params)
             for row in cursor:
                 yield row['document']
 
-    def insert_one(self, doc: Dict[str, Any], *args, **kwargs) -> None:
+    def insert_one(self, doc: Dict[str, Any], **kwargs) -> None:
         """
         Insert a single document into the collection.
         """
@@ -107,10 +116,11 @@ class Collection:
         if not _id:
             raise ValueError("Document must have an '_id' field")
         with self.get_cursor() as cursor:
-            cursor.execute(f"""
-                INSERT INTO {self.colname} (_id, document)
+            query = sql.SQL("""
+                INSERT INTO {} (_id, document)
                 VALUES (%s, %s::jsonb)
-            """, (_id, json.dumps(doc)))
+            """).format(sql.Identifier(self.colname))
+            cursor.execute(query, (_id, json.dumps(doc)))
             self.connection.commit()
 
     def update_many(self, query: Dict[str, Any], update: Dict[str, Any]):
@@ -127,19 +137,22 @@ class Collection:
         set_params = []
         for key, value in set_fields.items():
             path = '{' + ','.join(key.split('.')) + '}'
-            set_clauses.append(
-                f"document = jsonb_set(document, %s, %s::jsonb, true)")
+            set_clauses.append("document = jsonb_set(document, %s, %s::jsonb, true)")
             set_params.extend([path, json.dumps(value)])
 
         where_clause, where_params = self._build_where_clause(query)
-        sql = f"""
-            UPDATE {self.colname}
-            SET {', '.join(set_clauses)}
-            {where_clause}
-        """
+        sql_query = sql.SQL("""
+            UPDATE {}
+            SET {}
+            {}
+        """).format(
+            sql.Identifier(self.colname),
+            sql.SQL(', ').join(map(sql.SQL, set_clauses)),
+            where_clause
+        )
 
         with self.get_cursor() as cursor:
-            cursor.execute(sql, set_params + where_params)
+            cursor.execute(sql_query, set_params + where_params)
             self.connection.commit()
 
     def replace_one(self, query: Dict[str, Any], doc: Dict[str, Any], upsert: bool = False):
@@ -153,21 +166,29 @@ class Collection:
 
         where_clause, params = self._build_where_clause(query)
         with self.get_cursor() as cursor:
-            cursor.execute(
-                f"SELECT COUNT(*) FROM {self.colname} {where_clause}", params)
+            sql_query = sql.SQL("SELECT COUNT(*) FROM {} {}").format(
+                sql.Identifier(self.colname),
+                where_clause
+            )
+            cursor.execute(sql_query, params)
             count = cursor.fetchone()[0]
 
             if count > 0:
-                cursor.execute(f"""
-                    UPDATE {self.colname}
+                update_query = sql.SQL("""
+                    UPDATE {}
                     SET document = %s::jsonb
-                    {where_clause}
-                """, [json.dumps(doc)] + params)
+                    {}
+                """).format(
+                    sql.Identifier(self.colname),
+                    where_clause
+                )
+                cursor.execute(update_query, [json.dumps(doc)] + params)
             elif upsert:
-                cursor.execute(f"""
-                    INSERT INTO {self.colname} (_id, document)
+                insert_query = sql.SQL("""
+                    INSERT INTO {} (_id, document)
                     VALUES (%s, %s::jsonb)
-                """, (_id, json.dumps(doc)))
+                """).format(sql.Identifier(self.colname))
+                cursor.execute(insert_query, (_id, json.dumps(doc)))
             self.connection.commit()
 
     def remove(self, query: Dict[str, Any]):
@@ -175,9 +196,12 @@ class Collection:
         Remove documents matching the query.
         """
         where_clause, params = self._build_where_clause(query)
-        sql = f"DELETE FROM {self.colname} {where_clause}"
+        sql_query = sql.SQL("DELETE FROM {} {}").format(
+            sql.Identifier(self.colname),
+            where_clause
+        )
         with self.get_cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(sql_query, params)
             self.connection.commit()
 
     def remove_many(self, query: Dict[str, Any]):
@@ -202,7 +226,10 @@ class Collection:
 
     def count(self) -> int:
         with self.get_cursor() as cursor:
-            cursor.execute(f"SELECT COUNT(_id) FROM {self.colname}")
+            sql_query = sql.SQL("SELECT COUNT(_id) FROM {}").format(
+                sql.Identifier(self.colname)
+            )
+            cursor.execute(sql_query)
             return cursor.fetchone()[0]
 
     def drop(self):
