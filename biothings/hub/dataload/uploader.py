@@ -613,10 +613,22 @@ class BaseSourceUploader(object):
         except AttributeError:
             raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
 
-        model = self.create_pydantic_model(mapping, self.collection_name)
-        self.logger.info("Model: %s", model)
+        try:
+            self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
+            model = self.create_pydantic_model(mapping, self.collection_name)
+            source, uploader = self.fullname.split(".")
+            model_dir = os.join(config.DATA_ARCHIVE_ROOT, source, "models")
+            # create directory if it doesn't exist
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            model_path = os.path.join(model_dir, f"{uploader}.py")
+            with open(model_path, "w") as f:
+                f.write(model)
+            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+        except Exception as e:
+            self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
+            raise e
         return
-
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
         self.logger.info("Validating documents from collection '%s'", src_collection)
