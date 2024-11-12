@@ -5,8 +5,9 @@ from xml.etree import ElementTree
 
 from elasticsearch import Elasticsearch
 from pymongo.collection import Collection
-from config import logger as logging
+from config import logger
 from elasticsearch.exceptions import NotFoundError
+
 
 class _Ele(NamedTuple):  # Cleanup Element
     tag: str
@@ -141,26 +142,34 @@ def _delete(collection, snapshot, envs, ignoreErrors=False):
             env = snapshot.attrs["conf"]["indexer"]["env"]
             env = envs.index_manager[env]
             client = Elasticsearch(**env["args"])
-    except KeyError:
-        message = f"Environment '{env}' is not registered and connection details are unavailable. Consider adding it to the hub configuration othwerwise manual deletion is required."
+    except KeyError as exc:
+        message = (
+            f"Environment '{env}' is not registered and connection details are unavailable. "
+            "Consider adding it to the hub configuration otherwise manual deletion is required."
+        )
         if ignoreErrors:
-            logging.error(message)
-            logging.info(f"Ignoring error and continuing to delete snapshot '{snapshot.attrs['_id']}'")
+            logger.error(message)
+            logger.info(
+                "Ignoring error and continuing to delete snapshot '%s'", snapshot.attrs["_id"]
+            )
             collection.update_one(
                 {"_id": snapshot.attrs["build_name"]},
                 {"$unset": {f"snapshot.{snapshot.attrs['_id']}": 1}},
             )
             return
-        else:
-            raise ValueError(message)
+        raise ValueError(message) from exc
 
     try:
         client.snapshot.delete(
             repository=snapshot.attrs["conf"]["repository"]["name"],
             snapshot=snapshot.attrs["_id"],
         )
-    except NotFoundError:
-        raise ValueError(f"Snapshot '{snapshot.attrs['_id']}' does not exist in the repository '{snapshot.attrs['conf']['repository']['name']}'. Validate the snapshots to remove this snapshot from the database.")
+    except NotFoundError as exc:
+        raise ValueError(
+            f"Snapshot '{snapshot.attrs['_id']}' does not exist in the repository "
+            f"'{snapshot.attrs['conf']['repository']['name']}'. "
+            "Validate the snapshots to remove this snapshot from the database."
+        ) from exc
 
     collection.update_one(
         {"_id": snapshot.attrs["build_name"]},
@@ -200,8 +209,7 @@ def _plain_text(snapshot):
             snapshot.attrs["_id"],
             " (",
             f'env={snapshot.attrs.get("environment") or "N/A"}',
-            ", "
-            #
+            ", ",
             # "build_name" generally agrees with the snapshot _id,
             # although technically snapshots can be named anything.
             # since in most use cases, the snapshot name at least
