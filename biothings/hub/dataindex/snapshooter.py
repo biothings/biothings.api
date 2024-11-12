@@ -521,6 +521,19 @@ class SnapshotManager(BaseManager):
         return jobs
 
     def delete_snapshot_from_db(self, build_name, snapshot_name):
+        """
+        Delete a snapshot entry from the MongoDB database.
+
+        This method removes the specified snapshot from the build document in the source build collection.
+        Called when a snapshot is found to be missing in the snapshot environment during validation.
+
+        Parameters:
+            build_name (str): The name of the build from which to delete the snapshot.
+            snapshot_name (str): The name of the snapshot to delete.
+
+        Returns:
+            None
+        """
         collection = get_src_build()
         collection.update_one(
             {"_id": build_name},
@@ -529,6 +542,19 @@ class SnapshotManager(BaseManager):
         logging.info("Snapshot '%s' deleted from build '%s' in MongoDB", snapshot_name, build_name)
 
     def validate_snapshots(self):
+        """
+        Validate the snapshots stored in the database.
+
+        This method checks each snapshot in the source build collection to verify whether it exists
+        in the corresponding snapshot environment. If a snapshot does not exist in the environment,
+        it is removed from the database. This helps keep the database in sync with the actual snapshots
+        present in the environments.
+
+        The validation process is executed asynchronously and any errors encountered during validation are logged.
+
+        Returns:
+            job (asyncio.Task): The asynchronous task representing the validation process.
+        """
         async def validate():
             logging.info("Starting validation of snapshots...")
             collection = get_src_build()
