@@ -4,10 +4,6 @@ import os
 import sys
 import types
 from pprint import pformat
-from typing import Any, Dict, List, Optional, Union
-
-from dateutil.parser import parse
-from pydantic import BaseModel, create_model, field_validator
 
 from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
@@ -381,88 +377,8 @@ class SourceManager(BaseSourceManager):
         except AttributeError:
             raise ValueError("No mapping found for source '%s'" % name)
 
-    def date_validator(cls, v):
-        """Date validator for Pydantic model"""
-        try:
-            if isinstance(v, list):
-                return [parse(date) for date in v]
-            else:
-                return parse(v)
-        except Exception as e:
-            raise ValueError(f"Invalid date format: {v}") from e
-
-    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str) -> BaseModel:
-        es_to_pydantic = {
-            "text": str,
-            "keyword": str,
-            "long": int,
-            "integer": int,
-            "short": int,
-            "byte": int,
-            "double": float,
-            "float": float,
-            "half_float": float,
-            "scaled_float": float,
-            "date": str,
-            "boolean": bool,
-            "binary": bytes,
-            "integer_range": tuple,
-            "float_range": tuple,
-            "long_range": tuple,
-            "double_range": tuple,
-            "date_range": tuple,
-            "ip_range": tuple,
-        }
-
-        def parse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-            fields = {}
-            validators = {}
-            for field_name, field_info in schema.items():
-                if "properties" in field_info:
-                    nested_fields, nested_validators = parse_schema(field_info["properties"])
-                    # create a nested model
-                    nested_model = create_model(
-                        field_name.capitalize(),
-                        **nested_fields,
-                        __validators__=nested_validators,
-                    )
-                    fields[field_name] = (
-                        Union[Optional[nested_model], Optional[List[nested_model]]],
-                        None,
-                    )
-                else:
-                    es_type = field_info.get("type")
-                    py_type = es_to_pydantic.get(es_type, Any)
-                    py_type = Union[Optional[py_type], Optional[List[py_type]]]
-                    fields[field_name] = (py_type, None)
-                    if es_type == "date":
-                        validators[f"validate_{field_name}"] = field_validator(field_name)(self.date_validator)
-            return fields, validators
-
-        fields, validators = parse_schema(schema)
-        model = create_model(model_name, **fields, __validators__=validators)
-
-        return model, model.model_json_schema()
-
     def run_pydantic_validation(self, name):
-        # either given a fully qualified source or just sub-source
-        # try:
-        #     subsrc = name.split(".")[1]
-        # except IndexError:
-        #     subsrc = name
-
-        # self.logger.info("Retrieving mapping for source '%s'", name)
-        # mapping = self.get_mapping(subsrc)
-        # self.logger.info("Mapping: %s", mapping)
-
-        # self.logger.info("Getting Pydantic model for source '%s'", name)
-        # model, model_schema = self.create_pydantic_model(schema=mapping, model_name=subsrc)
-        # self.logger.info("Model schema: %s", model_schema)
-
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
         self.upload_manager.validate_src(upk)
-        # self.logger.info("Test document: %s", test_doc)
-
-        # return test_doc

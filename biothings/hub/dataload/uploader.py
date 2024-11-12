@@ -5,10 +5,9 @@ import inspect
 import os
 import time
 from functools import partial
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict
 
-from dateutil.parser import parse
-from pydantic import BaseModel, ValidationError, create_model, field_validator
+from pydantic import ValidationError
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
@@ -523,68 +522,83 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
-    def date_validator(cls, v):
-        """Date validator for Pydantic model"""
-        try:
-            if isinstance(v, list):
-                return [parse(date) for date in v]
-            else:
-                return parse(v)
-        except Exception as e:
-            raise ValueError(f"Invalid date format: {v}") from e
+    def generate_date_validator(self, date_fields: str) -> str:
+        fields_str = ", ".join(f'"{field}"' for field in date_fields)
+        return f"""
+        @field_validator({fields_str})
+        @classmethod
+        def date_validator(cls, v):
+            try:
+                if isinstance(v, list):
+                    return [parse(date) for date in v]
+                else:
+                    return parse(v)
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {{v}}") from e
+    """
 
-    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str) -> BaseModel:
+    def generate_base_model(self, model_name: str) -> str:
+        return f"""class {model_name}(BaseModel):
+    """
+
+    def generate_key_name(self, k: str, v: str) -> str:
+        return f"""    {k}: Optional[Union[{v}, List[{v}]]] = None
+    """
+
+    def generate_model(self, schema: Dict[str, Any], model_name: str) -> str:
         es_to_pydantic = {
-            "text": str,
-            "keyword": str,
-            "long": int,
-            "integer": int,
-            "short": int,
-            "byte": int,
-            "double": float,
-            "float": float,
-            "half_float": float,
-            "scaled_float": float,
-            "date": str,
-            "boolean": bool,
-            "binary": bytes,
-            "integer_range": tuple,
-            "float_range": tuple,
-            "long_range": tuple,
-            "double_range": tuple,
-            "date_range": tuple,
-            "ip_range": tuple,
+            "text": "str",
+            "keyword": "str",
+            "long": "int",
+            "integer": "int",
+            "short": "int",
+            "byte": "int",
+            "double": "float",
+            "float": "float",
+            "half_float": "float",
+            "scaled_float": "float",
+            "date": "str",
+            "boolean": "bool",
+            "binary": "bytes",
+            "integer_range": "tuple",
+            "float_range": "tuple",
+            "long_range": "tuple",
+            "double_range": "tuple",
+            "date_range": "tuple",
+            "ip_range": "tuple",
         }
+        date_fields = []
+        base_model = self.generate_base_model(model_name)
+        for k, v in schema.items():
+            if isinstance(v, dict) and "properties" in v.keys():
+                base_model += self.generate_key_name(k, k.capitalize())
+            else:
+                base_model += self.generate_key_name(k, es_to_pydantic.get(v["type"], Any))
+                if v["type"] == "date":
+                    date_fields.append(k)
+        if date_fields:
+            base_model += self.generate_date_validator(date_fields)
+        return base_model + "\n\n"
 
-        def parse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-            fields = {}
-            validators = {}
+    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str):
+        base_imports = """from typing import List, Optional, Union
+
+    from dateutil.parser import parse
+    from pydantic import BaseModel, field_validator
+
+    """
+
+        def parse_schema(schema: Dict[str, Any], model_name="", model="") -> Dict[str, Any]:
             for field_name, field_info in schema.items():
                 if "properties" in field_info:
-                    nested_fields, nested_validators = parse_schema(field_info["properties"])
-                    # create a nested model
-                    nested_model = create_model(
-                        field_name.capitalize(),
-                        **nested_fields,
-                        __validators__=nested_validators,
-                    )
-                    fields[field_name] = (
-                        Union[Optional[nested_model], Optional[List[nested_model]]],
-                        None,
-                    )
+                    model = parse_schema(field_info["properties"], field_name.capitalize(), model) + model
                 else:
-                    es_type = field_info.get("type")
-                    py_type = es_to_pydantic.get(es_type, Any)
-                    py_type = Union[Optional[py_type], Optional[List[py_type]]]
-                    fields[field_name] = (py_type, None)
-                    if es_type == "date":
-                        validators[f"validate_{field_name}"] = field_validator(field_name)(self.date_validator)
-            return fields, validators
+                    model = self.generate_model(schema, model_name)
+            return model
 
-        fields, validators = parse_schema(schema)
-        model = create_model(model_name, **fields, __validators__=validators)
-
-        return model, model.model_json_schema()
+        model = parse_schema(schema)
+        model = model + self.generate_model(schema, model_name)
+        return base_imports + model
 
     def validate(self):
         self.prepare()
@@ -599,8 +613,9 @@ class BaseSourceUploader(object):
         except AttributeError:
             raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
 
-        model, model_schema = self.create_pydantic_model(mapping, self.collection_name)
-        self.logger.info("Model schema: %s", model_schema)
+        model = self.create_pydantic_model(mapping, self.collection_name)
+        self.logger.info("Model: %s", model)
+        return
 
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
@@ -1011,61 +1026,10 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    # def validate_src(self, klass, model):
-    #     insts = self.create_instance(klass)
-    #     insts.prepare()
-    #     session = insts._state["conn"].start_session()
-    #     src_collection = insts._state["collection"]
-    #     logging.info("Validating documents from collection '%s'", src_collection)
-    #     errors = []
-    #     with session:
-    #         cursor = src_collection.find({}, no_cursor_timeout=True)
-    #         for doc in cursor:
-    #             try:
-    #                 model.model_validate(doc)
-    #                 logging.info("Document '%s' is valid", doc["_id"])
-    #             except ValidationError as e:
-    #                 for error in e.errors():
-    #                     if "Input should be a valid list" not in error["msg"]:
-    #                         errors.append(error)
-    #                 break
-    #     if errors:
-    #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
-
     async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
-
-    # async def create_and_validate(self, klass, model):
-    #     insts = self.create_instance(klass)
-    #     insts.prepare()
-
-    #     # Retrieve connection details from the existing synchronous client
-    #     sync_client = insts._state["collection"]
-    #     host = sync_client.HOST
-    #     port = sync_client.PORT
-    #     database_name = sync_client.DATABASE
-    #     collection_name = sync_client.COLLECTION
-
-    #     # Create an asynchronous client using motor
-    #     async_client = AsyncIOMotorClient(f"mongodb://{host}:{port}")
-    #     src_collection = async_client[database_name][collection_name]
-
-    #     logging.info("Validating documents from collection '%s'", src_collection.name)
-    #     errors = []
-    #     async with async_client.start_session() as session:
-    #         async for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
-    #             try:
-    #                 await model.model_validate(doc)
-    #                 logging.info("Document '%s' is valid", doc["_id"])
-    #             except ValidationError as e:
-    #                 for error in e.errors():
-    #                     if "Input should be a valid list" not in error["msg"]:
-    #                         errors.append(error)
-    #                 break
-    #     if errors:
-    #         raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
     def validate_src(self, klass, *args, **kwargs):
         try:
