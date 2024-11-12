@@ -44,6 +44,30 @@ class _Ele(NamedTuple):  # Cleanup Element
 
 
 def find(collection, *, env=None, keep=3, group_by=None, return_db_cols=False, **filters):
+    """
+    Identify snapshots to remove or keep based on specified criteria.
+
+    This function queries a MongoDB collection to find snapshots matching the given filters,
+    groups them according to the specified grouping key(s), and determines which snapshots
+    to keep or remove based on the 'keep' parameter.
+
+    Parameters:
+    - collection (Collection): The MongoDB collection to query. Must be an instance of `pymongo.collection.Collection`.
+    - env (str, optional): The environment name to filter snapshots. Defaults to None.
+    - keep (int, optional): The number of most recent snapshots to keep in each group. Defaults to 3.
+    - group_by (str or list, optional): The key or list of keys to group snapshots by. If None, defaults to 'build_config'.
+    - return_db_cols (bool, optional): If True, returns the raw database query results instead of the structured `_Ele` element. Defaults to False.
+    - **filters: Additional keyword arguments to filter snapshots.
+
+    Returns:
+    - _Ele or list: An `_Ele` element representing the snapshots to be removed and kept, organized by groups,
+      or a list of raw database query results if `return_db_cols` is True.
+
+    Raises:
+    - NotImplementedError: If 'collection' is not an instance of `pymongo.collection.Collection`.
+    - TypeError: If 'group_by' is neither a string, list, tuple, nor None.
+    """
+
     if not isinstance(collection, Collection):
         raise NotImplementedError("Require MongoDB Hubdb.")
 
@@ -130,6 +154,24 @@ def delete(collection, element, envs, ignoreErrors=False):
 
 
 def _delete(collection, snapshot, envs, ignoreErrors=False):
+    """
+    Delete a single snapshot from the Elasticsearch repository and update the MongoDB collection.
+
+    This helper function deletes the specified snapshot from the Elasticsearch repository and removes
+    its reference from the MongoDB 'collection'.
+
+    Parameters:
+    - collection (Collection): The MongoDB collection where snapshot metadata is stored.
+    - snapshot (_Ele): An `_Ele` element representing the snapshot to be deleted.
+    - envs (dict): A mapping of environment names to their respective clients or configurations.
+    - ignoreErrors (bool, optional): If True, ignores errors during deletion and continues processing. Defaults to False.
+
+    Raises:
+    - AssertionError: If the tag of 'snapshot' is not 'Snapshot'.
+    - ValueError: If the environment is not registered in 'envs' and 'ignoreErrors' is False, or if the snapshot does not exist in the repository.
+    - KeyError: If required keys are missing in 'snapshot.attrs'.
+    """
+
     assert snapshot.tag == "Snapshot"
 
     try:
