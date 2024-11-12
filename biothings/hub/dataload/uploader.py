@@ -621,7 +621,7 @@ class BaseSourceUploader(object):
             else:
                 source = self.fullname
                 uploader = self.fullname
-            model_dir = os.join(config.DATA_ARCHIVE_ROOT, source, "models")
+            model_dir = os.path.join(config.DATA_ARCHIVE_ROOT, source, "models")
             # create directory if it doesn't exist
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
