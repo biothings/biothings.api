@@ -543,7 +543,10 @@ class SnapshotManager(BaseManager):
                     environment = snapshot_data.get('environment') or snapshot_data['conf']['indexer']['env']
 
                     if not environment:
-                        msg = f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment associated with it. Skipping validation."
+                        msg = (
+                            f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment "
+                            "associated with it. Skipping validation."
+                        )
                         logging.warning(msg)
                         errors.append(msg)
                         continue
@@ -551,7 +554,11 @@ class SnapshotManager(BaseManager):
                     try:
                         env = self.register[environment]
                     except KeyError:
-                        msg = f"[{snapshot_name}] Environment '{environment}' is not registered and connection details are unavailable. Consider adding it to the hub configuration otherwise manual deletion is required."
+                        msg = (
+                            f"[{snapshot_name}] Environment '{environment}' is not registered and "
+                            "connection details are unavailable. Consider adding it to the hub "
+                            "configuration otherwise manual deletion is required."
+                        )
                         logging.error(msg)
                         errors.append(msg)
                         continue
