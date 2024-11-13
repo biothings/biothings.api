@@ -1045,8 +1045,20 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
+    def get_module_path(self, module_name):
+        import importlib
+
+        spec = importlib.util.find_spec(module_name)
+        if spec and spec.origin:
+            return os.path.dirname(spec.origin)
+        else:
+            raise ImportError(f"Module '{module_name}' not found")
+
     async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
+        module_name = inspect.getmodule(klass).__name__
+        module_path = self.get_module_path(module_name)
+        logging.info("Module path: %s" % module_path)
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
 
