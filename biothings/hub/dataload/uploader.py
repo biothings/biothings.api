@@ -8,10 +8,11 @@ from functools import partial
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
+from biothings.hub.manager import ResourceNotFound
+from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseSourceManager, ResourceNotFound
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,

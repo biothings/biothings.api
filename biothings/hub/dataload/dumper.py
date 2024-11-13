@@ -32,11 +32,12 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
+from biothings.hub.manager import ResourceError
 from biothings.hub.dataload.uploader import set_pending_to_upload
+from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.utils.common import rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseSourceManager, ResourceError
 from biothings.utils.parsers import docker_source_info_parser
 
 logging = btconfig.logger
@@ -50,7 +51,7 @@ class DockerContainerException(Exception):
     pass
 
 
-class BaseDumper():
+class BaseDumper:
     # override in subclass accordingly
     SRC_NAME = None
     SRC_ROOT_FOLDER = None  # source folder (without version/dates)
@@ -1900,7 +1901,7 @@ class DockerContainerDumper(BaseDumper):
         self.container = None
         self._source_info = {}  # parsed source_info dictionary from the SRC_URL string
         self.image_metadata = {}  # parsed LABEL metadata from the Docker image
-        self.volumes = None # volumes that is created by the NAMED_VOLUMES var
+        self.volumes = None  # volumes that is created by the NAMED_VOLUMES var
 
     @property
     def source_config(self):
