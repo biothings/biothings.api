@@ -621,14 +621,17 @@ class BaseSourceUploader(object):
             else:
                 source = self.fullname
                 uploader = self.fullname
-            model_dir = os.path.join(config.DATA_ARCHIVE_ROOT, source, "models")
-            # create directory if it doesn't exist
-            if not os.path.exists(model_dir):
-                os.makedirs(model_dir)
-            model_path = os.path.join(model_dir, f"{uploader}_model.py")
-            with open(model_path, "w") as f:
-                f.write(model)
-            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            self.logger.info("current path: %s", os.path.abspath(os.path.curdir))
+            # get path of module
+
+        #     model_dir = os.path.join(config.DATA_ARCHIVE_ROOT, source, "models")
+        #     # create directory if it doesn't exist
+        #     if not os.path.exists(model_dir):
+        #         os.makedirs(model_dir)
+        #     model_path = os.path.join(model_dir, f"{uploader}_model.py")
+        #     with open(model_path, "w") as f:
+        #         f.write(model)
+        #     self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
@@ -1049,6 +1052,8 @@ class UploaderManager(BaseSourceManager):
 
     def validate_src(self, klass, *args, **kwargs):
         try:
+            logging.info("Validating '%s'" % klass)
+            logging.info("Ids in src_dump: %s" % self.get_source_ids())
             job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
 
             def done(f):
