@@ -98,7 +98,6 @@ class BaseSourceManager(BaseManager):
                     logger.warning("%s module discovered in sys.modules", src)
                     prior_module = {src: sys.modules.pop(src)}
                 sys.modules[src] = source_module
-                breakpoint()
                 module_specification.loader.exec_module(source_module)
                 logger.info("Successfully loaded module %s", source_module)
             except ImportError as import_err:
