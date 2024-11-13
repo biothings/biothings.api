@@ -85,9 +85,9 @@ def load_plugin_managers(
         data_folder = pathlib.Path(f"./{plugin_name}")
     data_folder = pathlib.Path(data_folder).resolve().absolute()
 
-    plugin_manager = DataPluginManager(job_manager=None)
-    dmanager = DumperManager(job_manager=None)
-    upload_manager = UploaderManager(job_manager=None)
+    plugin_manager = DataPluginManager(job_manager=None, datasource_path=_plugin_path)
+    dmanager = DumperManager(job_manager=None, datasource_path=_plugin_path)
+    upload_manager = UploaderManager(job_manager=None, datasource_path=_plugin_path)
 
     LocalAssistant.data_plugin_manager = plugin_manager
     LocalAssistant.dumper_manager = dmanager
