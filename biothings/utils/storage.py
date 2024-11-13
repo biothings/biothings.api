@@ -1,9 +1,13 @@
+import collections
 import copy
 import logging
+import json
+import operator
 import time
 import types
 from typing import Iterable
 
+import sqlite3
 from sqlite3 import IntegrityError
 
 from pymongo import InsertOne, ReplaceOne, UpdateOne
@@ -12,13 +16,14 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 from biothings.utils.common import iter_n, timesofar
 from biothings.utils.dataload import merge_root_keys, merge_struct
 from biothings.utils.mongo import check_document_size, get_src_db
+from biothings.utils.sqlite3 import Sqlite3BulkWriteError
 
 
 class StorageException(Exception):
     pass
 
 
-class BaseStorage(object):
+class BaseStorage:
     def __init__(self, db, dest_col_name, logger=logging):
         db = db or get_src_db()
         self.temp_collection = db[dest_col_name]
@@ -52,7 +57,7 @@ class CheckSizeStorage(BaseStorage):
 
 class BasicStorage(BaseStorage):
     def doc_iterator(self, doc_d, batch=True, batch_size=10000):
-        if (isinstance(doc_d, types.GeneratorType) or isinstance(doc_d, list)) and batch:
+        if isinstance(doc_d, (types.GeneratorType, list)) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
@@ -104,8 +109,10 @@ class MergerStorage(BasicStorage):
     """
 
     merge_func = merge_struct
+    process_count = 0
 
     def process(self, doc_d, batch_size, max_batch_num=None):
+        self.process_count += 1
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -131,13 +138,15 @@ class MergerStorage(BasicStorage):
             except BulkWriteError as e:
                 inserted = e.details["nInserted"]
                 nbinsert += inserted
-                self.logger.info("Fixing %d records " % len(e.details["writeErrors"]))
+                self.logger.debug("Fixing %d records " % len(e.details["writeErrors"]))
                 ids = [d["op"]["_id"] for d in e.details["writeErrors"]]
+
                 # build hash of existing docs
                 docs = self.temp_collection.find({"_id": {"$in": ids}})
                 hdocs = {}
                 for doc in docs:
                     hdocs[doc["_id"]] = doc
+
                 bulk = []
                 for err in e.details["writeErrors"]:
                     errdoc = err["op"]
@@ -151,6 +160,7 @@ class MergerStorage(BasicStorage):
                     assert "_id" in existing
                     _id = errdoc.pop("_id")
                     merged = self.__class__.merge_func(errdoc, existing, aslistofdict=aslistofdict)
+
                     # update previously fetched doc. if several errors are about the same doc id,
                     # we would't merged things properly without an updated document
                     assert "_id" in merged
@@ -160,10 +170,90 @@ class MergerStorage(BasicStorage):
 
                 self.temp_collection.bulk_write(bulk, ordered=False)
                 self.logger.info("OK [%s]" % timesofar(tinner))
-            assert nbinsert == toinsert, "nb %s to %s" % (nbinsert, toinsert)
-            # end of loop so it counts the time spent in doc_iterator
-            tinner = time.time()
-            total += nbinsert
+            except Sqlite3BulkWriteError as sqlite3_bulk_error:
+                """
+                internal collection -> entries already in the sqlite3 database
+                external collection -> entries in the batch for the bulk_write
+
+                Conflict 2) id value in the external collection collides with a separate id in the
+                internal collection
+
+                Conflict 1) id value in the external collection collides with the id in the internal
+                collection
+
+                Handle the merge for conflict 2 before isolating conflict 1
+
+                We generate a default dict with a list as the container so that we can aggregate the
+                documents into batches based off their id as the key value. Any entries with values
+                greater than 2 have duplicates and need to be merged
+                """
+                self.logger.exception(sqlite3_bulk_error)
+                self.logger.debug(
+                    (
+                        "Attempting to correct sqlite3 uniqueness constraint for the id column.\n" "Batch Size %s",
+                        len(bulk),
+                    )
+                )
+
+                # external conflict management
+                self.logger.debug("Processing external entries")
+                entry_mapping = collections.defaultdict(list)
+                for index, entry in enumerate(bulk):
+                    entry_mapping[entry._doc["_id"]].append(index)
+
+                multiple_collisions = {
+                    eid: collection for eid, collection in entry_mapping.items() if len(collection) > 1
+                }
+
+                external_removal_indices = []
+                for conflict_id, index_pointers in multiple_collisions.items():
+                    self.logger.debug("Discovered %s identical entries in external batch", len(index_pointers))
+
+                    starter_index = index_pointers.pop(0)
+                    external_removal_indices.append(starter_index)
+                    merged_document = bulk[starter_index]._doc
+
+                    while len(index_pointers) > 0:
+                        pointer_index = index_pointers.pop(-1)
+                        external_removal_indices.append(pointer_index)
+                        conflict_value = bulk[pointer_index]._doc
+                        merged_document = self.__class__.merge_func(merged_document, conflict_value)
+
+                    self.logger.debug("Adding merged document %s", merged_document)
+                    bulk.append(InsertOne(merged_document))
+
+                for offset_index, remove_index in enumerate(sorted(external_removal_indices)):
+                    self.logger.debug("Popping %s index from bulk upload", remove_index - offset_index)
+                    bulk.pop(remove_index - offset_index)
+
+                entry_mapping = {entry._doc["_id"]: index for index, entry in enumerate(bulk)}
+
+                # internal conflict management
+                self.logger.debug("Processing internal entries")
+                batch_ids = [entry._doc["_id"] for entry in bulk]
+                internal_conflicts = self.temp_collection.id_search(batch_ids)
+
+                self.logger.debug("Discovered %s internal conflict entries", len(index_pointers))
+
+                internal_removal_indicies = []
+                for conflict_result in internal_conflicts:
+                    conflict_id = conflict_result[0]
+                    conflict_value = json.loads(conflict_result[1])
+                    internal_pointer = entry_mapping.get(conflict_id, None)
+                    if internal_pointer is not None:
+                        internal_removal_indicies.append(internal_pointer)
+                        internal_document = bulk[internal_pointer]._doc
+                        merged_document = self.__class__.merge_func(conflict_value, internal_document)
+                        self.logger.debug("Updating document %s", merged_document)
+                        self.temp_collection.save(merged_document)
+
+                for offset_index, remove_index in enumerate(sorted(internal_removal_indicies)):
+                    self.logger.debug("Popping %s index from bulk upload", remove_index - offset_index)
+                    bulk.pop(remove_index - offset_index)
+
+                self.logger.info("Re-attempting bulk write. Inserting %s records ... " % len(bulk))
+                self.temp_collection.bulk_write(bulk, ordered=False)
+                self.logger.info("OK [%s]" % timesofar(tinner))
 
         self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
 
@@ -308,7 +398,7 @@ class UpsertStorage(BasicStorage):
         return total
 
 
-class NoStorage(object):
+class NoStorage:
     """
     This a kind of a place-holder, this storage will just store nothing...
     (but it will respect storage interface)

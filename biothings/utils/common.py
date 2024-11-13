@@ -191,8 +191,8 @@ def is_filehandle(fh):
     return hasattr(fh, "read") and hasattr(fh, "close")
 
 
-##  This is another (older) implementation of open_anyfile
-##   Keep the code here for reference
+# #  This is another (older) implementation of open_anyfile
+# #   Keep the code here for reference
 #
 # class open_anyfile(object):
 #     '''a context manager can be used in "with" stmt.
@@ -472,7 +472,7 @@ def list2dict(a_list, keyitem, alwayslist=False):
     for x in a_list:
         if isinstance(keyitem, int):  # single item as key
             key = x[keyitem]
-            value = tuple(x[:keyitem] + x[keyitem + 1 :])
+            value = tuple(x[:keyitem] + x[keyitem + 1:])
         else:
             key = tuple([x[i] for i in keyitem])
             value = tuple([x[i] for i in range(len(a_list)) if i not in keyitem])
@@ -500,6 +500,7 @@ def list_trim(a_list, idx_to_remove):
     """Remove items IN-PLACE from a list by index."""
     for i in sorted(idx_to_remove, reverse=True):
         del a_list[i]
+
 
 def filter_dict(d, keys):
     """
@@ -623,7 +624,7 @@ def SubStr(input_string, start_string="", end_string="", include=0):
         else:
             end_pos += start_pos  # get actual end_pos
     if include == 1:
-        return input_string[start_pos - len(start_string) : end_pos + len(end_string)]
+        return input_string[start_pos - len(start_string): end_pos + len(end_string)]
     else:
         return input_string[start_pos:end_pos]
 

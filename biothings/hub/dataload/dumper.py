@@ -916,8 +916,8 @@ class WgetDumper(BaseDumper):
 
     def prepare_client(self):
         """Check if 'wget' executable exists"""
-        ret = os.system("type wget 2>&1 > /dev/null")
-        if not ret == 0:
+        result = subprocess.run(["type", "wget"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
             raise DumperException("Can't find wget executable")
 
     def need_prepare(self):
@@ -931,12 +931,16 @@ class WgetDumper(BaseDumper):
 
     def download(self, remoteurl, localfile):
         self.prepare_local_folders(localfile)
-        cmdline = "wget %s -O %s" % (remoteurl, localfile)
-        return_code = os.system(cmdline)
-        if return_code == 0:
+        cmdline = ["wget", remoteurl, "-O", localfile]
+        result = subprocess.run(cmdline)
+        if result.returncode == 0:
             self.logger.info("Success.")
         else:
-            self.logger.error("Failed with return code (%s)." % return_code)
+            self.logger.error(f"Failed with return code ({result.returncode}).")
+
+    def prepare_local_folders(self, localfile):
+        # Ensure the directory for the local file exists
+        os.makedirs(os.path.dirname(localfile), exist_ok=True)
 
 
 class FilesystemDumper(BaseDumper):
