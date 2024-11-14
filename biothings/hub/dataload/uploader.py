@@ -988,7 +988,7 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        logging.info("Module path: %s" % get_module_path(insts))
+        logging.info("Module path: %s" % self.get_module_path(insts))
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
 
