@@ -5,7 +5,6 @@ import inspect
 import os
 import time
 from functools import partial
-from typing import Any, Dict
 
 from pydantic import ValidationError
 
@@ -15,6 +14,7 @@ from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceNotFound
+from biothings.utils.pydantic_validator import create_pydantic_model
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -522,84 +522,6 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
-    def generate_date_validator(self, date_fields: str) -> str:
-        fields_str = ", ".join(f'"{field}"' for field in date_fields)
-        return f"""
-        @field_validator({fields_str})
-        @classmethod
-        def date_validator(cls, v):
-            try:
-                if isinstance(v, list):
-                    return [parse(date) for date in v]
-                else:
-                    return parse(v)
-            except Exception as e:
-                raise ValueError(f"Invalid date format: {{v}}") from e
-    """
-
-    def generate_base_model(self, model_name: str) -> str:
-        return f"""class {model_name}(BaseModel):
-    """
-
-    def generate_key_name(self, k: str, v: str) -> str:
-        return f"""    {k}: Optional[Union[{v}, List[{v}]]] = None
-    """
-
-    def generate_model(self, schema: Dict[str, Any], model_name: str) -> str:
-        es_to_pydantic = {
-            "text": "str",
-            "keyword": "str",
-            "long": "int",
-            "integer": "int",
-            "short": "int",
-            "byte": "int",
-            "double": "float",
-            "float": "float",
-            "half_float": "float",
-            "scaled_float": "float",
-            "date": "str",
-            "boolean": "bool",
-            "binary": "bytes",
-            "integer_range": "tuple",
-            "float_range": "tuple",
-            "long_range": "tuple",
-            "double_range": "tuple",
-            "date_range": "tuple",
-            "ip_range": "tuple",
-        }
-        date_fields = []
-        base_model = self.generate_base_model(model_name)
-        for k, v in schema.items():
-            if isinstance(v, dict) and "properties" in v.keys():
-                base_model += self.generate_key_name(k, k.capitalize())
-            else:
-                base_model += self.generate_key_name(k, es_to_pydantic.get(v["type"], Any))
-                if v["type"] == "date":
-                    date_fields.append(k)
-        if date_fields:
-            base_model += self.generate_date_validator(date_fields)
-        return base_model + "\n\n"
-
-    def create_pydantic_model(self, schema: Dict[str, Any], model_name: str):
-        base_imports = """from typing import List, Optional, Union
-
-    from dateutil.parser import parse
-    from pydantic import BaseModel, field_validator
-
-    """
-
-        def parse_schema(schema: Dict[str, Any], model_name="", model="") -> Dict[str, Any]:
-            for field_name, field_info in schema.items():
-                if "properties" in field_info:
-                    model = parse_schema(field_info["properties"], field_name.capitalize(), model) + model
-                else:
-                    model = self.generate_model(schema, model_name)
-            return model
-
-        model = parse_schema(schema)
-        model = model + self.generate_model(schema, model_name)
-        return base_imports + model
-
     def validate(self):
         self.prepare()
 
@@ -615,27 +537,22 @@ class BaseSourceUploader(object):
 
         try:
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
-            model = self.create_pydantic_model(mapping, self.collection_name)
-            if len(self.fullname.split(".")) > 1:
-                source, uploader = self.fullname.split(".")
-            else:
-                source = self.fullname
-                uploader = self.fullname
-            self.logger.info("current path: %s", os.path.abspath(__file__))
-            self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
-            # get path of module
+            model = create_pydantic_model(mapping, self.collection_name)
 
-        #     model_dir = os.path.join(config.DATA_ARCHIVE_ROOT, source, "models")
-        #     # create directory if it doesn't exist
-        #     if not os.path.exists(model_dir):
-        #         os.makedirs(model_dir)
-        #     model_path = os.path.join(model_dir, f"{uploader}_model.py")
-        #     with open(model_path, "w") as f:
-        #         f.write(model)
-        #     self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
+            model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__), "models"))
+            # create directory if it doesn't exist
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            model_path = os.path.join(model_dir, f"{self.name}_model.py")
+            with open(model_path, "w") as f:
+                f.write(model)
+            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
+
         return
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
@@ -1057,9 +974,6 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        module_name = inspect.getmodule(klass).__name__
-        module_path = self.get_module_path(module_name)
-        logging.info("Module path: %s" % module_path)
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
 
