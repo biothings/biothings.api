@@ -541,15 +541,17 @@ class BaseSourceUploader(object):
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
             model = create_pydantic_model(mapping, self.collection_name)  # Get the current frame
             self.logger.info("module_dir: %s", self.module_dir)
-
-            # model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "models")
-            # # create directory if it doesn't exist
-            # if not os.path.exists(model_dir):
-            #     os.makedirs(model_dir)
-            # model_path = os.path.join(model_dir, f"{self.name}_model.py")
-            # with open(model_path, "w") as f:
-            #     f.write(model)
-            # self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            if self.module_dir:
+                model_dir = os.path.join(self.module_dir, "models")
+                # create directory if it doesn't exist
+                if not os.path.exists(model_dir):
+                    os.makedirs(model_dir)
+                model_path = os.path.join(model_dir, f"{self.name}_model.py")
+                with open(model_path, "w") as f:
+                    f.write(model)
+                self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            else:
+                raise ValueError("No module directory found for uploader source '%s'", self.fullname)
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
