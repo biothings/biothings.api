@@ -1,3 +1,5 @@
+import inspect
+import os
 from typing import Any, Dict
 
 
@@ -82,3 +84,12 @@ from pydantic import BaseModel, field_validator
     model = parse_schema(schema)
     model = model + generate_model(schema, model_name)
     return base_imports + model
+
+
+def get_module_path():
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    module = inspect.getmodule(caller_frame)
+    current_file_path = os.path.abspath(module.__file__)
+    module_path = os.path.dirname(current_file_path)
+    return module_path
