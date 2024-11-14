@@ -553,10 +553,11 @@ class BaseSourceUploader(object):
             else:
                 raise ValueError("No module directory found for uploader source '%s'", self.fullname)
             # Dynamically import the model using importlib
-            spec = importlib.util.spec_from_file_location(self.collection_name, model_path)
-            dynamic_model = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(dynamic_model)
-            self.logger.info("Dynamically imported model: %s", dynamic_model.json_schema())
+            spec = importlib.util.spec_from_file_location("model_module", model_path)
+            model_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(model_module)
+            model_class = getattr(model_module, self.collection_name)
+            self.logger.info("Dynamically imported model: %s", model_class.json_schema())
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
