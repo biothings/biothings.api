@@ -538,16 +538,16 @@ class BaseSourceUploader(object):
         try:
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
             model = create_pydantic_model(mapping, self.collection_name)
-
+            self.logger.info("current file: %s", os.path.abspath(__file__))
             self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
-            model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__), "models"))
-            # create directory if it doesn't exist
-            if not os.path.exists(model_dir):
-                os.makedirs(model_dir)
-            model_path = os.path.join(model_dir, f"{self.name}_model.py")
-            with open(model_path, "w") as f:
-                f.write(model)
-            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            # model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "models")
+            # # create directory if it doesn't exist
+            # if not os.path.exists(model_dir):
+            #     os.makedirs(model_dir)
+            # model_path = os.path.join(model_dir, f"{self.name}_model.py")
+            # with open(model_path, "w") as f:
+            #     f.write(model)
+            # self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
