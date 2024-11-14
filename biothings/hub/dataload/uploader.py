@@ -976,9 +976,10 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    def get_module_path(self, module_name):
+    def get_module_path(self, instance):
         import importlib
 
+        module_name = inspect.getmodule(instance).__name__
         spec = importlib.util.find_spec(module_name)
         if spec and spec.origin:
             return os.path.dirname(spec.origin)
@@ -987,7 +988,7 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_validate(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        logging.info("module_path_dir: %s", self.get_module_path(insts))
+        logging.info("Module path: %s" % get_module_path(insts))
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
 
