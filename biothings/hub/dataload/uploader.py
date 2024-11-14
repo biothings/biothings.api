@@ -622,7 +622,7 @@ class BaseSourceUploader(object):
                 source = self.fullname
                 uploader = self.fullname
             self.logger.info("current path: %s", os.path.abspath(__file__))
-            self.looger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
+            self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
             # get path of module
 
         #     model_dir = os.path.join(config.DATA_ARCHIVE_ROOT, source, "models")
