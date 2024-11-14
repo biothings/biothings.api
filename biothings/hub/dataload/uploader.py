@@ -541,6 +541,17 @@ class BaseSourceUploader(object):
             self.logger.info("current file: %s", os.path.abspath(__file__))
             self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
             self.logger.info("module_path_dir: %s", get_module_path())
+            # Get the current frame
+            frame = inspect.currentframe()
+            # Get the caller frame
+            caller_frame = frame.f_back
+            # Get the module of the caller frame
+            module = inspect.getmodule(caller_frame)
+            # Get the file path of the module
+            current_file_path = os.path.abspath(module.__file__)
+            # Get the directory of the current file
+            module_path = os.path.dirname(current_file_path)
+            self.logger.info("module_path: %s", module_path)
             # model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "models")
             # # create directory if it doesn't exist
             # if not os.path.exists(model_dir):
