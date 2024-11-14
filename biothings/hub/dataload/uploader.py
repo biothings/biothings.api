@@ -14,7 +14,7 @@ from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceNotFound
-from biothings.utils.pydantic_validator import create_pydantic_model, get_module_path
+from biothings.utils.pydantic_validator import create_pydantic_model
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -538,20 +538,6 @@ class BaseSourceUploader(object):
         try:
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
             model = create_pydantic_model(mapping, self.collection_name)  # Get the current frame
-            frame = inspect.currentframe()
-            # Get the caller frame
-            caller_frame = frame.f_back
-            # Get the module of the caller frame
-            module = inspect.getmodule(caller_frame)
-            # Get the file path of the module
-            current_file_path = os.path.abspath(module.__file__)
-            # Get the directory of the current file
-            module_path = os.path.dirname(current_file_path)
-            self.logger.info("module_path_dir: %s", module_path)
-            module_path = get_module_path()
-            self.logger.info("module_path_dir: %s", module_path)
-            self.logger.info("current file: %s", os.path.abspath(__file__))
-            self.logger.info("current dir: %s", os.path.abspath(os.path.dirname(__file__)))
 
             # model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "models")
             # # create directory if it doesn't exist
@@ -987,6 +973,7 @@ class UploaderManager(BaseSourceManager):
             raise ImportError(f"Module '{module_name}' not found")
 
     async def create_and_validate(self, klass, *args, **kwargs):
+        logging.info("module path: %s" % self.get_module_path(klass))
         insts = self.create_instance(klass)
         logging.info("Module path: %s" % self.get_module_path(insts))
         kwargs["job_manager"] = self.job_manager
