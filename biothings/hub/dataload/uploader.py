@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import datetime
+import importlib
 import inspect
 import os
 import time
@@ -85,6 +86,7 @@ class BaseSourceUploader(object):
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
+        self.module_dir = kwargs.get("module_dir")
 
     @property
     def fullname(self):
@@ -538,6 +540,7 @@ class BaseSourceUploader(object):
         try:
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
             model = create_pydantic_model(mapping, self.collection_name)  # Get the current frame
+            self.logger.info("module_dir: %s", self.module_dir)
 
             # model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "models")
             # # create directory if it doesn't exist
@@ -805,7 +808,8 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        inst = klass.create(db_conn_info=self.conn.address)
+        logging.info("module path: %s" % self.get_module_path(klass))
+        inst = klass.create(db_conn_info=self.conn.address, module_dir=self.get_module_path(klass))
         return inst
 
     def register_classes(self, klasses):
@@ -962,10 +966,9 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    def get_module_path(self, instance):
-        import importlib
+    def get_module_path(self, klass):
 
-        module_name = inspect.getmodule(instance).__name__
+        module_name = inspect.getmodule(klass).__name__
         spec = importlib.util.find_spec(module_name)
         if spec and spec.origin:
             return os.path.dirname(spec.origin)
@@ -973,9 +976,7 @@ class UploaderManager(BaseSourceManager):
             raise ImportError(f"Module '{module_name}' not found")
 
     async def create_and_validate(self, klass, *args, **kwargs):
-        logging.info("module path: %s" % self.get_module_path(klass))
         insts = self.create_instance(klass)
-        logging.info("Module path: %s" % self.get_module_path(insts))
         kwargs["job_manager"] = self.job_manager
         await insts.validate_src(*args, **kwargs)
 
