@@ -557,7 +557,10 @@ class BaseSourceUploader(object):
             model_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(model_module)
             model_class = getattr(model_module, self.collection_name)
-            self.logger.info("Dynamically imported model: %s", model_class.json_schema())
+            # Log the type of model_class and list attributes of model_module
+            self.logger.info("Type of model_class: %s", type(model_class))
+            self.logger.info("Attributes of model_module: %s", dir(model_module))
+            # self.logger.info("Dynamically imported model: %s", model_class.json_schema())
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
