@@ -524,9 +524,29 @@ class BaseSourceUploader(object):
         else:
             raise AttributeError(attr)
 
+    def commit_pydantic_model(self, model_str):
+        try:
+            self.logger.info("module_dir: %s", self.module_dir)
+            if self.module_dir:
+                model_dir = os.path.join(self.module_dir, "models")
+                # create directory if it doesn't exist
+                if not os.path.exists(model_dir):
+                    os.makedirs(model_dir)
+                model_path = os.path.join(model_dir, f"{self.name}_model.py")
+                with open(model_path, "w") as f:
+                    f.write(model_str)
+                self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+            else:
+                raise ValueError("No module directory found for uploader source '%s'", self.fullname)
+        except Exception as e:
+            self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
+            raise e
+
     def validate(self):
         self.prepare()
 
+        # TODO this section will be moved to a separate function
+        #############################
         try:
             self.logger.info("Getting mapping for uploader source '%s'", self.fullname)
             mapping = self._state["src_master"].find_one({"_id": self.collection_name})
@@ -536,30 +556,23 @@ class BaseSourceUploader(object):
 
         except AttributeError:
             raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
+        self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
+        model_str = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
+        self.commit_pydantic_model(model_str)
+        #############################
 
         try:
-            self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
-            model = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
-            self.logger.info("module_dir: %s", self.module_dir)
             if self.module_dir:
                 model_dir = os.path.join(self.module_dir, "models")
-                # create directory if it doesn't exist
-                if not os.path.exists(model_dir):
-                    os.makedirs(model_dir)
-                model_path = os.path.join(model_dir, f"{self.name}_model.py")
-                with open(model_path, "w") as f:
-                    f.write(model)
-                self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
             else:
                 raise ValueError("No module directory found for uploader source '%s'", self.fullname)
-            # Dynamically import the model using importlib
+            model_path = os.path.join(model_dir, f"{self.name}_model.py")
             spec = importlib.util.spec_from_file_location("model_module", model_path)
             model_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(model_module)
             model = getattr(model_module, self.collection_name.casefold())
-
         except Exception as e:
-            self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
+            self.logger.error("Error importing Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
         session = self._state["conn"].start_session()

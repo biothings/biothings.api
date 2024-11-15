@@ -2,6 +2,13 @@ import inspect
 import os
 from typing import Any, Dict
 
+try:
+    import black
+
+    black_avail = True
+except ImportError:
+    black_avail = False
+
 
 def generate_date_validator(date_fields: str) -> str:
     fields_str = ", ".join(f'"{field}"' for field in date_fields)
@@ -83,4 +90,8 @@ from pydantic import BaseModel, field_validator
 
     model = parse_schema(schema)
     model = model + generate_model(schema, model_name)
-    return base_imports + model
+    if black_avail:
+        model = black.format_str(base_imports + model, mode=black.Mode())
+    else:
+        raise ImportError('"black" package is required for exporting formatted code.')
+    return model
