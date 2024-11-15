@@ -539,7 +539,7 @@ class BaseSourceUploader(object):
 
         try:
             self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
-            model = create_pydantic_model(mapping, self.collection_name)  # Get the current frame
+            model = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
             self.logger.info("module_dir: %s", self.module_dir)
             if self.module_dir:
                 model_dir = os.path.join(self.module_dir, "models")
@@ -556,17 +556,12 @@ class BaseSourceUploader(object):
             spec = importlib.util.spec_from_file_location("model_module", model_path)
             model_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(model_module)
-            model_class = getattr(model_module, self.collection_name)
-            # Log the type of model_class and list attributes of model_module
-            self.logger.info("Type of model_class: %s", type(model_class))
-            self.logger.info("Attributes of model_module: %s", dir(model_module))
-            self.logger.info("Dynamically imported model: %s", model_class.model_json_schema())
+            model = getattr(model_module, self.collection_name.casefold())
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
-        return
         session = self._state["conn"].start_session()
         src_collection = self._state["collection"]
         self.logger.info("Validating documents from collection '%s'", src_collection)
@@ -574,7 +569,7 @@ class BaseSourceUploader(object):
         with session:
             for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
                 try:
-                    doc = {"_id": "test_id", "chembl": {"chembl_target": 123}}
+                    # doc = {"_id": "test_id", "chembl": {"chembl_target": 123}}
                     model.model_validate(doc)
                     self.logger.info("Document '%s' is valid", doc["_id"])
                     return
