@@ -572,7 +572,6 @@ class BaseSourceUploader(object):
                     doc = {"_id": "test_id", "chembl": {"chembl_target": 123}}
                     model.model_validate(doc)
                     self.logger.info("Document '%s' is valid", doc["_id"])
-                    return
                 except ValidationError as e:
                     for error in e.errors():
                         if "Input should be a valid list" not in error["msg"]:
