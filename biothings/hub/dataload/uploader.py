@@ -560,7 +560,7 @@ class BaseSourceUploader(object):
             # Log the type of model_class and list attributes of model_module
             self.logger.info("Type of model_class: %s", type(model_class))
             self.logger.info("Attributes of model_module: %s", dir(model_module))
-            # self.logger.info("Dynamically imported model: %s", model_class.json_schema())
+            self.logger.info("Dynamically imported model: %s", model_class.model_json_schema())
 
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
