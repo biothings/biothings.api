@@ -935,8 +935,8 @@ class UploaderManager(BaseSourceManager):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
-            # TODO change to if validate
-            if not validate:
+        if validate:
+            for inst in insts:
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
