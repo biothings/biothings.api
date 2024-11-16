@@ -572,7 +572,10 @@ class BaseSourceUploader(object):
             spec.loader.exec_module(model_module)
             model = getattr(model_module, self.collection_name.casefold())
         except Exception as e:
-            self.logger.error("Error importing Pydantic model for uploader source '%s'", self.fullname)
+            self.logger.error(
+                "Error importing Pydantic model for uploader source '%s'. Make sure you have committed a valid pydantic model.",
+                self.fullname,
+            )
             raise e
 
         session = self._state["conn"].start_session()
@@ -848,7 +851,7 @@ class UploaderManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def upload_src(self, src, *args, **kwargs):
+    def upload_src(self, src, validate=False, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
         Other args are passed to uploader's load() method
@@ -864,7 +867,7 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, validate, klass, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -926,12 +929,15 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, *args, **kwargs):
+    async def create_and_load(self, klass, validate, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
+            # TODO change to if validate
+            if not validate:
+                await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
         super(UploaderManager, self).poll(state, func, col=get_src_dump())
@@ -993,9 +999,9 @@ class UploaderManager(BaseSourceManager):
             raise ImportError(f"Module '{module_name}' not found")
 
     async def create_and_validate(self, klass, *args, **kwargs):
-        insts = self.create_instance(klass)
+        inst = self.create_instance(klass)
         kwargs["job_manager"] = self.job_manager
-        await insts.validate_src(*args, **kwargs)
+        await inst.validate_src(*args, **kwargs)
 
     def validate_src(self, klass, *args, **kwargs):
         try:
