@@ -828,7 +828,7 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        self.logger.info("Loading '%s'" % klass)
+        logging.info("Loading '%s'" % klass)
         logging.info("module path: %s" % self.get_module_path(klass))
         inst = klass.create(db_conn_info=self.conn.address, module_dir=self.get_module_path(klass))
         return inst
