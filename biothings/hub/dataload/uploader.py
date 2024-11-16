@@ -828,7 +828,6 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        logging.info("Loading '%s'" % klass)
         logging.info("module path: %s" % self.get_module_path(klass))
         inst = klass.create(db_conn_info=self.conn.address, module_dir=self.get_module_path(klass))
         return inst
@@ -868,7 +867,7 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, validate, klass, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
