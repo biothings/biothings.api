@@ -377,8 +377,18 @@ class SourceManager(BaseSourceManager):
         except AttributeError:
             raise ValueError("No mapping found for source '%s'" % name)
 
+    def get_model_str(self, name):
+        pass
+
+    def save_pydantic_model(self, name, model):
+        pass
+
     def run_pydantic_validation(self, name):
-        upk = self.upload_manager[name]
-        assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
-        upk = upk.pop()
-        self.upload_manager.validate_src(upk)
+        # upk = self.upload_manager[name]
+        # assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+        # upk = upk.pop()
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        self.upload_manager.validate_src(subsrc)

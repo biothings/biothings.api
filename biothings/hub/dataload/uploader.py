@@ -542,24 +542,22 @@ class BaseSourceUploader(object):
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
-    def validate(self):
+    def validate(self, generate_model=False):
         self.prepare()
 
-        # TODO this section will be moved to a separate function
-        #############################
-        try:
-            self.logger.info("Getting mapping for uploader source '%s'", self.fullname)
-            mapping = self._state["src_master"].find_one({"_id": self.collection_name})
-            self.logger.info("Mapping found for uploader source '%s'", self.fullname)
-            self.logger.info("Mapping: %s", mapping.get("mapping"))
-            mapping = mapping.get("mapping")
+        if generate_model:
+            try:
+                self.logger.info("Auto-generating Pydantic model for uploader source '%s'", self.fullname)
+                mapping = self._state["src_master"].find_one({"_id": self.collection_name})
+                self.logger.info("Mapping found for uploader source '%s'", self.fullname)
+                self.logger.info("Mapping: %s", mapping.get("mapping"))
+                mapping = mapping.get("mapping")
 
-        except AttributeError:
-            raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
-        self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
-        model_str = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
-        self.commit_pydantic_model(model_str)
-        #############################
+            except AttributeError:
+                raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
+            self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
+            model_str = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
+            self.commit_pydantic_model(model_str)
 
         try:
             if self.module_dir:
@@ -595,13 +593,14 @@ class BaseSourceUploader(object):
         if errors:
             raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
-    async def validate_src(self, job_manager=None):
+    async def validate_src(self, job_manager=None, **kwargs):
+        assert job_manager, "Job manager is required for validation"
         self.prepare()
         pinfo = self.get_pinfo()
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
-        job = await job_manager.defer_to_process(pinfo, partial(self.validate))
+        job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
 
         def done(f):
             nonlocal got_error
@@ -851,7 +850,7 @@ class UploaderManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def upload_src(self, src, validate=False, *args, **kwargs):
+    def upload_src(self, src, validate=False, generate_model=False, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
         Other args are passed to uploader's load() method
@@ -865,9 +864,11 @@ class UploaderManager(BaseSourceManager):
         try:
             for _, klass in enumerate(klasses):
                 kwargs["job_manager"] = self.job_manager
+                kwargs["validate"] = validate
+                kwargs["generate_model"] = generate_model
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -929,7 +930,7 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, validate, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
@@ -1000,14 +1001,22 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_validate(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
-        kwargs["job_manager"] = self.job_manager
         await inst.validate_src(*args, **kwargs)
 
-    def validate_src(self, klass, *args, **kwargs):
+    def validate_src(self, src, *args, **kwargs):
         try:
-            logging.info("Validating '%s'" % klass)
-            logging.info("Ids in src_dump: %s" % self.get_source_ids())
-            job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
+            klasses = self[src]
+        except KeyError:
+            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+        jobs = []
+        try:
+            for _, klass in enumerate(klasses):
+                logging.info("Creating Pydantic Validation Task for '%s'" % src)
+                kwargs["job_manager"] = self.job_manager
+                job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+
 
             def done(f):
                 try:
@@ -1017,10 +1026,10 @@ class UploaderManager(BaseSourceManager):
                 except Exception as e:
                     logging.exception("failed: %s" % e, extra={"notify": True})
 
-            job.add_done_callback(done)
-            return job
+            tasks.add_done_callback(done)
+            return jobs
         except Exception as e:
-            logging.exception("Error while validating '%s': %s" % (klass, e), extra={"notify": True})
+            logging.exception("Error while validating '%s': %s" % src, e), extra={"notify": True})
             raise
 
 
