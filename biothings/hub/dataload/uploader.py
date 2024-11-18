@@ -1017,7 +1017,6 @@ class UploaderManager(BaseSourceManager):
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
 
-
             def done(f):
                 try:
                     # just consume the result to raise exception
@@ -1029,7 +1028,7 @@ class UploaderManager(BaseSourceManager):
             tasks.add_done_callback(done)
             return jobs
         except Exception as e:
-            logging.exception("Error while validating '%s': %s" % src, e), extra={"notify": True})
+            logging.exception("Error while validating '%s': %s" % src, e, extra={"notify": True})
             raise
 
 
