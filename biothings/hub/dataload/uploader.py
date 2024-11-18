@@ -864,8 +864,6 @@ class UploaderManager(BaseSourceManager):
         try:
             for _, klass in enumerate(klasses):
                 kwargs["job_manager"] = self.job_manager
-                kwargs["validate"] = validate
-                kwargs["generate_model"] = generate_model
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
                     partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
@@ -930,7 +928,7 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, validate=False, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, generate_model=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
@@ -938,6 +936,7 @@ class UploaderManager(BaseSourceManager):
             await inst.load(*args, **kwargs)
         if validate:
             for inst in insts:
+                kwargs["generate_model"] = generate_model
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
