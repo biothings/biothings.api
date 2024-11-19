@@ -9,6 +9,7 @@ from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager
+from biothings.utils.pydantic_validator import create_pydantic_model
 
 
 class SourceManager(BaseSourceManager):
@@ -378,15 +379,24 @@ class SourceManager(BaseSourceManager):
             raise ValueError("No mapping found for source '%s'" % name)
 
     def get_model_str(self, name):
-        pass
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        mapping = self.get_mapping(subsrc)
+        model_str = create_pydantic_model(mapping, subsrc.casefold())
+        return model_str
 
     def save_pydantic_model(self, name, model):
-        pass
+        upk = self.upload_manager[name]
+        assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+        upk = upk.pop()
+        inst = self.upload_manager.create_instance(upk)
+        # TODO delete this line used for testing
+        model = self.get_model_str(name)
+        inst.commit_pydantic_model(model)
 
     def run_pydantic_validation(self, name):
-        # upk = self.upload_manager[name]
-        # assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
-        # upk = upk.pop()
         try:
             subsrc = name.split(".")[1]
         except IndexError:
