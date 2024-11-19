@@ -387,7 +387,8 @@ class SourceManager(BaseSourceManager):
         model_str = create_pydantic_model(mapping, subsrc.casefold())
         return model_str
 
-    def save_pydantic_model(self, name, model_str):
+    def save_pydantic_model(self, name, model_str=""):
+        logging.info("model_str: %s", model_str)
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
