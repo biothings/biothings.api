@@ -1435,7 +1435,7 @@ class HubServer(object):
             )
         if "source_pydantic_validation" in cmdnames:
             self.api_endpoints["source"].append(
-                EndpointDefinition(name="source_pydantic_validation", method="put", suffix="pydantic_validation")
+                EndpointDefinition(name="source_pydantic_validation", method="post", suffix="pydantic_validation")
             )
         if not self.api_endpoints["source"]:
             self.api_endpoints.pop("source")
