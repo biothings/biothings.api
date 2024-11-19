@@ -387,14 +387,14 @@ class SourceManager(BaseSourceManager):
         model_str = create_pydantic_model(mapping, subsrc.casefold())
         return model_str
 
-    def save_pydantic_model(self, name, model):
+    def save_pydantic_model(self, name, model_str):
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk.pop()
         inst = self.upload_manager.create_instance(upk)
         # TODO delete this line used for testing
-        model = self.get_model_str(name)
-        inst.commit_pydantic_model(model)
+        model_str = self.get_model_str(name)
+        inst.commit_pydantic_model(model_str)
 
     def run_pydantic_validation(self, name):
         try:
