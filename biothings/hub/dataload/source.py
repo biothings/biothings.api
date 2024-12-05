@@ -395,10 +395,12 @@ class SourceManager(BaseSourceManager):
         except IndexError:
             subsrc = name
         try:
+            logging.info("Attempting to retreive model string from source '%s'", name)
             m = self.src_master.find_one({"_id": subsrc})
             return m.get("model_str")
         except AttributeError:
-            raise ValueError("No model found for source '%s'" % name)
+            logging.error("No model found for source '%s' creating model string from mapping", name)
+            self.create_model_str(name)
 
     def save_pydantic_model(self, name, model_str=""):
         logging.info("model_str: %s", model_str)
