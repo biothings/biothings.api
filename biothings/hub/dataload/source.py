@@ -378,7 +378,8 @@ class SourceManager(BaseSourceManager):
         except AttributeError:
             raise ValueError("No mapping found for source '%s'" % name)
 
-    def get_model_str(self, name):
+    def create_model_str(self, name):
+        """Create a pydantic model string for a given source name"""
         try:
             subsrc = name.split(".")[1]
         except IndexError:
@@ -387,6 +388,18 @@ class SourceManager(BaseSourceManager):
         model_str = create_pydantic_model(mapping, subsrc.casefold())
         return model_str
 
+    def get_model_str(self, name):
+        """Get a pydantic model string for a given source name"""
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        try:
+            m = self.src_master.find_one({"_id": subsrc})
+            return m.get("model_str")
+        except AttributeError:
+            raise ValueError("No model found for source '%s'" % name)
+
     def save_pydantic_model(self, name, model_str=""):
         logging.info("model_str: %s", model_str)
         upk = self.upload_manager[name]
@@ -394,7 +407,7 @@ class SourceManager(BaseSourceManager):
         upk = upk.pop()
         inst = self.upload_manager.create_instance(upk)
         # TODO delete this line used for testing
-        model_str = self.get_model_str(name)
+        model_str = self.create_model_str(name)
         inst.commit_pydantic_model(model_str)
 
     def run_pydantic_validation(self, name):
@@ -402,4 +415,4 @@ class SourceManager(BaseSourceManager):
             subsrc = name.split(".")[1]
         except IndexError:
             subsrc = name
-        self.upload_manager.validate_src(subsrc)
+        return self.upload_manager.validate_src(subsrc)
