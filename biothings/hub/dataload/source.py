@@ -397,7 +397,6 @@ class SourceManager(BaseSourceManager):
         try:
             upk = self.upload_manager[subsrc]
             assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
-            upk = upk.pop()
             module_path = self.upload_manager.get_module_path(upk)
             model_path = os.path.join(module_path, "models", f"{subsrc}.py")
             logging.info("Attempting to retreive model string from uploader '%s' in path '%s'", subsrc, model_path)
