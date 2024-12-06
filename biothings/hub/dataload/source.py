@@ -406,7 +406,7 @@ class SourceManager(BaseSourceManager):
                 return model_str
         except FileNotFoundError:
             logging.error("No model found for source '%s' creating model string from mapping", name)
-            self.create_model_str(name)
+            return self.create_model_str(name)
 
     def save_pydantic_model(self, name, model_str=""):
         logging.info("model_str: %s", model_str)
