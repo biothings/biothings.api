@@ -395,10 +395,16 @@ class SourceManager(BaseSourceManager):
         except IndexError:
             subsrc = name
         try:
-            logging.info("Attempting to retreive model string from source '%s'", name)
-            m = self.src_master.find_one({"_id": subsrc})
-            return m.get("model_str")
-        except AttributeError:
+            upk = self.upload_manager[subsrc]
+            assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+            upk = upk.pop()
+            module_path = self.upload_manager.get_module_path(upk)
+            model_path = os.path.join(module_path, "models", f"{subsrc}.py")
+            logging.info("Attempting to retreive model string from uploader '%s' in path '%s'", subsrc, model_path)
+            with open(model_path, "r") as f:
+                model_str = f.read()
+                return model_str
+        except FileNotFoundError:
             logging.error("No model found for source '%s' creating model string from mapping", name)
             self.create_model_str(name)
 
