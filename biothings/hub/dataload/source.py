@@ -397,24 +397,24 @@ class SourceManager(BaseSourceManager):
         try:
             upk = self.upload_manager[subsrc]
             assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+            upk = upk[0]
             module_path = self.upload_manager.get_module_path(upk)
-            model_path = os.path.join(module_path, "models", f"{subsrc}.py")
-            logging.info("Attempting to retreive model string from uploader '%s' in path '%s'", subsrc, model_path)
+            model_path = os.path.join(module_path, "models", f"{subsrc}_model.py")
             with open(model_path, "r") as f:
                 model_str = f.read()
                 return model_str
         except FileNotFoundError:
-            logging.error("No model found for source '%s' creating model string from mapping", name)
+            logging.error("No model found for source '%s' creating model string from mapping", subsrc)
             return self.create_model_str(name)
 
     def save_pydantic_model(self, name, model_str=""):
         logging.info("model_str: %s", model_str)
         upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
-        upk = upk.pop()
+        upk = upk[0]
         inst = self.upload_manager.create_instance(upk)
         # TODO delete this line used for testing
-        model_str = self.create_model_str(name)
+        model_str = self.get_model_str(name)
         inst.commit_pydantic_model(model_str)
 
     def run_pydantic_validation(self, name):

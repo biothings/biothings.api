@@ -934,7 +934,10 @@ class UploaderManager(BaseSourceManager):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
+        logging.info("THIS IS THE VALIDATE: %s" % validate)
+        logging.error("THIS IS THE VALIDATE: %s" % validate)
         if validate:
+            logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
                 kwargs["generate_model"] = generate_model
                 await inst.validate_src(*args, **kwargs)
