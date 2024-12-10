@@ -866,7 +866,7 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, generate_model, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -934,8 +934,6 @@ class UploaderManager(BaseSourceManager):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
-        logging.info("THIS IS THE VALIDATE: %s" % validate)
-        logging.error("THIS IS THE VALIDATE: %s" % validate)
         if validate:
             logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
