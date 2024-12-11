@@ -391,31 +391,31 @@ class SourceManager(BaseSourceManager):
     def get_model_str(self, name):
         """Get a pydantic model string for a given source name"""
         try:
-            subsrc = name.split(".")[1]
-        except IndexError:
-            subsrc = name
-        try:
-            upk = self.upload_manager[subsrc]
+            upk = self.upload_manager[name]
             assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
             upk = upk[0]
             module_path = self.upload_manager.get_module_path(upk)
-            model_path = os.path.join(module_path, "models", f"{subsrc}_model.py")
+            model_path = os.path.join(module_path, "models", f"{name}_model.py")
             with open(model_path, "r") as f:
                 model_str = f.read()
                 return model_str
         except FileNotFoundError:
-            logging.error("No model found for source '%s' creating model string from mapping", subsrc)
+            logging.error("No model found for source '%s' creating model string from mapping", name)
             return self.create_model_str(name)
 
-    def save_pydantic_model(self, name, model_str=""):
-        logging.info("model_str: %s", model_str)
-        upk = self.upload_manager[name]
+    def save_pydantic_model(self, name):
+        """Save a pydantic model string for a given source name"""
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        upk = self.upload_manager[subsrc]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk[0]
         inst = self.upload_manager.create_instance(upk)
-        # TODO delete this line used for testing
-        model_str = self.get_model_str(name)
+        model_str = self.get_model_str(subsrc)
         inst.commit_pydantic_model(model_str)
+        self.logger.info("Saved pydantic model for source '%s'", name)
 
     def run_pydantic_validation(self, name):
         try:
