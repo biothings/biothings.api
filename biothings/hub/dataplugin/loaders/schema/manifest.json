@@ -1,0 +1,78 @@
+{
+    "$id": "manifest.schema.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Manifest definition for our plugin architecture",
+    "type": "object",
+    "properties": {
+        "version": {
+            "type": "string"
+        },
+        "display_name": {
+            "type": "string",
+            "description": "Will be displayed as the 'friendly` name on the Biothings Studio"
+        },
+        "biothing_type": {
+            "type": "string",
+            "description": "Can be used to provide the default value to some hub functions (e.g. in quick_index as the default doc_type value"
+        },
+        "__metadata__": {
+            "type": "object",
+            "properties": {
+                "license_url": {
+                    "type": "string"
+                },
+                "license": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                }
+            },
+            "required": [ "url" ]
+        },
+        "requires": {
+            "object": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "dumper": {
+            "type": "object",
+            "properties": {
+                "data_url": {
+                    "type": "string"
+                },
+                "uncompress": {
+                    "type": "boolean"
+                },
+                "schedule": {
+                    "type": "string"
+                },
+                "release": {
+                    "type": "string"
+                }
+            }
+        },
+        "uploader": {
+            "type": "object",
+            "properties": {
+                "data_url": {
+                    "type": "string"
+                },
+                "uncompress": {
+                    "type": "boolean"
+                },
+                "schedule": {
+                    "type": "string"
+                },
+                "release": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "required": [ "version", "dumper", "uploader"]
+}
