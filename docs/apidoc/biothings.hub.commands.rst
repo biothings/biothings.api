@@ -175,6 +175,14 @@ delete_api(api_id) method of biothings.hub.api.manager.APIManager instance
 
 
 
+.. py:method:: test_api(api_id)
+
+method test_api in module biothings.hub.api.manager
+
+test_api(api_id) method of biothings.hub.api.manager.APIManager instance
+
+
+
 .. py:method:: delete_build_conf(name)
 
 method delete_build_configuration in module biothings.hub.databuild.builder

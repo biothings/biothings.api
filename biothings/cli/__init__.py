@@ -1,5 +1,7 @@
+import functools
 import importlib
 import importlib.util
+import inspect
 import logging
 import os
 import pathlib
@@ -69,42 +71,59 @@ logger = logging.getLogger("cli")
 
 
 def setup_config():
-    """Setup a config module necessary to launch the CLI"""
+    """
+    Setup a config module necessary to launch the CLI
+
+    Depending on the backend hub database, the order of configuration
+    matters. If we attempt to load a module that checks for the configuration
+    we'll have to ensure that the configuration is properly configured prior
+    to loading the module
+    """
     working_dir = pathlib.Path().resolve()
-    _config = DummyConfig("config")
-    _config.HUB_DB_BACKEND = {
-        "module": "biothings.utils.sqlite3",
-        "sqlite_db_folder": ".biothings_hub",
-    }
-    _config.DATA_SRC_DATABASE = ".data_src_database"
-    _config.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
+    configuration_instance = DummyConfig("config")
 
-    HUB_DB_BACKEND = {
-        "module": "biothings.utils.mongo",
-        "uri": "mongodb://localhost:27017",
-        # "uri" : "mongodb://user:passwd@localhost:27017", # mongodb std URI
-    }
-
-    # _config.LOG_FOLDER = ".biothings_hub/logs"
-    _config.LOG_FOLDER = None  # disable file logging, only log to stdout
-    _config.DATA_PLUGIN_FOLDER = f"{working_dir}"
-    _config.hub_db = importlib.import_module(_config.HUB_DB_BACKEND["module"])
     try:
         config_mod = importlib.import_module("config")
         for attr in dir(config_mod):
             value = getattr(config_mod, attr)
             if isinstance(value, ConfigurationError):
-                raise ConfigurationError("%s: %s" % (attr, str(value)))
-            setattr(_config, attr, value)
+                raise ConfigurationError(f"{attr}: {value}")
+            setattr(configuration_instance, attr, value)
     except ModuleNotFoundError:
-        logger.debug("The config.py does not exists in the working directory, use default biothings.config")
+        logger.warning(ModuleNotFoundError)
+        logger.warning("Unable to find `config` module. Using the default configuration")
+    finally:
+        sys.modules["config"] = configuration_instance
+        sys.modules["biothings.config"] = configuration_instance
 
-    sys.modules["config"] = _config
-    sys.modules["biothings.config"] = _config
+    configuration_instance.HUB_DB_BACKEND = {
+        "module": "biothings.utils.sqlite3",
+        "sqlite_db_folder": ".biothings_hub",
+    }
+    configuration_instance.DATA_SRC_SERVER = "localhost"
+    configuration_instance.DATA_SRC_DATABASE = "data_src_database"
+    configuration_instance.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
+    configuration_instance.LOG_FOLDER = ".biothings_hub/logs"
+    configuration_instance.DATA_PLUGIN_FOLDER = f"{working_dir}"
+
+    try:
+        configuration_instance.hub_db = importlib.import_module(configuration_instance.HUB_DB_BACKEND["module"])
+    except ImportError as import_err:
+        logger.exception(import_err)
+        raise import_err
+
+    configuration_repr = [
+        f"{configuration_key}: [{configuration_value}]"
+        for configuration_key, configuration_value in inspect.getmembers(configuration_instance)
+        if configuration_value is not None
+    ]
+    logger.info("CLI Configuration:\n%s", "\n".join(configuration_repr))
 
 
 def main():
-    """The main entry point for running the BioThings CLI to test your local data plugins."""
+    """
+    The entrypoint for running the BioThings CLI to test your local data plugin
+    """
     if not typer_avail:
         logger.error(
             '"typer" package is required for CLI feature. Use "pip install biothings[cli]" or "pip install typer[all]" to install.'

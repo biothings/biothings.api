@@ -1530,8 +1530,8 @@ class BuilderManager(BaseManager):
 
     def build_config_info(self):
         configs = {}
-        err = None
         for name in self.register:
+            err = None
             try:
                 builder = self[name]
             except Exception as e:

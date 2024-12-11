@@ -40,7 +40,7 @@ install_requires = [
     "requests>=2.21.0",
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.0; python_version >= "3.8.0"',
+    'tornado==6.4.1; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
     "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
@@ -115,6 +115,8 @@ docker_ssh_requires = [
 # extra requirements to develop biothings
 dev_requires = [
     "pytest-mock",
+    "pytest-asyncio",
+    "aioresponses",
     "pre-commit==2.17.0",
 ]
 
@@ -144,16 +146,16 @@ setup(
     scripts=list(glob.glob("biothings/bin/*")),
     long_description=read("README.md"),
     long_description_content_type="text/markdown",
-    python_requires=">=3.6",
+    python_requires=">=3.8",
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
-        "Development Status :: 4 - Beta",
+        "Programming Language :: Python :: 3.12",
+        "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
         "Operating System :: POSIX",
