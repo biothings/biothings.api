@@ -533,8 +533,9 @@ class BaseSourceUploader(object):
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
                 model_path = os.path.join(model_dir, f"{self.name}_model.py")
-                self.logger.info("Writing model to: %s", model_path)
                 with open(model_path, "w") as f:
+                    self.logger.info("Writing model to: %s", model_path)
+                    self.logger.info("Model: %s", model_str)
                     f.write(model_str)
                 self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
             else:
