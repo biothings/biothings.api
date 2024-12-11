@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import sys
 import time
+import uuid
 from pprint import pformat
 from types import SimpleNamespace
 from typing import Union
@@ -818,7 +819,6 @@ def do_build(plugin_name: str, logger: logging.Logger = None):
     """
     Performs a build of the plugin
     """
-    breakpoint()
     from biothings.hub.databuild.builder import BuilderManager
 
     if logger is None:
@@ -829,51 +829,21 @@ def do_build(plugin_name: str, logger: logging.Logger = None):
     build_manager.configure()
     build_manager.poll()
 
-    # def quick_index(
-    #     self,
-    #     datasource_name,
-    #     doc_type,
-    #     indexer_env,
-    #     subsource=None,
-    #     index_name=None,
-    #     **kwargs,
-    # ):
-    #     """
-    #     Intention for datasource developers to quickly create an index to test their datasources.
-    #     Automatically create temporary build config, build collection
-    #     Then call the index method with the temporary build collection's name
-    #     """
-    random_string = f"{get_timestamp()}_{get_random_string()}"
-    # generate random build_configuration name
-    subsource_str = f"_{subsource}" if subsource else ""
-    build_configuration_name = f"{datasource_name}{subsource_str}_configuration_{random_string}"
-    # generate random build name
-    build_name = f"{datasource_name}{subsource_str}_{random_string}"
-    # # generate index_name if needed
-    if not index_name:
-        index_name = build_name
-    index_name = index_name.lower()
+    plugin_identifier = uuid.uuid4()
+    build_configuration_name = f"{plugin_name}-{plugin_identifier}-configuration"
+    build_name = f"{plugin_name}-{plugin_identifier}"
+    index_name = build_name.lower()
 
-    extra_index_settings = kwargs.pop("extra_index_settings", "{}")
-    extra_index_settings = json.loads(extra_index_settings)
-    build_config_params = {
-        "num_shards": int(kwargs.pop("num_shards", 1)),
-        "num_replicas": int(kwargs.pop("num_replicas", 0)),
-    }
-    if extra_index_settings:
-        build_config_params["extra_index_settings"] = extra_index_settings
-
+    build_config_params = {"num_shards": 1, "num_replicas": 0}
     try:
-        # create a temporary build configuration:
-        builder_class = None
-        for build_class_name in self.managers["build_manager"].builder_classes.keys():
-            if build_class_name.endswith("LinkDataBuilder"):
-                builder_class = build_class_name
-                break
+        builder_class = "LinkDataBuilder"
+        sources = [plugin_name]
+        document_type = "temporary"
+        breakpoint()
         build_manager.create_build_configuration(
             build_configuration_name,
-            doc_type=doc_type,
-            sources=[datasource_name] if not subsource else [subsource],
+            doc_type=document_type,
+            sources=sources,
             builder_class=builder_class,
             params=build_config_params,
         )
