@@ -74,15 +74,15 @@ from biothings.utils.serializer import load_json, to_json
 from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 from biothings.cli.utils import (
-    load_plugin,
-    run_sync_or_async_job,
-    show_dumped_files,
-    show_uploaded_sources,
-    remove_files_in_folder,
-    serve,
-    show_hubdb_content,
-    process_inspect,
     get_uploaders,
+    load_plugin,
+    process_inspect,
+    remove_files_in_folder,
+    run_sync_or_async_job,
+    serve,
+    show_dumped_files,
+    show_hubdb_content,
+    show_uploaded_sources,
 )
 
 

@@ -1136,6 +1136,7 @@ class HubServer(object):
             self.commands["snapshot_cleanup"] = self.managers["snapshot_manager"].cleanup
             self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
             self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
+            self.commands["validate_snapshots"] = self.managers["snapshot_manager"].validate_snapshots
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
@@ -1477,6 +1478,8 @@ class HubServer(object):
             self.api_endpoints["delete_snapshots"] = EndpointDefinition(
                 name="delete_snapshots", method="put", force_bodyargs=True
             )
+        if "validate_snapshots" in cmdnames:
+            self.api_endpoints["validate_snapshots"] = EndpointDefinition(name="validate_snapshots", method="post")
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(name="sync", method="post", force_bodyargs=True)
         if "whatsnew" in cmdnames:
