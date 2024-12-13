@@ -28,28 +28,12 @@ from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 
 
-def get_logger(name=None):
-    """
-    Get a logger with the given name.
-    If name is None, return the root logger.
-    """
-    # basicConfig has been setup in cli.py, so we don't need to do it again here
-    # If everything works as expected, we can delete this block.
-    # logging.basicConfig(
-    #     level="INFO",
-    #     format="%(message)s",
-    #     datefmt="[%X]",
-    #     handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-    # )
-    logger = logging.getLogger(name)
-    return logger
-
-
-logger = get_logger(name=__name__)
+logger = logging.getLogger(name="biothings-cli")
 
 
 def run_sync_or_async_job(func, *args, **kwargs):
-    """When func is defined as either normal or async function/method, we will call this function properly and return the results.
+    """
+    When func is defined as either normal or async function/method, we will call this function properly and return the results.
     For an async function/method, we will use CLIJobManager to run it.
     """
     if asyncio.iscoroutinefunction(func):
@@ -63,181 +47,107 @@ def run_sync_or_async_job(func, *args, **kwargs):
         return func(*args, **kwargs)
 
 
-########################
-# for create command   #
-########################
-
-
-def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
-    """Create a new data plugin from the template"""
-    logger = logger or get_logger(__name__)
-    working_dir = pathlib.Path().resolve()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
-        logger.error("Data plugin with the same name is already exists, please remove it before create")
-        return exit(1)
-    shutil.copytree(template_dir, plugin_dir)
-    # create manifest file
-    loader = tornado.template.Loader(plugin_dir)
-    parsed_template = (
-        loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
-    )
-    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
-    with open(manifest_file_path, "w") as fh:
-        fh.write(parsed_template)
-
-    # remove manifest template
-    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
-    if not parallelizer:
-        os.unlink(f"{plugin_dir}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
-
-
-###############################
-# for dump & upload command   #
-###############################
-
-
-def do_dump(plugin_name=None, show_dumped=True, logger=None):
+def get_plugin_name(plugin_name=None, with_working_dir=True):
     """
-    Perform dump for the given plugin
+    return a valid plugin name (the folder name contains a data plugin)
+    When plugin_name is provided as None, it use the current working folder.
+    when with_working_dir is True, returns (plugin_name, working_dir) tuple
+    """
+    working_dir = pathlib.Path().resolve()
+    if plugin_name is None:
+        plugin_name = working_dir.name
+    else:
+        valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+        if not plugin_name or plugin_name not in valid_names:
+            rprint("[red]Please provide your data plugin name! [/red]")
+            rprint("Choose from:\n    " + "\n    ".join(valid_names))
+            raise typer.Exit(code=1)
+    return plugin_name, working_dir if with_working_dir else plugin_name
+
+
+def show_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str) -> None:
+    """
+    A helper function to show the dumped files in the data folder
+    """
+    try:
+        data_folder = pathlib.Path(data_folder).resolve().absolute()
+        list_indent = "\n    - "
+        file_collection_repr = list_indent + list_indent.join(pathobj.name for pathobj in data_folder.iterdir())
+        message = (
+            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+            f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
+            f"[green]Data Folder Contents:[/green][bold]{file_collection_repr}"
+        )
+    except OSError:
+        message = (
+            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+            f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
+            "Empty directory"
+        )
+
+    console = Console()
+    console.print(
+        Panel(
+            message,
+            title="[bold]Dump[/bold]",
+            title_align="left",
+        )
+    )
+
+
+def get_uploaded_collections(src_db, uploaders):
+    """
+    A helper function to get the uploaded collections in the source database
+    """
+    uploaded_sources = []
+    archived_sources = []
+    temp_sources = []
+    for item in src_db.collection_names():
+        if item in uploaders:
+            uploaded_sources.append(item)
+        for uploader_name in uploaders:
+            if item.startswith(f"{uploader_name}_archive_"):
+                archived_sources.append(item)
+            if item.startswith(f"{uploader_name}_temp_"):
+                temp_sources.append(item)
+    return uploaded_sources, archived_sources, temp_sources
+
+
+def show_hubdb_content():
+    """
+    Output hubdb content in a pretty format.
     """
     from biothings import config
     from biothings.utils import hub_db
 
+    console = Console()
     hub_db.setup(config)
-    logger = logger or get_logger(__name__)
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
-    dumper = _plugin.dumper
-    dumper.prepare()
-    run_sync_or_async_job(dumper.create_todump_list, force=True)
-    for item in dumper.to_dump:
-        logger.info('Downloading remote data from "%s"...', item["remote"])
-        dumper.download(item["remote"], item["local"])
-        logger.info('Downloaded locally as "%s"', item["local"])
-    dumper.steps = ["post"]
-    dumper.post_dump()
-    dumper.register_status("success")
-    dumper.release_client()
-    # cleanup
-    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
-    # dumper.src_dump.remove({"_id": dumper.src_name})
-    dp = hub_db.get_data_plugin()
-    dp.remove({"_id": _plugin.plugin_name})
-    data_folder = dumper.new_data_folder
-    if show_dumped:
-        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-        show_dumped_files(data_folder, _plugin.plugin_name)
-    return _plugin
-
-
-def do_upload(plugin_name: str = None, show_uploaded=True, logger=None):
-    """
-    Perform upload for the given list of uploader_classes
-    """
-    from biothings.cli.assistant import CLIAssistant
-
-    logger = logger or get_logger(__name__)
-
-    assistant_url = f"local://{plugin_name}"
-    assistant_instance = CLIAssistant(url=assistant_url)
-
-    _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
-    for uploader_cls in _plugin.uploader_classes:
-        uploader = uploader_cls.create(db_conn_info="")
-        uploader.make_temp_collection()
-        uploader.prepare()
-        if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
-            logger.error(
-                'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
-                uploader.data_folder,
-                uploader.fullname,
-            )
-            raise typer.Exit(1)
-        else:
-            upload_worker(
-                uploader.fullname,
-                uploader.__class__.storage_class,
-                uploader.load_data,
-                uploader.temp_collection_name,
-                10000,
-                1,
-                uploader.data_folder,
-                db=uploader.db,
-            )
-            uploader.switch_collection()
-            uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
-            uploader.clean_archived_collections()
-    if show_uploaded:
-        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-        show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
-    return _plugin
-
-
-# def do_upload2(plugin_name=None, show_uploaded=True, logger=None):
-#     """
-#     Alternative version that attempts to leverage the `upload_src` method
-#     provided by the UploaderManager definition. This method is what is used
-#     in production so we should attempt to leverage that here
-#     [Perform upload for the given list of uploader_classes]
-#     """
-#     logger = logger or get_logger(__name__)
-
-#     _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
-#     for uploader_cls in _plugin.uploader_classes:
-#         uploader = uploader_cls.create(db_conn_info="")
-#         uploader.make_temp_collection()
-#         uploader.prepare()
-#         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
-#             logger.error(
-#                 'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
-#                 uploader.data_folder,
-#                 uploader.fullname,
-#             )
-#             raise typer.Exit(1)
-#         else:
-#             upload_worker(
-#                 uploader.fullname,
-#                 uploader.__class__.storage_class,
-#                 uploader.load_data,
-#                 uploader.temp_collection_name,
-#                 10000,
-#                 1,
-#                 uploader.data_folder,
-#                 db=uploader.db,
-#             )
-#             uploader.switch_collection()
-#             uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
-#             uploader.clean_archived_collections()
-#     if show_uploaded:
-#         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-#         show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
-#     return _plugin
-
-
-def do_dump_and_upload(plugin_name, logger=None):
-    """Perform both dump and upload for the given plugin"""
-    logger = logger or get_logger(__name__)
-    _plugin = do_dump(plugin_name, show_dumped=False, logger=logger)
-    do_upload(plugin_name, show_uploaded=False, logger=logger)
-    logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-    show_dumped_files(_plugin.dumper.new_data_folder, _plugin.plugin_name)
-    show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
-
-
-########################
-# for inspect command  #
-########################
+    coll_list = [
+        hub_db.get_data_plugin(),
+        hub_db.get_src_dump(),
+        hub_db.get_src_master(),
+        hub_db.get_hub_config(),
+        hub_db.get_event(),
+    ]
+    hub_db_content = []
+    for collection in coll_list:
+        content = collection.find()
+        if content:
+            hub_db_content.append(f"[green]Collection:[/green] [bold]{collection.name}[/bold]\n{pformat(content)}")
+    hub_db_content = "\n".join(hub_db_content)
+    console.print(
+        Panel(
+            hub_db_content,
+            title="[bold]Hubdb[/bold]",
+            title_align="left",
+        )
+    )
 
 
 def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
-    from biothings import config
-    from biothings.utils import hub_db
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
@@ -406,48 +316,9 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         #         current_content = {}
         #     current_content.update(mapping)
         #     fp.write(to_json(current_content, indent=True, sort_keys=True))
-        with open(output, "w") as fp:
+        with open(output, "w", encoding="utf-8") as fp:
             fp.write(to_json(mapping, indent=True, sort_keys=True))
             rprint(f"[green]Successfully wrote the mapping info to the JSON file: [bold]{output}[/bold][/green]")
-
-
-def do_inspect(
-    plugin_name=None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None, logger=None
-):
-    """Perform inspection on a data plugin."""
-    logger = logger or get_logger(__name__)
-    if not limit:
-        limit = None
-
-    _plugin = load_plugin(plugin_name, logger=logger)
-    # source_full_name = _plugin.plugin_name if sub_source_name else f"{_plugin.plugin_name}.{sub_source_name}"
-    if len(_plugin.uploader_classes) > 1:
-        if not sub_source_name:
-            logger.error('This is a multiple uploaders data plugin, so "--sub-source-name" must be provided!')
-            logger.error(
-                'Accepted values of "--sub-source-name" are: %s',
-                ", ".join(uploader.name for uploader in _plugin.uploader_classes),
-            )
-            raise typer.Exit(code=1)
-        logger.info(
-            'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
-            _plugin.plugin_name,
-            sub_source_name,
-            mode,
-            limit,
-        )
-    else:
-        logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', _plugin.plugin_name, mode, limit)
-    # table_space = get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
-    table_space = [item.name for item in _plugin.uploader_classes]
-    if sub_source_name and sub_source_name not in table_space:
-        logger.error('Your source name "%s" does not exits', sub_source_name)
-        raise typer.Exit(code=1)
-    if sub_source_name:
-        process_inspect(sub_source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
-    else:
-        for source_name in table_space:
-            process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
 
 
 def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
@@ -470,11 +341,6 @@ def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
     return manifest
 
 
-########################
-# for list command     #
-########################
-
-
 def get_uploaders(working_dir: pathlib.Path) -> list[str]:
     """
     A helper function to get the uploaders from the manifest file in the working directory
@@ -489,47 +355,6 @@ def get_uploaders(working_dir: pathlib.Path) -> list[str]:
     if uploader_section is None and uploaders_section is not None:
         table_space = [item["name"] for item in uploaders_section]
     return table_space
-
-
-def show_dumped_files(data_folder, plugin_name):
-    """A helper function to show the dumped files in the data folder"""
-    console = Console()
-    if not os.path.isdir(data_folder) or not os.listdir(data_folder):
-        console.print(
-            Panel(
-                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
-                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
-                + "Empty file!",
-                title="[bold]Dump[/bold]",
-                title_align="left",
-            )
-        )
-    else:
-        console.print(
-            Panel(
-                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
-                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n    - "
-                + "\n    - ".join(os.listdir(data_folder)),
-                title="[bold]Dump[/bold]",
-                title_align="left",
-            )
-        )
-
-
-def get_uploaded_collections(src_db, uploaders):
-    """A helper function to get the uploaded collections in the source database"""
-    uploaded_sources = []
-    archived_sources = []
-    temp_sources = []
-    for item in src_db.collection_names():
-        if item in uploaders:
-            uploaded_sources.append(item)
-        for uploader_name in uploaders:
-            if item.startswith(f"{uploader_name}_archive_"):
-                archived_sources.append(item)
-            if item.startswith(f"{uploader_name}_temp_"):
-                temp_sources.append(item)
-    return uploaded_sources, archived_sources, temp_sources
 
 
 def show_uploaded_sources(working_dir, plugin_name):
@@ -574,39 +399,10 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
-def show_hubdb_content():
-    """Output hubdb content in a pretty format."""
-    from biothings import config
-    from biothings.utils import hub_db
-
-    console = Console()
-    hub_db.setup(config)
-    coll_list = [
-        hub_db.get_data_plugin(),
-        hub_db.get_src_dump(),
-        hub_db.get_src_master(),
-        hub_db.get_hub_config(),
-        hub_db.get_event(),
-    ]
-    hub_db_content = []
-
-    for collection in coll_list:
-        content = collection.find()
-        if content:
-            hub_db_content.append(f"[green]Collection:[/green] [bold]{collection.name}[/bold]\n{pformat(content)}")
-    hub_db_content = "\n".join(hub_db_content)
-    console.print(
-        Panel(
-            hub_db_content,
-            title="[bold]Hubdb[/bold]",
-            title_align="left",
-        )
-    )
-
-
 def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None):
-    """List the dumped files, uploaded sources, or hubdb content."""
-    logger = logger or get_logger(__name__)
+    """
+    List the dumped files, uploaded sources, or hubdb content.
+    """
     if dump is False and upload is False and hubdb is False:
         # if all set to False, we list both dump and upload as the default
         dump = upload = True
@@ -629,39 +425,23 @@ def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None
         show_hubdb_content()
 
 
-########################
-# for serve command    #
-########################
-
-
 def serve(host, port, plugin_name, table_space):
     """
     Serve a simple API server to query the data plugin source.
     """
-    from .web_app import main
     from biothings import config
     from biothings.utils import hub_db
+    from biothings.cli.web_app import main
 
     src_db = hub_db.get_src_db()
     rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
     asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
 
 
-def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
-    logger = logger or get_logger(__name__)
-    _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
-    uploader_classes = _plugin.uploader_classes
-    table_space = [item.name for item in uploader_classes]
-    serve(host=host, port=port, plugin_name=_plugin.plugin_name, table_space=table_space)
-
-
-########################
-# for clean command    #
-########################
-
-
 def remove_files_in_folder(folder_path):
-    """Remove all files in a folder."""
+    """
+    Remove all files in a folder.
+    """
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         try:
@@ -675,7 +455,9 @@ def remove_files_in_folder(folder_path):
 
 
 def do_clean_dumped_files(data_folder, plugin_name):
-    """Remove all dumped files by a data plugin in the data folder."""
+    """
+    Remove all dumped files by a data plugin in the data folder.
+    """
     if not os.path.isdir(data_folder):
         rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
         return
@@ -692,7 +474,9 @@ def do_clean_dumped_files(data_folder, plugin_name):
 
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
-    """Remove all uploaded sources by a data plugin in the working directory."""
+    """
+    Remove all uploaded sources by a data plugin in the working directory.
+    """
     from biothings import config
     from biothings.utils import hub_db
 
@@ -719,7 +503,9 @@ def do_clean_uploaded_sources(working_dir, plugin_name):
 
 
 def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
-    """Clean the dumped files, uploaded sources, or both."""
+    """
+    Clean the dumped files, uploaded sources, or both.
+    """
     logger = logger or get_logger(__name__)
     if clean_all:
         dump = upload = True
@@ -737,49 +523,3 @@ def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger
         do_clean_dumped_files(data_folder, _plugin.plugin_name)
     if upload:
         do_clean_uploaded_sources(_plugin.data_plugin_dir, _plugin.plugin_name)
-
-
-def do_build(plugin_name: str, logger: logging.Logger = None):
-    """
-    Performs a build of the plugin
-    """
-    from biothings.hub.databuild.builder import BuilderManager
-
-    if logger is None:
-        logger = get_logger(__name__)
-
-    job_manager = CLIJobManager()
-    breakpoint()
-    build_manager = BuilderManager(job_manager=job_manager)
-    build_manager.configure()
-    build_manager.poll()
-
-    plugin_identifier = uuid.uuid4()
-    build_configuration_name = f"{plugin_name}-{plugin_identifier}-configuration"
-    build_name = f"{plugin_name}-{plugin_identifier}"
-    index_name = build_name.lower()
-
-    build_config_params = {"num_shards": 1, "num_replicas": 0}
-    try:
-        builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
-        sources = [plugin_name]
-        document_type = "temporary"
-        breakpoint()
-        build_manager.create_build_configuration(
-            build_configuration_name,
-            doc_type=document_type,
-            sources=sources,
-            builder_class=builder_class,
-            params=build_config_params,
-        )
-
-        # create a temporary build
-        build_manager.merge(
-            build_name=build_configuration_name,
-            target_name=build_name,
-            force=True,
-        )
-
-        index_manager.index(indexer_env, build_name, index_name=index_name, **kwargs)
-    except Exception as gen_exp:
-        raise gen_exp

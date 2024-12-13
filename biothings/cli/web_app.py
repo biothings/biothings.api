@@ -20,7 +20,9 @@ class NoResultError(Exception):
 
 
 async def get_available_routes(db, table_space):
-    """return a list available URLs/routes based on the table_space and the actual collections in the database"""
+    """
+    return a list available URLs/routes based on the table_space and the actual collections in the database
+    """
     collection_names = set(db.collection_names())
     list_routes = []
     detail_routes = []
