@@ -395,7 +395,7 @@ class SourceManager(BaseSourceManager):
             assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
             upk = upk[0]
             module_path = self.upload_manager.get_module_path(upk)
-            model_path = os.path.join(module_path, "models", f"{name}_model.py")
+            model_path = os.path.join(module_path, "validation", f"{name}_model.py")
             with open(model_path, "r") as f:
                 model_str = f.read()
                 return model_str
@@ -417,9 +417,10 @@ class SourceManager(BaseSourceManager):
         inst.commit_pydantic_model(model_str)
         self.logger.info("Saved pydantic model for source '%s'", name)
 
-    def run_pydantic_validation(self, name):
+    def run_pydantic_validation(self, name, model_file=None):
         try:
             subsrc = name.split(".")[1]
         except IndexError:
             subsrc = name
-        return self.upload_manager.validate_src(subsrc)
+        kwargs = {"model_file": model_file}
+        return self.upload_manager.validate_src(subsrc, **kwargs)

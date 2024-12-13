@@ -6,6 +6,7 @@ import inspect
 import os
 import time
 from functools import partial
+from typing import Iterable, Optional
 
 from pydantic import ValidationError
 
@@ -86,7 +87,9 @@ class BaseSourceUploader(object):
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
+        # Pydantic model settings
         self.module_dir = kwargs.get("module_dir")
+        self.validation_model = ""
 
     @property
     def fullname(self):
@@ -528,7 +531,7 @@ class BaseSourceUploader(object):
         try:
             self.logger.info("module_dir: %s", self.module_dir)
             if self.module_dir:
-                model_dir = os.path.join(self.module_dir, "models")
+                model_dir = os.path.join(self.module_dir, "validation")
                 # create directory if it doesn't exist
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
@@ -544,7 +547,13 @@ class BaseSourceUploader(object):
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
-    def validate(self, generate_model=False):
+    def validate(self, generate_model=False, model_file=None, docs: Optional[Iterable] = None):
+        """Validate documents in the collection using the Pydantic model
+        :param generate_model: Auto Generate Pydantic model from the mapping
+        :param model_file: Pydantic model file to use for validation
+        :param docs: List of documents to validate
+        """
+
         self.prepare()
 
         if generate_model:
@@ -563,10 +572,18 @@ class BaseSourceUploader(object):
 
         try:
             if self.module_dir:
-                model_dir = os.path.join(self.module_dir, "models")
+                model_dir = os.path.join(self.module_dir, "validation")
             else:
                 raise ValueError("No module directory found for uploader source '%s'", self.fullname)
-            model_path = os.path.join(model_dir, f"{self.name}_model.py")
+
+            # check if user has provided a model file if not use the default model file
+            if model_file:
+                model_path = os.path.join(model_dir, f"{model_file}")
+            elif self.validation_model:
+                model_path = os.path.join(model_dir, f"{self.validation_model}")
+            else:
+                model_path = os.path.join(model_dir, f"{self.name}_model.py")
+
             spec = importlib.util.spec_from_file_location("model_module", model_path)
             model_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(model_module)
@@ -578,12 +595,11 @@ class BaseSourceUploader(object):
             )
             raise e
 
-        session = self._state["conn"].start_session()
-        src_collection = self._state["collection"]
-        self.logger.info("Validating documents from collection '%s'", src_collection)
         errors = []
-        with session:
-            for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+        # for cli usage
+        if docs:
+            self.logger.info("Validating documents from an iterable")
+            for doc in docs:
                 try:
                     model.model_validate(doc)
                     self.logger.info("Document '%s' is valid", doc["_id"])
@@ -591,9 +607,25 @@ class BaseSourceUploader(object):
                     for error in e.errors():
                         if "Input should be a valid list" not in error["msg"]:
                             errors.append(error)
-                    break
-        if errors:
-            raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+            if errors:
+                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+        else:
+            session = self._state["conn"].start_session()
+            src_collection = self._state["collection"]
+            self.logger.info("Validating documents from collection '%s'", src_collection)
+
+            with session:
+                for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
+                    try:
+                        model.model_validate(doc)
+                        self.logger.info("Document '%s' is valid", doc["_id"])
+                    except ValidationError as e:
+                        for error in e.errors():
+                            if "Input should be a valid list" not in error["msg"]:
+                                errors.append(error)
+                        break
+            if errors:
+                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
 
     async def validate_src(self, job_manager=None, **kwargs):
         assert job_manager, "Job manager is required for validation"
@@ -602,7 +634,9 @@ class BaseSourceUploader(object):
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
-        job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
+        job = await job_manager.defer_to_process(
+            pinfo, partial(self.validate, kwargs.get("generate_model"), kwargs.get("model_file"), kwargs.get("docs"))
+        )
 
         def done(f):
             nonlocal got_error
@@ -866,9 +900,10 @@ class UploaderManager(BaseSourceManager):
         try:
             for _, klass in enumerate(klasses):
                 kwargs["job_manager"] = self.job_manager
+                kwargs["generate_model"] = generate_model
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, validate, generate_model, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -930,7 +965,7 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, validate=False, generate_model=False, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
@@ -939,7 +974,6 @@ class UploaderManager(BaseSourceManager):
         if validate:
             logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
-                kwargs["generate_model"] = generate_model
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
