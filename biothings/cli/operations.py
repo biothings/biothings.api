@@ -73,32 +73,45 @@ from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
 from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
+from biothings.cli.utils import (
+    load_plugin,
+    run_sync_or_async_job,
+    show_dumped_files,
+    show_uploaded_sources,
+    remove_files_in_folder,
+    serve,
+    show_hubdb_content,
+    process_inspect,
+    get_uploaders,
+)
 
 
-logger = get_logger(name="biothings-cli")
+logger = logging.getLogger(name="biothings-cli")
 
 
 ########################
 # for create command   #
 ########################
 def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
-    """Create a new data plugin from the template"""
-    logger = logger or get_logger(__name__)
+    """
+    Create a new data plugin from the template
+    """
     working_dir = pathlib.Path().resolve()
     biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
     template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
     plugin_dir = os.path.join(working_dir, name)
     if os.path.isdir(plugin_dir):
         logger.error("Data plugin with the same name is already exists, please remove it before create")
-        return exit(1)
+        sys.exit(1)
     shutil.copytree(template_dir, plugin_dir)
+
     # create manifest file
     loader = tornado.template.Loader(plugin_dir)
     parsed_template = (
         loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
     manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
-    with open(manifest_file_path, "w") as fh:
+    with open(manifest_file_path, "w", encoding="utf-8") as fh:
         fh.write(parsed_template)
 
     # remove manifest template
@@ -114,12 +127,13 @@ def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
 
 
 def do_dump(plugin_name=None, show_dumped=True, logger=None):
-    """Perform dump for the given plugin"""
+    """
+    Perform dump for the given plugin
+    """
     from biothings import config
     from biothings.utils import hub_db
 
     hub_db.setup(config)
-    logger = logger or get_logger(__name__)
     _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
     dumper = _plugin.dumper
     dumper.prepare()
@@ -145,10 +159,9 @@ def do_dump(plugin_name=None, show_dumped=True, logger=None):
 
 
 def do_upload(plugin_name=None, show_uploaded=True, logger=None):
-    """Perform upload for the given list of uploader_classes"""
-
-    logger = logger or get_logger(__name__)
-
+    """
+    Perform upload for the given list of uploader_classes
+    """
     _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
     for uploader_cls in _plugin.uploader_classes:
         uploader = uploader_cls.create(db_conn_info="")
@@ -182,8 +195,9 @@ def do_upload(plugin_name=None, show_uploaded=True, logger=None):
 
 
 def do_dump_and_upload(plugin_name, logger=None):
-    """Perform both dump and upload for the given plugin"""
-    logger = logger or get_logger(__name__)
+    """
+    Perform both dump and upload for the given plugin
+    """
     _plugin = do_dump(plugin_name, show_dumped=False, logger=logger)
     do_upload(plugin_name, show_uploaded=False, logger=logger)
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
@@ -192,9 +206,9 @@ def do_dump_and_upload(plugin_name, logger=None):
 
 
 def do_list(plugin_name=None, dump=True, upload=True, hubdb=False, logger=None):
-    """List the dumped files, uploaded sources, or hubdb content."""
-    logger = logger or get_logger(__name__)
-
+    """
+    List the dumped files, uploaded sources, or hubdb content.
+    """
     _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
     if dump:
         data_folder = _plugin.dumper.current_data_folder
@@ -219,8 +233,9 @@ def do_list(plugin_name=None, dump=True, upload=True, hubdb=False, logger=None):
 def do_inspect(
     plugin_name=None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None, logger=None
 ):
-    """Perform inspection on a data plugin."""
-    logger = logger or get_logger(__name__)
+    """
+    Perform inspection on a data plugin.
+    """
     if not limit:
         limit = None
 
@@ -261,7 +276,6 @@ def do_inspect(
 
 
 def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
-    logger = logger or get_logger(__name__)
     _plugin = load_plugin(plugin_name, dumper=False, uploader=True, logger=logger)
     uploader_classes = _plugin.uploader_classes
     table_space = [item.name for item in uploader_classes]
@@ -274,7 +288,9 @@ def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
 
 
 def do_clean_dumped_files(data_folder, plugin_name):
-    """Remove all dumped files by a data plugin in the data folder."""
+    """
+    Remove all dumped files by a data plugin in the data folder.
+    """
     if not os.path.isdir(data_folder):
         rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
         return
@@ -291,7 +307,9 @@ def do_clean_dumped_files(data_folder, plugin_name):
 
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
-    """Remove all uploaded sources by a data plugin in the working directory."""
+    """
+    Remove all uploaded sources by a data plugin in the working directory.
+    """
     from biothings import config
     from biothings.utils import hub_db
 
@@ -318,8 +336,9 @@ def do_clean_uploaded_sources(working_dir, plugin_name):
 
 
 def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
-    """Clean the dumped files, uploaded sources, or both."""
-    logger = logger or get_logger(__name__)
+    """
+    Clean the dumped files, uploaded sources, or both.
+    """
     if clean_all:
         dump = upload = True
     if dump is False and upload is False:

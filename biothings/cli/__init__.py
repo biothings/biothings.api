@@ -8,7 +8,11 @@ import sys
 
 
 from biothings.cli.log import setup_logging
-from biothings.cli.settings import setup_biothings_configuration, setup_commandline_configuration
+from biothings.cli.settings import (
+    setup_biothings_configuration,
+    setup_commandline_configuration,
+    setup_logging_configuration,
+)
 
 
 def check_module_import_status(module: str) -> bool:
@@ -40,12 +44,15 @@ def main():
     # This supports a similar
     # >>> BTCLI_RICH_TRACEBACK=1 env variable to turn it on when default is off in our case
     # Relevant ref: https://github.com/tiangolo/typer/issues/525 and https://github.com/tiangolo/typer/discussions/612
-    # and BTCLI_DEBUG=1 env varible to turn on both rich tracebacks and show locals
+    # and BTCLI_DEBUG=1 env variable to turn on both rich tracebacks and show locals
     cli_debug_flag = os.environ.get("BTCLI_DEBUG", False)
     cli_rich_traceback_flag = os.environ.get("BTCLI_RICH_TRACEBACK", False)
 
     cli = setup_commandline_configuration(debug=cli_debug_flag, rich_traceback=cli_rich_traceback_flag)
-    setup_logging(cli=cli, debug=cli_debug_flag)
+    logging_level = logging.INFO
+    if cli_debug_flag:
+        logging_level = logging.DEBUG
+    setup_logging_configuration(logging_level)
     setup_biothings_configuration()
 
     from biothings.cli.dataplugin import app as dataplugin_app

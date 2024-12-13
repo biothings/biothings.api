@@ -26,7 +26,7 @@ from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 
 
-logger = get_logger(name="biothings-cli")
+logger = logging.getLogger(name="biothings-cli")
 
 
 def run_sync_or_async_job(func, *args, **kwargs):
@@ -125,8 +125,6 @@ def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = T
 
     If <plugin_name> is not valid, raise the proper error and exit.
     """
-    logger = logger or get_logger(__name__)
-
     _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
     if plugin_name is None:
         # current working_dir has the data plugin
@@ -142,13 +140,13 @@ def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = T
         logger.exception(gen_exc)
         if plugin_name is None:
             plugin_loading_error_message = (
-                "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
+                "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again"
             )
         else:
             plugin_loading_error_message = (
                 f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
             )
-        logger.error(plugin_loading_error_message, extra={"markup": True})
+        logger.error(plugin_loading_error_message)
         raise typer.Exit(1)
 
     current_plugin = SimpleNamespace(
@@ -217,18 +215,20 @@ def show_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str) -
     """
     A helper function to show the dumped files in the data folder
     """
-    data_folder = pathlib.Path(data_folder).resolve().absolute()
-    if os.path.isdir(data_folder) and not os.listdir(data_folder):
-        message = (
-            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
-            + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n    - "
-            + "\n    - ".join(os.listdir(data_folder)),
-        )
-    else:
+    try:
+        data_folder = pathlib.Path(data_folder).resolve().absolute()
+        list_indent = "\n    - "
+        file_collection_repr = list_indent + list_indent.join(pathobj.name for pathobj in data_folder.iterdir())
         message = (
             f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
             f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
-            "Empty file!"
+            f"[green]Data Folder Contents:[/green][bold]{file_collection_repr}"
+        )
+    except OSError:
+        message = (
+            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+            f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
+            "Empty directory"
         )
 
     console = Console()

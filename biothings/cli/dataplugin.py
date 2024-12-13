@@ -1,11 +1,12 @@
 from typing import Optional
+import logging
 
 import typer
 from typing_extensions import Annotated
 
 from biothings.cli import operations
 
-logger = utils.get_logger("biothings-cli")
+logger = logging.getLogger("biothings-cli")
 
 
 short_help = (

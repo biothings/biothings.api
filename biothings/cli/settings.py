@@ -1,3 +1,4 @@
+from typing import Literal
 import importlib
 import importlib.util
 import inspect
@@ -7,6 +8,7 @@ import pathlib
 import sys
 
 from rich.console import Console
+from rich.logging import RichHandler
 from rich.panel import Panel
 import typer
 
@@ -48,6 +50,20 @@ def setup_commandline_configuration(debug: bool, rich_traceback: bool) -> typer.
     )
 
     return typer_instance
+
+
+def setup_logging_configuration(logging_level: Literal[10, 20, 30, 40, 50]) -> None:
+    """
+    Configures the logging based off our environment configuration
+    """
+    rich_handler = RichHandler(
+        level=logging_level,
+        markup=True,
+        rich_tracebacks=False,  # typer creates it already
+        show_path=False,
+        tracebacks_suppress=[typer],
+    )
+    logging.basicConfig(level=logging_level, format="%(message)s", datefmt="[%X]", handlers=[rich_handler])
 
 
 def setup_biothings_configuration():
