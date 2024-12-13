@@ -6,6 +6,8 @@ import os
 import pathlib
 import sys
 
+from rich.console import Console
+from rich.panel import Panel
 import typer
 
 
@@ -68,8 +70,8 @@ def setup_biothings_configuration():
                 raise ConfigurationError(f"{attr}: {value}")
             setattr(configuration_instance, attr, value)
     except ModuleNotFoundError:
-        logging.warning(ModuleNotFoundError)
-        logging.warning("Unable to find `config` module. Using the default configuration")
+        logging.debug(ModuleNotFoundError)
+        logging.debug("Unable to find `config` module. Using the default configuration")
     finally:
         sys.modules["config"] = configuration_instance
         sys.modules["biothings.config"] = configuration_instance
@@ -91,9 +93,19 @@ def setup_biothings_configuration():
         raise import_err
     return configuration_instance
 
-    configuration_repr = [
-        f"{configuration_key}: [{configuration_value}]"
+    configuration_member_collection = [
+        f"[green]{configuration_key}:[/green][bold] [{configuration_value}[/bold]\n"
         for configuration_key, configuration_value in inspect.getmembers(configuration_instance)
         if configuration_value is not None
     ]
-    logger.debug("CLI Configuration:\n%s", "\n".join(configuration_repr))
+    configuration_debug_message = "[green]<biothings command-line configuration>[/green][bold]\n" "".join(
+        configuration_member_collection
+    )
+    console = Console()
+    console.print(
+        Panel(
+            configuration_debug_message,
+            title="[bold]Dump[/bold]",
+            title_align="left",
+        )
+    )

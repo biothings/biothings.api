@@ -29,16 +29,6 @@ import biothings.utils.inspect as btinspect
 logger = get_logger(name="biothings-cli")
 
 
-def check_module_import_status(module: str) -> bool:
-    """
-    Verify that we can import a module prior to proceeding with creating our commandline
-    tooling that depends on those modules
-    """
-    module_specification = importlib.util.find_spec(module)
-    status = module_specification is not None
-    return status
-
-
 def run_sync_or_async_job(func, *args, **kwargs):
     """When func is defined as either normal or async function/method, we will call this function properly and return the results.
     For an async function/method, we will use CLIJobManager to run it.
@@ -223,29 +213,32 @@ def get_uploaders(working_dir: pathlib.Path):
     return table_space
 
 
-def show_dumped_files(data_folder, plugin_name):
-    """A helper function to show the dumped files in the data folder"""
-    console = Console()
-    if not os.path.isdir(data_folder) or not os.listdir(data_folder):
-        console.print(
-            Panel(
-                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
-                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
-                + "Empty file!",
-                title="[bold]Dump[/bold]",
-                title_align="left",
-            )
+def show_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str) -> None:
+    """
+    A helper function to show the dumped files in the data folder
+    """
+    data_folder = pathlib.Path(data_folder).resolve().absolute()
+    if os.path.isdir(data_folder) and not os.listdir(data_folder):
+        message = (
+            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+            + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n    - "
+            + "\n    - ".join(os.listdir(data_folder)),
         )
     else:
-        console.print(
-            Panel(
-                f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
-                + f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n    - "
-                + "\n    - ".join(os.listdir(data_folder)),
-                title="[bold]Dump[/bold]",
-                title_align="left",
-            )
+        message = (
+            f"[green]Source:[/green][bold] {plugin_name}[/bold]\n"
+            f"[green]Data Folder:[/green][bold] {data_folder}:[/bold]\n"
+            "Empty file!"
         )
+
+    console = Console()
+    console.print(
+        Panel(
+            message,
+            title="[bold]Dump[/bold]",
+            title_align="left",
+        )
+    )
 
 
 def get_uploaded_collections(src_db, uploaders):

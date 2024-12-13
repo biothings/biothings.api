@@ -7,9 +7,18 @@ import pathlib
 import sys
 
 
-from biothings.cli.utils import check_module_import_status
 from biothings.cli.log import setup_logging
 from biothings.cli.settings import setup_biothings_configuration, setup_commandline_configuration
+
+
+def check_module_import_status(module: str) -> bool:
+    """
+    Verify that we can import a module prior to proceeding with creating our commandline
+    tooling that depends on those modules
+    """
+    module_specification = importlib.util.find_spec(module)
+    status = module_specification is not None
+    return status
 
 
 def main():
@@ -27,7 +36,7 @@ def main():
         sys.exit(-1)
 
     # Typer already supports an environment variable to disable rich tracebacks
-    # >>>  TYPER_STANDARD_TRACEBACK=1
+    # >>> TYPER_STANDARD_TRACEBACK=1
     # This supports a similar
     # >>> BTCLI_RICH_TRACEBACK=1 env variable to turn it on when default is off in our case
     # Relevant ref: https://github.com/tiangolo/typer/issues/525 and https://github.com/tiangolo/typer/discussions/612
