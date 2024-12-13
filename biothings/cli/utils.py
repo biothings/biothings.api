@@ -77,7 +77,15 @@ def load_plugin_managers(
     LocalAssistant.uploader_manager = upload_manager
 
     assistant = LocalAssistant(f"local://{plugin_name}")
-    logger.debug(assistant.plugin_name, plugin_name, _plugin_path.as_posix(), config.DATA_PLUGIN_FOLDER)
+    assistant_debug_info = (
+        f"[green]Assistant Plugin Name:[/green][bold] "
+        f"[lightsalmon1]{assistant.plugin_name}[/lightsalmon1]\n"
+        f"[green]Assistant Plugin Path:[/green][bold] "
+        f"[lightsalmon1]{_plugin_path.as_posix()}[/lightsalmon1]\n"
+        f"[green]Data Plugin Folder:[/green][bold] "
+        f"[lightsalmon1]{config.DATA_PLUGIN_FOLDER}[/lightsalmon1]"
+    )
+    logger.debug(assistant_debug_info, extra={"markup": True})
 
     dp = get_data_plugin()
     dp.remove({"_id": assistant.plugin_name})
@@ -503,7 +511,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         #         current_content = {}
         #     current_content.update(mapping)
         #     fp.write(to_json(current_content, indent=True, sort_keys=True))
-        with open(output, "w") as fp:
+        with open(output, "w", encoding="utf-8") as fp:
             fp.write(to_json(mapping, indent=True, sort_keys=True))
             rprint(f"[green]Successfully wrote the mapping info to the JSON file: [bold]{output}[/bold][/green]")
 
