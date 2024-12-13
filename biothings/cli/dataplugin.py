@@ -240,8 +240,10 @@ def clean_data(
     name="build",
     help="Build a data plugin",
 )
-def build_plugin():
+def build_plugin(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for building")],
+):
     """
     *build* command for building a data plugin
     """
-    utils.do_build(plugin_name=None, logger=logger)
+    utils.do_build(plugin_name=plugin_name, logger=logger)
