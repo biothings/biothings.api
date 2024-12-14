@@ -634,9 +634,7 @@ class BaseSourceUploader(object):
         pinfo["step"] = "validate_src"
         got_error = False
         self.unprepare()
-        job = await job_manager.defer_to_process(
-            pinfo, partial(self.validate, kwargs.get("generate_model"), kwargs.get("model_file"), kwargs.get("docs"))
-        )
+        job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
 
         def done(f):
             nonlocal got_error
@@ -900,10 +898,9 @@ class UploaderManager(BaseSourceManager):
         try:
             for _, klass in enumerate(klasses):
                 kwargs["job_manager"] = self.job_manager
-                kwargs["generate_model"] = generate_model
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, generate_model, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -965,13 +962,14 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, validate=False, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, generate_model=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
         if validate:
+            kwargs["generate_model"] = generate_model
             logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
                 await inst.validate_src(*args, **kwargs)
