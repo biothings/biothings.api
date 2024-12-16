@@ -399,32 +399,6 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
-def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None):
-    """
-    List the dumped files, uploaded sources, or hubdb content.
-    """
-    if dump is False and upload is False and hubdb is False:
-        # if all set to False, we list both dump and upload as the default
-        dump = upload = True
-
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
-    if dump:
-        data_folder = _plugin.dumper.current_data_folder
-        if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-            # Typically we should not need to use new_data_folder as the data_folder,
-            # but we keep the code commented out below for future reference
-            # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-            # data_folder = dumper.new_data_folder
-        else:
-            show_dumped_files(data_folder, _plugin.plugin_name)
-    if upload:
-        show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
-    if hubdb:
-        show_hubdb_content()
-
-
 def serve(host, port, plugin_name, table_space):
     """
     Serve a simple API server to query the data plugin source.

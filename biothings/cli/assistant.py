@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import logging
 import math
 import os
@@ -8,7 +9,6 @@ import sys
 import time
 import uuid
 from pprint import pformat
-from types import SimpleNamespace
 from typing import Union
 
 import tornado.template
@@ -28,6 +28,8 @@ from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 from biothings.hub.dataplugin.assistant import BaseAssistant
 
+logger = logging.getLogger(name="biothings-cli")
+
 
 class CLIAssistant(BaseAssistant):
     """
@@ -35,100 +37,42 @@ class CLIAssistant(BaseAssistant):
     action (dump, upload, build, etc ...) managers
     """
 
-    plugin_type = None
-    data_plugin_manager = None
-    dumper_manager = None
-    uploader_manager = None
-    keylookup = None
+    from biothings.hub.databuild.builder import BuilderManager
+    from biothings.hub.dataindex.indexer import IndexManager
+    from biothings.hub.dataload.dumper import DumperManager
+    from biothings.hub.dataload.uploader import UploaderManager
+    from biothings.hub.dataplugin.manager import DataPluginManager
 
-    def __init__(self, url: str):
+    build_manager = BuilderManager(job_manager=None)
+    data_plugin_manager = DataPluginManager(job_manager=None)
+    dumper_manager = DumperManager(job_manager=None)
+    index_manager = IndexManager(job_manager=None)
+    upload_manager = UploaderManager(job_manager=None)
+
+    plugin_type = "CLI"
+
+    def __init__(self, url: str, plugin_name: str = None):
         super().__init__(url)
-        self.url = url
-        self._plugin_name = None
-        self._src_folder = None
-        self._loader = None
-        self.logfile = None
-        self.logger = None
-        self.setup_log()
-        self._initialize_managers()
-        # self.load_plugin_managers()
-
-    def _initialize_managers(self) -> None:
-        """
-        Initializes all the action managers in one location
-        """
-        from biothings.hub.dataload.dumper import DumperManager
-        from biothings.hub.dataload.uploader import UploaderManager
-        from biothings.hub.databuild.builder import BuilderManager
-        from biothings.hub.dataplugin.manager import DataPluginManager
-
-        self.data_plugin_manager = DataPluginManager(job_manager=None)
-        self.dumper_manager = DumperManager(job_manager=None)
-        self.upload_manager = UploaderManager(job_manager=None)
-        self.build_manager = BuilderManager(job_manager=None)
-
-    def load_plugin_managers(
-        self,
-        plugin_path: Union[str, pathlib.Path],
-        plugin_name: str = None,
-        data_folder: Union[str, pathlib.Path] = None,
-    ):
-        """
-        Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)
-        """
-        if plugin_name is None:
-            plugin_name = _plugin_path.name
-
-        if data_folder is None:
-            data_folder = pathlib.Path(f"./{plugin_name}")
-        data_folder = pathlib.Path(data_folder).resolve().absolute()
 
         from biothings import config
-        from biothings.utils.hub_db import get_data_plugin
 
-        _plugin_path = pathlib.Path(plugin_path).resolve()
-        config.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
-        sys.path.append(str(_plugin_path.parent))
-
-        logger.debug(self.plugin_name, plugin_name, _plugin_path.as_posix(), config.DATA_PLUGIN_FOLDER)
-
-        data_plugin = get_data_plugin()
-        data_plugin.remove({"_id": self.plugin_name})
-        data_plugin.insert_one(
-            {
-                "_id": self.plugin_name,
-                "plugin": {
-                    "url": f"local://{plugin_name}",
-                    "type": self.plugin_type,
-                    "active": True,
-                },
-                "download": {
-                    "data_folder": str(data_folder),  # tmp path to your data plugin
-                },
-            }
-        )
-        self.loader.load_plugin()
-
-        return plugin_loader.__class__.dumper_manager, assistant.__class__.uploader_manager
-
-    def get_plugin_name(plugin_name=None, with_working_dir=True):
-        """
-        return a valid plugin name (the folder name contains a data plugin)
-        When plugin_name is provided as None, it use the current working folder.
-        when with_working_dir is True, returns (plugin_name, working_dir) tuple
-        """
-        working_dir = pathlib.Path().resolve()
+        working_directory = pathlib.Path().cwd()
         if plugin_name is None:
-            plugin_name = working_dir.name
+            # assume that the current working directory has the data plugin
+            self.plugin_name = working_directory.name
+            self.plugin_directory = working_directory
+            self.data_directory = working_directory
+            self.validate_plugin_name(plugin_name)
         else:
-            valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-            if not plugin_name or plugin_name not in valid_names:
-                rprint("[red]Please provide your data plugin name! [/red]")
-                rprint("Choose from:\n    " + "\n    ".join(valid_names))
-                raise typer.Exit(code=1)
-        return plugin_name, working_dir if with_working_dir else plugin_name
+            self.plugin_name = plugin_name
+            self.plugin_directory = working_directory.joinpath(plugin_name)
+            self.data_directory = working_directory.joinpath(plugin_name)
 
-    def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = True, logger: logging.Logger = None):
+        sys.path.append(str(self.plugin_directory.parent))
+        config.DATA_PLUGIN_FOLDER = self.plugin_directory
+        self.load_plugin()
+
+    def load_plugin(self):
         """
         Return a plugin object for the given plugin_name.
         If dumper is True, include a dumper instance in the plugin object.
@@ -136,43 +80,83 @@ class CLIAssistant(BaseAssistant):
 
         If <plugin_name> is not valid, raise the proper error and exit.
         """
-        logger = logger or get_logger(__name__)
+        from biothings import config
+        from biothings.utils.hub_db import get_data_plugin
 
-        _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
-        if plugin_name is None:
-            # current working_dir has the data plugin
-            data_plugin_dir = pathlib.Path(working_dir)
-            data_folder = pathlib.Path(".").resolve().absolute()
-            plugin_args = {"plugin_path": working_dir, "plugin_name": None, "data_folder": data_folder}
-        else:
-            data_plugin_dir = pathlib.Path(working_dir, _plugin_name)
-            plugin_args = {"plugin_path": _plugin_name, "plugin_name": None, "data_folder": None}
+        assistant_debug_info = (
+            f"[green]Assistant Plugin Name:[/green][bold] "
+            f"[lightsalmon1]{self.plugin_name}[/lightsalmon1]\n"
+            f"[green]Assistant Plugin Path:[/green][bold] "
+            f"[lightsalmon1]{self.plugin_directory.as_posix()}[/lightsalmon1]\n"
+            f"[green]Data Plugin Folder:[/green][bold] "
+            f"[lightsalmon1]{config.DATA_PLUGIN_FOLDER}[/lightsalmon1]"
+        )
+        logger.debug(assistant_debug_info, extra={"markup": True})
+
+        plugin_entry = {
+            "_id": self.plugin_name,
+            "plugin": {
+                "url": self.url,
+                "type": self.plugin_type,
+                "active": True,
+            },
+            "download": {
+                "data_folder": str(self.data_folder),  # tmp path to your data plugin
+            },
+        }
+
+        data_plugin = get_data_plugin()
+        data_plugin.remove({"_id": self.plugin_name})
+        data_plugin.insert_one(plugin_entry)
+        self.loader.load_plugin()
+
+    def validate_plugin_name(self, plugin_name: str = None) -> None:
+        """
+        We validate the name based off the subdirectories in the working directory
+
+        Raises a typer.Exit exception with code = 1 if the name is invalid
+        """
+        subdirectory_names = {
+            f.name for f in self.working_directory.iterdir() if f.is_dir() and not f.name.startswith(".")
+        }
+        if plugin_name not in subdirectory_names:
+            rprint("[red]Please provide your data plugin name! [/red]")
+            rprint("Choose from:\n    " + "\n    ".join(subdirectory_names))
+            raise typer.Exit(code=1)
+
+    def get_dumper_class(self):
+        """
+        Retrieves the associated dumper class stored from the dumper manager
+        object stored with the assistant instance. Then builds the dumper class
+        and prepares it before returning it
+        """
         try:
-            dumper_manager, uploader_manager = load_plugin_managers(**plugin_args)
+            dumper_class = self.dumper_manager[self.plugin_name][0]
+            dumper_instance = dumper_class()
+            dumper_instance.prepare()
+            return dumper_instance
         except Exception as gen_exc:
             logger.exception(gen_exc)
-            if plugin_name is None:
-                plugin_loading_error_message = "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
-            else:
-                plugin_loading_error_message = (
-                    f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
-                )
-            logger.error(plugin_loading_error_message, extra={"markup": True})
-            raise typer.Exit(1)
+            raise gen_exc
 
-        current_plugin = SimpleNamespace(
-            plugin_name=_plugin_name,
-            data_plugin_dir=data_plugin_dir,
-            in_plugin_dir=plugin_name is None,
-        )
-        if dumper:
-            dumper_class = dumper_manager[_plugin_name][0]
-            _dumper = dumper_class()
-            _dumper.prepare()
-            current_plugin.dumper = _dumper
-        if uploader:
-            uploader_classes = uploader_manager[_plugin_name]
+    def get_uploader_class(self):
+        """
+        Retrieves the associated uploader class(s) stored from the uploader manager
+        object stored with the assistant instance. Then builds the uploader class
+        and prepares it before returning it
+        """
+        try:
+            uploader_classes = self.uploader_manager[self.plugin_name]
             if not isinstance(uploader_classes, list):
                 uploader_classes = [uploader_classes]
+            dumper_instance = dumper_class()
+            dumper_instance.prepare()
+            return dumper_instance
+        except Exception as gen_exc:
+            logger.exception(gen_exc)
+            raise gen_exc
+
+        if uploader:
+            uploader_classes = self.uploader_manager[_plugin_name]
             current_plugin.uploader_classes = uploader_classes
         return current_plugin
