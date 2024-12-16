@@ -1,31 +1,10 @@
-import asyncio
-import dataclasses
 import logging
-import math
-import os
 import pathlib
-import shutil
 import sys
-import time
-import uuid
-from pprint import pformat
-from typing import Union
 
-import tornado.template
+import rich
 import typer
-import yaml
-from rich import box, print as rprint
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
-from biothings.utils import es
-from biothings.utils.common import timesofar
-from biothings.utils.manager import CLIJobManager
-from biothings.utils.dataload import dict_traverse
-from biothings.utils.serializer import load_json, to_json
-from biothings.utils.workers import upload_worker
-import biothings.utils.inspect as btinspect
 from biothings.hub.dataplugin.assistant import BaseAssistant
 
 logger = logging.getLogger(name="biothings-cli")
@@ -62,7 +41,7 @@ class CLIAssistant(BaseAssistant):
             self.plugin_name = working_directory.name
             self.plugin_directory = working_directory
             self.data_directory = working_directory
-            self.validate_plugin_name(plugin_name)
+            self.validate_plugin_name(plugin_name, working_directory)
         else:
             self.plugin_name = plugin_name
             self.plugin_directory = working_directory.joinpath(plugin_name)
@@ -110,18 +89,16 @@ class CLIAssistant(BaseAssistant):
         data_plugin.insert_one(plugin_entry)
         self.loader.load_plugin()
 
-    def validate_plugin_name(self, plugin_name: str = None) -> None:
+    def validate_plugin_name(self, plugin_name: str, working_directory: pathlib.Path) -> None:
         """
         We validate the name based off the subdirectories in the working directory
 
         Raises a typer.Exit exception with code = 1 if the name is invalid
         """
-        subdirectory_names = {
-            f.name for f in self.working_directory.iterdir() if f.is_dir() and not f.name.startswith(".")
-        }
+        subdirectory_names = {f.name for f in working_directory.iterdir() if f.is_dir() and not f.name.startswith(".")}
         if plugin_name not in subdirectory_names:
-            rprint("[red]Please provide your data plugin name! [/red]")
-            rprint("Choose from:\n    " + "\n    ".join(subdirectory_names))
+            rich.print("[red]Please provide your data plugin name! [/red]")
+            rich.print("Choose from:\n    " + "\n    ".join(subdirectory_names))
             raise typer.Exit(code=1)
 
     def get_dumper_class(self):
@@ -149,14 +126,7 @@ class CLIAssistant(BaseAssistant):
             uploader_classes = self.uploader_manager[self.plugin_name]
             if not isinstance(uploader_classes, list):
                 uploader_classes = [uploader_classes]
-            dumper_instance = dumper_class()
-            dumper_instance.prepare()
-            return dumper_instance
+            return uploader_classes
         except Exception as gen_exc:
             logger.exception(gen_exc)
             raise gen_exc
-
-        if uploader:
-            uploader_classes = self.uploader_manager[_plugin_name]
-            current_plugin.uploader_classes = uploader_classes
-        return current_plugin

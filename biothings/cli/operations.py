@@ -84,7 +84,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     """
     Create a new data plugin from the template
     """
-    working_dir = pathlib.Path().resolve()
+    working_dir = pathlib.Path().cwd()
     biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
     template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
     plugin_dir = os.path.join(working_dir, name)
@@ -181,7 +181,7 @@ def do_upload(plugin_name: str = None, show_uploaded: bool = True, logger=None):
 
     if show_uploaded:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-        show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
+        show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
     return assistant_instance
 
 
@@ -190,8 +190,8 @@ def do_build(plugin_name: str):
     Performs a build of the plugin
     """
     assistant_instance = CLIAssistant(plugin_name)
-    assistant_instance.builder_manager.configure()
-    assistant_instance.builder_manager.poll()
+    assistant_instance.build_manager.configure()
+    assistant_instance.build_manager.poll()
 
     plugin_identifier = uuid.uuid4()
     build_configuration_name = f"{plugin_name}-{plugin_identifier}-configuration"
@@ -203,8 +203,7 @@ def do_build(plugin_name: str):
         builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
         sources = [plugin_name]
         document_type = "temporary"
-        breakpoint()
-        assistant_instance.builder_manager.create_build_configuration(
+        assistant_instance.build_manager.create_build_configuration(
             build_configuration_name,
             doc_type=document_type,
             sources=sources,
@@ -213,13 +212,15 @@ def do_build(plugin_name: str):
         )
 
         # create a temporary build
-        assistant_instance.builder_manager.merge(
+        assistant_instance.build_manager.merge(
             build_name=build_configuration_name,
             target_name=build_name,
             force=True,
         )
 
-        index_manager.index(indexer_env, build_name, index_name=index_name, **kwargs)
+        assistant_instance.index_manager.index(
+            indexer_env, build_name=build_configuration_name, index_name=index_name, **kwargs
+        )
     except Exception as gen_exp:
         raise gen_exp
 
@@ -274,18 +275,18 @@ def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats",
             logger.error('This is a multiple uploaders data plugin, so "--sub-source-name" must be provided!')
             logger.error(
                 'Accepted values of "--sub-source-name" are: %s',
-                ", ".join(uploader.name for uploader in _plugin.uploader_classes),
+                ", ".join(uploader.name for uploader in uploader_classes),
             )
             raise typer.Exit(code=1)
         logger.info(
             'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
-            _plugin.plugin_name,
+            assistant_instance.plugin_name,
             sub_source_name,
             mode,
             limit,
         )
     else:
-        logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', _plugin.plugin_name, mode, limit)
+        logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', assistant_instance.plugin_name, mode, limit)
     # table_space = get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
     table_space = [item.name for item in uploader_classes]
     if sub_source_name and sub_source_name not in table_space:
@@ -307,7 +308,7 @@ def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999)
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     table_space = [item.name for item in uploader_classes]
-    serve(host=host, port=port, plugin_name=_plugin.plugin_name, table_space=table_space)
+    serve(host=host, port=port, plugin_name=assistant_instance.plugin_name, table_space=table_space)
 
 
 ########################
