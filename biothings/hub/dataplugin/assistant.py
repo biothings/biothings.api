@@ -46,7 +46,7 @@ class LoaderException(Exception):
     pass
 
 
-class BasePluginLoader(object):
+class BasePluginLoader:
     loader_type = None  # set in subclass
 
     def __init__(self, plugin_name):
@@ -134,33 +134,22 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def can_load_plugin(self):
         plugin = self.get_plugin_obj()
-        df = pathlib.Path(plugin["download"]["data_folder"])
-        # if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
-        if pathlib.Path(df, "manifest.json").exists():
-            return True
-        # elif "manifest.yaml" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.yaml")):
-        elif pathlib.Path(df, "manifest.yaml").exists():
-            return True
-        else:
-            return False
+        data_folder = pathlib.Path(plugin["download"]["data_folder"])
+        return (
+            pathlib.Path(data_folder, "manifest.json").exists() or pathlib.Path(data_folder, "manifest.yaml").exists()
+        )
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
         df = pathlib.Path(plugin["download"]["data_folder"])
-        # self.plugin_path_name = os.path.basename(df)
         self.plugin_path_name = df.name
-        # if os.path.exists(df):
         if df.exists():
-            # mf = os.path.join(df, "manifest.json")
-            # mf_yaml = os.path.join(df, "manifest.yaml")
             mf = pathlib.Path(df, "manifest.json")
             mf_yaml = pathlib.Path(df, "manifest.yaml")
             manifest = None
-            # if os.path.exists(mf):
             if mf.exists():
                 self.logger.debug(f"Loading manifest: {mf}")
                 manifest = json.load(open(mf))
-            # elif os.path.exists(mf_yaml):
             elif mf_yaml.exists():
                 self.logger.debug(f"Loading manifest: {mf_yaml}")
                 manifest = yaml.safe_load(open(mf_yaml))
@@ -246,16 +235,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                confdict[
-                    "SET_RELEASE_FUNC"
-                ] = """
+                confdict["SET_RELEASE_FUNC"] = (
+                    """
 %s
 
     def set_release(self):
         self.release = self.%s()
-""" % (
-                    indentfunc,
-                    func,
+"""
+                    % (
+                        indentfunc,
+                        func,
+                    )
                 )
 
             else:
@@ -412,15 +402,16 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict[
-                        "JOBS_FUNC"
-                    ] = """
+                    confdict["JOBS_FUNC"] = (
+                        """
 %s
     def jobs(self):
         return self.%s()
-""" % (
-                        indentfunc,
-                        func,
+"""
+                        % (
+                            indentfunc,
+                            func,
+                        )
                     )
                 else:
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
@@ -429,18 +420,19 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict[
-                        "MAPPING_FUNC"
-                    ] = """
+                    confdict["MAPPING_FUNC"] = (
+                        """
     @classmethod
 %s
 
     @classmethod
     def get_mapping(cls):
         return cls.%s()
-""" % (
-                        indentfunc,
-                        func,
+"""
+                        % (
+                            indentfunc,
+                            func,
+                        )
                     )
                 else:
                     confdict["MAPPING_FUNC"] = ""
@@ -580,7 +572,7 @@ class AdvancedPluginLoader(BasePluginLoader):
             self.invalidate_plugin("Missing plugin folder '%s'" % df)
 
 
-class BaseAssistant(object):
+class BaseAssistant:
     plugin_type = None  # to be defined in subblass
     data_plugin_manager = None  # set by assistant manager
     dumper_manager = None  # set by assistant manager
@@ -668,11 +660,11 @@ class BaseAssistant(object):
         raise NotImplementedError("implement 'load_plugin' in subclass")
 
 
-class AssistedDumper(object):
+class AssistedDumper:
     DATA_PLUGIN_FOLDER = None
 
 
-class AssistedUploader(object):
+class AssistedUploader:
     DATA_PLUGIN_FOLDER = None
 
 
@@ -743,20 +735,18 @@ class LocalAssistant(BaseAssistant):
             # (and we're matching directory names on the filesystem, it's case-sensitive)
             src_folder_name = os.path.basename(split.netloc)
             try:
-                self._plugin_name = get_plugin_name_from_local_manifest(
-                    os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
-                ) or src_folder_name
+                self._plugin_name = (
+                    get_plugin_name_from_local_manifest(os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name))
+                    or src_folder_name
+                )
             except Exception as ex:
                 self.logger.exception(ex)
                 self._plugin_name = src_folder_name
             self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
         return self._plugin_name
 
-    def can_handle(self):
-        if self.url.startswith(self.__class__.plugin_type + "://"):
-            return True
-        else:
-            return False
+    def can_handle(self) -> bool:
+        return self.url.startswith(self.__class__.plugin_type + "://")
 
     def get_classdef(self):
         # generate class dynamically and register
