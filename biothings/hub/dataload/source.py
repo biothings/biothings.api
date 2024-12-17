@@ -394,8 +394,8 @@ class SourceManager(BaseSourceManager):
             upk = self.upload_manager[name]
             assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
             upk = upk[0]
-            module_path = self.upload_manager.get_module_path(upk)
-            model_path = os.path.join(module_path, "validation", f"{name}_model.py")
+            validation_path = self.upload_manager.get_validation_path(upk)
+            model_path = os.path.join(validation_path, f"{name}_model.py")
             with open(model_path, "r") as f:
                 model_str = f.read()
                 return model_str

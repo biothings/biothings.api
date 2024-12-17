@@ -88,7 +88,7 @@ class BaseSourceUploader(object):
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
         # Pydantic model settings
-        self.module_dir = kwargs.get("module_dir")
+        self.validation_dir = kwargs.get("validation_dir")
         self.validation_model = ""
 
     @property
@@ -529,9 +529,8 @@ class BaseSourceUploader(object):
 
     def commit_pydantic_model(self, model_str):
         try:
-            self.logger.info("module_dir: %s", self.module_dir)
-            if self.module_dir:
-                model_dir = os.path.join(self.module_dir, "validation")
+            self.logger.info("validation_dir: %s", self.validation_dir)
+            if model_dir := self.validation_dir:
                 # create directory if it doesn't exist
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
@@ -571,18 +570,21 @@ class BaseSourceUploader(object):
             self.commit_pydantic_model(model_str)
 
         try:
-            if self.module_dir:
-                model_dir = os.path.join(self.module_dir, "validation")
-            else:
-                raise ValueError("No module directory found for uploader source '%s'", self.fullname)
+            if not self.validation_dir:
+                raise ValueError("No validation directory found for uploader source '%s'", self.fullname)
 
             # check if user has provided a model file if not use the default model file
             if model_file:
-                model_path = os.path.join(model_dir, f"{model_file}")
+                self.logger.info("Using provided model file: %s", model_file)
+                model_path = os.path.join(self.validation_dir, f"{model_file}")
             elif self.validation_model:
-                model_path = os.path.join(model_dir, f"{self.validation_model}")
+                self.logger.info(
+                    "No model file provided, using default model file provided from uploader: %s", self.validation_model
+                )
+                model_path = os.path.join(self.validation_dir, f"{self.validation_model}")
             else:
-                model_path = os.path.join(model_dir, f"{self.name}_model.py")
+                self.logger.info("No model file provided, using default model file: %s", f"{self.name}_model.py")
+                model_path = os.path.join(self.validation_dir, f"{self.name}_model.py")
 
             spec = importlib.util.spec_from_file_location("model_module", model_path)
             model_module = importlib.util.module_from_spec(spec)
@@ -861,8 +863,8 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        logging.info("module path: %s" % self.get_module_path(klass))
-        inst = klass.create(db_conn_info=self.conn.address, module_dir=self.get_module_path(klass))
+        logging.info("module path: %s" % self.get_validation_path(klass))
+        inst = klass.create(db_conn_info=self.conn.address, validation_dir=self.get_validation_path(klass))
         return inst
 
     def register_classes(self, klasses):
@@ -1024,14 +1026,22 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    def get_module_path(self, klass):
+    # def get_module_path(self, klass):
+    #     module_name = inspect.getmodule(klass).__name__
+    #     spec = importlib.util.find_spec(module_name)
+    #     if spec and spec.origin:
+    #         return os.path.dirname(spec.origin)
+    #     else:
+    #         raise ImportError(f"Module '{module_name}' not found")
 
+    def get_validation_path(self, klass):
         module_name = inspect.getmodule(klass).__name__
         spec = importlib.util.find_spec(module_name)
         if spec and spec.origin:
-            return os.path.dirname(spec.origin)
+            module_path = os.path.dirname(spec.origin)
         else:
             raise ImportError(f"Module '{module_name}' not found")
+        return os.path.join(module_path, "validation")
 
     async def create_and_validate(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
