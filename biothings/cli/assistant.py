@@ -1,3 +1,19 @@
+"""
+Custom assistant representation for the biothings-cli
+
+Intended to handle our creation of different managers
+and dataplugin loading.
+
+Supported plugin types
+> manifest
+> advanced
+
+Supported plugin locations
+> local
+
+"""
+
+import functools
 import logging
 import pathlib
 import sys
@@ -5,7 +21,17 @@ import sys
 import rich
 import typer
 
+from biothings.utils.common import get_plugin_name_from_local_manifest
 from biothings.hub.dataplugin.assistant import BaseAssistant
+from biothings.cli.backend import CLISourceDocBackend
+from biothings.cli.manager import CLIJobManager
+from biothings.utils.hub_db import (
+    get_src_build,
+    get_src_build_config,
+    get_src_dump,
+    get_src_master,
+    get_src_db,
+)
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -22,34 +48,83 @@ class CLIAssistant(BaseAssistant):
     from biothings.hub.dataload.uploader import UploaderManager
     from biothings.hub.dataplugin.manager import DataPluginManager
 
-    build_manager = BuilderManager(job_manager=None)
-    data_plugin_manager = DataPluginManager(job_manager=None)
-    dumper_manager = DumperManager(job_manager=None)
-    index_manager = IndexManager(job_manager=None)
-    upload_manager = UploaderManager(job_manager=None)
+    job_manager = CLIJobManager()
+    source_backend = functools.partial(
+        CLISourceDocBackend,
+        build_config=functools.partial(get_src_build_config),
+        build=functools.partial(get_src_build),
+        master=functools.partial(get_src_master),
+        dump=functools.partial(get_src_dump),
+        sources=functools.partial(get_src_db),
+    )
+    build_manager = BuilderManager(job_manager=job_manager, source_backend_factory=source_backend)
+    data_plugin_manager = DataPluginManager(job_manager=job_manager)
+    dumper_manager = DumperManager(job_manager=job_manager)
+    index_manager = IndexManager(job_manager=job_manager)
+    uploader_manager = UploaderManager(job_manager=job_manager)
 
     plugin_type = "CLI"
 
-    def __init__(self, url: str, plugin_name: str = None):
-        super().__init__(url)
-
+    def __init__(self, plugin_name: str = None):
         from biothings import config
 
-        working_directory = pathlib.Path().cwd()
-        if plugin_name is None:
-            # assume that the current working directory has the data plugin
-            self.plugin_name = working_directory.name
-            self.plugin_directory = working_directory
-            self.data_directory = working_directory
-            self.validate_plugin_name(plugin_name, working_directory)
-        else:
-            self.plugin_name = plugin_name
-            self.plugin_directory = working_directory.joinpath(plugin_name)
-            self.data_directory = working_directory.joinpath(plugin_name)
+        self._plugin_name = None
+        self.plugin_directory = pathlib.Path().cwd()
+        if plugin_name is not None:
+            self._plugin_name = plugin_name
 
-        sys.path.append(str(self.plugin_directory.parent))
-        config.DATA_PLUGIN_FOLDER = self.plugin_directory
+        url = f"local://{self.plugin_name}"
+        super().__init__(url)
+
+        self._src_folder = pathlib.Path().cwd()
+        self.data_directory = pathlib.Path().cwd()
+        sys.path.append(str(self._src_folder.parent))
+        config.DATA_PLUGIN_FOLDER = self._src_folder
         self.load_plugin()
+
+    @property
+    def loader(self):
+        """
+        Return loader object able to interpret plugin's folder content
+
+        Iterate over known loaders, the first one which can interpret plugin content is kept
+        """
+        if not self._loader:
+            for loader_class in self.loaders.values():
+                loader_class.dumper_manager = self.dumper_manager
+                loader_class.uploader_manager = self.uploader_manager
+                loader_class.data_plugin_manager = self.data_plugin_manager
+                loader_class.keylookup = self.keylookup
+                loader = loader_class(self.plugin_name)
+                if loader.can_load_plugin():
+                    self._loader = loader
+                    self.logger.debug(
+                        'For plugin "%s", selecting loader class "%s"',
+                        self.plugin_name,
+                        self._loader.__class__.__name__,
+                    )
+                    self.register_loader()
+                    break
+        return self._loader
+
+    @property
+    def plugin_name(self):
+        """
+        Attempts to determine the plugin_name if it hasn't been assigned yet
+        The actual property for storing the plugin_name is via `_plugin_name`.
+        User access is via the `plugin_name` property
+
+        Attempts to extract the plugin name from the manifest file
+        """
+        if not self._plugin_name:
+            try:
+                self._plugin_name = get_plugin_name_from_local_manifest(self.plugin_directory)
+                if self._plugin_name is None:
+                    self._plugin_name = self.plugin_directory.name
+            except Exception as gen_exc:
+                self.logger.exception(gen_exc)
+                raise gen_exc
+        return self._plugin_name
 
     def load_plugin(self):
         """
@@ -66,7 +141,7 @@ class CLIAssistant(BaseAssistant):
             f"[green]Assistant Plugin Name:[/green][bold] "
             f"[lightsalmon1]{self.plugin_name}[/lightsalmon1]\n"
             f"[green]Assistant Plugin Path:[/green][bold] "
-            f"[lightsalmon1]{self.plugin_directory.as_posix()}[/lightsalmon1]\n"
+            f"[lightsalmon1]{self._src_folder.as_posix()}[/lightsalmon1]\n"
             f"[green]Data Plugin Folder:[/green][bold] "
             f"[lightsalmon1]{config.DATA_PLUGIN_FOLDER}[/lightsalmon1]"
         )
@@ -80,7 +155,7 @@ class CLIAssistant(BaseAssistant):
                 "active": True,
             },
             "download": {
-                "data_folder": str(self.data_folder),  # tmp path to your data plugin
+                "data_folder": str(self.data_directory),  # tmp path to your data plugin
             },
         }
 
@@ -96,7 +171,7 @@ class CLIAssistant(BaseAssistant):
         Raises a typer.Exit exception with code = 1 if the name is invalid
         """
         subdirectory_names = {f.name for f in working_directory.iterdir() if f.is_dir() and not f.name.startswith(".")}
-        if plugin_name not in subdirectory_names:
+        if not plugin_name or plugin_name not in subdirectory_names:
             rich.print("[red]Please provide your data plugin name! [/red]")
             rich.print("Choose from:\n    " + "\n    ".join(subdirectory_names))
             raise typer.Exit(code=1)

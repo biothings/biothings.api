@@ -55,7 +55,7 @@ def create_data_plugin(
     """
     *create* command for creating a new data plugin from the template
     """
-    operations.do_create(name, multi_uploaders, parallelizer, logger=logger)
+    operations.do_create(name, multi_uploaders, parallelizer)
 
 
 @app.command(
@@ -66,7 +66,7 @@ def dump_data():
     """
     *dump* command for downloading source data files to local
     """
-    operations.do_dump(plugin_name=None, logger=logger)
+    operations.do_dump(plugin_name=None)
 
 
 @app.command(
@@ -86,7 +86,7 @@ def upload_source(
     *upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
     A local sqlite database used to store the uploaded data
     """
-    operations.do_upload(plugin_name=None, logger=logger)
+    operations.do_upload(plugin_name=None)
 
 
 @app.command(
@@ -105,7 +105,7 @@ def dump_and_upload(
     *dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
     Two steps in one command.
     """
-    operations.do_dump_and_upload(plugin_name=None, logger=logger)
+    operations.do_dump_and_upload(plugin_name=None)
 
 
 @app.command(
@@ -118,7 +118,7 @@ def listing(
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
     """*list* command for listing dumped files and/or uploaded sources"""
-    operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
+    operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb)
 
 
 @app.command(
@@ -182,7 +182,6 @@ def inspect_source(
         limit=limit,
         merge=False,
         output=output,
-        logger=logger,
     )
 
 
@@ -224,7 +223,7 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    operations.do_serve(plugin_name=None, host=host, port=port, logger=logger)
+    operations.do_serve(plugin_name=None, host=host, port=port)
 
 
 @app.command(
@@ -246,7 +245,7 @@ def clean_data(
     """
     *clean* command for deleting all dumped files and/or drop uploaded sources tables
     """
-    operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all)
 
 
 @app.command(
@@ -259,4 +258,4 @@ def build_plugin(
     """
     *build* command for building a data plugin
     """
-    operations.do_build(plugin_name=plugin_name, logger=logger)
+    operations.do_build(plugin_name=plugin_name)

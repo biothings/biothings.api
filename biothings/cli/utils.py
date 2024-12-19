@@ -9,7 +9,7 @@ import time
 import uuid
 from pprint import pformat
 from types import SimpleNamespace
-from typing import Union
+from typing import Callable, Union
 
 import tornado.template
 import typer
@@ -19,9 +19,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from biothings.cli.manager import CLIJobManager
 from biothings.utils import es
 from biothings.utils.common import timesofar
-from biothings.utils.manager import CLIJobManager
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
 from biothings.utils.workers import upload_worker
@@ -31,38 +31,16 @@ import biothings.utils.inspect as btinspect
 logger = logging.getLogger(name="biothings-cli")
 
 
-def run_sync_or_async_job(func, *args, **kwargs):
+def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **kwargs):
     """
     When func is defined as either normal or async function/method, we will call this function properly and return the results.
     For an async function/method, we will use CLIJobManager to run it.
     """
     if asyncio.iscoroutinefunction(func):
-        from biothings.utils.manager import CLIJobManager
-
-        job_manager = CLIJobManager()
         kwargs["job_manager"] = job_manager
         return job_manager.loop.run_until_complete(func(*args, **kwargs))
-    else:
-        # otherwise just run it as normal
-        return func(*args, **kwargs)
 
-
-def get_plugin_name(plugin_name=None, with_working_dir=True):
-    """
-    return a valid plugin name (the folder name contains a data plugin)
-    When plugin_name is provided as None, it use the current working folder.
-    when with_working_dir is True, returns (plugin_name, working_dir) tuple
-    """
-    working_dir = pathlib.Path().resolve()
-    if plugin_name is None:
-        plugin_name = working_dir.name
-    else:
-        valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
-        if not plugin_name or plugin_name not in valid_names:
-            rprint("[red]Please provide your data plugin name! [/red]")
-            rprint("Choose from:\n    " + "\n    ".join(valid_names))
-            raise typer.Exit(code=1)
-    return plugin_name, working_dir if with_working_dir else plugin_name
+    return func(*args, **kwargs)
 
 
 def show_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str) -> None:

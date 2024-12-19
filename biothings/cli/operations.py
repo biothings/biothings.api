@@ -6,16 +6,16 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 > plugin template creation
 
-> def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
+> def do_create(name, multi_uploaders=False, parallelizer=False):
 ------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------
 > data download / upload
 
-> def do_dump(plugin_name=None, show_dumped=True, logger=None):
-> def do_upload(plugin_name=None, show_uploaded=True, logger=None):
-> def do_dump_and_upload(plugin_name, logger=None):
-> def do_list(plugin_name=None, dump=False, upload=False, hubdb=False, logger=None):
+> def do_dump(plugin_name=None, show_dumped=True):
+> def do_upload(plugin_name=None, show_uploaded=True):
+> def do_dump_and_upload(plugin_name):
+> def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
 ------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------
@@ -28,14 +28,13 @@ Grouped into the following categories
       limit=None,
       merge=False,
       output=None,
-      logger=None
   ):
 ------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------
 > mock web server
 
-> def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
+> def do_serve(plugin_name=None, host="localhost", port=9999):
 ------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------
@@ -43,11 +42,12 @@ Grouped into the following categories
 
 > def do_clean_dumped_files(data_folder, plugin_name):
 > def do_clean_uploaded_sources(working_dir, plugin_name):
-> def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
+> def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
 ------------------------------------------------------------------------------------
 """
 
 from typing import Union
+import functools
 import logging
 import os
 import pathlib
@@ -58,8 +58,8 @@ import uuid
 import rich
 import tornado.template
 import typer
-import yaml
 
+from biothings.utils.hub_db import get_src_master
 from biothings.utils.workers import upload_worker
 from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
@@ -114,7 +114,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
 ###############################
 
 
-def do_dump(plugin_name: str = None, show_dumped: bool = True, logger=None) -> CLIAssistant:
+def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
     """
     Perform dump for the given plugin
     """
@@ -125,7 +125,7 @@ def do_dump(plugin_name: str = None, show_dumped: bool = True, logger=None) -> C
 
     assistant_instance = CLIAssistant(plugin_name)
     dumper = assistant_instance.get_dumper_class()
-    run_sync_or_async_job(dumper.create_todump_list, force=True)
+    run_sync_or_async_job(dumper.job_manager, dumper.create_todump_list, force=True)
     for item in dumper.to_dump:
         logger.info('Downloading remote data from "%s"...', item["remote"])
         dumper.download(item["remote"], item["local"])
@@ -147,7 +147,7 @@ def do_dump(plugin_name: str = None, show_dumped: bool = True, logger=None) -> C
     return assistant_instance
 
 
-def do_upload(plugin_name: str = None, show_uploaded: bool = True, logger=None):
+def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
     """
@@ -230,15 +230,15 @@ def do_dump_and_upload(plugin_name: str):
     Perform both dump and upload for the given plugin
     """
     dumper_assistant = do_dump(plugin_name)
-    dumper_instance = assistant_instance.get_dumper_class()
-    show_dumped_files(dumper_instance.new_data_folder, dumper_as.plugin_name)
+    dumper_instance = dumper_assistant.get_dumper_class()
+    show_dumped_files(dumper_instance.current_data_folder, dumper_assistant.plugin_name)
 
     uploader_assistant = do_upload(plugin_name)
     show_uploaded_sources(pathlib.Path(uploader_assistant.plugin_directory), uploader_assistant.plugin_name)
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
-def do_list(plugin_name=None, dump=True, upload=True, hubdb=False, logger=None):
+def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
