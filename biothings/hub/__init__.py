@@ -1555,6 +1555,72 @@ class HubServer(object):
     def export_command_documents(self, filepath):
         generate_command_documentations(filepath, self.commands)
 
+    def quick_index(
+        self,
+        datasource_name,
+        doc_type,
+        indexer_env,
+        subsource=None,
+        index_name=None,
+        **kwargs,
+    ):
+        """
+        Intention for datasource developers to quickly create an index to test their datasources.
+        Automatically create temporary build config, build collection
+        Then call the index method with the temporary build collection's name
+        """
+
+        random_string = f"{get_timestamp()}_{get_random_string()}"
+        # generate random build_configuration name
+        subsource_str = f"_{subsource}" if subsource else ""
+        build_configuration_name = f"{datasource_name}{subsource_str}_configuration_{random_string}"
+        # generate random build name
+        build_name = f"{datasource_name}{subsource_str}_{random_string}"
+        # # generate index_name if needed
+        if not index_name:
+            index_name = build_name
+        index_name = index_name.lower()
+
+        async def do():
+            extra_index_settings = kwargs.pop("extra_index_settings", "{}")
+            extra_index_settings = json.loads(extra_index_settings)
+            build_config_params = {}
+            build_config_params["num_shards"] = int(kwargs.pop("num_shards", 1))
+            build_config_params["num_replicas"] = int(kwargs.pop("num_replicas", 0))
+            if extra_index_settings:
+                build_config_params["extra_index_settings"] = extra_index_settings
+            try:
+                # create a temporary build configuration:
+                builder_class = None
+                for build_class_name in self.managers["build_manager"].builder_classes.keys():
+                    if build_class_name.endswith("LinkDataBuilder"):
+                        builder_class = build_class_name
+                        break
+                self.managers["build_manager"].create_build_configuration(
+                    build_configuration_name,
+                    doc_type=doc_type,
+                    sources=[datasource_name] if not subsource else [subsource],
+                    builder_class=builder_class,
+                    params=build_config_params,
+                )
+
+                # create a temporary build
+                await self.managers["build_manager"].merge(
+                    build_name=build_configuration_name,
+                    target_name=build_name,
+                    force=True,
+                )
+
+                # Wait for merging process to finish
+                await self.managers["index_manager"].index(indexer_env, build_name, index_name=index_name, **kwargs)
+            finally:
+                # delete temporary build
+                self.managers["build_manager"].delete_merge(build_name)
+
+                # delete temporary build configuration
+                self.managers["build_manager"].delete_build_configuration(build_configuration_name)
+
+        return asyncio.ensure_future(do())
 
 
 class HubSSHServer(asyncssh.SSHServer):
