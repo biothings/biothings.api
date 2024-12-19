@@ -1,6 +1,8 @@
-import inspect
+import importlib
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
+
+from pydantic import ValidationError
 
 try:
     import black
@@ -95,3 +97,48 @@ from pydantic import BaseModel, field_validator
     else:
         raise ImportError('"black" package is required for exporting formatted code.')
     return model
+
+
+def commit_validator(model: str, validation_path: str, name: str):
+    """Write the Pydantic model to a file
+    Args:
+        model: Pydantic model
+        path: path to write the model
+    """
+    # create directory if it doesn't exist
+    if not os.path.exists(validation_path):
+        os.makedirs(validation_path)
+    model_path = os.path.join(validation_path, f"{name}_model.py")
+    with open(model_path, "w") as f:
+        f.write(model)
+
+
+def import_validator(model_path: str, klass: str):
+    """Import the Pydantic model
+    Args: validation_path: path to import the model
+    klass: class name of the model
+    """
+    spec = importlib.util.spec_from_file_location("model_module", model_path)
+    model_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_module)
+    return getattr(model_module, klass)
+
+
+def validate_documents(model, docs: Iterable):
+    """Validate the documents using a validator model
+    Args:
+        model: Pydantic model
+        docs: iterable of documents to validate
+    """
+    errors = []
+
+    for doc in docs:
+        try:
+            model.model_validate(doc)
+        except ValidationError as e:
+            for error in e.errors():
+                if "Input should be a valid list" not in error["msg"]:
+                    errors.append(error)
+
+    if errors:
+        raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)

@@ -9,7 +9,7 @@ from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager
-from biothings.utils.pydantic_validator import create_pydantic_model
+from biothings.utils.validator import create_pydantic_model
 
 
 class SourceManager(BaseSourceManager):

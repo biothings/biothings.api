@@ -16,7 +16,6 @@ from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseSourceManager, ResourceNotFound
-from biothings.utils.pydantic_validator import create_pydantic_model
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -24,6 +23,7 @@ from biothings.utils.storage import (
     NoBatchIgnoreDuplicatedStorage,
     NoStorage,
 )
+from biothings.utils.validator import commit_validator, create_pydantic_model, import_validator, validate_documents
 from biothings.utils.version import get_source_code_info
 from biothings.utils.workers import upload_worker
 
@@ -529,19 +529,15 @@ class BaseSourceUploader(object):
 
     def commit_pydantic_model(self, model_str):
         try:
-            self.logger.info("validation_dir: %s", self.validation_dir)
             if model_dir := self.validation_dir:
+                self.logger.info("Generating model in validation_dir: %s", model_dir)
                 # create directory if it doesn't exist
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
-                model_path = os.path.join(model_dir, f"{self.name}_model.py")
-                with open(model_path, "w") as f:
-                    self.logger.info("Writing model to: %s", model_path)
-                    self.logger.info("Model: %s", model_str)
-                    f.write(model_str)
-                self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
             else:
                 raise ValueError("No module directory found for uploader source '%s'", self.fullname)
+            commit_validator(model_str, model_dir, self.name)
+            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
         except Exception as e:
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
@@ -560,7 +556,6 @@ class BaseSourceUploader(object):
                 self.logger.info("Auto-generating Pydantic model for uploader source '%s'", self.fullname)
                 mapping = self._state["src_master"].find_one({"_id": self.collection_name})
                 self.logger.info("Mapping found for uploader source '%s'", self.fullname)
-                self.logger.info("Mapping: %s", mapping.get("mapping"))
                 mapping = mapping.get("mapping")
 
             except AttributeError:
@@ -586,10 +581,7 @@ class BaseSourceUploader(object):
                 self.logger.info("No model file provided, using default model file: %s", f"{self.name}_model.py")
                 model_path = os.path.join(self.validation_dir, f"{self.name}_model.py")
 
-            spec = importlib.util.spec_from_file_location("model_module", model_path)
-            model_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(model_module)
-            model = getattr(model_module, self.collection_name.casefold())
+            model = import_validator(model_path, self.collection_name.casefold())
         except Exception as e:
             self.logger.error(
                 "Error importing Pydantic model for uploader source '%s'. Make sure you have committed a valid pydantic model.",
@@ -597,37 +589,18 @@ class BaseSourceUploader(object):
             )
             raise e
 
-        errors = []
         # for cli usage
         if docs:
             self.logger.info("Validating documents from an iterable")
-            for doc in docs:
-                try:
-                    model.model_validate(doc)
-                    self.logger.info("Document '%s' is valid", doc["_id"])
-                except ValidationError as e:
-                    for error in e.errors():
-                        if "Input should be a valid list" not in error["msg"]:
-                            errors.append(error)
-            if errors:
-                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+            validate_documents(model, docs)
         else:
             session = self._state["conn"].start_session()
             src_collection = self._state["collection"]
             self.logger.info("Validating documents from collection '%s'", src_collection)
 
             with session:
-                for doc in src_collection.find({}, no_cursor_timeout=True, session=session):
-                    try:
-                        model.model_validate(doc)
-                        self.logger.info("Document '%s' is valid", doc["_id"])
-                    except ValidationError as e:
-                        for error in e.errors():
-                            if "Input should be a valid list" not in error["msg"]:
-                                errors.append(error)
-                        break
-            if errors:
-                raise ValidationError.from_exception_data(doc["_id"], line_errors=errors)
+                docs = src_collection.find({}, no_cursor_timeout=True, session=session)
+                validate_documents(model, docs)
 
     async def validate_src(self, job_manager=None, **kwargs):
         assert job_manager, "Job manager is required for validation"
@@ -863,7 +836,6 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        logging.info("module path: %s" % self.get_validation_path(klass))
         inst = klass.create(db_conn_info=self.conn.address, validation_dir=self.get_validation_path(klass))
         return inst
 
@@ -1026,14 +998,6 @@ class UploaderManager(BaseSourceManager):
             res[name] = [klass.__name__ for klass in klasses]
         return res
 
-    # def get_module_path(self, klass):
-    #     module_name = inspect.getmodule(klass).__name__
-    #     spec = importlib.util.find_spec(module_name)
-    #     if spec and spec.origin:
-    #         return os.path.dirname(spec.origin)
-    #     else:
-    #         raise ImportError(f"Module '{module_name}' not found")
-
     def get_validation_path(self, klass):
         module_name = inspect.getmodule(klass).__name__
         spec = importlib.util.find_spec(module_name)
@@ -1042,6 +1006,12 @@ class UploaderManager(BaseSourceManager):
         else:
             raise ImportError(f"Module '{module_name}' not found")
         return os.path.join(module_path, "validation")
+
+    def get_validation_models(self, klass):
+        validation_dir = self.get_validation_path(klass)
+        if not os.path.exists(validation_dir):
+            return []
+        return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
 
     async def create_and_validate(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
