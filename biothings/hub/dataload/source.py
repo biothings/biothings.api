@@ -424,3 +424,14 @@ class SourceManager(BaseSourceManager):
             subsrc = name
         kwargs = {"model_file": model_file}
         return self.upload_manager.validate_src(subsrc, **kwargs)
+
+    def get_validations(self, name):
+        """Get the Pydantic models for a given source name"""
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        upk = self.upload_manager[subsrc]
+        # pick any uploader they should all use the same model directory
+        upk = upk[0]
+        return self.upload_manager.get_validation_models(upk)

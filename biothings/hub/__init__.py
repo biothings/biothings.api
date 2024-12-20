@@ -1218,6 +1218,9 @@ class HubServer(object):
             self.extra_commands["source_pydantic_validation"] = CommandDefinition(
                 command=self.managers["source_manager"].run_pydantic_validation
             )
+            self.extra_commands["source_validations"] = CommandDefinition(
+                command=self.managers["source_manager"].get_validations
+            )
         if self.managers.get("dump_manager"):
             self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"], tracked=False)
             self.extra_commands["dump_info"] = CommandDefinition(
@@ -1436,6 +1439,10 @@ class HubServer(object):
         if "source_pydantic_validation" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="source_pydantic_validation", method="post", suffix="validate")
+            )
+        if "source_validations" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="source_validations", method="get", suffix="validations")
             )
         if not self.api_endpoints["source"]:
             self.api_endpoints.pop("source")
