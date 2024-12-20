@@ -434,7 +434,7 @@ class SourceManager(BaseSourceManager):
         upk = self.upload_manager[subsrc]
         # pick any uploader they should all use the same model directory
         upk = upk[0]
-        validation_dir = self.get_validation_path(upk)
+        validation_dir = self.upload_manager.get_validation_path(upk)
         if not os.path.exists(validation_dir):
             return []
         return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
