@@ -49,15 +49,7 @@ class CLIAssistant(BaseAssistant):
     from biothings.hub.dataplugin.manager import DataPluginManager
 
     job_manager = CLIJobManager()
-    source_backend = functools.partial(
-        CLISourceDocBackend,
-        build_config=functools.partial(get_src_build_config),
-        build=functools.partial(get_src_build),
-        master=functools.partial(get_src_master),
-        dump=functools.partial(get_src_dump),
-        sources=functools.partial(get_src_db),
-    )
-    build_manager = BuilderManager(job_manager=job_manager, source_backend_factory=source_backend)
+    build_manager = BuilderManager(job_manager=job_manager)
     data_plugin_manager = DataPluginManager(job_manager=job_manager)
     dumper_manager = DumperManager(job_manager=job_manager)
     index_manager = IndexManager(job_manager=job_manager)

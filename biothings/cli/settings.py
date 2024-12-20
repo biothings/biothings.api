@@ -92,15 +92,32 @@ def setup_biothings_configuration():
         sys.modules["config"] = configuration_instance
         sys.modules["biothings.config"] = configuration_instance
 
+    # configuration_instance.HUB_DB_BACKEND = {
+    #     "module": "biothings.utils.sqlite3",
+    #     "sqlite_db_folder": ".biothings_hub",
+    # }
     configuration_instance.HUB_DB_BACKEND = {
-        "module": "biothings.utils.sqlite3",
-        "sqlite_db_folder": ".biothings_hub",
+        "module": "biothings.utils.mongo",
+        "uri": "mongodb://localhost:27017",
     }
     configuration_instance.DATA_SRC_SERVER = "localhost"
     configuration_instance.DATA_SRC_DATABASE = "data_src_database"
     configuration_instance.DATA_ARCHIVE_ROOT = ".biothings_hub/archive"
     configuration_instance.LOG_FOLDER = ".biothings_hub/logs"
     configuration_instance.DATA_PLUGIN_FOLDER = f"{working_dir}"
+
+    configuration_instance.DATA_TARGET_SERVER = "localhost"
+    configuration_instance.DATA_TARGET_PORT = 27017
+    configuration_instance.DATA_TARGET_DATABASE = "plugin-hub"
+    configuration_instance.INDEX_CONFIG = {
+        "indexer_select": {},
+        "env": {
+            "localhub": {
+                "host": "http://localhost:27017",
+                "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
+            }
+        },
+    }
 
     try:
         configuration_instance.hub_db = importlib.import_module(configuration_instance.HUB_DB_BACKEND["module"])

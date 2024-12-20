@@ -125,7 +125,8 @@ def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
 
     assistant_instance = CLIAssistant(plugin_name)
     dumper = assistant_instance.get_dumper_class()
-    run_sync_or_async_job(dumper.job_manager, dumper.create_todump_list, force=True)
+    job_manager = assistant_instance.dumper_manager.job_manager
+    run_sync_or_async_job(job_manager, dumper.create_todump_list, force=True)
     for item in dumper.to_dump:
         logger.info('Downloading remote data from "%s"...', item["remote"])
         dumper.download(item["remote"], item["local"])
@@ -153,10 +154,11 @@ def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     """
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
-    for uploader_cls in uploader_classes:
-        uploader = uploader_cls.create(db_conn_info="")
+    for uploader_class in uploader_classes:
+        uploader = uploader_class.create(db_conn_info="")
         uploader.make_temp_collection()
         uploader.prepare()
+        uploader.update_master()
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
             logger.error(
                 'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
@@ -189,6 +191,8 @@ def do_build(plugin_name: str):
     """
     Performs a build of the plugin
     """
+    from biothings import config
+
     assistant_instance = CLIAssistant(plugin_name)
     assistant_instance.build_manager.configure()
     assistant_instance.build_manager.poll()
@@ -218,9 +222,9 @@ def do_build(plugin_name: str):
             force=True,
         )
 
-        assistant_instance.index_manager.index(
-            indexer_env, build_name=build_configuration_name, index_name=index_name, **kwargs
-        )
+        indexer_env = "localhub"
+        assistant_instance.index_manager.configure(config.INDEX_CONFIG)
+        assistant_instance.index_manager.index(indexer_env, build_name=build_configuration_name, index_name=index_name)
     except Exception as gen_exp:
         raise gen_exp
 
@@ -244,7 +248,7 @@ def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
     """
     assistant_instance = CLIAssistant(plugin_name)
     if dump:
-        dumper_instance = assistance_instance.get_dumper_class()
+        dumper_instance = assistant_instance.get_dumper_class()
         data_folder = dumper_instance.current_data_folder
         if not data_folder:
             # data_folder should be saved in hubdb already, if dump has been done successfully first
