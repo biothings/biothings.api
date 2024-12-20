@@ -1005,11 +1005,11 @@ class UploaderManager(BaseSourceManager):
             raise ImportError(f"Module '{module_name}' not found")
         return os.path.join(module_path, "validation")
 
-    def get_validation_models(self, klass):
-        validation_dir = self.get_validation_path(klass)
-        if not os.path.exists(validation_dir):
-            return []
-        return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
+    # def get_validation_models(self, klass):
+    #     validation_dir = self.get_validation_path(klass)
+    #     if not os.path.exists(validation_dir):
+    #         return []
+    #     return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
 
     async def create_and_validate(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
