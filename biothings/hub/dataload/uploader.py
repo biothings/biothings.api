@@ -8,8 +8,6 @@ import time
 from functools import partial
 from typing import Iterable, Optional
 
-from pydantic import ValidationError
-
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
