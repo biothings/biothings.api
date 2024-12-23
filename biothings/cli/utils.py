@@ -24,6 +24,7 @@ from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
 from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
+from biothings.cli.structure import TEMPLATE_DIRECTORY
 
 
 def get_logger(name=None):
@@ -191,31 +192,32 @@ def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = T
 ########################
 
 
-def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
-    """Create a new data plugin from the template"""
-    logger = logger or get_logger(__name__)
-    working_dir = pathlib.Path().resolve()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
-        logger.error("Data plugin with the same name is already exists, please remove it before create")
-        return exit(1)
-    shutil.copytree(template_dir, plugin_dir)
+def do_create(name: str, multi_uploaders=False, parallelizer=False, logger=None):
+    """
+    Create a new data plugin from the template
+    """
+    plugin_directory = pathlib.Path.cwd().joinpath(name)
+    if plugin_directory.is_dir():
+        logger.error(
+            "Data plugin with the same name already exists, please remove it before creating a new plugin directory"
+        )
+        sys.exit(1)
+    shutil.copytree(TEMPLATE_DIRECTORY, plugin_directory)
+
     # create manifest file
-    loader = tornado.template.Loader(plugin_dir)
+    loader = tornado.template.Loader(plugin_directory)
     parsed_template = (
         loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
-    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
-    with open(manifest_file_path, "w") as fh:
-        fh.write(parsed_template)
+    manifest_file_path = plugin_directory.joinpath("manifest.yaml")
+    with open(manifest_file_path, "w", encoding="utf-8") as file_handle:
+        file_handle.write(parsed_template)
 
     # remove manifest template
-    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
+    os.unlink(f"{plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
-        os.unlink(f"{plugin_dir}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
+        os.unlink(f"{plugin_directory}/parallelizer.py")
+    logger.info(f"Successfully created data plugin template at: \n {plugin_directory}")
 
 
 ###############################
