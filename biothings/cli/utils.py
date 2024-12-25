@@ -538,7 +538,7 @@ def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
             manifest = yaml.safe_load(yaml_handle)
     elif manifest_file_json.exists():
         with open(manifest_file_json, "r", encoding="utf-8") as json_handle:
-            manifest = load_json(json_handle)
+            manifest = load_json(json_handle.read())
     else:
         logger.info("No manifest file discovered")
     return manifest
@@ -549,7 +549,7 @@ def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
 ########################
 
 
-def get_uploaders(working_dir: pathlib.Path):
+def get_uploaders(working_dir: pathlib.Path) -> list[str]:
     """
     A helper function to get the uploaders from the manifest file in the working directory
     used in show_uploaded_sources function below
@@ -557,14 +557,11 @@ def get_uploaders(working_dir: pathlib.Path):
     data_plugin_name = working_dir.name
 
     manifest = get_manifest_content(working_dir)
-    upload_section = manifest.get("uploader", None)
-    upload_sections = manifest.get("uploaders", None)
-
-    if upload_section is None and upload_sections is None:
-        table_space = [data_plugin_name]
-    elif upload_section is None and upload_sections is not None:
-        table_space = [item["name"] for item in upload_sections]
-
+    uploader_section = manifest.get("uploader", None)
+    uploaders_section = manifest.get("uploaders", None)
+    table_space = [data_plugin_name]
+    if uploader_section is None and uploaders_section is not None:
+        table_space = [item["name"] for item in uploaders_section]
     return table_space
 
 

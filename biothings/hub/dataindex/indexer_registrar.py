@@ -3,7 +3,6 @@ import os
 import time
 from datetime import datetime
 from enum import Enum
-from types import SimpleNamespace
 
 from biothings.utils.common import merge, timesofar
 
@@ -123,70 +122,3 @@ class MainIndexJSR(IndexJobStateRegistrar):
 class PostIndexJSR(IndexJobStateRegistrar):
     def started(self):
         super().started("post-index")
-
-
-# TESTS OUTDATED
-
-
-def test_registrar():
-    from pymongo import MongoClient
-
-    indexer = SimpleNamespace(
-        mongo_collection_name="mynews_202012280220_vsdevjdk",  # must exists in DB
-        es_client_args=dict(hosts="http://localhost:9200"),
-        es_index_name="__index_name__",
-        logfile="/log/file",
-        conf_name="bc_news",
-        env_name="dev",
-    )
-    collection = MongoClient().biothings.src_build
-    IndexJobStateRegistrar.prune(collection)
-
-    # ----------
-    #  round 1
-    # ----------
-
-    job = MainIndexJSR(indexer, collection)
-
-    input()
-    job.started()
-    input()
-    job.failed("MockErrorA")
-    input()
-    try:
-        job.succeed()
-    except Exception as exc:
-        print(exc)
-
-    # ----------
-    #  round 2
-    # ----------
-
-    job = MainIndexJSR(indexer, collection)
-
-    input()
-    job.started()
-    input()
-    job.succeed(index={"__index_name__": {"count": "99"}})
-
-    # ----------
-    #  round 3
-    # ----------
-
-    job = PostIndexJSR(indexer, collection)
-
-    input()
-    try:
-        job.succeed()
-    except Exception as exc:
-        print(exc)
-
-    input()
-    job.started()
-
-    input()
-    job.succeed({"__index_name__": {"additionally": "done"}})
-
-
-if __name__ == "__main__":
-    test_registrar()

@@ -5,7 +5,6 @@ import logging
 import os
 import socket
 import sys
-import time
 import types
 from datetime import datetime
 from functools import partial
@@ -78,7 +77,6 @@ class APIManager(BaseManager):
         if preds:
             pinfo["__predicates__"] = preds
         return pinfo
-
 
     def restore_running_apis(self):
         """
@@ -164,7 +162,8 @@ class APIManager(BaseManager):
                     pinfo["description"] = "Running API tests"
                     # defer_to_process leaves the websocket open for unknown reasons when trying to stop the api so we use defer_to_thread
                     job = await self.job_manager.defer_to_thread(pinfo, partial(self.log_pytests, path, "localhost:" + str(port)))
-                    got_error = False
+                    got_error = None
+
                     def updated(f):
                         try:
                             _ = f.result()
@@ -178,7 +177,7 @@ class APIManager(BaseManager):
 
                     job.add_done_callback(updated)
                     await job
-                    if got_error:
+                    if isinstance(got_error, Exception):
                         raise got_error
                 job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
                 return job
@@ -188,7 +187,6 @@ class APIManager(BaseManager):
         finally:
             self.logger.info("Changing directory back to %s", old_dir)
             os.chdir(old_dir)
-
 
     def start_api(self, api_id):
         apidoc = self.api.find_one({"_id": api_id})
@@ -222,7 +220,6 @@ class APIManager(BaseManager):
             self.logger.exception("Failed to start API '%s'" % api_id)
             self.register_status(api_id, "failed", err=str(e))
             raise
-
 
     def stop_api(self, api_id):
         try:
@@ -267,4 +264,3 @@ class APIManager(BaseManager):
         apidoc.update(kwargs)
         self.api.save(apidoc)
         return apidoc
-

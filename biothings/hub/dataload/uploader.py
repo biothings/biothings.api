@@ -259,6 +259,7 @@ class BaseSourceUploader(object):
         after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -269,8 +270,10 @@ class BaseSourceUploader(object):
                 self.collection.rename(new_name, dropTarget=True)
             self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
+        elif self.temp_collection_name and self.db[self.collection_name].count() == 0:
+            raise ResourceError("No data parsed into temp collection")
         else:
-            raise ResourceError("No temp collection (or it's empty)")
+            raise ResourceError("No temp collection to switch to")
 
     def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
         """Override as needed to perform operations after
@@ -301,7 +304,7 @@ class BaseSourceUploader(object):
 
         def uploaded(f):
             nonlocal got_error
-            if type(f.result()) != int:
+            if not isinstance(f.result(), int):
                 got_error = Exception(f"upload error (should have a int as returned value got {repr(f.result())}")
 
         job.add_done_callback(uploaded)
@@ -574,6 +577,10 @@ class DummySourceUploader(BaseSourceUploader):
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
+
+    # Max parallel uploads allowed. If None, no limit.
+    MAX_PARALLEL_UPLOAD = None
+
     def jobs(self):
         """Return list of (`*arguments`) passed to self.load_data, in order. for
         each parallelized jobs. Ex: [(x,1),(y,2),(z,3)]
@@ -582,9 +589,10 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         raise NotImplementedError("implement me in subclass")
 
     async def update_data(self, batch_size, job_manager=None):
+        max_upload = self.__class__.MAX_PARALLEL_UPLOAD and asyncio.Semaphore(self.__class__.MAX_PARALLEL_UPLOAD)
         jobs = []
         job_params = self.jobs()
-        got_error = False
+        got_error = None
         # make sure we don't use any of self reference in the following loop
         fullname = copy.deepcopy(self.fullname)
         storage_class = copy.deepcopy(self.__class__.storage_class)
@@ -602,6 +610,24 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = "%s" % str(args)
+
+            def batch_uploaded(f, name, batch_num):
+                # important: don't even use "self" ref here to make sure jobs can be submitted
+                # (see comment above, before loop)
+                nonlocal max_upload
+                nonlocal got_error
+                try:
+                    if max_upload:
+                        max_upload.release()
+                    if type(f.result()) != int:
+                        got_error = Exception(
+                            "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
+                        )
+                except Exception as e:
+                    got_error = e
+
+            if max_upload:
+                await max_upload.acquire()
             job = await job_manager.defer_to_process(
                 pinfo,
                 partial(
@@ -623,25 +649,13 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     *args,
                 ),
             )
+            job.add_done_callback(partial(batch_uploaded, name=fullname, batch_num=bnum))
             jobs.append(job)
 
             # raise error as soon as we know
             if got_error:
                 raise got_error
 
-            def batch_uploaded(f, name, batch_num):
-                # important: don't even use "self" ref here to make sure jobs can be submitted
-                # (see comment above, before loop)
-                nonlocal got_error
-                try:
-                    if type(f.result()) != int:
-                        got_error = Exception(
-                            "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
-                        )
-                except Exception as e:
-                    got_error = e
-
-            job.add_done_callback(partial(batch_uploaded, name=fullname, batch_num=bnum))
         if jobs:
             await asyncio.gather(*jobs)
             if got_error:
@@ -825,7 +839,7 @@ class UploaderManager(BaseSourceManager):
 
     async def create_and_load(self, klass, *args, **kwargs):
         insts = self.create_instance(klass)
-        if type(insts) != list:
+        if not isinstance(insts, list):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)

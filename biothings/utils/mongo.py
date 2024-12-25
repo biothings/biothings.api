@@ -17,8 +17,7 @@ from pymongo.database import Database as PymongoDatabase
 from pymongo.errors import AutoReconnect
 
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.common import (
-    # timesofar,
+from biothings.utils.common import (  # timesofar,
     dotdict,
     get_compressed_outfile,
     get_random_string,
@@ -324,7 +323,18 @@ def get_source_fullnames(col_names):
     return list(main_sources)
 
 
-def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None, batch_callback=None, fields=None, logger=logging, session_refresh_interval=5):
+def doc_feeder(
+    collection,
+    step=1000,
+    s=None,
+    e=None,
+    inbatch=False,
+    query=None,
+    batch_callback=None,
+    fields=None,
+    logger=logging,
+    session_refresh_interval=5,
+):
     """
     An iterator returning docs in a collection, with batch query.
 
@@ -347,7 +357,9 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
     n = collection.count_documents(query or {})
     s = s or 0  # start of the collection partition (inclusive)
     e = e or n  # end of the collection partition (exclusive)
-    logger.debug("Retrieving documents from collection '%s'. start = %d, end = %d, total = %d.", collection.name, s, e, n)
+    logger.debug(
+        "Retrieving documents from collection '%s'. start = %d, end = %d, total = %d.", collection.name, s, e, n
+    )
 
     cursor_index = s  # the integer index in the collection that the cursor is pointing to
     # job_start_time = time.time()
@@ -367,9 +379,13 @@ def doc_feeder(collection, step=1000, s=None, e=None, inbatch=False, query=None,
         if e:
             cur.limit(e - s)  # specify the maximum number of documents the cursor will return
             # logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.", e - s, s, e, collection.name)
-        cur.batch_size(step)  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
+        cur.batch_size(
+            step
+        )  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
 
-        if inbatch:  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
+        if (
+            inbatch
+        ):  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
             doc_batch = []
 
         session_last_refresh_time = time.time()
@@ -450,7 +466,9 @@ def invalidate_cache(col_name, col_type="src"):
 # TODO: this func deals with different backend, should not be in bt.utils.mongo
 # and doc_feeder should do the same as this function regarding backend support
 @requires_config
-def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=False, force_build=False, validate_only=False):
+def id_feeder(
+    col, batch_size=1000, build_cache=True, logger=logging, force_use=False, force_build=False, validate_only=False
+):
     """
     Return an iterator for all _ids in collection "col".
 
@@ -520,7 +538,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
                 use_cache = True
                 logger.info("Force using cache file")
             else:
-                cache_ts = os.path.getmtime(cache_file)  # Get DLM (Date Last Modified) of the cache file in timestamp format
+                cache_ts = os.path.getmtime(
+                    cache_file
+                )  # Get DLM (Date Last Modified) of the cache file in timestamp format
                 if col_ts and cache_ts >= col_ts:
                     cache_dt = datetime.datetime.fromtimestamp(cache_ts).isoformat()
                     col_dt = datetime.datetime.fromtimestamp(col_ts).isoformat()
@@ -568,7 +588,9 @@ def id_feeder(col, batch_size=1000, build_cache=True, logger=logging, force_use=
         if isinstance(col, PymongoCollection):
             doc_feeder_func = partial(doc_feeder, col, step=batch_size, inbatch=True, fields={"_id": 1}, logger=logger)
         elif isinstance(col, DocMongoBackend):
-            doc_feeder_func = partial(doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1}, logger=logger)
+            doc_feeder_func = partial(
+                doc_feeder, col.target_collection, step=batch_size, inbatch=True, fields={"_id": 1}, logger=logger
+            )
         elif isinstance(col, DocESBackend):
             # get_id_list directly return the _id, wrap it to match other
             # doc_feeder_func returned vals. Also return a batch of id

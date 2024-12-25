@@ -25,7 +25,7 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
           pconn = partial(WebSocketConnection,listeners=listeners)
           ws_router = sockjs.tornado.SockJSRouter(pconn,"/path")
         """
-        if type(listeners) != list:
+        if not isinstance(listeners, list):
             listeners = [listeners]
         self.listeners = listeners
         # propagate connection so listeners can access it and trigger message sending
@@ -43,24 +43,27 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         self.__class__.clients.add(self)
 
     def on_message(self, message):
-        err = None
-        strerr = None
+        err_to_raise = None
+        err_note = None
         try:
             message = json.loads(message)
             if message["op"] == "ping":
                 self.send({"op": "pong"})
-        except json.JSONDecodeError:
-            strerr = "malformed json message: %s" % message
-            err = json.JSONDecodeError(strerr)
-        except KeyError:
-            strerr = "malformed socket message: %s" % message
-            err = KeyError(strerr)
-        except Exception as e:
-            strerr = "Unable to process message '%s': %s" % (message, e)
-            err = Exception(strerr)
-        if err:
-            self.send({"error": strerr})
-            raise err
+        except json.JSONDecodeError as err:
+            err_note = "malformed json message: %s" % message
+            err.add_note(err_note)
+            err_to_raise = err      # we need to assign it here, otherwise it's lost outside of this block
+        except KeyError as err:
+            err_note = "malformed socket message: %s" % message
+            err.add_note(err_note)
+            err_to_raise = err
+        except Exception as err:
+            err_note = "Unable to process message '%s': %s" % (message, err)
+            err.add_note(err_note)
+            err_to_raise = err
+        if err_to_raise:
+            self.send({"error": err_note})
+            raise err_to_raise
 
     def on_close(self):
         # Remove client from the clients list and broadcast leave message
