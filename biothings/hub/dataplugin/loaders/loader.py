@@ -12,6 +12,7 @@ import textwrap
 import urllib.parse
 from string import Template
 
+import jsonschema
 import yaml
 
 from biothings import config as btconfig
@@ -26,6 +27,7 @@ from biothings.utils.common import (
 )
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
+from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
 
 
 class LoaderException(Exception):
@@ -135,6 +137,22 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         df = pathlib.Path(plugin["download"]["data_folder"])
         return pathlib.Path(df, "manifest.json").exists() or pathlib.Path(df, "manifest.yaml").exists()
 
+    def validate_manifest(self, manifest: dict):
+        """
+        Handles manifest validation to provide proper error messaging when a user
+        provides an invalid manifest. Given these manifests can be written by anyone
+        we want particularly clear error messages when validating the manifest
+        """
+        manifest_schema = load_manifest_schema()
+        try:
+            jsonschema.validate(manifest, manifest_schema)
+        except jsonschema.exceptions.ValidationError as validation_error:
+            self.logger.exception(validation_error)
+            raise validation_error
+        except jsonschema.exceptions.SchemaError as schema_error:
+            self.logger.exception(schema_error)
+            raise schema_error
+
     def load_plugin(self):
         plugin = self.get_plugin_obj()
         data_folder = pathlib.Path(plugin["download"]["data_folder"])
@@ -153,12 +171,18 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     manifest = yaml.safe_load(manifest_handle)
 
             try:
-                breakpoint()
+                self.validate_manifest(manifest)
+            except Exception as gen_exc:
+                self.logger.error("Unable to validate the manifest")
+                self.logger.exception(gen_exc)
+                raise LoaderException from gen_exc
+
+            try:
                 self.interpret_manifest(manifest, data_folder.as_posix())
             except Exception as gen_exc:
                 self.invalidate_plugin("Error loading manifest: %s" % str(gen_exc))
             # else:
-            #     self.logger.info("No manifest found for plugin: %s" % plugin["plugin"]["url"])
+            #     self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
             #     self.invalidate_plugin("No manifest found")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
@@ -283,7 +307,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     schedule = "None"
                 dumper_configuration["SCHEDULE"] = schedule
                 dumper_configuration["UNCOMPRESS"] = dumper_section.get("uncompress", False)
-                breakpoint()
                 pystr = tpl.substitute(dumper_configuration)
                 # print(pystr)
                 code = compile(pystr, "<string>", "exec")
@@ -486,7 +509,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest, data_plugin_folder):
+    def interpret_manifest(self, manifest: dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
+        """
+        Handles the interpretation and loading of the manifest contents
+        to determine how to build the dumper and uploader classes,
+        installation of the plugin requirements, and assigning of the plugin
+        metadata
+        """
         # start with requirements before importing anything
         if manifest.get("requires"):
             requirements = manifest["requires"]
@@ -560,13 +589,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 class AdvancedPluginLoader(BasePluginLoader):
     loader_type = "advanced"
 
-    def can_load_plugin(self):
+    def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
         df = plugin["download"]["data_folder"]
-        if "__init__.py" in os.listdir(df):
-            return True
-        else:
-            return False
+        return "__init__.py" in os.listdir(df)
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
@@ -581,16 +607,21 @@ class AdvancedPluginLoader(BasePluginLoader):
                 self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile, self.plugin_name))
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", reqfile])
             # submit to managers to register datasources
-            self.logger.info("Registering '%s' to dump/upload managers" % modpath)
-            # register dumpers if any
+
+            self.logger.info("Registering '%s' to dump manager", modpath)
             try:
                 self.__class__.dumper_manager.register_source(modpath)
-            except Exception as e:
-                self.logger.info("Couldn't register dumper from module '%s': %s" % (modpath, e))
-            # register uploaders if any
+            except Exception as gen_exc:
+                self.logger.exeception(gen_exc)
+                self.logger.error("Couldn't register dumper from module '%s': %s", (modpath, gen_exc))
+                self.invalidate_plugin("Unable to load dumper module for plugin: '%s'", df)
+
+            self.logger.info("Registering '%s' to upload manager(s)", modpath)
             try:
                 self.__class__.uploader_manager.register_source(modpath)
-            except Exception as e:
-                self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath, e))
+            except Exception as gen_exc:
+                self.logger.exeception(gen_exc)
+                self.logger.error("Couldn't register uploader from module '%s': %s", (modpath, gen_exc))
+                self.invalidate_plugin("Missing plugin folder '%s'", df)
         else:
-            self.invalidate_plugin("Missing plugin folder '%s'" % df)
+            self.invalidate_plugin("Missing plugin folder '%s'", df)
