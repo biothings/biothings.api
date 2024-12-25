@@ -446,7 +446,7 @@ class SnapshotManager(BaseManager):
         return self.snapshot_config
 
     def list_snapshots(self, env=None, return_db_cols=True, **filters):
-        return cleaner.find( # filters support dotfield
+        return cleaner.find(  # filters support dotfield
             get_src_build(),
             env=env,
             group_by="build_config",
@@ -472,9 +472,7 @@ class SnapshotManager(BaseManager):
         """
 
         # filters support dotfield.
-        snapshots = cleaner.find(
-            get_src_build(), env=env, keep=keep, group_by=group_by, **filters
-        )
+        snapshots = cleaner.find(get_src_build(), env=env, keep=keep, group_by=group_by, **filters)
 
         if dryrun:
             return "\n".join(
@@ -494,7 +492,9 @@ class SnapshotManager(BaseManager):
         async def delete(environment, snapshot_names):
             if environment == "__no_env__":
                 environment = None
-            return self.cleanup(env=environment, keep=0, dryrun=False, ignoreErrors=ignoreErrors, _id={"$in": snapshot_names})
+            return self.cleanup(
+                env=environment, keep=0, dryrun=False, ignoreErrors=ignoreErrors, _id={"$in": snapshot_names}
+            )
 
         def done(f):
             try:
@@ -551,6 +551,7 @@ class SnapshotManager(BaseManager):
         Returns:
             job (asyncio.Task): The asynchronous task representing the validation process.
         """
+
         async def validate():
             logging.info("Starting validation of snapshots...")
             collection = get_src_build()
@@ -559,10 +560,10 @@ class SnapshotManager(BaseManager):
             snapshots_deleted = 0
 
             for group in snapshots:
-                for snapshot_data in group['items']:
-                    snapshot_name = snapshot_data['_id']
-                    build_name = snapshot_data['build_name']
-                    environment = snapshot_data.get('environment') or snapshot_data['conf']['indexer']['env']
+                for snapshot_data in group["items"]:
+                    snapshot_name = snapshot_data["_id"]
+                    build_name = snapshot_data["build_name"]
+                    environment = snapshot_data.get("environment") or snapshot_data["conf"]["indexer"]["env"]
 
                     if not environment:
                         msg = (
@@ -585,7 +586,7 @@ class SnapshotManager(BaseManager):
                         errors.append(msg)
                         continue
 
-                    build_doc = collection.find_one({'_id': build_name})
+                    build_doc = collection.find_one({"_id": build_name})
 
                     try:
                         exists = env.snapshot_exists(snapshot_name, build_doc)
@@ -598,10 +599,7 @@ class SnapshotManager(BaseManager):
                         logging.exception(msg)
                         errors.append(msg)
             logging.info("Validation of snapshots completed.")
-            return {
-                "snapshots_deleted": snapshots_deleted,
-                "errors": errors
-            }
+            return {"snapshots_deleted": snapshots_deleted, "errors": errors}
 
         def done(f):
             try:
@@ -612,7 +610,9 @@ class SnapshotManager(BaseManager):
                     error_message = "\n".join(errors)
                     logging.error("Validation completed with errors:\n%s", error_message, extra={"notify": True})
                 else:
-                    logging.info("Validation successful, %d snapshots deleted.", snapshots_deleted, extra={"notify": True})
+                    logging.info(
+                        "Validation successful, %d snapshots deleted.", snapshots_deleted, extra={"notify": True}
+                    )
             except Exception as e:
                 logging.exception("Validation failed: %s", e, extra={"notify": True})
 
@@ -620,6 +620,5 @@ class SnapshotManager(BaseManager):
             job = self.job_manager.submit(validate)
             job.add_done_callback(done)
         except Exception as ex:
-            logging.exception(
-                "Error while submitting validation job: %s", ex, extra={"notify": True})
+            logging.exception("Error while submitting validation job: %s", ex, extra={"notify": True})
         return job

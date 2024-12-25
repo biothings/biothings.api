@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from functools import partial
 from pprint import pformat
+from typing import Union
 
 import aiocron
 
@@ -32,6 +33,7 @@ from biothings.utils.hub_db import (
     get_src_build_config,
     get_src_dump,
     get_src_master,
+    get_src_db,
 )
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
@@ -59,7 +61,7 @@ class ResumeException(Exception):
     pass
 
 
-class DataBuilder(object):
+class DataBuilder:
     """
     Generic data builder.
     """
@@ -493,7 +495,7 @@ class DataBuilder(object):
             self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
             self.src_meta[mainsrc]["stats"].update({src: count})
 
-    def resolve_sources(self, sources):
+    def resolve_sources(self, sources: Union[str, list[str]]):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
@@ -502,9 +504,9 @@ class DataBuilder(object):
         "blah_.*" can be specified in build_config. This method resolves potential
         regexed source name into real, existing collection names
         """
-        if type(sources) == str:
+        if isinstance(sources, str):
             sources = [sources]
-        src_db = mongo.get_src_db()
+        src_db = get_src_db()
         cols = src_db.collection_names()
         masters = self.source_backend.get_src_master_docs()
         found = []
@@ -1026,7 +1028,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
 
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
-        src = mongo.get_src_db()
+        src = get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
         dest = DocMongoBackend(tgt, tgt[dest_name])
@@ -1111,7 +1113,7 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder. It can also be a list of classes, in which
         case the default used one is the first, when it's necessary to define multiple builders.
         """
-        super(BuilderManager, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
@@ -1148,7 +1150,7 @@ class BuilderManager(BaseManager):
                 build=partial(get_src_build),
                 master=partial(get_src_master),
                 dump=partial(get_src_dump),
-                sources=partial(mongo.get_src_db),
+                sources=partial(get_src_db),
             )
         )
         return source_backend

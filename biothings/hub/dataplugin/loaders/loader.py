@@ -262,7 +262,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 dumper_configuration["__metadata__"] = {}
 
             if dumper_section.get("release"):
-                breakpoint()
                 indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
                 dumper_configuration["SET_RELEASE_FUNC"] = (
