@@ -34,7 +34,7 @@ def inspect_data(backend_provider, ids, mode, pre_mapping, **kwargs):
 
 class InspectorManager(BaseManager):
     def __init__(self, upload_manager, build_manager, *args, **kwargs):
-        super(InspectorManager, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.upload_manager = upload_manager
         self.build_manager = build_manager
         self.logfile = None
@@ -211,7 +211,7 @@ class InspectorManager(BaseManager):
                 doccnt = 0
                 jobs = []
                 # normalize mode param and prepare global results
-                if type(mode) == str:
+                if isinstance(mode, str) == str:
                     mode = [mode]
 
                 converters, mode = btinspect.get_converters(mode)
