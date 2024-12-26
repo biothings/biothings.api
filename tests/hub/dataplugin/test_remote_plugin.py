@@ -2,6 +2,7 @@
 Tests for exercising the functionality and structure of our
 plugin design
 """
+
 from pathlib import Path
 from types import SimpleNamespace
 import logging

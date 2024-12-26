@@ -2,12 +2,12 @@
 Tests for exercising the functionality and structure of our
 plugin design
 """
+
 from pathlib import Path
 from types import SimpleNamespace
 import logging
 
 import pytest
-
 
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
