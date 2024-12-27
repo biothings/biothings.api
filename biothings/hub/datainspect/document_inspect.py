@@ -1,7 +1,6 @@
 """
-This module contains util functions may be shared by both BioThings data-hub and web components.
-In general, do not include utils depending on any third-party modules.
-Note: unittests available in biothings.tests.hub
+Module for document inspection methods and associated
+helper methods
 """
 
 import copy
@@ -320,7 +319,6 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
         else:
             mapt.setdefault(list, {})
             mapt[list].update(mapl)
-    # elif is_scalar(struct) or type(struct) == datetime:   # TODO: remove this line
     elif is_scalar(struct) or isinstance(struct, datetime):
         typ = type(struct)
         if mode == "type":
@@ -415,7 +413,7 @@ def get_converters(modes, logger=logging):
     converters = []
     # should we actually run another mode and then convert the results ?
     if "jsonschema" in modes:
-        from biothings.utils.jsonschema import generate_json_schema
+        from biothings.hub.datainspect.schema import generate_json_schema
 
         # first get schema with mode="type", then convert the results
         # note "type" can't also be specified as jsonschema will replace

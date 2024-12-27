@@ -6,10 +6,18 @@ from datetime import datetime
 from functools import partial
 
 import biothings.utils.es as es
-import biothings.utils.inspect as btinspect
 from biothings import config
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
+from biothings.hub.datainspect.document_inspect import (
+    inspect_docs,
+    get_converters,
+    merge_record,
+    compute_metadata,
+    stringify_inspect_doc,
+    flatten_and_validate,
+    run_converters,
+)
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_source_fullname, get_src_build, get_src_dump
@@ -28,7 +36,7 @@ class InspectorError(Exception):
 def inspect_data(backend_provider, ids, mode, pre_mapping, **kwargs):
     col = create_backend(backend_provider).target_collection
     cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
-    res = btinspect.inspect_docs(cur, mode=mode, pre_mapping=pre_mapping, metadata=False, auto_convert=False, **kwargs)
+    res = inspect_docs(cur, mode=mode, pre_mapping=pre_mapping, metadata=False, auto_convert=False, **kwargs)
     return res
 
 
@@ -107,7 +115,7 @@ class InspectorManager(BaseManager):
     ):
         """
         Inspect given data provider:
-        - backend definition, see bt.hub.dababuild.create_backend for
+        - backend definition, see biothings.hub.databuild.create_backend for
           supported format), eg "merged_collection" or ("src","clinvar")
         - or callable yielding documents
         Mode:
@@ -214,7 +222,7 @@ class InspectorManager(BaseManager):
                 if isinstance(mode, str) == str:
                     mode = [mode]
 
-                converters, mode = btinspect.get_converters(mode)
+                converters, mode = get_converters(mode)
 
                 inspected = {}
                 for m in mode:
@@ -238,7 +246,7 @@ class InspectorManager(BaseManager):
                         try:
                             res = f.result()
                             for m in mode:
-                                inspected[m] = btinspect.merge_record(inspected[m], res[m], m)
+                                inspected[m] = merge_record(inspected[m], res[m], m)
                         except Exception as e:
                             got_error = e
                             self.logger.error("Error while inspecting data from batch #%s: %s" % (bnum, e))
@@ -262,19 +270,19 @@ class InspectorManager(BaseManager):
                         try:
                             inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
                             # metadata for mapping only once generated
-                            inspected = btinspect.compute_metadata(inspected, m)
+                            inspected = compute_metadata(inspected, m)
                         except es.MappingError as e:
                             inspected["mapping"] = {"pre-mapping": inspected["mapping"], "errors": e.args[1]}
                     else:
-                        inspected = btinspect.compute_metadata(inspected, m)
+                        inspected = compute_metadata(inspected, m)
 
                 # just potential converters
-                btinspect.run_converters(inspected, converters)
+                run_converters(inspected, converters)
 
                 def fully_inspected(res):
                     nonlocal got_error
                     try:
-                        res = btinspect.stringify_inspect_doc(res)
+                        res = stringify_inspect_doc(res)
                         _map = {"results": res}
                         _map["data_provider"] = repr(data_provider)
                         _map["started_at"] = started_at
@@ -334,15 +342,13 @@ class InspectorManager(BaseManager):
             src_sources_inspect_data = registerer_obj.src_doc.get("inspect", {}).get("jobs", {})
             for src_source_name, inspect_data in src_sources_inspect_data.items():
                 results[src_source_name] = {
-                    _mode: btinspect.flatten_and_validate(
-                        inspect_data["inspect"]["results"].get(_mode) or {}, do_validate
-                    )
+                    _mode: flatten_and_validate(inspect_data["inspect"]["results"].get(_mode) or {}, do_validate)
                     for _mode in mode
                 }
         else:
             inspect_data = registerer_obj.src_build.get("inspect", {}).get("results", {})
             results[backend_provider] = {
-                _mode: btinspect.flatten_and_validate(inspect_data.get(_mode) or {}, do_validate) for _mode in mode
+                _mode: flatten_and_validate(inspect_data.get(_mode) or {}, do_validate) for _mode in mode
             }
 
         return results
