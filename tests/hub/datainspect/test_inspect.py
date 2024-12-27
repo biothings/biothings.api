@@ -55,7 +55,7 @@ def test_inspection_same_key_different_types_with_list_and_dict():
     assert m12["d"][list]["p"].keys() == {list, int}
 
 
-def test_05_stats(test):
+def test_05_stats():
     d1 = {"id": "124", "lofd": [{"val": 34.3}, {"ul": "bla"}], "d": {"start": 134, "end": 5543}}
     d2 = {"id": "5", "lofd": {"oula": "mak", "val": 34}, "d": {"start": 134, "end": 5543}}
 
