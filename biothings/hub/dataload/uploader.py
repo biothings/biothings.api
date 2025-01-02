@@ -606,6 +606,7 @@ class BaseSourceUploader(object):
         pinfo = self.get_pinfo()
         pinfo["step"] = "validate_src"
         got_error = False
+        self.register_status("validating", subkey="validate")
         self.unprepare()
         job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
 
@@ -617,7 +618,10 @@ class BaseSourceUploader(object):
         job.add_done_callback(done)
         await job
         if got_error:
+            self.register_status("failed", subkey="validate")
             raise got_error
+        else:
+            self.register_status("success", subkey="validate")
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
