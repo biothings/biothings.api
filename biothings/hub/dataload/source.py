@@ -407,40 +407,33 @@ class SourceManager(BaseSourceManager):
 
     def create_model_str(self, name):
         """Create a pydantic model string for a given source name"""
+        mapping = self.get_mapping(name)
+        model_str = create_pydantic_model(mapping, name.casefold())
+        return model_str
+
+    def get_model_str(self, name, upk):
+        """Get a pydantic model string for a given source name"""
         try:
             subsrc = name.split(".")[1]
         except IndexError:
             subsrc = name
-        mapping = self.get_mapping(subsrc)
-        model_str = create_pydantic_model(mapping, subsrc.casefold())
-        return model_str
-
-    def get_model_str(self, name):
-        """Get a pydantic model string for a given source name"""
         try:
-            upk = self.upload_manager[name]
-            assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
-            upk = upk[0]
             validation_path = self.upload_manager.get_validation_path(upk)
-            model_path = os.path.join(validation_path, f"{name}_model.py")
+            model_path = os.path.join(validation_path, f"{subsrc}_model.py")
             with open(model_path, "r") as f:
                 model_str = f.read()
                 return model_str
         except FileNotFoundError:
             logging.error("No model found for source '%s' creating model string from mapping", name)
-            return self.create_model_str(name)
+            return self.create_model_str(subsrc)
 
     def save_pydantic_model(self, name):
         """Save a pydantic model string for a given source name"""
-        try:
-            subsrc = name.split(".")[1]
-        except IndexError:
-            subsrc = name
-        upk = self.upload_manager[subsrc]
+        upk = self.upload_manager[name]
         assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
         upk = upk[0]
         inst = self.upload_manager.create_instance(upk)
-        model_str = self.get_model_str(subsrc)
+        model_str = self.get_model_str(name, upk)
         inst.commit_pydantic_model(model_str)
         self.logger.info("Saved pydantic model for source '%s'", name)
 
@@ -454,11 +447,11 @@ class SourceManager(BaseSourceManager):
 
     def get_validations(self, name):
         """Get the Pydantic models for a given source name"""
-        try:
-            subsrc = name.split(".")[1]
-        except IndexError:
-            subsrc = name
-        upk = self.upload_manager[subsrc]
+        # try:
+        #     subsrc = name.split(".")[1]
+        # except IndexError:
+        #     subsrc = name
+        upk = self.upload_manager[name]
         # pick any uploader they should all use the same model directory
         upk = upk[0]
         validation_dir = self.upload_manager.get_validation_path(upk)
