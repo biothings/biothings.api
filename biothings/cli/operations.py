@@ -3,24 +3,25 @@ Operations supported by the cli tooling
 
 Grouped into the following categories
 
-------------------------------------------------------------------------------------
-> plugin template creation
-
+--------------------------------------------------------------------------------
+### plugin template creation ###
+--------------------------------------------------------------------------------
 > def do_create(name, multi_uploaders=False, parallelizer=False):
-------------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------------
-> data download / upload
 
+--------------------------------------------------------------------------------
+### data download / upload ###
+--------------------------------------------------------------------------------
 > def do_dump(plugin_name=None, show_dumped=True):
 > def do_upload(plugin_name=None, show_uploaded=True):
 > def do_dump_and_upload(plugin_name):
 > def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
-------------------------------------------------------------------------------------
+> async def do_build(plugin_name: str):
 
-------------------------------------------------------------------------------------
-> data inspection
 
+--------------------------------------------------------------------------------
+### data inspection ###
+--------------------------------------------------------------------------------
 > def do_inspect(
       plugin_name=None,
       sub_source_name=None,
@@ -29,25 +30,24 @@ Grouped into the following categories
       merge=False,
       output=None,
   ):
-------------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------------
-> mock web server
-
+--------------------------------------------------------------------------------
+### mock web server ###
+--------------------------------------------------------------------------------
 > def do_serve(plugin_name=None, host="localhost", port=9999):
-------------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------------
-> data cleaning
 
+--------------------------------------------------------------------------------
+### data cleaning ###
+--------------------------------------------------------------------------------
 > def do_clean_dumped_files(data_folder, plugin_name):
 > def do_clean_uploaded_sources(working_dir, plugin_name):
 > def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
-------------------------------------------------------------------------------------
+
+
 """
 
 from typing import Union
-import functools
 import logging
 import os
 import pathlib
@@ -59,7 +59,6 @@ import rich
 import tornado.template
 import typer
 
-from biothings.utils.hub_db import get_src_master
 from biothings.utils.workers import upload_worker
 from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
@@ -77,9 +76,6 @@ from biothings.cli.utils import (
 logger = logging.getLogger(name="biothings-cli")
 
 
-########################
-# for create command   #
-########################
 def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = False):
     """
     Create a new data plugin from the template
@@ -107,11 +103,6 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     if not parallelizer:
         os.unlink(f"{plugin_dir}/parallelizer.py")
     logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
-
-
-###############################
-# for dump & upload command   #
-###############################
 
 
 def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
@@ -187,9 +178,21 @@ def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     return assistant_instance
 
 
-def do_build(plugin_name: str):
+def do_dump_and_upload(plugin_name: str):
+    """
+    Perform both dump and upload for the given plugin
+    """
+    do_dump(plugin_name, show_dumped=True)
+    do_upload(plugin_name, show_uploaded=True)
+    logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
+
+
+async def do_build(plugin_name: str):
     """
     Performs a build of the plugin
+
+    Handles the build configuration generation, source merging
+    from the source to the target, and then index generation
     """
     from biothings import config
 
@@ -203,6 +206,7 @@ def do_build(plugin_name: str):
     index_name = build_name.lower()
 
     build_config_params = {"num_shards": 1, "num_replicas": 0}
+
     try:
         builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
         sources = [plugin_name]
@@ -216,30 +220,18 @@ def do_build(plugin_name: str):
         )
 
         # create a temporary build
-        assistant_instance.build_manager.merge(
+        await assistant_instance.build_manager.merge(
             build_name=build_configuration_name,
             target_name=build_name,
             force=True,
+            steps=("merge", "metadata"),
         )
 
         indexer_env = "localhub"
         assistant_instance.index_manager.configure(config.INDEX_CONFIG)
-        assistant_instance.index_manager.index(indexer_env, build_name=build_configuration_name, index_name=index_name)
+        await assistant_instance.index_manager.index(indexer_env, build_name=build_name, index_name=index_name)
     except Exception as gen_exp:
         raise gen_exp
-
-
-def do_dump_and_upload(plugin_name: str):
-    """
-    Perform both dump and upload for the given plugin
-    """
-    dumper_assistant = do_dump(plugin_name)
-    dumper_instance = dumper_assistant.get_dumper_class()
-    show_dumped_files(dumper_instance.current_data_folder, dumper_assistant.plugin_name)
-
-    uploader_assistant = do_upload(plugin_name)
-    show_uploaded_sources(pathlib.Path(uploader_assistant.plugin_directory), uploader_assistant.plugin_name)
-    logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
 def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
@@ -265,9 +257,6 @@ def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
         show_hubdb_content()
 
 
-########################
-# for inspect command  #
-########################
 def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None):
     """
     Perform inspection on a data plugin.
@@ -303,21 +292,11 @@ def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats",
             process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
 
 
-########################
-# for serve command    #
-########################
-
-
 def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     table_space = [item.name for item in uploader_classes]
     serve(host=host, port=port, plugin_name=assistant_instance.plugin_name, table_space=table_space)
-
-
-########################
-# for clean command    #
-########################
 
 
 def do_clean_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str):
