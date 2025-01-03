@@ -13,7 +13,6 @@ Supported plugin locations
 
 """
 
-import functools
 import logging
 import pathlib
 import sys
@@ -23,15 +22,7 @@ import typer
 
 from biothings.utils.common import get_plugin_name_from_local_manifest
 from biothings.hub.dataplugin.assistant import BaseAssistant
-from biothings.cli.backend import CLISourceDocBackend
 from biothings.cli.manager import CLIJobManager
-from biothings.utils.hub_db import (
-    get_src_build,
-    get_src_build_config,
-    get_src_dump,
-    get_src_master,
-    get_src_db,
-)
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -42,23 +33,23 @@ class CLIAssistant(BaseAssistant):
     action (dump, upload, build, etc ...) managers
     """
 
-    from biothings.hub.databuild.builder import BuilderManager
-    from biothings.hub.dataindex.indexer import IndexManager
-    from biothings.hub.dataload.dumper import DumperManager
-    from biothings.hub.dataload.uploader import UploaderManager
-    from biothings.hub.dataplugin.manager import DataPluginManager
-
-    job_manager = CLIJobManager()
-    build_manager = BuilderManager(job_manager=job_manager)
-    data_plugin_manager = DataPluginManager(job_manager=job_manager)
-    dumper_manager = DumperManager(job_manager=job_manager)
-    index_manager = IndexManager(job_manager=job_manager)
-    uploader_manager = UploaderManager(job_manager=job_manager)
-
     plugin_type = "CLI"
 
     def __init__(self, plugin_name: str = None):
         from biothings import config
+
+        from biothings.hub.databuild.builder import BuilderManager
+        from biothings.hub.dataindex.indexer import IndexManager
+        from biothings.hub.dataload.dumper import DumperManager
+        from biothings.hub.dataload.uploader import UploaderManager
+        from biothings.hub.dataplugin.manager import DataPluginManager
+
+        self.job_manager = CLIJobManager()
+        self.build_manager = BuilderManager(job_manager=self.job_manager)
+        self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager)
+        self.dumper_manager = DumperManager(job_manager=self.job_manager)
+        self.index_manager = IndexManager(job_manager=self.job_manager)
+        self.uploader_manager = UploaderManager(job_manager=self.job_manager)
 
         self._plugin_name = None
         self.plugin_directory = pathlib.Path().cwd()
