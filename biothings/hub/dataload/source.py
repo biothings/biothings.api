@@ -170,6 +170,22 @@ class SourceManager(BaseSourceManager):
                 count += info.get("count") or 0
                 if detailed:
                     self.set_mapping_src_meta(job, mini)
+        if src.get("validate"):
+            mini["validate"] = {"sources": {}}
+            for job, info in src["validate"]["jobs"].items():
+                mini["validate"]["sources"][job] = {
+                    "time": info.get("time"),
+                    "status": info.get("status"),
+                    "started_at": info.get("started_at"),
+                    "release": info.get("release"),
+                    "data_folder": info.get("data_folder"),
+                }
+                if info.get("err"):
+                    mini["validate"]["sources"][job]["error"] = info["err"]
+                if info.get("tb"):
+                    mini["validate"]["sources"][job]["traceback"] = info["tb"]
+                if detailed:
+                    self.set_mapping_src_meta(job, mini)
         if src.get("inspect"):
             mini["inspect"] = {"sources": {}}
             for job, info in src["inspect"]["jobs"].items():
@@ -251,6 +267,17 @@ class SourceManager(BaseSourceManager):
                                 sources[src["name"]]["upload"]["sources"][subname]["uploader"] = src["upload"]["jobs"][
                                     subname
                                 ].get("uploader")
+                            except Exception as e:
+                                logging.error("Source is invalid: %s\n%s" % (e, pformat(src)))
+                    if src.get("validate"):
+                        for subname in src["validate"].get("jobs", {}):
+                            try:
+                                sources[src["name"]].setdefault("validate", {"sources": {}})["sources"].setdefault(
+                                    subname, {}
+                                )
+                                sources[src["name"]]["validate"]["sources"][subname]["uploader"] = src["upload"][
+                                    "jobs"
+                                ][subname].get("uploader")
                             except Exception as e:
                                 logging.error("Source is invalid: %s\n%s" % (e, pformat(src)))
             # deal with plugin info if any
