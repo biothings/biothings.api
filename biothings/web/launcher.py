@@ -6,6 +6,7 @@
     command-line access to start Biothings APIs.
 
 """
+
 import logging
 import os
 import sys

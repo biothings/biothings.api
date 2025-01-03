@@ -12,6 +12,7 @@ Any hub db backend implementation must implement the functions and
 classes below. See biothings.utils.mongo and biothings.utils.sqlit3 for
 some examples.
 """
+
 import asyncio
 import logging
 import os

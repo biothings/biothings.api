@@ -10,6 +10,7 @@ or
 jmespath.compile("unique(`foo`)").search({}, options=jmp_options)
 
 """
+
 import jmespath
 from jmespath import functions
 
