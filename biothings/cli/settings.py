@@ -113,7 +113,7 @@ def setup_biothings_configuration():
         "indexer_select": {},
         "env": {
             "localhub": {
-                "host": "http://localhost:27017",
+                "host": "http://localhost:9200",
                 "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
             }
         },
