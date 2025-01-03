@@ -92,13 +92,9 @@ def setup_biothings_configuration():
         sys.modules["config"] = configuration_instance
         sys.modules["biothings.config"] = configuration_instance
 
-    # configuration_instance.HUB_DB_BACKEND = {
-    #     "module": "biothings.utils.sqlite3",
-    #     "sqlite_db_folder": ".biothings_hub",
-    # }
     configuration_instance.HUB_DB_BACKEND = {
-        "module": "biothings.utils.mongo",
-        "uri": "mongodb://localhost:27017",
+        "module": "biothings.utils.sqlite3",
+        "sqlite_db_folder": ".biothings_hub",
     }
     configuration_instance.DATA_SRC_SERVER = "localhost"
     configuration_instance.DATA_SRC_DATABASE = "data_src_database"
