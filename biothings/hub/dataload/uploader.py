@@ -618,18 +618,13 @@ class BaseSourceUploader(object):
                 got_error = e
 
         job.add_done_callback(done)
+        await job
 
         try:
             self.logger.info("HELLO WE WENT INTO THE TRY BUT HAVENT GOT ERROR YET")
-            # if got_error:
-            #     self.logger.info("HELLO GOT ERROR 1")
-            #     raise got_error
-
-            await job
-
-            # if got_error:
-            #     self.logger.info("HELLO WE GOT ERROR 2")
-            #     raise got_error
+            if got_error:
+                self.logger.info("HELLO GOT ERROR 1")
+                raise got_error
 
             self.register_status("success", subkey="validate", err=None, tb=None)
         except Exception as e:
