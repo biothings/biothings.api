@@ -630,7 +630,7 @@ class BaseSourceUploader(object):
             import traceback
 
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", subkey="validate" err=str(e), tb=traceback.format_exc())
+            self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc())
             raise
 
 
