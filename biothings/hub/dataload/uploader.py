@@ -601,29 +601,27 @@ class BaseSourceUploader(object):
                 validate_documents(model, docs)
 
     async def validate_src(self, job_manager=None, **kwargs):
-        assert job_manager, "Job manager is required for validation"
-        self.prepare()
-        pinfo = self.get_pinfo()
-        pinfo["step"] = "validate_src"
-        got_error = False
-        self.register_status("validating", subkey="validate")
-        self.unprepare()
-        job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
-
-        def done(f):
-            nonlocal got_error
-            try:
-                f.result()
-            except Exception as e:
-                got_error = e
-
-        job.add_done_callback(done)
-        await job
-
         try:
-            self.logger.info("HELLO WE WENT INTO THE TRY BUT HAVENT GOT ERROR YET")
+            assert job_manager, "Job manager is required for validation"
+            self.prepare()
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "validate_src"
+            got_error = False
+            self.register_status("validating", subkey="validate")
+            self.unprepare()
+            job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
+
+            def done(f):
+                nonlocal got_error
+                try:
+                    f.result()
+                except Exception as e:
+                    got_error = e
+
+            job.add_done_callback(done)
+            await job
+
             if got_error:
-                self.logger.info("HELLO GOT ERROR 1")
                 raise got_error
 
             self.register_status("success", subkey="validate", err=None, tb=None)
