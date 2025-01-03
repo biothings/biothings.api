@@ -1,9 +1,9 @@
 """
-Basic interface to represent the regular JobManager
-for our biothings-cli module
+Basic interface to represent the regular JobManager for our biothings-cli module
 """
 
-from biothings.utils.common import get_loop
+import asyncio
+from typing import Any, Callable
 
 
 class CLIJobManager:
@@ -13,12 +13,21 @@ class CLIJobManager:
     (which runs jobs in threads by default).
     """
 
-    def __init__(self, loop=None):
-        if loop is None:
-            loop = get_loop()
-        self.loop = loop
+    def __init__(self, loop: asyncio.events.AbstractEventLoop = None):
+        self.loop = self._initialize_event_loop(loop)
 
-    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+    def _initialize_event_loop(self, loop: asyncio.events.AbstractEventLoop = None):
+        """
+        Handles the initialization of the event loop
+        """
+        try:
+            if loop is None:
+                loop = asyncio.get_running_loop()
+            return loop
+        except RuntimeError as runtime_error:
+            raise runtime_error
+
+    async def defer_to_process(self, pinfo: dict = None, func: Callable = None, *args, **kwargs) -> asyncio.Future:
         """
         Keep the same signature as JobManager.defer_to_process.
 
@@ -26,20 +35,20 @@ class CLIJobManager:
 
         defer_to_process will still run func in the thread using defer_to_thread method.
         """
-        fut = await self.defer_to_thread(pinfo, func, *args, **kwargs)
-        return fut
+        return await self.defer_to_thread(pinfo, func, *args, **kwargs)
 
-    async def defer_to_thread(self, pinfo=None, func=None, *args):
+    async def defer_to_thread(self, pinfo: dict = None, func: Callable = None, *args, **kwargs) -> asyncio.Future:
         """
         Keep the same signature as JobManager.defer_to_thread.
 
         The passed pinfo is ignored
         """
+        future = self.loop.create_future()
 
-        async def run(fut, func):
-            res = func()
-            fut.set_result(res)
+        self.loop.create_task(CLIJobManager._execute_future(future, func, *args, **kwargs))
+        return future
 
-        fut = self.loop.create_future()
-        self.loop.create_task(run(fut, func))
-        return fut
+    @staticmethod
+    async def _execute_future(future, func, *args, **kwargs):
+        res = func(*args, **kwargs)
+        future.set_result(res)
