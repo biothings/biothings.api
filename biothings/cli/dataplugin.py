@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 import logging
 
@@ -258,4 +259,4 @@ def build_plugin(
     """
     *build* command for building a data plugin
     """
-    operations.do_build(plugin_name=plugin_name)
+    asyncio.run(operations.do_build(plugin_name=plugin_name), debug=True)
