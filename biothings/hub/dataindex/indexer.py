@@ -729,9 +729,9 @@ class IndexManager(BaseManager):
         if not build_doc.get("build_config"):
             raise ValueError("Cannot find build config for '%s'." % build_name)
 
-        idx = self._select_indexer(build_name)
-        idx = idx(build_doc, indexer_env_, index_name)
-        job = idx.index(self.job_manager, ids=ids, **kwargs)
+        indexer_class = self._select_indexer(build_name)
+        indexer_instance = indexer_class(build_doc, indexer_env_, index_name)
+        job = indexer_instance.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
         job.add_done_callback(self.logger.debug)
 
