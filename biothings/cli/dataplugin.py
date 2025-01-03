@@ -67,7 +67,7 @@ def dump_data():
     """
     *dump* command for downloading source data files to local
     """
-    operations.do_dump(plugin_name=None)
+    asyncio.run(operations.do_dump(plugin_name=None))
 
 
 @app.command(
@@ -87,7 +87,7 @@ def upload_source(
     *upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
     A local sqlite database used to store the uploaded data
     """
-    operations.do_upload(plugin_name=None)
+    asyncio.run(operations.do_upload(plugin_name=None))
 
 
 @app.command(
@@ -106,7 +106,7 @@ def dump_and_upload(
     *dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
     Two steps in one command.
     """
-    operations.do_dump_and_upload(plugin_name=None)
+    asyncio.run(operations.do_dump_and_upload(plugin_name=None))
 
 
 @app.command(

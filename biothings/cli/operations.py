@@ -105,7 +105,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
 
 
-def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
+async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
     """
     Perform dump for the given plugin
     """
@@ -139,7 +139,7 @@ def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
     return assistant_instance
 
 
-def do_upload(plugin_name: str = None, show_uploaded: bool = True):
+async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
     """
