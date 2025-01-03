@@ -618,11 +618,14 @@ class BaseSourceUploader(object):
         job.add_done_callback(done)
         await job
         try:
+            self.logger.info("HELLO WE WENT INTO THE TRY BUT HAVENT GOT ERROR YET")
             if got_error:
+                self.logger.info("HELLO WE GOT ERROR")
                 raise got_error
             else:
                 self.register_status("success", subkey="validate", err=None, tb=None)
         except Exception as e:
+            self.logger.info("HELLO WE WENT INTO THE EXCEPT")
             self.logger.exception("failed validation: %s" % e, extra={"notify": True})
             import traceback
 
