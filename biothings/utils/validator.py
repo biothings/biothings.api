@@ -85,17 +85,14 @@ from pydantic import BaseModel, field_validator
     def parse_schema(schema: Dict[str, Any], model_name="", model="", properties=False) -> Dict[str, Any]:
         for field_name, field_info in schema.items():
             if "properties" in field_info:
-                model = (
-                    parse_schema(
-                        field_info["properties"],
-                        field_name.capitalize(),
-                        model,
-                        properties=True,
-                    )
-                    + model
+                model = parse_schema(
+                    field_info["properties"],
+                    field_name.capitalize(),
+                    model,
+                    properties=True,
                 )
-            elif properties:
-                model = generate_model(schema, model_name)
+        if properties:
+            model = model + generate_model(schema, model_name)
         return model
 
     model = parse_schema(schema) + generate_model(schema, model_name)
