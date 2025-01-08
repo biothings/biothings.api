@@ -45,13 +45,16 @@ def create_data_plugin(
         Optional[bool],
         typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
     ] = False,
-    # parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
     parallelizer: Annotated[
         Optional[bool],
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
-    """*create* command for creating a new data plugin from the template"""
+    """
+    *create* command
+
+    creates a new data plugin from a pre-defined template
+    """
     utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
@@ -60,7 +63,11 @@ def create_data_plugin(
     help="Download source data files to local",
 )
 def dump_data():
-    """*dump* command for downloading source data files to local"""
+    """
+    *dump* command
+
+    downloads source data files to the local file system
+    """
     utils.do_dump(plugin_name=None, logger=logger)
 
 
@@ -73,12 +80,20 @@ def upload_source(
         Optional[int],
         typer.Option(
             "--batch-limit",
-            help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
+            help="The maximum number of batches that should be uploaded. Default Batch size is 10000 docs",
         ),
     ] = None,
 ):
-    """*upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
-    A local sqlite database used to store the uploaded data"""
+    """
+    *upload* command
+
+    ***NOTE***
+    Only works correctly if the dump command has been run
+
+    converts the data from the dump operation into JSON documents. Then uploads to a local
+    source database. Default database is sqlite3, but mongodb is supported if configured and an
+    instance is setup
+    """
     utils.do_upload(plugin_name=None, logger=logger)
 
 
@@ -86,16 +101,15 @@ def upload_source(
     "dump_and_upload",
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
-def dump_and_upload(
-    # multi_uploaders: bool = typer.Option(
-    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
-    # ),
-    # parallelizer: bool = typer.Option(
-    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
-    # ),
-):
-    """*dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
-    Two steps in one command."""
+def dump_and_upload():
+    """
+    *dump_and_upload* command
+
+    performs the dump and then upload commands sequentially
+    1) downloads source data files to local file system
+    2) converts them into JSON documents
+    3) uploads those JSON documents to the source database.
+    """
     utils.do_dump_and_upload(plugin_name=None, logger=logger)
 
 
@@ -108,7 +122,11 @@ def listing(
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
-    """*list* command for listing dumped files and/or uploaded sources"""
+    """
+    *list* command
+
+    lists dumped files and/or uploaded sources
+    """
     utils.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
 
 
@@ -145,14 +163,14 @@ def inspect_source(
             """,
         ),
     ] = None,
-    # merge: Annotated[
-    #     Optional[bool],
-    #     typer.Option(
-    #         "--merge",
-    #         "-m",
-    #         help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
-    #     ),
-    # ] = False,
+    merge: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--merge",
+            "-m",
+            help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
+        ),
+    ] = False,
     output: Annotated[
         Optional[str],
         typer.Option(
@@ -162,7 +180,11 @@ def inspect_source(
         ),
     ] = None,
 ):
-    """*inspect* command for giving detailed information about the structure of documents coming from the parser after the upload step"""
+    """
+    *inspect* command
+
+    gives detailed information about the structure of documents coming from the parser after the upload step
+    """
 
     utils.do_inspect(
         plugin_name=None,
@@ -232,5 +254,9 @@ def clean_data(
         ),
     ] = False,
 ):
-    """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
+    """
+    *clean* command
+
+    deletes all dumped files and/or drops uploaded sources tables
+    """
     utils.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
