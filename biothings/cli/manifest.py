@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from typing import Union
 
 import typer
 
@@ -11,14 +13,14 @@ logger = utils.get_logger("biothings-cli")
 
 help_text = "[green]Tools for understanding how to build a manifest for your dataplugin.[/green]"
 
-app = typer.Typer(
+manifest_application = typer.Typer(
     help=help_text,
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
 
 
-@app.command(
+@manifest_application.command(
     name="schema",
     help="Display the biothings manifest schema contents",
     no_args_is_help=False,
@@ -33,7 +35,7 @@ def display_schema():
     breakpoint()
 
 
-@app.command(
+@manifest_application.command(
     name="validate",
     help="Validates a provided manfiest file against the json schema",
     no_args_is_help=True,

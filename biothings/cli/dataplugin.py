@@ -5,7 +5,7 @@ from typing_extensions import Annotated
 
 from biothings.cli import utils
 
-logger = utils.get_logger("dataplugin")
+logger = utils.get_logger("biothings-cli")
 
 
 short_help = (
@@ -24,7 +24,7 @@ long_help = (
     + "\n   :rocket::boom::sparkling_heart:"
 )
 
-app = typer.Typer(
+dataplugin_application = typer.Typer(
     help=long_help,
     short_help=short_help,
     no_args_is_help=True,
@@ -32,7 +32,7 @@ app = typer.Typer(
 )
 
 
-@app.command(
+@dataplugin_application.command(
     name="create",
     help="Create a new data plugin from the tempplate",
 )
@@ -58,7 +58,7 @@ def create_data_plugin(
     utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     name="dump",
     help="Download source data files to local",
 )
@@ -71,7 +71,7 @@ def dump_data():
     utils.do_dump(plugin_name=None, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     name="upload",
     help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
 )
@@ -97,7 +97,7 @@ def upload_source(
     utils.do_upload(plugin_name=None, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     "dump_and_upload",
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
@@ -113,7 +113,7 @@ def dump_and_upload():
     utils.do_dump_and_upload(plugin_name=None, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     name="list",
     help="Listing dumped files or uploaded sources",
 )
@@ -130,7 +130,7 @@ def listing(
     utils.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     name="inspect",
     help="Giving detailed information about the structure of documents coming from the parser",
 )
@@ -197,7 +197,7 @@ def inspect_source(
     )
 
 
-@app.command(name="serve")
+@dataplugin_application.command(name="serve")
 def serve(
     host: Annotated[
         Optional[str],
@@ -238,7 +238,7 @@ def serve(
     utils.do_serve(plugin_name=None, host=host, port=port, logger=logger)
 
 
-@app.command(
+@dataplugin_application.command(
     name="clean",
     help="Delete all dumped files and drop uploaded sources tables",
     no_args_is_help=True,

@@ -18,6 +18,10 @@ except ImportError:
 from biothings.utils.common import DummyConfig
 from biothings.utils.configuration import ConfigurationError
 
+from biothings.cli.dataplugin import dataplugin_application
+from biothings.cli.hub import hub_application
+from biothings.cli.manifest import manifest_application
+
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
 if typer_avail:
@@ -131,9 +135,8 @@ def main():
         return
 
     setup_config()
-    from .dataplugin import app as dataplugin_app
-    from .dataplugin_hub import app as dataplugin_hub_app
 
-    cli.add_typer(dataplugin_app, name="dataplugin")
-    cli.add_typer(dataplugin_hub_app, name="dataplugin-hub")
+    cli.add_typer(dataplugin_application, name="dataplugin")
+    cli.add_typer(hub_application, name="dataplugin-hub")
+    cli.add_typer(manifest_application, name="manifest")
     return cli()
