@@ -11,6 +11,7 @@ import sys
 import textwrap
 import urllib.parse
 from string import Template
+from typing import Union
 
 import jsonschema
 import yaml
@@ -28,6 +29,7 @@ from biothings.utils.common import (
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
+from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
 
 
 class LoaderException(Exception):
@@ -147,6 +149,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         try:
             jsonschema.validate(manifest, manifest_schema)
         except jsonschema.exceptions.ValidationError as validation_error:
+            determine_validation_error_category(validation_error)
             self.logger.exception(validation_error)
             raise validation_error
         except jsonschema.exceptions.SchemaError as schema_error:
@@ -174,7 +177,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.validate_manifest(manifest)
             except Exception as gen_exc:
                 self.logger.error("Unable to validate the manifest")
-                self.logger.exception(gen_exc)
                 raise LoaderException from gen_exc
 
             try:
