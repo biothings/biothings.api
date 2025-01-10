@@ -795,6 +795,7 @@ class UploaderManager(BaseSourceManager):
     """
 
     SOURCE_CLASS = BaseSourceUploader
+    VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
 
     def __init__(self, poll_schedule=None, *args, **kwargs):
         super(UploaderManager, self).__init__(*args, **kwargs)
@@ -954,8 +955,10 @@ class UploaderManager(BaseSourceManager):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
-        logging.error("HELLO: %s.%s" % (inspect.getmodule(klass).__name__, klass.__name__))
-        if validate:
+        logging.error(f"{inspect.getmodule(klass).__name__}.{klass.__name__}")
+        logging.error(f"Validations: {self.VALIDATIONS}")
+
+        if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
             kwargs["generate_model"] = generate_model
             logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
