@@ -955,15 +955,10 @@ class UploaderManager(BaseSourceManager):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
-        logging.error(f"{inspect.getmodule(klass).__name__}.{klass.__name__}")
-        logging.error(f"Validations: {self.VALIDATIONS}")
 
         if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
-            logging.error("Validate: %s" % validate)
-            logging.error("Auto validating uploader '%s'" % f"{inspect.getmodule(klass).__name__}.{klass.__name__}")
 
             kwargs["generate_model"] = generate_model
-            logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
                 await inst.validate_src(*args, **kwargs)
 
@@ -1025,12 +1020,6 @@ class UploaderManager(BaseSourceManager):
         else:
             raise ImportError(f"Module '{module_name}' not found")
         return os.path.join(module_path, "validation")
-
-    # def get_validation_models(self, klass):
-    #     validation_dir = self.get_validation_path(klass)
-    #     if not os.path.exists(validation_dir):
-    #         return []
-    #     return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
 
     async def create_and_validate(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
