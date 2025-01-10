@@ -1,4 +1,5 @@
 """ Backend access class. """
+
 from functools import partial
 
 from elasticsearch.exceptions import NotFoundError, TransportError

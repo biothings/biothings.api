@@ -1,6 +1,7 @@
 """
 Utils for running parallel jobs.
 """
+
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -22,6 +23,7 @@ def run_jobs_on_parallel(worker, task_list, executor_args=None):
 
 def run_jobs_on_ipythoncluster(worker, task_list, shutdown_ipengines_after_done=False):
     import warnings
+
     warnings.warn(DeprecationWarning("This function is deprecated! Use run_jobs_on_parallel function instead."))
 
     import os

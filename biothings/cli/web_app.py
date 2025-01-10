@@ -15,12 +15,10 @@ from biothings.utils.common import traverse
 from biothings.utils.serializer import load_json, to_json
 
 
-class NoResultError(Exception):
-    pass
-
-
-async def get_available_routes(db, table_space):
-    """return a list available URLs/routes based on the table_space and the actual collections in the database"""
+async def get_available_routes(db, table_space) -> tuple[list, list]:
+    """
+    return a list available URLs/routes based on the table_space and the actual collections in the database
+    """
     collection_names = set(db.collection_names())
     list_routes = []
     detail_routes = []
@@ -89,13 +87,11 @@ class QueryHandler(BaseHandler):
         if limit:
             limit = int(limit)
             start = int(start)
-            # entries, total_hit = src_cols.find_with_count(query_params, start=start, limit=limit)
-            entries, total_hit = src_cols.find(
+            entries, total_hit = src_cols.findv2(
                 query_params, start=start, limit=limit, return_total=True, return_list=True
             )
         else:
-            # entries, total_hit = src_cols.find_with_count(query_params)
-            entries, total_hit = src_cols.find(query_params, return_total=True)
+            entries, total_hit = src_cols.findv2(query_params, return_total=True)
         if not entries:
             entries = []
 
@@ -121,14 +117,7 @@ def get_example_queries(db, table_space):
         i = random.randint(0, min(1000, total_cnt - n))
         random_docs = [
             load_json(row[0])
-            for row in (
-                col.get_conn()
-                .execute(
-                    # f"SELECT document FROM {table} WHERE _id IN (SELECT _id FROM {table} ORDER BY RANDOM() LIMIT 10)"
-                    f"SELECT document FROM {table} LIMIT {n} OFFSET {i}"
-                )
-                .fetchall()
-            )
+            for row in (col.get_conn().execute(f"SELECT document FROM {table} LIMIT {n} OFFSET {i}").fetchall())
         ]
         key_value_list = list(chain(*[traverse(doc, leaf_node=True) for doc in random_docs]))
         selected_fields = []
@@ -141,10 +130,12 @@ def get_example_queries(db, table_space):
     return out
 
 
-class Application(tornado.web.Application):
-    """The main application class, which defines the routes and handlers."""
+class CLIApplication(tornado.web.Application):
+    """
+    The main application class, which defines the routes and handlers.
+    """
 
-    def __init__(self, db, table_space, **settings):
+    def __init__(self, db, table_space: list[str], **settings):
         self.db = db
         self.table_space = table_space
         handlers = [
@@ -157,14 +148,18 @@ class Application(tornado.web.Application):
 
 
 async def main(host, port, db, table_space):
-    """The main function, which starts the server."""
+    """
+    The main entrypoint for starting and running the cli server
+    """
     list_routes, detail_routes = await get_available_routes(db, table_space)
     del detail_routes
     if not list_routes:
-        rprint('[red]Error: Source data do not exist or are empty. Was "upload" runned successfully yet?[/red]')
+        rprint('[red]Error: Source data does not exist or is empty. Was "upload" run successfully yet?[/red]')
         return
 
-    app = Application(db, table_space, **{"static_path": "static"})
+    application_settings = {"static_path": "static"}
+
+    app = CLIApplication(db, table_space, **application_settings)
     app.listen(port, address=host)
 
     rprint(f"[green]Listening on http://{host}:{port}[/green]")
