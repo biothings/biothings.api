@@ -2,6 +2,7 @@
 This module contains util functions may be shared by both BioThings data-hub and web components.
 In general, do not include utils depending on any third-party modules.
 """
+
 import asyncio
 import base64
 import concurrent.futures
@@ -472,7 +473,7 @@ def list2dict(a_list, keyitem, alwayslist=False):
     for x in a_list:
         if isinstance(keyitem, int):  # single item as key
             key = x[keyitem]
-            value = tuple(x[:keyitem] + x[keyitem + 1:])
+            value = tuple(x[:keyitem] + x[keyitem + 1 :])
         else:
             key = tuple([x[i] for i in keyitem])
             value = tuple([x[i] for i in range(len(a_list)) if i not in keyitem])
@@ -624,7 +625,7 @@ def SubStr(input_string, start_string="", end_string="", include=0):
         else:
             end_pos += start_pos  # get actual end_pos
     if include == 1:
-        return input_string[start_pos - len(start_string): end_pos + len(end_string)]
+        return input_string[start_pos - len(start_string) : end_pos + len(end_string)]
     else:
         return input_string[start_pos:end_pos]
 

@@ -189,9 +189,7 @@ def _delete(collection, snapshot, envs, ignoreErrors=False):
         )
         if ignoreErrors:
             logger.error(message)
-            logger.info(
-                "Ignoring error and continuing to delete snapshot '%s'", snapshot.attrs["_id"]
-            )
+            logger.info("Ignoring error and continuing to delete snapshot '%s'", snapshot.attrs["_id"])
             collection.update_one(
                 {"_id": snapshot.attrs["build_name"]},
                 {"$unset": {f"snapshot.{snapshot.attrs['_id']}": 1}},

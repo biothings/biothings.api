@@ -18,6 +18,7 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
+
 import logging
 
 import orjson
@@ -199,7 +200,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
         message = {"code": status_code, "success": False, "error": reason}
         try:  # merge exception info
-            logger.debug("", exc_info=kwargs["exc_info"])    # log the full traceback in debug mode
+            logger.debug("", exc_info=kwargs["exc_info"])  # log the full traceback in debug mode
             exception = kwargs["exc_info"][1]
             if isinstance(exception.args[0], dict):
                 message.update(exception.args[0])
