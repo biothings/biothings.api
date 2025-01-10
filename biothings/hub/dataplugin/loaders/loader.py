@@ -149,9 +149,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         try:
             jsonschema.validate(manifest, manifest_schema)
         except jsonschema.exceptions.ValidationError as validation_error:
-            determine_validation_error_category(validation_error)
+            refined_validation_error = determine_validation_error_category(validation_error)
             self.logger.exception(validation_error)
-            raise validation_error
+            raise refined_validation_error
         except jsonschema.exceptions.SchemaError as schema_error:
             self.logger.exception(schema_error)
             raise schema_error
