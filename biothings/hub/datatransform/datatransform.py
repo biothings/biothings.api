@@ -3,6 +3,7 @@ DataTransform Module
 - IDStruct
 - DataTransform (superclass)
 """
+
 # pylint: disable=E0401, E0611
 import re
 from functools import wraps
