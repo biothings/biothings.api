@@ -28,10 +28,8 @@ _should_log = run_once()
 def _log_pkg():
     es_ver = elasticsearch.__version__
     es_dsl_ver = elasticsearch_dsl.__version__
-    logger.info("Elasticsearch Package Version: %s",
-                ".".join(map(str, es_ver)))
-    logger.info("Elasticsearch DSL Package Version: %s",
-                ".".join(map(str, es_dsl_ver)))
+    logger.info("Elasticsearch Package Version: %s", ".".join(map(str, es_ver)))
+    logger.info("Elasticsearch DSL Package Version: %s", ".".join(map(str, es_dsl_ver)))
 
 
 def _log_db(client, uri):
@@ -102,8 +100,7 @@ def get_es_client(hosts=None, async_=False, **settings):
 
     if settings.pop("aws", False):
         if not aws_avail:
-            raise ImportError(
-                '"boto3" and "requests_aws4auth" are required for AWS OpenSearch')
+            raise ImportError('"boto3" and "requests_aws4auth" are required for AWS OpenSearch')
         # find region
         session = boto3.Session()
         region = session.region_name
@@ -119,8 +116,7 @@ def get_es_client(hosts=None, async_=False, **settings):
 
         # find credentials
         credentials = session.get_credentials()
-        awsauth = AWS4Auth(refreshable_credentials=credentials,
-                           region=region, service="es")
+        awsauth = AWS4Auth(refreshable_credentials=credentials, region=region, service="es")
 
         # No longer needed in 8.x, AIOHttpConnection was removed
         # _cc = _AsyncConn if async_ else _Conn

@@ -13,10 +13,7 @@ class Histogram(object):
         self.edge_histogram = {}
 
     def __str__(self):
-        res = {
-            'io_report': self.io_histogram,
-            'edge_report': self.edge_histogram
-        }
+        res = {"io_report": self.io_histogram, "edge_report": self.edge_histogram}
         return str(res)
 
     def update_edge(self, vert1, vert2, size):

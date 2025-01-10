@@ -1902,7 +1902,7 @@ class DockerContainerDumper(BaseDumper):
         self.container = None
         self._source_info = {}  # parsed source_info dictionary from the SRC_URL string
         self.image_metadata = {}  # parsed LABEL metadata from the Docker image
-        self.volumes = None # volumes that is created by the NAMED_VOLUMES var
+        self.volumes = None  # volumes that is created by the NAMED_VOLUMES var
 
     @property
     def source_config(self):

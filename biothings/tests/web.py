@@ -74,6 +74,7 @@
     < Config Module Override >
 
 """
+
 import glob
 import inspect
 import json
@@ -233,9 +234,7 @@ class BiothingsWebTestBase:
 
 
 class BiothingsWebTest(BiothingsWebTestBase):
-    """
-
-    """
+    """ """
 
     @pytest.fixture(autouse=True)
     def set_host(self, request):

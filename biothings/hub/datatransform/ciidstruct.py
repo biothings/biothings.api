@@ -1,6 +1,7 @@
 """
 CIIDStruct - case insenstive id matching data structure
 """
+
 # pylint: disable=E0611
 from .datatransform import IDStruct
 
