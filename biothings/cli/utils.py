@@ -44,6 +44,56 @@ def run_sync_or_async_job(func, *args, **kwargs):
         return func(*args, **kwargs)
 
 
+def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = True, logger: logging.Logger = None):
+    """
+    Return a plugin object for the given plugin_name.
+    If dumper is True, include a dumper instance in the plugin object.
+    If uploader is True, include uploader_classes in the plugin object.
+
+    If <plugin_name> is not valid, raise the proper error and exit.
+    """
+    _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
+    if plugin_name is None:
+        # current working_dir has the data plugin
+        data_plugin_dir = pathlib.Path(working_dir)
+        data_folder = pathlib.Path(".").resolve().absolute()
+        plugin_args = {"plugin_path": working_dir, "plugin_name": None, "data_folder": data_folder}
+    else:
+        data_plugin_dir = pathlib.Path(working_dir, _plugin_name)
+        plugin_args = {"plugin_path": _plugin_name, "plugin_name": None, "data_folder": None}
+    try:
+        dumper_manager, uploader_manager = load_plugin_managers(**plugin_args)
+    except Exception as gen_exc:
+        logger.exception(gen_exc)
+        if plugin_name is None:
+            plugin_loading_error_message = (
+                "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
+            )
+        else:
+            plugin_loading_error_message = (
+                f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
+            )
+        logger.error(plugin_loading_error_message, extra={"markup": True})
+        raise typer.Exit(1)
+
+    current_plugin = SimpleNamespace(
+        plugin_name=_plugin_name,
+        data_plugin_dir=data_plugin_dir,
+        in_plugin_dir=plugin_name is None,
+    )
+    if dumper:
+        dumper_class = dumper_manager[_plugin_name][0]
+        _dumper = dumper_class()
+        _dumper.prepare()
+        current_plugin.dumper = _dumper
+    if uploader:
+        uploader_classes = uploader_manager[_plugin_name]
+        if not isinstance(uploader_classes, list):
+            uploader_classes = [uploader_classes]
+        current_plugin.uploader_classes = uploader_classes
+    return current_plugin
+
+
 def load_plugin_managers(
     plugin_path: Union[str, pathlib.Path], plugin_name: str = None, data_folder: Union[str, pathlib.Path] = None
 ):
