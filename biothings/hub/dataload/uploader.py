@@ -959,6 +959,9 @@ class UploaderManager(BaseSourceManager):
         logging.error(f"Validations: {self.VALIDATIONS}")
 
         if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
+            logging.error("Validate: %s" % validate)
+            logging.error("Auto validating uploader '%s'" % f"{inspect.getmodule(klass).__name__}.{klass.__name__}")
+
             kwargs["generate_model"] = generate_model
             logging.error("Auto validating uploader '%s'" % klass)
             for inst in insts:
