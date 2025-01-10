@@ -471,8 +471,8 @@ class ESResultFormatter(ResultFormatter):
                 # each item in the obj list has already been transformed during the traversal
                 # in the else block below, so we only need to handle the list itself here
                 if jmespath_exclude_empty:
-                    idx_to_remove = [i for i, _obj in enumerate(obj) if not _obj[target_field]]
-                    list_trim(obj, idx_to_remove)  # remove item in-place from obj
+                    idx_to_remove = [i for i, _obj in enumerate(obj) if not _obj.get(target_field)]
+                    list_trim(obj, idx_to_remove)   # remove item in-place from obj
                     # if obj is empty, mark the hit to be removed from the hits list
                     # otherwise, we make sure the hit does not have the __exclude__ mark
                     doc.__doc__ = None if obj else "__exclude__"
