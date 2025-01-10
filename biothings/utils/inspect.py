@@ -3,6 +3,7 @@ This module contains util functions may be shared by both BioThings data-hub and
 In general, do not include utils depending on any third-party modules.
 Note: unittests available in biothings.tests.hub
 """
+
 import copy
 import enum
 import logging

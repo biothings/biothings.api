@@ -385,7 +385,7 @@ class SnapshotPublisher(BasePublisher):
             )
 
         if isinstance(steps, tuple):
-            steps = list(steps)    # may not be necessary, but previous steps default is a list, so let's be consistent
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
         elif type(steps) == str:
             steps = [steps]
         if not bdoc:

@@ -14,4 +14,4 @@ from biothings.hub.datatransform.datatransform_mdb import DataTransformMDB  # no
 from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge  # noqa: F401
 
 # only for testing purpose, this one is not optimized
-#from biothings.hub.datatransform.datatransform_serial import DataTransformSerial
+# from biothings.hub.datatransform.datatransform_serial import DataTransformSerial

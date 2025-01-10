@@ -246,16 +246,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                confdict[
-                    "SET_RELEASE_FUNC"
-                ] = """
+                confdict["SET_RELEASE_FUNC"] = (
+                    """
 %s
 
     def set_release(self):
         self.release = self.%s()
-""" % (
-                    indentfunc,
-                    func,
+"""
+                    % (
+                        indentfunc,
+                        func,
+                    )
                 )
 
             else:
@@ -412,15 +413,16 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict[
-                        "JOBS_FUNC"
-                    ] = """
+                    confdict["JOBS_FUNC"] = (
+                        """
 %s
     def jobs(self):
         return self.%s()
-""" % (
-                        indentfunc,
-                        func,
+"""
+                        % (
+                            indentfunc,
+                            func,
+                        )
                     )
                 else:
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
@@ -429,18 +431,19 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict[
-                        "MAPPING_FUNC"
-                    ] = """
+                    confdict["MAPPING_FUNC"] = (
+                        """
     @classmethod
 %s
 
     @classmethod
     def get_mapping(cls):
         return cls.%s()
-""" % (
-                        indentfunc,
-                        func,
+"""
+                        % (
+                            indentfunc,
+                            func,
+                        )
                     )
                 else:
                     confdict["MAPPING_FUNC"] = ""
@@ -743,9 +746,10 @@ class LocalAssistant(BaseAssistant):
             # (and we're matching directory names on the filesystem, it's case-sensitive)
             src_folder_name = os.path.basename(split.netloc)
             try:
-                self._plugin_name = get_plugin_name_from_local_manifest(
-                    os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
-                ) or src_folder_name
+                self._plugin_name = (
+                    get_plugin_name_from_local_manifest(os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name))
+                    or src_folder_name
+                )
             except Exception as ex:
                 self.logger.exception(ex)
                 self._plugin_name = src_folder_name

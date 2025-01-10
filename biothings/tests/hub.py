@@ -9,7 +9,6 @@ import pymongo
 
 
 class DatabaseCollectionTesting:
-
     """
     Constructor that takes in three items
     db_url      - string - the mongoDB url to connect to

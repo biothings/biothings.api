@@ -7,6 +7,7 @@ import ssl
 
 from biothings.web.analytics.events import Event, Message
 
+
 class Channel:
     async def handles(self, event):
         raise NotImplementedError()
@@ -29,11 +30,7 @@ class SlackChannel(Channel):
 
     async def send_request(self, session, url, event):
         ssl_context = ssl.create_default_context(cafile=certifi.where())
-        async with session.post(
-                url,
-                json=event.to_slack_payload(),
-                ssl=ssl_context  # for Windows compatibility
-        ) as _:
+        async with session.post(url, json=event.to_slack_payload(), ssl=ssl_context) as _:  # for Windows compatibility
             pass
 
 
@@ -53,7 +50,7 @@ class GAChannel(Channel):
             # Usually, each client request is going to make just 1 request to the GA API.
             # However, it's possible to collect data to GA in other parts of the application.
             for i in range(0, len(events), 20):
-                data = "\n".join(events[i:i + 20])
+                data = "\n".join(events[i : i + 20])
                 await self.send_request(session, self.url, data)
 
     async def send_request(self, session, url, data):
@@ -82,7 +79,7 @@ class GA4Channel(Channel):
                 data = {
                     "client_id": str(event._cid(self.uid_version)),
                     "user_id": str(event._cid(1)),
-                    "events": events[i:i + 25],
+                    "events": events[i : i + 25],
                 }
                 await self.send_request(session, self.url, orjson.dumps(data))
 
@@ -92,7 +89,10 @@ class GA4Channel(Channel):
         while retries <= self.max_retries:
             async with session.post(url, data=data) as response:
                 if response.status >= 500:  # HTTP 5xx
-                    logging.warning("GA4Channel: Received HTTP %d. Retrying (%d/%d)..." % (response.status, retries+1, self.max_retries))
+                    logging.warning(
+                        "GA4Channel: Received HTTP %d. Retrying (%d/%d)..."
+                        % (response.status, retries + 1, self.max_retries)
+                    )
                     delay = base_delay * (2 ** (retries - 1))  # Exponential backoff (1s, 2s, 4s, 8s, etc.)
                     await asyncio.sleep(delay)  # Add a delay before retrying
                     retries += 1

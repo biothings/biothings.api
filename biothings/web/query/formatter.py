@@ -7,6 +7,7 @@
     one or more individual queries.
 
 """
+
 from collections import UserDict, defaultdict
 
 from elastic_transport import ObjectApiResponse
@@ -15,7 +16,9 @@ from biothings.utils.common import dotdict, traverse, list_trim
 from biothings.utils.jmespath import options as jmp_options
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class FormatterDict(UserDict):
     def collapse(self, key):
@@ -239,7 +242,6 @@ class ESResultFormatter(ResultFormatter):
 
             return response_
 
-
         if isinstance(response, dict):
             response = self._Hits(response)
             response.collapse("hits")
@@ -253,7 +255,9 @@ class ESResultFormatter(ResultFormatter):
                 self._transform_hit(hit, options)
 
             if options.get("native", True):
-                response["hits"] = [hit.data for hit in response["hits"] if not (hit.__doc__ or "").startswith("__exclude__")]
+                response["hits"] = [
+                    hit.data for hit in response["hits"] if not (hit.__doc__ or "").startswith("__exclude__")
+                ]
                 response = response.data
 
             if "aggregations" in response:
@@ -413,12 +417,13 @@ class ESResultFormatter(ResultFormatter):
         if path in licenses and isinstance(obj, dict):
             obj["_license"] = licenses[path]
 
-
     @staticmethod
-    def trasform_jmespath_obj(obj, parent_path: str, target_field: str, doc, jmes_query, jmespath_exclude_empty=False) -> None:
+    def trasform_jmespath_obj(
+        obj, parent_path: str, target_field: str, doc, jmes_query, jmespath_exclude_empty=False
+    ) -> None:
         if not isinstance(obj, (dict, UserDict)):
             raise ResultFormatterException(
-                f"\"parent_path\" in jmespath transformation cannot be non-dict type: \"{parent_path}\"({type(obj).__name__})"
+                f'"parent_path" in jmespath transformation cannot be non-dict type: "{parent_path}"({type(obj).__name__})'
             )
         target_field_value = obj.get(target_field) if target_field else obj
         if target_field_value:

@@ -2,6 +2,7 @@
 Backend for storing merged genedoc after building.
 Support MongoDB, ES, CouchDB
 """
+
 import os
 from functools import partial
 
