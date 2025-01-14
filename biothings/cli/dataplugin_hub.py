@@ -1,11 +1,12 @@
 from typing import Optional
+import logging
 
 import typer
 from typing_extensions import Annotated
 
 from biothings.cli import utils
 
-logger = utils.get_logger("dataplugin-hub")
+logger = logging.getLogger("biothings-cli")
 
 short_help = "[green]Test multiple data plugins in a local minimal hub without any external databases.[/green]"
 long_help = (
