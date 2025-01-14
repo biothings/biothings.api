@@ -1,11 +1,12 @@
 from typing import Optional
+import logging
 
 import typer
 from typing_extensions import Annotated
 
-from biothings.cli import utils
+from biothings.cli import operations
 
-logger = utils.get_logger("dataplugin")
+logger = logging.getLogger("biothings-cli")
 
 
 short_help = (
@@ -52,7 +53,7 @@ def create_data_plugin(
     ] = False,
 ):
     """*create* command for creating a new data plugin from the template"""
-    utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
+    operations.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
 @app.command(
@@ -61,7 +62,7 @@ def create_data_plugin(
 )
 def dump_data():
     """*dump* command for downloading source data files to local"""
-    utils.do_dump(plugin_name=None, logger=logger)
+    operations.do_dump(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -79,7 +80,7 @@ def upload_source(
 ):
     """*upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
     A local sqlite database used to store the uploaded data"""
-    utils.do_upload(plugin_name=None, logger=logger)
+    operations.do_upload(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -96,7 +97,7 @@ def dump_and_upload(
 ):
     """*dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
     Two steps in one command."""
-    utils.do_dump_and_upload(plugin_name=None, logger=logger)
+    operations.do_dump_and_upload(plugin_name=None, logger=logger)
 
 
 @app.command(
@@ -109,7 +110,7 @@ def listing(
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
     """*list* command for listing dumped files and/or uploaded sources"""
-    utils.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
+    operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
 
 
 @app.command(
@@ -164,7 +165,7 @@ def inspect_source(
 ):
     """*inspect* command for giving detailed information about the structure of documents coming from the parser after the upload step"""
 
-    utils.do_inspect(
+    operations.do_inspect(
         plugin_name=None,
         sub_source_name=sub_source_name,
         mode=mode,
@@ -213,7 +214,7 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    utils.do_serve(plugin_name=None, host=host, port=port, logger=logger)
+    operations.do_serve(plugin_name=None, host=host, port=port, logger=logger)
 
 
 @app.command(
@@ -233,4 +234,4 @@ def clean_data(
     ] = False,
 ):
     """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
-    utils.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
