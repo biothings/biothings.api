@@ -1,6 +1,7 @@
 """
 Utils to compare two list of gene documents, requires to setup Biothing Hub.
 """
+
 import os
 import os.path
 import time

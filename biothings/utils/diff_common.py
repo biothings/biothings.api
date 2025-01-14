@@ -1,6 +1,7 @@
 """
 Utils to compare two list of gene documents, no require to setup Biothings Hub.
 """
+
 import json
 import time
 

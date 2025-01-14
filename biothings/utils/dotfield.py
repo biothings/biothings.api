@@ -65,6 +65,7 @@ def compose_dot_fields_by_fields(doc, fields):
         if k.find(".") != -1:
             if not res:
                 import copy
+
                 res = copy.deepcopy(doc)
             ks = k.split(".")
             broke = False

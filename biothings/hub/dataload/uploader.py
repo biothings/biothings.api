@@ -260,6 +260,7 @@ class BaseSourceUploader(object):
         after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -270,8 +271,10 @@ class BaseSourceUploader(object):
                 self.collection.rename(new_name, dropTarget=True)
             self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
+        elif self.temp_collection_name and self.db[self.collection_name].count() == 0:
+            raise ResourceError("No data parsed into temp collection")
         else:
-            raise ResourceError("No temp collection (or it's empty)")
+            raise ResourceError("No temp collection to switch to")
 
     def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
         """Override as needed to perform operations after

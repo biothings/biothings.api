@@ -4,6 +4,7 @@ from collections import defaultdict
 from tornado.web import RequestHandler
 from biothings.web.analytics.channels import GA4Channel, GAChannel, SlackChannel
 
+
 class Notifier:
     def __init__(self, settings):
         self.channels = []
