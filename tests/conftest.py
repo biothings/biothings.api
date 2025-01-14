@@ -21,6 +21,7 @@ config_mod.ES_INDICES = {"dev": "main_build_configuration"}
 config_mod.ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]
 config_mod.LOG_FOLDER = os.path.join(config_mod.DATA_ARCHIVE_ROOT, "logs")
 config_mod.DATA_SRC_DATABASE = "testing.db"
+config_mod.DATA_SRC_SERVER = "testing.server"
 
 sys.modules["config"] = config_mod
 sys.modules["biothings.config"] = config_mod
