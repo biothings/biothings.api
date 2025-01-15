@@ -540,27 +540,13 @@ class BaseSourceUploader(object):
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
-    def validate(self, generate_model=False, model_file=None, docs: Optional[Iterable] = None):
+    def validate(self, model_file=None, docs: Optional[Iterable] = None):
         """Validate documents in the collection using the Pydantic model
-        :param generate_model: Auto Generate Pydantic model from the mapping
         :param model_file: Pydantic model file to use for validation
         :param docs: List of documents to validate
         """
 
         self.prepare()
-
-        if generate_model:
-            try:
-                self.logger.info("Auto-generating Pydantic model for uploader source '%s'", self.fullname)
-                mapping = self._state["src_master"].find_one({"_id": self.collection_name})
-                self.logger.info("Mapping found for uploader source '%s'", self.fullname)
-                mapping = mapping.get("mapping")
-
-            except AttributeError:
-                raise ValueError("No mapping found for uploader source '%s'" % self.fullname)
-            self.logger.info("Creating Pydantic model for uploader source '%s'", self.fullname)
-            model_str = create_pydantic_model(mapping, self.collection_name.casefold())  # Get the current frame
-            self.commit_pydantic_model(model_str)
 
         try:
             if not self.validation_dir:
@@ -601,6 +587,7 @@ class BaseSourceUploader(object):
                 validate_documents(model, docs)
 
     async def validate_src(self, job_manager=None, **kwargs):
+        """Validate the source data using the Pydantic model"""
         try:
             assert job_manager, "Job manager is required for validation"
             self.prepare()
@@ -871,7 +858,7 @@ class UploaderManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def upload_src(self, src, validate=False, generate_model=False, *args, **kwargs):
+    def upload_src(self, src, validate=False, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
         Other args are passed to uploader's load() method
@@ -887,7 +874,7 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, validate, generate_model, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -949,7 +936,7 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, validate=False, generate_model=False, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
@@ -958,7 +945,6 @@ class UploaderManager(BaseSourceManager):
 
         if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
 
-            kwargs["generate_model"] = generate_model
             for inst in insts:
                 await inst.validate_src(*args, **kwargs)
 

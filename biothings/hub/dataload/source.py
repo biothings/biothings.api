@@ -397,7 +397,7 @@ class SourceManager(BaseSourceManager):
             raise ValueError(f"Can't delete information, not found in document: {e}")
 
     def get_mapping(self, name):
-        logging.debug("Getting mapping for source '%s'", name)
+        """Get the mapping for a given source name"""
         # either given a fully qualified source or just sub-source
         try:
             m = self.src_master.find_one({"_id": name})
