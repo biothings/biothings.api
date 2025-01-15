@@ -1,9 +1,16 @@
+"""
+Configuration settings for the biothings-cli tool
+
+> Logging
+> Tool Configuration
+    > Creates a mock config used in the biothings.api backend
+"""
+
 from typing import Literal
 import importlib
 import importlib.util
 import inspect
 import logging
-import os
 import pathlib
 import sys
 

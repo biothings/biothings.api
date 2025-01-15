@@ -1,3 +1,12 @@
+"""
+Utility functions for the biothings-cli tool
+
+These are semantically separated from the operations
+in that these functions aide in helping the operations
+perform a task. Usually anything releated to plugin metadata,
+job handling, and data manipulation should logically exist here
+"""
+
 import asyncio
 import logging
 import math
@@ -10,7 +19,6 @@ from pprint import pformat
 from types import SimpleNamespace
 from typing import Union
 
-import tornado.template
 import typer
 import yaml
 from rich import box, print as rprint
@@ -22,7 +30,6 @@ from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 
 
@@ -259,6 +266,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
+    from biothings.utils import hub_db
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
