@@ -31,7 +31,6 @@ from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
 import biothings.utils.inspect as btinspect
-from biothings.cli.structure import TEMPLATE_DIRECTORY
 
 
 logger = logging.getLogger(name="biothings-cli")

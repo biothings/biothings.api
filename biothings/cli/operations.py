@@ -57,7 +57,6 @@ import tornado.template
 import typer
 import rich
 
-from biothings.utils.workers import upload_worker
 from biothings.cli.utils import (
     get_uploaders,
     load_plugin,
@@ -69,6 +68,8 @@ from biothings.cli.utils import (
     show_hubdb_content,
     show_uploaded_sources,
 )
+from biothings.cli.structure import TEMPLATE_DIRECTORY
+from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(name="biothings-cli")
@@ -82,16 +83,14 @@ def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
     Create a new data plugin from the template
     """
     working_dir = pathlib.Path().resolve()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
+    plugin_directory = os.path.join(working_dir, name)
+    if os.path.isdir(plugin_directory):
         logger.error("Data plugin with the same name is already exists, please remove it before create")
         sys.exit(1)
-    shutil.copytree(template_dir, plugin_dir)
+    shutil.copytree(TEMPLATE_DIRECTORY, plugin_directory)
 
     # create manifest file
-    loader = tornado.template.Loader(plugin_dir)
+    loader = tornado.template.Loader(plugin_directory)
     parsed_template = (
         loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
@@ -100,10 +99,10 @@ def do_create(name, multi_uploaders=False, parallelizer=False, logger=None):
         fh.write(parsed_template)
 
     # remove manifest template
-    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
+    os.unlink(f"{plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
-        os.unlink(f"{plugin_dir}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
+        os.unlink(f"{plugin_directory}/parallelizer.py")
+    logger.info(f"Successfully created data plugin template at: \n {plugin_directory}")
 
 
 ###############################
