@@ -1,11 +1,12 @@
 from typing import Optional
+import logging
 
 import typer
 from typing_extensions import Annotated
 
-from biothings.cli import utils
+from biothings.cli import operations
 
-logger = utils.get_logger("dataplugin-hub")
+logger = logging.getLogger("biothings-cli")
 
 short_help = "[green]Test multiple data plugins in a local minimal hub without any external databases.[/green]"
 long_help = (
@@ -53,7 +54,7 @@ def create_data_plugin(
 
     creates a new data plugin from a pre-defined template
     """
-    utils.do_create(name, multi_uploaders, parallelizer, logger=logger)
+    operations.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
 @hub_application.command(
@@ -71,7 +72,7 @@ def dump_data(
 
     downloads source data files to the local file system
     """
-    utils.do_dump(plugin_name, logger=logger)
+    operations.do_dump(plugin_name, logger=logger)
 
 
 @hub_application.command(
@@ -101,7 +102,7 @@ def upload_source(
     source database. Default database is sqlite3, but mongodb is supported if configured and an
     instance is setup
     """
-    utils.do_upload(plugin_name, logger=logger)
+    operations.do_upload(plugin_name, logger=logger)
 
 
 @hub_application.command(
@@ -122,7 +123,7 @@ def dump_and_upload(
     2) converts them into JSON documents
     3) uploads those JSON documents to the source database.
     """
-    utils.do_dump_and_upload(plugin_name, logger=logger)
+    operations.do_dump_and_upload(plugin_name, logger=logger)
 
 
 @hub_application.command(
@@ -143,7 +144,7 @@ def listing(
 
     lists dumped files and/or uploaded sources
     """
-    utils.do_list(plugin_name, dump, upload, hubdb, logger=logger)
+    operations.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
 
 @hub_application.command(
@@ -205,7 +206,7 @@ def inspect_source(
 
     gives detailed information about the structure of documents coming from the parser after the upload step
     """
-    utils.do_inspect(
+    operations.do_inspect(
         plugin_name=plugin_name,
         sub_source_name=sub_source_name,
         mode=mode,
@@ -258,7 +259,7 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    utils.do_serve(plugin_name=plugin_name, host=host, port=port, logger=logger)
+    operations.do_serve(plugin_name=plugin_name, host=host, port=port, logger=logger)
 
 
 @hub_application.command(
@@ -286,4 +287,4 @@ def clean_data(
 
     deletes all dumped files and/or drops uploaded sources tables
     """
-    utils.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    operations.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
