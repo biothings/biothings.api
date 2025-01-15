@@ -47,32 +47,17 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 """
 
-import asyncio
 import logging
-import math
 import os
 import pathlib
 import shutil
 import sys
-import time
-from pprint import pformat
-from types import SimpleNamespace
-from typing import Union
 
 import tornado.template
 import typer
-import yaml
-from rich import box, print as rprint
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+import rich
 
-from biothings.utils import es
-from biothings.utils.common import timesofar
-from biothings.utils.dataload import dict_traverse
-from biothings.utils.serializer import load_json, to_json
 from biothings.utils.workers import upload_worker
-import biothings.utils.inspect as btinspect
 from biothings.cli.utils import (
     get_uploaders,
     load_plugin,
@@ -292,18 +277,18 @@ def do_clean_dumped_files(data_folder, plugin_name):
     Remove all dumped files by a data plugin in the data folder.
     """
     if not os.path.isdir(data_folder):
-        rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
+        rich.print(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
         return
     if not os.listdir(data_folder):
-        rprint("[red]Empty folder![/red]")
+        rich.print("[red]Empty folder![/red]")
     else:
-        rprint(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
+        rich.print(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(os.listdir(data_folder)))
         delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
         remove_files_in_folder(data_folder)
-        rprint("[green]Deleted![/green]")
+        rich.print("[green]Deleted![/green]")
 
 
 def do_clean_uploaded_sources(working_dir, plugin_name):
@@ -323,16 +308,16 @@ def do_clean_uploaded_sources(working_dir, plugin_name):
             if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
                 uploaded_sources.append(item)
     if not uploaded_sources:
-        rprint("[red]No source has been uploaded yet! [/red]")
+        rich.print("[red]No source has been uploaded yet! [/red]")
     else:
-        rprint(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
+        rich.print(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(uploaded_sources))
         delete = typer.confirm("Do you want to drop them?")
         if not delete:
             raise typer.Abort()
         for source in uploaded_sources:
             src_db[source].drop()
-        rprint("[green]All collections are dropped![/green]")
+        rich.print("[green]All collections are dropped![/green]")
 
 
 def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):

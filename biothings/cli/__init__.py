@@ -1,13 +1,13 @@
-import functools
+"""
+Entrypoint for the biothings-cli tool
+"""
+
 import importlib.util
-import inspect
 import logging
 import os
-import pathlib
 import sys
 
 
-from biothings.cli.log import setup_logging
 from biothings.cli.settings import (
     setup_biothings_configuration,
     setup_commandline_configuration,
