@@ -540,7 +540,7 @@ class BaseSourceUploader(object):
             self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
             raise e
 
-    def validate(self, model_file=None, docs: Optional[Iterable] = None):
+    def validate(self, model_path, docs: Optional[Iterable] = None):
         """Validate documents in the collection using the Pydantic model
         :param model_file: Pydantic model file to use for validation
         :param docs: List of documents to validate
@@ -548,6 +548,22 @@ class BaseSourceUploader(object):
 
         self.prepare()
 
+        model = import_validator(model_path, self.collection_name.casefold())
+        # for cli usage
+        if docs:
+            self.logger.info("Validating documents from an iterable")
+            validate_documents(model, docs)
+        else:
+            session = self._state["conn"].start_session()
+            src_collection = self._state["collection"]
+            self.logger.info("Validating documents from collection '%s'", src_collection)
+
+            with session:
+                docs = src_collection.find({}, no_cursor_timeout=True, session=session)
+                validate_documents(model, docs)
+
+    async def validate_src(self, job_manager=None, model_file=None, **kwargs):
+        """Validate the source data using the Pydantic model"""
         try:
             if not self.validation_dir:
                 raise ValueError("No validation directory found for uploader source '%s'", self.fullname)
@@ -565,7 +581,6 @@ class BaseSourceUploader(object):
                 self.logger.info("No model file provided, using default model file: %s", f"{self.name}_model.py")
                 model_path = os.path.join(self.validation_dir, f"{self.name}_model.py")
 
-            model = import_validator(model_path, self.collection_name.casefold())
         except Exception as e:
             self.logger.error(
                 "Error importing Pydantic model for uploader source '%s'. Make sure you have committed a valid pydantic model.",
@@ -573,30 +588,17 @@ class BaseSourceUploader(object):
             )
             raise e
 
-        # for cli usage
-        if docs:
-            self.logger.info("Validating documents from an iterable")
-            validate_documents(model, docs)
-        else:
-            session = self._state["conn"].start_session()
-            src_collection = self._state["collection"]
-            self.logger.info("Validating documents from collection '%s'", src_collection)
-
-            with session:
-                docs = src_collection.find({}, no_cursor_timeout=True, session=session)
-                validate_documents(model, docs)
-
-    async def validate_src(self, job_manager=None, **kwargs):
-        """Validate the source data using the Pydantic model"""
         try:
             assert job_manager, "Job manager is required for validation"
             self.prepare()
             pinfo = self.get_pinfo()
             pinfo["step"] = "validate_src"
             got_error = False
-            self.register_status("validating", subkey="validate")
+
+            extra = {"model_file": model_path}
+            self.register_status("validating", subkey="validate", **extra)
             self.unprepare()
-            job = await job_manager.defer_to_process(pinfo, partial(self.validate, **kwargs))
+            job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
 
             def done(f):
                 nonlocal got_error
