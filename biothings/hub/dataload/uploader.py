@@ -613,13 +613,13 @@ class BaseSourceUploader(object):
             if got_error:
                 raise got_error
 
-            self.register_status("success", subkey="validate", err=None, tb=None)
+            self.register_status("success", subkey="validate", err=None, tb=None, **extra)
         except Exception as e:
             self.logger.exception("failed validation: %s" % e, extra={"notify": True})
             import traceback
 
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc())
+            self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc(), **extra)
             raise
 
 
