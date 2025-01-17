@@ -33,7 +33,7 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------
-> mock web server 
+> mock web server
 
 > def do_serve(plugin_name=None, host="localhost", port=9999, logger=None):
 ------------------------------------------------------------------------------------
@@ -182,11 +182,8 @@ def do_dump_and_upload(plugin_name, logger=None):
     """
     Perform both dump and upload for the given plugin
     """
-    _plugin = do_dump(plugin_name, show_dumped=False, logger=logger)
+    do_dump(plugin_name, show_dumped=False, logger=logger)
     do_upload(plugin_name, show_uploaded=False, logger=logger)
-    logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-    show_dumped_files(_plugin.dumper.new_data_folder, _plugin.plugin_name)
-    show_uploaded_sources(pathlib.Path(_plugin.data_plugin_dir), _plugin.plugin_name)
 
 
 def do_list(plugin_name=None, dump=True, upload=True, hubdb=False, logger=None):
