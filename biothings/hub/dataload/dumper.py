@@ -14,6 +14,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
+from email.message import Message
 from ftplib import FTP
 from functools import partial
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
@@ -568,7 +569,7 @@ class BaseDumper(object):
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []
 
-    def prepare_local_folders(self, localfile):
+    def prepare_local_folders(self, localfile: Union[str, Path]):
         localdir = os.path.dirname(localfile)
         if not os.path.exists(localdir):
             try:
@@ -781,13 +782,13 @@ class LastModifiedFTPDumper(LastModifiedBaseDumper):
 
 
 class HTTPDumper(BaseDumper):
-    """Dumper using HTTP protocol and "requests" library"""
+    """
+    Dumper using HTTP protocol and "requests" library
+    """
 
     VERIFY_CERT = True
     IGNORE_HTTP_CODE = []  # list of HTTP code to ignore in case on non-200 response
     RESOLVE_FILENAME = False  # global trigger to get filenames from headers
-
-    # when available
 
     def prepare_client(self):
         self.client = requests.Session()
@@ -808,7 +809,7 @@ class HTTPDumper(BaseDumper):
         """
         return True
 
-    def download(self, remoteurl, localfile, headers={}):  # noqa: B006
+    def download(self, remoteurl: str, localfile: Union[str, Path], headers: dict = {}):  # noqa: B006
         self.prepare_local_folders(localfile)
         res = self.client.get(remoteurl, stream=True, headers=headers)
         if not res.status_code == 200:
@@ -819,20 +820,32 @@ class HTTPDumper(BaseDumper):
                 raise DumperException(
                     "Error while downloading '%s' (status: %s, reason: %s)" % (remoteurl, res.status_code, res.reason)
                 )
+
         # issue biothings.api #3: take filename from header if specified
-        # note: this has to explicit, either on a globa (class) level or per file to dump
+        # note: this has to explicit, either on a global (class) level or per file to dump
+
         if self.__class__.RESOLVE_FILENAME and res.headers.get("content-disposition"):
+            message = Message()
+            message["content-type"] = res.headers["content-disposition"]
+            header_parameters = message.get_params()
             parsed = cgi.parse_header(res.headers["content-disposition"])
-            # looks like: ('attachment', {'filename': 'the_filename.txt'})
-            if parsed and parsed[0] == "attachment" and parsed[1].get("filename"):
+
+            # Expected Structure for the content-disposition headers:
+            # ('attachment', {'filename': 'file.txt'})
+            if (
+                header_parameters is not None
+                and header_parameters[0] == "attachment"
+                and header_parameters[1].get("filename", None) is not None
+            ):
                 # localfile is an absolute path, replace last part
                 localfile = os.path.join(os.path.dirname(localfile), parsed[1]["filename"])
+
         self.logger.debug("Downloading '%s' as '%s'" % (remoteurl, localfile))
-        fout = open(localfile, "wb")
-        for chunk in res.iter_content(chunk_size=512 * 1024):
-            if chunk:
-                fout.write(chunk)
-        fout.close()
+
+        with open(localfile, "wb", encoding="utf-8") as file_handle:
+            for chunk in res.iter_content(chunk_size=512 * 1024):
+                if chunk:
+                    fout.write(chunk)
         return res
 
 
@@ -938,7 +951,7 @@ class WgetDumper(BaseDumper):
         else:
             self.logger.error(f"Failed with return code ({result.returncode}).")
 
-    def prepare_local_folders(self, localfile):
+    def prepare_local_folders(self, localfile: Union[str, Path]):
         # Ensure the directory for the local file exists
         os.makedirs(os.path.dirname(localfile), exist_ok=True)
 
