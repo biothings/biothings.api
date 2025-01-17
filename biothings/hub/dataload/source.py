@@ -179,6 +179,7 @@ class SourceManager(BaseSourceManager):
                     "started_at": info.get("started_at"),
                     "release": info.get("release"),
                     "data_folder": info.get("data_folder"),
+                    "model_file": info.get("model_file"),
                 }
                 if info.get("err"):
                     mini["validate"]["sources"][job]["error"] = info["err"]
