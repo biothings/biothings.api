@@ -98,14 +98,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
     def _parse_json(self):
         if not self.request.body:
-            raise HTTPError(
-                400,
-                reason=(
-                    "Empty body is not a valid JSON. "
-                    "Remove the content-type header, or "
-                    "provide an empty object in the body."
-                ),
-            )
+            return {}
         try:
             return orjson.loads(self.request.body)
         except orjson.JSONDecodeError:
