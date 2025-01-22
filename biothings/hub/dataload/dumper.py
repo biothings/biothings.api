@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from email.message import Message
 from ftplib import FTP
 from functools import partial
+from pathlib import Path
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
 from urllib import parse as urlparse
 
@@ -51,7 +52,7 @@ class DockerContainerException(Exception):
     pass
 
 
-class BaseDumper(object):
+class BaseDumper:
     # override in subclass accordingly
     SRC_NAME = None
     SRC_ROOT_FOLDER = None  # source folder (without version/dates)
@@ -355,7 +356,7 @@ class BaseDumper(object):
         assert job_manager
         # check what to do
         self.steps = steps or self.steps
-        if type(self.steps) == str:
+        if isinstance(self.steps, str):
             self.steps = [self.steps]
         strargs = "[steps=%s]" % ",".join(self.steps)
         try:
@@ -696,7 +697,7 @@ class LastModifiedBaseDumper(BaseDumper):
         raise NotImplementedError("Implement me in sub-class")
 
     def create_todump_list(self, force=False):
-        assert type(self.__class__.SRC_URLS) is list, "SRC_URLS should be a list"
+        assert isinstance(self.__class__.SRC_URLS, list), "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         self.set_release()  # so we can generate new_data_folder
         for src_url in self.__class__.SRC_URLS:
@@ -790,18 +791,27 @@ class HTTPDumper(BaseDumper):
     IGNORE_HTTP_CODE = []  # list of HTTP code to ignore in case on non-200 response
     RESOLVE_FILENAME = False  # global trigger to get filenames from headers
 
-    def prepare_client(self):
+    def prepare_client(self) -> None:
         self.client = requests.Session()
         self.client.verify = self.__class__.VERIFY_CERT
 
-    def need_prepare(self):
-        return not self.client
+    def need_prepare(self) -> bool:
+        """
+        Have to access the underlying state dictionary because
+        accessing the `client` class property while instantiate
+        a requests.Session session instance automatically
 
-    def release_client(self):
+        If we access the client that way this method will always return
+        False as we immediately generated a new requests.Session
+        """
+        client_state = self._state.get("client", None)
+        return not client_state
+
+    def release_client(self) -> None:
         self.client.close()
         self.client = None
 
-    def remote_is_better(self, remotefile, localfile):
+    def remote_is_better(self, remotefile: str, localfile: Union[str, Path]) -> bool:
         """
         Determine if remote is better
 
@@ -809,44 +819,51 @@ class HTTPDumper(BaseDumper):
         """
         return True
 
-    def download(self, remoteurl: str, localfile: Union[str, Path], headers: dict = {}):  # noqa: B006
+    def download(
+        self, remoteurl: str, localfile: Union[str, Path], headers: dict = {}
+    ) -> requests.models.Response:  # noqa: B006
+        """
+        Handles downloading of remote files over HTTP to the local file system
+        """
         self.prepare_local_folders(localfile)
-        res = self.client.get(remoteurl, stream=True, headers=headers)
-        if not res.status_code == 200:
-            if res.status_code in self.__class__.IGNORE_HTTP_CODE:
-                self.logger.info("Remote URL %s gave http code %s, ignored" % (remoteurl, res.status_code))
-                return
+        response = self.client.get(remoteurl, stream=True, headers=headers)
+        if not response.status_code == 200:
+            if response.status_code in self.__class__.IGNORE_HTTP_CODE:
+                self.logger.info("Remote URL %s gave http code %s, ignored", remoteurl, response.status_code)
+                return None
             else:
                 raise DumperException(
-                    "Error while downloading '%s' (status: %s, reason: %s)" % (remoteurl, res.status_code, res.reason)
+                    "Error while downloading '%s' (status: %s, reason: %s)",
+                    remoteurl,
+                    response.status_code,
+                    response.reason,
                 )
 
-        # issue biothings.api #3: take filename from header if specified
         # note: this has to explicit, either on a global (class) level or per file to dump
+        if self.__class__.RESOLVE_FILENAME and response.headers.get("content-disposition"):
 
-        if self.__class__.RESOLVE_FILENAME and res.headers.get("content-disposition"):
-            message = Message()
-            message["content-type"] = res.headers["content-disposition"]
-            header_parameters = message.get_params()
-            parsed = cgi.parse_header(res.headers["content-disposition"])
+            # Potential structures for this header
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+            # Content-Disposition: inline
+            # Content-Disposition: attachment
+            # Content-Disposition: attachment; filename="file name.jpg"
+            # Content-Disposition: attachment; filename*=UTF-8''file%20name.jpg
+            #
+            # python structure we want: (('attachment', ''), {'filename': 'file.txt'})
+            email_message = Message()
+            email_message["content-type"] = response.headers["content-disposition"]
+            content_disposition_filename = email_message.get_param("filename", failobj=None)
+            if content_disposition_filename is not None:
+                local_directory = Path(localfile).absolute().resolve().parent
+                localfile = str(local_directory.joinpath(content_disposition_filename))  # localfile is an absolute path
 
-            # Expected Structure for the content-disposition headers:
-            # ('attachment', {'filename': 'file.txt'})
-            if (
-                header_parameters is not None
-                and header_parameters[0] == "attachment"
-                and header_parameters[1].get("filename", None) is not None
-            ):
-                # localfile is an absolute path, replace last part
-                localfile = os.path.join(os.path.dirname(localfile), parsed[1]["filename"])
+        self.logger.debug("Downloading '%s' as '%s'", remoteurl, localfile)
 
-        self.logger.debug("Downloading '%s' as '%s'" % (remoteurl, localfile))
-
-        with open(localfile, "wb", encoding="utf-8") as file_handle:
-            for chunk in res.iter_content(chunk_size=512 * 1024):
+        with open(localfile, "wb") as file_handle:
+            for chunk in response.iter_content(chunk_size=512 * 1024):
                 if chunk:
-                    fout.write(chunk)
-        return res
+                    file_handle.write(chunk)
+        return response
 
 
 class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
@@ -1010,7 +1027,7 @@ class DummyDumper(BaseDumper):
     def __init__(self, *args, **kwargs):
         # make sure we don't create empty directory each time it's launched
         # so create a non-archiving dumper
-        super(DummyDumper, self).__init__(archive=False, *args, **kwargs)
+        super().__init__(archive=False, *args, **kwargs)
         self.release = ""
 
     def prepare_client(self):
@@ -1041,7 +1058,7 @@ class ManualDumper(BaseDumper):
     """
 
     def __init__(self, *args, **kwargs):
-        super(ManualDumper, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         # overide @property, it'll be set manually in this case (ie. not dynamically generated)
         # because it's a manual dumper and user specifies data folder path explicitely
         # (and see below)
@@ -1103,7 +1120,7 @@ class ManualDumper(BaseDumper):
 class GoogleDriveDumper(HTTPDumper):
     def prepare_client(self):
         # FIXME: this is not very useful...
-        super(GoogleDriveDumper, self).prepare_client()
+        super().prepare_client()
 
     def remote_is_better(self, remotefile, localfile):
         return True
@@ -1154,7 +1171,7 @@ class GoogleDriveDumper(HTTPDumper):
             raise DumperException("Can't find a download link from '%s': %s" % (dl_url, html))
         href = link.get("href")
         # now build the final GET request, using cookies to simulate browser
-        return super(GoogleDriveDumper, self).download(
+        return super().download(
             "https://docs.google.com" + href,
             localfile,
             headers={"cookie": res.headers["set-cookie"]},
@@ -1331,9 +1348,6 @@ class GitDumper(BaseDumper):
             self.logger.info("Success.")
         else:
             self.logger.error("Failed with return code (%s)." % return_code)
-
-
-####################
 
 
 class DumperManager(BaseSourceManager):
