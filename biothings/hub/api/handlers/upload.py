@@ -1,6 +1,6 @@
-import cgi
 import logging
 import os
+from email.message import Message
 
 from tornado import gen
 from tornado.web import stream_request_body
@@ -50,11 +50,13 @@ class UploadHandler(GenericHandler):
         assert "--" + self.boundary == data[0]
         for dat in data[1:]:
             if "Content-Disposition:".lower() in dat.lower():
-                cd, cdopts = cgi.parse_header(dat)
+                email_message = Message()
+                email_message["content-type"] = dat
                 try:
-                    self.filename = cdopts["filename"]
+                    self.filename = email_message.get_param("filename", failobj=None)
                 except KeyError:
                     self.write_error(400, exc_info=[None, "No 'filename' found in Content-Disposition", None])
+
             if "Content-Type:".lower() in dat.lower():
                 _, ct = map(str.strip, dat.split(":"))
                 if not ct == "application/octet-stream":
