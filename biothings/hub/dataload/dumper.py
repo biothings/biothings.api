@@ -1,5 +1,4 @@
 import asyncio
-import cgi
 import concurrent.futures
 import email.utils
 import inspect
