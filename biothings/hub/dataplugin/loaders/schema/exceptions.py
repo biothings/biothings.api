@@ -104,6 +104,22 @@ class ManifestMinimumRequiredItemsException(jsonschema.exceptions.ValidationErro
         super().__init__(schema_error_message)
 
 
+class ManifestIncorrectEnumException(jsonschema.exceptions.ValidationError):
+    """
+    Exception for invalid enum value passed to property with explicilty enumerated
+    list of values
+    """
+
+    def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        schema_error_message = (
+            f"Invalid value [{validation_error.instance}] for field [{validation_error.path[-1]}]. "
+            f"Please use one of following values: {validation_error.validator_value}. "
+            f"Full schema field path: {'.'.join(validation_error.absolute_schema_path)}. "
+            "Please update the enum field in the manifest before proceeding"
+        )
+        super().__init__(schema_error_message)
+
+
 def determine_validation_error_category(validation_error: jsonschema.exceptions.ValidationError):
     """
     Examines the validation exception properties to determine what type of error occured
@@ -117,6 +133,7 @@ def determine_validation_error_category(validation_error: jsonschema.exceptions.
         "oneOf": ManifestMutuallyExclusivePropertyException,
         "additionalProperties": ManifestAdditionalPropertyException,
         "minItems": ManifestMinimumRequiredItemsException,
+        "enum": ManifestIncorrectEnumException,
     }
     manifest_exception = validation_exception_mapping.get(validation_error.validator, None)
     if manifest_exception is None:
