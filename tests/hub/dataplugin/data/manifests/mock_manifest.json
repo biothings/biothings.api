@@ -1,0 +1,22 @@
+{
+    "version": "1.0",
+    "__metadata__": {
+        "license_url": "http://www.mock-license-url.gov",
+        "licence": "",
+        "url": "http://www.mock-reference.org/"
+    },
+    "requires": [
+        "bson",
+        "pandas",
+        "requests"
+    ],
+    "dumper": {
+        "data_url": "https://www.gnu.org/",
+        "uncompress": false,
+        "release": "version:get_release"
+    },
+    "uploader": {
+        "parser": "parser:load_data",
+        "on_duplicates": "error"
+    }
+}
