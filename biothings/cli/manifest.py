@@ -1,16 +1,19 @@
+"""
+Commands for helping develop / debug manifest file creation
+"""
+
+import logging
 import json
 from pathlib import Path
 
 import jsonschema
 import typer
-from rich import box, print as rprint
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
-from biothings.cli import utils
 
-logger = utils.get_logger("biothings-cli")
+logger = logging.getLogger("biothings-cli")
 
 
 help_text = "[green]Tools for understanding how to build a manifest for your dataplugin.[/green]"
