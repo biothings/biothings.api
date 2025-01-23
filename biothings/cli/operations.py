@@ -178,12 +178,12 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     return assistant_instance
 
 
-def do_dump_and_upload(plugin_name: str):
+async def do_dump_and_upload(plugin_name: str):
     """
     Perform both dump and upload for the given plugin
     """
-    do_dump(plugin_name, show_dumped=True)
-    do_upload(plugin_name, show_uploaded=True)
+    await do_dump(plugin_name, show_dumped=True)
+    await do_upload(plugin_name, show_uploaded=True)
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
