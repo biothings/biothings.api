@@ -19,9 +19,10 @@ Grouped into the following categories
 > async def do_build(plugin_name: str):
 
 
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
 ### data inspection ###
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
+
 > def do_inspect(
       plugin_name=None,
       sub_source_name=None,
@@ -40,14 +41,12 @@ Grouped into the following categories
 --------------------------------------------------------------------------------
 ### data cleaning ###
 --------------------------------------------------------------------------------
-> def do_clean_dumped_files(data_folder, plugin_name):
-> def do_clean_uploaded_sources(working_dir, plugin_name):
 > def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
 
 
+------------------------------------------------------------------------------------
 """
 
-from typing import Union
 import logging
 import os
 import pathlib
@@ -55,21 +54,20 @@ import shutil
 import sys
 import uuid
 
-import rich
 import tornado.template
 import typer
 
 from biothings.utils.workers import upload_worker
 from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
-    get_uploaders,
     process_inspect,
-    remove_files_in_folder,
     run_sync_or_async_job,
     serve,
     show_dumped_files,
     show_hubdb_content,
     show_uploaded_sources,
+    clean_dumped_files,
+    clean_uploaded_sources,
 )
 
 
@@ -113,26 +111,25 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     from biothings.utils import hub_db
 
     hub_db.setup(config)
-
     assistant_instance = CLIAssistant(plugin_name)
     dumper = assistant_instance.get_dumper_class()
     job_manager = assistant_instance.dumper_manager.job_manager
     run_sync_or_async_job(job_manager, dumper.create_todump_list, force=True)
+
     for item in dumper.to_dump:
         logger.info('Downloading remote data from "%s"...', item["remote"])
         dumper.download(item["remote"], item["local"])
         logger.info('Downloaded locally as "%s"', item["local"])
+
     dumper.steps = ["post"]
     dumper.post_dump()
     dumper.register_status("success")
     dumper.release_client()
 
-    # cleanup
-    # Commented out this line below. we should keep the dump info in src_dump collection for other cmds, e.g. upload, list etc
-    # dumper.src_dump.remove({"_id": dumper.src_name})
     dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
     data_folder = dumper.new_data_folder
+
     if show_dumped:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
         show_dumped_files(data_folder, assistant_instance.plugin_name)
@@ -150,6 +147,7 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
         uploader.make_temp_collection()
         uploader.prepare()
         uploader.update_master()
+
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
             logger.error(
                 'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
@@ -178,7 +176,7 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     return assistant_instance
 
 
-async def do_dump_and_upload(plugin_name: str):
+async def do_dump_and_upload(plugin_name: str) -> None:
     """
     Perform both dump and upload for the given plugin
     """
@@ -234,7 +232,7 @@ async def do_build(plugin_name: str):
         raise gen_exp
 
 
-def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
+def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
@@ -251,24 +249,32 @@ def do_list(plugin_name=None, dump=True, upload=True, hubdb=False):
             # data_folder = dumper.new_data_folder
         else:
             show_dumped_files(data_folder, assistant_instance.plugin_name)
+
     if upload:
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
+
     if hubdb:
         show_hubdb_content()
+    return assistant_instance
 
 
 def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None):
     """
     Perform inspection on a data plugin.
     """
+    if not limit:
+        limit = None
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     if len(uploader_classes) > 1:
         if not sub_source_name:
-            logger.error('This is a multiple uploaders data plugin, so "--sub-source-name" must be provided!')
             logger.error(
-                'Accepted values of "--sub-source-name" are: %s',
-                ", ".join(uploader.name for uploader in uploader_classes),
+                (
+                    'This is a multiple uploaders data plugin, so "--sub-source-name" must be provided! '
+                    'Accepted values of "--sub-source-name" are: %s',
+                    ", ".join(uploader.name for uploader in uploader_classes),
+                )
             )
             raise typer.Exit(code=1)
         logger.info(
@@ -280,7 +286,7 @@ def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats",
         )
     else:
         logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', assistant_instance.plugin_name, mode, limit)
-    # table_space = get_uploaders(pathlib.Path(f"{working_dir}/{plugin_name}"))
+
     table_space = [item.name for item in uploader_classes]
     if sub_source_name and sub_source_name not in table_space:
         logger.error('Your source name "%s" does not exits', sub_source_name)
@@ -299,54 +305,6 @@ def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999)
     serve(host=host, port=port, plugin_name=assistant_instance.plugin_name, table_space=table_space)
 
 
-def do_clean_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str):
-    """
-    Remove all dumped files by a data plugin in the data folder.
-    """
-    if not os.path.isdir(data_folder):
-        rich.print(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
-        return
-    if not os.listdir(data_folder):
-        rich.print("[red]Empty folder![/red]")
-    else:
-        rich.print(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
-        print("\n".join(os.listdir(data_folder)))
-        delete = typer.confirm("Do you want to delete them?")
-        if not delete:
-            raise typer.Abort()
-        remove_files_in_folder(data_folder)
-        rich.print("[green]Deleted![/green]")
-
-
-def do_clean_uploaded_sources(working_dir, plugin_name):
-    """
-    Remove all uploaded sources by a data plugin in the working directory.
-    """
-    from biothings import config
-    from biothings.utils import hub_db
-
-    uploaders = get_uploaders(working_dir)
-    src_db = hub_db.get_src_db()
-    uploaded_sources = []
-    for item in src_db.collection_names():
-        if item in uploaders:
-            uploaded_sources.append(item)
-        for uploader_name in uploaders:
-            if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
-                uploaded_sources.append(item)
-    if not uploaded_sources:
-        rich.print("[red]No source has been uploaded yet! [/red]")
-    else:
-        rich.print(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
-        print("\n".join(uploaded_sources))
-        delete = typer.confirm("Do you want to drop them?")
-        if not delete:
-            raise typer.Abort()
-        for source in uploaded_sources:
-            src_db[source].drop()
-        rich.print("[green]All collections are dropped![/green]")
-
-
 def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
     """
     Clean the dumped files, uploaded sources, or both.
@@ -360,15 +318,15 @@ def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, 
         raise typer.Exit(1)
 
     assistant_instance = CLIAssistant(plugin_name)
-    dumper = assistant_instance.get_dumper_class()
 
     if dump:
+        dumper = assistant_instance.get_dumper_class()
         data_folder = dumper.current_data_folder
         if data_folder:
-            do_clean_dumped_files(data_folder, assistant_instance.plugin_name)
+            clean_dumped_files(data_folder, assistant_instance.plugin_name)
         else:
             # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
+            logger.warning('Data folder is not available. Please run "dump" first.')
 
     if upload:
-        do_clean_uploaded_sources(assistant_instance.plugin_directory, assistant_instance.plugin_name)
+        clean_uploaded_sources(assistant_instance.plugin_directory, assistant_instance.plugin_name)

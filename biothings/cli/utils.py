@@ -1,17 +1,23 @@
+"""
+Utility functions for the biothings-cli tool
+
+These are semantically separated from the operations
+in that these functions aide in helping the operations
+perform a task. Usually anything releated to plugin metadata,
+job handling, and data manipulation should logically exist here
+"""
+
 import asyncio
 import logging
 import math
 import os
 import pathlib
 import shutil
-import sys
 import time
-import uuid
 from pprint import pformat
-from types import SimpleNamespace
 from typing import Callable, Union
 
-import tornado.template
+import rich
 import typer
 import yaml
 from rich import box, print as rprint
@@ -24,7 +30,6 @@ from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 
 
@@ -41,6 +46,23 @@ def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **k
         return job_manager.loop.run_until_complete(func(*args, **kwargs))
 
     return func(*args, **kwargs)
+
+
+def get_plugin_name(plugin_name=None, with_working_dir=True):
+    """return a valid plugin name (the folder name contains a data plugin)
+    When plugin_name is provided as None, it use the current working folder.
+    when with_working_dir is True, returns (plugin_name, working_dir) tuple
+    """
+    working_dir = pathlib.Path().resolve()
+    if plugin_name is None:
+        plugin_name = working_dir.name
+    else:
+        valid_names = [f.name for f in os.scandir(working_dir) if f.is_dir() and not f.name.startswith(".")]
+        if not plugin_name or plugin_name not in valid_names:
+            rprint("[red]Please provide your data plugin name! [/red]")
+            rprint("Choose from:\n    " + "\n    ".join(valid_names))
+            raise typer.Exit(code=1)
+    return plugin_name, working_dir if with_working_dir else plugin_name
 
 
 def show_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str) -> None:
@@ -126,6 +148,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
+    from biothings.utils import hub_db
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
@@ -406,26 +429,26 @@ def remove_files_in_folder(folder_path):
     shutil.rmtree(folder_path)
 
 
-def do_clean_dumped_files(data_folder, plugin_name):
+def clean_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str):
     """
     Remove all dumped files by a data plugin in the data folder.
     """
     if not os.path.isdir(data_folder):
-        rprint(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
+        rich.print(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
         return
     if not os.listdir(data_folder):
-        rprint("[red]Empty folder![/red]")
+        rich.print("[red]Empty folder![/red]")
     else:
-        rprint(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
+        rich.print(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(os.listdir(data_folder)))
         delete = typer.confirm("Do you want to delete them?")
         if not delete:
             raise typer.Abort()
         remove_files_in_folder(data_folder)
-        rprint("[green]Deleted![/green]")
+        rich.print("[green]Deleted![/green]")
 
 
-def do_clean_uploaded_sources(working_dir, plugin_name):
+def clean_uploaded_sources(working_dir, plugin_name):
     """
     Remove all uploaded sources by a data plugin in the working directory.
     """
@@ -442,36 +465,13 @@ def do_clean_uploaded_sources(working_dir, plugin_name):
             if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
                 uploaded_sources.append(item)
     if not uploaded_sources:
-        rprint("[red]No source has been uploaded yet! [/red]")
+        rich.print("[red]No source has been uploaded yet! [/red]")
     else:
-        rprint(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
+        rich.print(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
         print("\n".join(uploaded_sources))
         delete = typer.confirm("Do you want to drop them?")
         if not delete:
             raise typer.Abort()
         for source in uploaded_sources:
             src_db[source].drop()
-        rprint("[green]All collections are dropped![/green]")
-
-
-def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False, logger=None):
-    """
-    Clean the dumped files, uploaded sources, or both.
-    """
-    logger = logger or get_logger(__name__)
-    if clean_all:
-        dump = upload = True
-    if dump is False and upload is False:
-        logger.error("Please provide at least one of following option: --dump, --upload, --all")
-        raise typer.Exit(1)
-
-    _plugin = load_plugin(plugin_name, dumper=True, uploader=False, logger=logger)
-
-    if dump:
-        data_folder = _plugin.dumper.current_data_folder
-        if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-        do_clean_dumped_files(data_folder, _plugin.plugin_name)
-    if upload:
-        do_clean_uploaded_sources(_plugin.data_plugin_dir, _plugin.plugin_name)
+        rich.print("[green]All collections are dropped![/green]")
