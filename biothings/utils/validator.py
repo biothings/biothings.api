@@ -66,7 +66,7 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
         if isinstance(v, dict) and "properties" in v.keys():
             base_model += generate_key_name(k, k.capitalize())
         else:
-            base_model += generate_key_name(k, es_to_pydantic.get(v["type"], Any))
+            base_model += generate_key_name(k, es_to_pydantic.get(v["type"], "Any"))
             if v["type"] == "date":
                 date_fields.append(k)
     if date_fields:
@@ -75,27 +75,26 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
 
 
 def create_pydantic_model(schema: Dict[str, Any], model_name: str):
-    base_imports = """from typing import List, Optional, Union
+    base_imports = """from typing import Any, List, Optional, Union
 
 from dateutil.parser import parse
 from pydantic import BaseModel, field_validator
 
 """
 
-    def parse_schema(schema: Dict[str, Any], model_name="", model="", properties=False) -> Dict[str, Any]:
+    def parse_schema(schema: Dict[str, Any], model_name="", model="") -> Dict[str, Any]:
         for field_name, field_info in schema.items():
             if "properties" in field_info:
                 model = parse_schema(
                     field_info["properties"],
                     field_name.capitalize(),
                     model,
-                    properties=True,
                 )
-        if properties:
-            model = model + generate_model(schema, model_name)
+
+        model = model + generate_model(schema, model_name)
         return model
 
-    model = parse_schema(schema) + generate_model(schema, model_name)
+    model = parse_schema(schema, model_name)
     if black_avail:
         model = black.format_str(base_imports + model, mode=black.Mode())
     else:
