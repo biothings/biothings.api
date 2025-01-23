@@ -33,8 +33,8 @@ class ManifestTypeException(jsonschema.exceptions.ValidationError):
         schema_error_message = (
             "Discovered a manifest typing error that prevents loading. "
             f"Please update the {list(validation_error.absolute_path)} section of the manifest. "
-            f"EXPECTED {validation_error.validator} [{validation_error.validator_value}] | "
-            f"DISCOVERED {validation_error.validator} [{current_instance_type}]"
+            f"Expected {validation_error.validator} <{validation_error.validator_value}> | "
+            f"Discovered {validation_error.validator} <{current_instance_type}>"
         )
         super().__init__(schema_error_message)
 
@@ -129,7 +129,7 @@ class ManifestIncorrectEnumException(jsonschema.exceptions.ValidationError):
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
         logger.debug(validation_error)
         schema_error_message = (
-            f"Invalid value [{validation_error.instance}] for field [{validation_error.path[-1]}]. "
+            f"Invalid value [{validation_error.instance}] for field <{validation_error.path[-1]}>. "
             f"Please use one of following values: {validation_error.validator_value}. "
             f"Full schema field path: {'.'.join(validation_error.absolute_schema_path)}. "
             "Please update the enum field in the manifest before proceeding"
