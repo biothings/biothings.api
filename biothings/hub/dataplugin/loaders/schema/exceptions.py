@@ -7,6 +7,10 @@ the less debugging we might have to do later with a newer user creating a datapl
 
 import jsonschema
 
+from biothings.utils.loggers import get_logger
+
+logger, _ = get_logger(__name__)
+
 
 class ManifestTypeException(jsonschema.exceptions.ValidationError):
     """
@@ -14,6 +18,7 @@ class ManifestTypeException(jsonschema.exceptions.ValidationError):
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        logger.debug(validation_error)
         python_json_type_mapping = {
             dict: "object",
             list: "array",
@@ -40,6 +45,10 @@ class ManifestMissingPropertyException(jsonschema.exceptions.ValidationError):
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        # ***NOTE***
+        # Not including the debug message with the validation error as it's massive
+        # including the entire schema, with the least confusing error message of
+        # the custom error messages
         schema_error_message = (
             "Discovered a missing property that is required for the manifest. "
             "Please add the missing section to the manifest before proceeding. "
@@ -64,6 +73,9 @@ class ManifestMutuallyExclusivePropertyException(jsonschema.exceptions.Validatio
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        # ***NOTE***
+        # Not including the debug message with the validation error as it's massive
+        # including the entire schema, with the a fairly straight forward error message
         exclusive_properties = {
             list(required_property.values())[0][0] for required_property in validation_error.validator_value
         }
@@ -80,6 +92,9 @@ class ManifestAdditionalPropertyException(jsonschema.exceptions.ValidationError)
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        # ***NOTE***
+        # Not including the debug message with the validation error as it's massive
+        # including the entire schema, with the a fairly straight forward error message
         schema_error_message = (
             "Discovered unexpected additional property(ies) in the manifest. "
             "Please remove the additional property(ies) before proceeding. "
@@ -95,6 +110,7 @@ class ManifestMinimumRequiredItemsException(jsonschema.exceptions.ValidationErro
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        logger.debug(validation_error)
         property_path = ".".join(list(validation_error.absolute_path))
         schema_error_message = (
             f"{property_path} required at minimum {validation_error.validator_value} "
@@ -111,6 +127,7 @@ class ManifestIncorrectEnumException(jsonschema.exceptions.ValidationError):
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
+        logger.debug(validation_error)
         schema_error_message = (
             f"Invalid value [{validation_error.instance}] for field [{validation_error.path[-1]}]. "
             f"Please use one of following values: {validation_error.validator_value}. "

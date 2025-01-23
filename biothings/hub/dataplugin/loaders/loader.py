@@ -141,20 +141,29 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def validate_manifest(self, manifest: dict):
         """
+        Validate a manifest instance using the biothings-manifest schema.
+
         Handles manifest validation to provide proper error messaging when a user
         provides an invalid manifest. Given these manifests can be written by anyone
         we want particularly clear error messages when validating the manifest
+
+        A lot of the logic taken from jsonschema.validate function because want to provide
+        validation but not necessarily overload the end-user with schema details
         """
         manifest_schema = load_manifest_schema()
+        schema_validator_class = jsonschema.validators.validator_for(manifest_schema)
+
         try:
-            jsonschema.validate(manifest, manifest_schema)
-        except jsonschema.exceptions.ValidationError as validation_error:
-            refined_validation_error = determine_validation_error_category(validation_error)
-            self.logger.exception(validation_error)
-            raise refined_validation_error
+            schema_validator_class.check_schema(manifest_schema)
         except jsonschema.exceptions.SchemaError as schema_error:
             self.logger.exception(schema_error)
             raise schema_error
+
+        validator = schema_validator_class(manifest_schema)
+        validation_error = jsonschema.exceptions.best_match(validator.iter_errors(manifest))
+        if validation_error is not None:
+            refined_validation_error = determine_validation_error_category(validation_error)
+            raise refined_validation_error
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
@@ -175,6 +184,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
             try:
                 self.validate_manifest(manifest)
+            except jsonschema.exceptions.ValidationError as validation_error:
+                self.logger.exception(validation_error)
+                raise LoaderException from validation_error
             except Exception as gen_exc:
                 self.logger.error("Unable to validate the manifest")
                 raise LoaderException from gen_exc
