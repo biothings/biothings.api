@@ -17,12 +17,13 @@ from pymongo.database import Database as PymongoDatabase
 from pymongo.errors import AutoReconnect
 
 from biothings.utils.backend import DocESBackend, DocMongoBackend
-from biothings.utils.common import (  # timesofar,
+from biothings.utils.common import (
     dotdict,
     get_compressed_outfile,
     get_random_string,
     iter_n,
     open_compressed_file,
+    timesofar,
 )
 from biothings.utils.hub_db import IDatabase
 
@@ -291,11 +292,12 @@ def get_target_master(conn=None):
 
 
 @requires_config
-def get_source_fullname(col_name):
+def get_source_fullname(col_name: str):
     """
     Assuming col_name is a collection created from an upload process, find the main source & sub_source associated.
     """
     src_dump = get_src_dump()
+
     # "sources" in config is a list a collection names. src_dump _id is the name of the
     # resource but can have sub-resources with different collection names. We need
     # to query inner keys upload.job.*.step, which always contains the collection name
@@ -309,9 +311,9 @@ def get_source_fullname(col_name):
         name = info["_id"]
         if name != col_name:
             # col_name was a sub-source name
-            return "%s.%s" % (name, col_name)
-        else:
-            return name
+            return f"{name}.{col_name}"
+        return name
+    return col_name
 
 
 def get_source_fullnames(col_names):
@@ -362,7 +364,7 @@ def doc_feeder(
     )
 
     cursor_index = s  # the integer index in the collection that the cursor is pointing to
-    # job_start_time = time.time()
+    job_start_time = time.time()
     batch_start_time = time.time()
 
     try:
@@ -372,26 +374,33 @@ def doc_feeder(
         logger.debug("Session '%s' started for collection '%s'.", session_uuid, collection.name)
 
         cur = collection.find(query, no_cursor_timeout=True, projection=fields, session=session)
-        # logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session_uuid)
+        logger.debug("Querying '%s' from collection '%s' in session '%s'.", query, collection.name, session_uuid)
         if s:
             cur.skip(s)
-            # logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
+            logger.debug("Skipped %d documents from collection '%s'.", s, collection.name)
         if e:
             cur.limit(e - s)  # specify the maximum number of documents the cursor will return
-            # logger.debug("Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.", e - s, s, e, collection.name)
-        cur.batch_size(
-            step
-        )  # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
+            logger.debug(
+                "Limited the cursor to fetch only %d documents (%d ~ %d) from collection '%s'.",
+                e - s,
+                s,
+                e,
+                collection.name,
+            )
 
-        if (
-            inbatch
-        ):  # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
+        # specify the number of documents the cursor returns per batch (transparent to cursor iterators)
+        cur.batch_size(step)
+
+        # which specifies this `doc_feeder` function to return docs in batch. Not related to `cursor.batch_size()`
+        if inbatch:
             doc_batch = []
 
+        # session_current_time unit -> (seconds)
+        # session_last_refresh_time unit -> (seconds)
+        # session_refresh_interval unit -> (minutes)
         session_last_refresh_time = time.time()
         for doc in cur:
             session_current_time = time.time()
-            # session_current_time and session_last_refresh_time are in second, while session_refresh_interval is in minute
             session_should_refresh = (session_current_time - session_last_refresh_time) > session_refresh_interval * 60
             if session_should_refresh:
                 cmd_resp = collection.database.command("refreshSessions", [session.session_id], session=session)
@@ -410,8 +419,8 @@ def doc_feeder(
                     yield doc_batch
                     doc_batch = []
 
-                # logger.debug("Done.[%.1f%%,%s]", cursor_index * 100. / n, timesofar(batch_start_time))
-                # logger.debug("Processing %d-%d documents...", cursor_index + 1, min(cursor_index + step, e))
+                logger.debug("Done.[%.1f%%,%s]", cursor_index * 100.0 / n, timesofar(batch_start_time))
+                logger.debug("Processing %d-%d documents...", cursor_index + 1, min(cursor_index + step, e))
                 if batch_callback:
                     batch_callback(cursor_index, time.time() - batch_start_time)
                 if cursor_index < e:
@@ -421,7 +430,7 @@ def doc_feeder(
             # Important: need to yield the last batch here
             yield doc_batch
 
-        # logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
+        logger.debug("Finished.[total time: %s]", timesofar(job_start_time))
     finally:
         cur.close()
         logger.debug("Session '%s' to be ended.", session_uuid)
