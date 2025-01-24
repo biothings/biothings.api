@@ -46,7 +46,7 @@ class LoaderException(Exception):
     pass
 
 
-class BasePluginLoader(object):
+class BasePluginLoader:
     loader_type = None  # set in subclass
 
     def __init__(self, plugin_name):
@@ -82,7 +82,7 @@ class BasePluginLoader(object):
             pass
         raise LoaderException(error)
 
-    def can_load_plugin(self):
+    def can_load_plugin(self) -> bool:
         """
         Return True if loader is able to load plugin (check data folder content)
         """
@@ -107,7 +107,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
     }
 
     def _dict_for_base(self, data_url):
-        if type(data_url) == str:
+        if isinstance(data_url, str):
             data_url = [data_url]
         return {
             "SRC_NAME": self.plugin_name,
@@ -132,48 +132,37 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         d = self._dict_for_base(data_url)
         return d
 
-    def can_load_plugin(self):
+    def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
-        df = pathlib.Path(plugin["download"]["data_folder"])
-        # if "manifest.json" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.json")):
-        if pathlib.Path(df, "manifest.json").exists():
-            return True
-        # elif "manifest.yaml" in os.listdir(df) and os.path.exists(os.path.join(df, "manifest.yaml")):
-        elif pathlib.Path(df, "manifest.yaml").exists():
-            return True
-        else:
-            return False
+        data_folder = pathlib.Path(plugin["download"]["data_folder"])
+        return (
+            pathlib.Path(data_folder, "manifest.json").exists() or pathlib.Path(data_folder, "manifest.yaml").exists()
+        )
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
-        df = pathlib.Path(plugin["download"]["data_folder"])
-        # self.plugin_path_name = os.path.basename(df)
-        self.plugin_path_name = df.name
-        # if os.path.exists(df):
-        if df.exists():
-            # mf = os.path.join(df, "manifest.json")
-            # mf_yaml = os.path.join(df, "manifest.yaml")
-            mf = pathlib.Path(df, "manifest.json")
-            mf_yaml = pathlib.Path(df, "manifest.yaml")
+        data_folder = pathlib.Path(plugin["download"]["data_folder"])
+        self.plugin_path_name = data_folder.name
+        if data_folder.exists():
+            mf = pathlib.Path(data_folder, "manifest.json")
+            mf_yaml = pathlib.Path(data_folder, "manifest.yaml")
             manifest = None
-            # if os.path.exists(mf):
             if mf.exists():
                 self.logger.debug(f"Loading manifest: {mf}")
                 manifest = json.load(open(mf))
-            # elif os.path.exists(mf_yaml):
             elif mf_yaml.exists():
                 self.logger.debug(f"Loading manifest: {mf_yaml}")
                 manifest = yaml.safe_load(open(mf_yaml))
             if manifest:
                 try:
-                    self.interpret_manifest(manifest, df.as_posix())
+                    self.interpret_manifest(manifest, data_folder.as_posix())
                 except Exception as e:
                     self.invalidate_plugin("Error loading manifest: %s" % str(e))
             else:
                 self.logger.info("No manifest found for plugin: %s" % plugin["plugin"]["url"])
                 self.invalidate_plugin("No manifest found")
         else:
-            self.invalidate_plugin("Missing plugin folder '%s'" % df)
+            self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 
     def get_code_for_mod_name(self, mod_name):
         """
@@ -493,7 +482,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         # start with requirements before importing anything
         if manifest.get("requires"):
             reqs = manifest["requires"]
-            if not type(reqs) == list:
+            if not isinstance(reqs, list):
                 reqs = [reqs]
             for req in reqs:
                 self.logger.info("Install requirement '%s'" % req)
@@ -547,23 +536,20 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 class AdvancedPluginLoader(BasePluginLoader):
     loader_type = "advanced"
 
-    def can_load_plugin(self):
+    def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
-        df = plugin["download"]["data_folder"]
-        if "__init__.py" in os.listdir(df):
-            return True
-        else:
-            return False
+        data_folder = plugin["download"]["data_folder"]
+        return "__init__.py" in os.listdir(data_folder)
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
-        df = plugin["download"]["data_folder"]
-        if os.path.exists(df):
+        data_folder = plugin["download"]["data_folder"]
+        if os.path.exists(data_folder):
             # we assume there's a __init__ module exposing Dumper and Uploader classes
             # as necessary
-            modpath = df.split("/")[-1]
+            modpath = data_folder.split("/")[-1]
             # before registering, process optional requirements.txt
-            reqfile = os.path.join(df, "requirements.txt")
+            reqfile = os.path.join(data_folder, "requirements.txt")
             if os.path.exists(reqfile):
                 self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile, self.plugin_name))
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", reqfile])
@@ -580,10 +566,10 @@ class AdvancedPluginLoader(BasePluginLoader):
             except Exception as e:
                 self.logger.info("Couldn't register uploader from module '%s': %s" % (modpath, e))
         else:
-            self.invalidate_plugin("Missing plugin folder '%s'" % df)
+            self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 
 
-class BaseAssistant(object):
+class BaseAssistant:
     plugin_type = None  # to be defined in subblass
     data_plugin_manager = None  # set by assistant manager
     dumper_manager = None  # set by assistant manager
@@ -596,7 +582,7 @@ class BaseAssistant(object):
         "advanced": AdvancedPluginLoader,
     }
 
-    def __init__(self, url):
+    def __init__(self, url: str):
         self.url = url
         self._plugin_name = None
         self._src_folder = None
@@ -671,11 +657,11 @@ class BaseAssistant(object):
         raise NotImplementedError("implement 'load_plugin' in subclass")
 
 
-class AssistedDumper(object):
+class AssistedDumper:
     DATA_PLUGIN_FOLDER = None
 
 
-class AssistedUploader(object):
+class AssistedUploader:
     DATA_PLUGIN_FOLDER = None
 
 
@@ -730,6 +716,27 @@ class LocalAssistant(BaseAssistant):
 
     @property
     def plugin_name(self):
+        """
+        We attempt to derive the plugin name from the url as we expect the URL
+        (for local plugins) to follow the structure local://<pluginname>
+
+        Formats local://pluginname so it's in hostname.
+        (we leverage urlsplit over urlparse due to lack of need for parameter parsing)
+        https://docs.python.org/3/library/urllib.parse.html#structured-parse-results
+
+        If we discover a subdirectory we raise an error for moment due to lack of subdirectory
+        support at the moment for our pathing
+
+        This can be verified by checking the `path` value from the SplitResult
+
+        url -> local://plugin-name
+        Supported:
+        > ParseResult(scheme='local', netloc='plugin-name', path='', params='', query='', fragment='')
+
+        url -> local://sub-directory/plugin-name
+        Unsupported:
+        > ParseResult(scheme='local', netloc='plugin-name', path='sub-directory', params='', query='', fragment='')
+        """
         if not self._plugin_name:
             split = urllib.parse.urlsplit(self.url)
             # format local://pluginname so it's in hostname.
@@ -756,11 +763,8 @@ class LocalAssistant(BaseAssistant):
             self._src_folder = os.path.join(btconfig.DATA_PLUGIN_FOLDER, src_folder_name)
         return self._plugin_name
 
-    def can_handle(self):
-        if self.url.startswith(self.__class__.plugin_type + "://"):
-            return True
-        else:
-            return False
+    def can_handle(self) -> bool:
+        return self.url.startswith(self.__class__.plugin_type + "://")
 
     def get_classdef(self):
         # generate class dynamically and register

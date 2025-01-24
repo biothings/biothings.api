@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 import logging
 
@@ -35,7 +36,7 @@ app = typer.Typer(
 
 @app.command(
     name="create",
-    help="Create a new data plugin from the tempplate",
+    help="Create a new data plugin from the template",
 )
 def create_data_plugin(
     name: Annotated[
@@ -46,14 +47,15 @@ def create_data_plugin(
         Optional[bool],
         typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
     ] = False,
-    # parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
     parallelizer: Annotated[
         Optional[bool],
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
-    """*create* command for creating a new data plugin from the template"""
-    operations.do_create(name, multi_uploaders, parallelizer, logger=logger)
+    """
+    *create* command for creating a new data plugin from the template
+    """
+    operations.do_create(name, multi_uploaders, parallelizer)
 
 
 @app.command(
@@ -61,8 +63,10 @@ def create_data_plugin(
     help="Download source data files to local",
 )
 def dump_data():
-    """*dump* command for downloading source data files to local"""
-    operations.do_dump(plugin_name=None, logger=logger)
+    """
+    *dump* command for downloading source data files to local
+    """
+    asyncio.run(operations.do_dump(plugin_name=None))
 
 
 @app.command(
@@ -78,26 +82,26 @@ def upload_source(
         ),
     ] = None,
 ):
-    """*upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
-    A local sqlite database used to store the uploaded data"""
-    operations.do_upload(plugin_name=None, logger=logger)
+    """
+    *upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
+    A local sqlite database used to store the uploaded data
+    """
+    asyncio.run(operations.do_upload(plugin_name=None))
 
 
 @app.command(
     "dump_and_upload",
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
-def dump_and_upload(
-    # multi_uploaders: bool = typer.Option(
-    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
-    # ),
-    # parallelizer: bool = typer.Option(
-    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
-    # ),
-):
-    """*dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
-    Two steps in one command."""
-    operations.do_dump_and_upload(plugin_name=None, logger=logger)
+def dump_and_upload():
+    """
+    *dump_and_upload* command
+    performs the dump and then upload commands sequentially
+    1) downloads source data files to local file system
+    2) converts them into JSON documents
+    3) uploads those JSON documents to the source database.
+    """
+    asyncio.run(operations.do_dump_and_upload(plugin_name=None))
 
 
 @app.command(
@@ -105,12 +109,16 @@ def dump_and_upload(
     help="Listing dumped files or uploaded sources",
 )
 def listing(
-    dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
-    upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
+    dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = True,
+    upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = True,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
-    """*list* command for listing dumped files and/or uploaded sources"""
-    operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb, logger=logger)
+    """
+    *list* command
+
+    lists dumped files and/or uploaded sources
+    """
+    asyncio.run(operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb))
 
 
 @app.command(
@@ -146,14 +154,6 @@ def inspect_source(
             """,
         ),
     ] = None,
-    # merge: Annotated[
-    #     Optional[bool],
-    #     typer.Option(
-    #         "--merge",
-    #         "-m",
-    #         help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
-    #     ),
-    # ] = False,
     output: Annotated[
         Optional[str],
         typer.Option(
@@ -163,16 +163,20 @@ def inspect_source(
         ),
     ] = None,
 ):
-    """*inspect* command for giving detailed information about the structure of documents coming from the parser after the upload step"""
+    """
+    *inspect* command
 
-    operations.do_inspect(
-        plugin_name=None,
-        sub_source_name=sub_source_name,
-        mode=mode,
-        limit=limit,
-        merge=False,
-        output=output,
-        logger=logger,
+    gives detailed information about the structure of documents coming from the parser after the upload step
+    """
+    asyncio.run(
+        operations.do_inspect(
+            plugin_name=None,
+            sub_source_name=sub_source_name,
+            mode=mode,
+            limit=limit,
+            merge=False,
+            output=output,
+        )
     )
 
 
@@ -214,7 +218,7 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    operations.do_serve(plugin_name=None, host=host, port=port, logger=logger)
+    asyncio.run(operations.do_serve(plugin_name=None, host=host, port=port))
 
 
 @app.command(
@@ -233,5 +237,24 @@ def clean_data(
         ),
     ] = False,
 ):
-    """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
-    operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all, logger=logger)
+    """
+    *clean* command
+
+    deletes all dumped files and/or drop uploaded sources tables
+    """
+    asyncio.run(operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all))
+
+
+@app.command(
+    name="build",
+    help="Build a data plugin",
+)
+def build_plugin(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for building")],
+):
+    """
+    *build* command
+
+    generates a build image and elasticsearch index for a data plugin
+    """
+    asyncio.run(operations.do_build(plugin_name=plugin_name), debug=True)

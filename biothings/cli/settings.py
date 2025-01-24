@@ -109,6 +109,19 @@ def setup_biothings_configuration():
     configuration_instance.LOG_FOLDER = ".biothings_hub/logs"
     configuration_instance.DATA_PLUGIN_FOLDER = f"{working_dir}"
 
+    configuration_instance.DATA_TARGET_SERVER = "localhost"
+    configuration_instance.DATA_TARGET_PORT = 27017
+    configuration_instance.DATA_TARGET_DATABASE = "plugin-hub"
+    configuration_instance.INDEX_CONFIG = {
+        "indexer_select": {},
+        "env": {
+            "localhub": {
+                "host": "http://localhost:9200",
+                "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
+            }
+        },
+    }
+
     try:
         configuration_instance.hub_db = importlib.import_module(configuration_instance.HUB_DB_BACKEND["module"])
     except ImportError as import_err:
