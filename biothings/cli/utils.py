@@ -400,19 +400,6 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
-def serve(host, port, plugin_name, table_space):
-    """
-    Serve a simple API server to query the data plugin source.
-    """
-    from biothings import config
-    from biothings.utils import hub_db
-    from biothings.cli.web_app import main
-
-    src_db = hub_db.get_src_db()
-    rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
-    asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
-
-
 def remove_files_in_folder(folder_path):
     """
     Remove all files in a folder.

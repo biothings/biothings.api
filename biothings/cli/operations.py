@@ -54,6 +54,7 @@ import shutil
 import sys
 import uuid
 
+import rich
 import tornado.template
 import typer
 
@@ -62,7 +63,6 @@ from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
     process_inspect,
     run_sync_or_async_job,
-    serve,
     show_dumped_files,
     show_hubdb_content,
     show_uploaded_sources,
@@ -232,7 +232,7 @@ async def do_build(plugin_name: str):
         raise gen_exp
 
 
-def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
+async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
@@ -258,7 +258,9 @@ def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hub
     return assistant_instance
 
 
-def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None):
+async def do_inspect(
+    plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None
+):
     """
     Perform inspection on a data plugin.
     """
@@ -298,14 +300,25 @@ def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats",
             process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
 
 
-def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
+async def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
+    """
+    Handles creation of a basic web server for hosting files using for a dataplugin
+    """
+
+    from biothings import config
+    from biothings.utils import hub_db
+    from biothings.cli.web_app import main
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     table_space = [item.name for item in uploader_classes]
-    serve(host=host, port=port, plugin_name=assistant_instance.plugin_name, table_space=table_space)
+
+    src_db = hub_db.get_src_db()
+    rich.print(f"[green]Serving data plugin source: {plugin_name}[/green]")
+    await main(host=host, port=port, db=src_db, table_space=table_space)
 
 
-def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
+async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
     """
     Clean the dumped files, uploaded sources, or both.
     """

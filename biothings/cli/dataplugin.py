@@ -109,8 +109,8 @@ def dump_and_upload():
     help="Listing dumped files or uploaded sources",
 )
 def listing(
-    dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = False,
-    upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
+    dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = True,
+    upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = True,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
     """
@@ -118,7 +118,7 @@ def listing(
 
     lists dumped files and/or uploaded sources
     """
-    operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb)
+    asyncio.run(operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb))
 
 
 @app.command(
@@ -168,13 +168,15 @@ def inspect_source(
 
     gives detailed information about the structure of documents coming from the parser after the upload step
     """
-    operations.do_inspect(
-        plugin_name=None,
-        sub_source_name=sub_source_name,
-        mode=mode,
-        limit=limit,
-        merge=False,
-        output=output,
+    asyncio.run(
+        operations.do_inspect(
+            plugin_name=None,
+            sub_source_name=sub_source_name,
+            mode=mode,
+            limit=limit,
+            merge=False,
+            output=output,
+        )
     )
 
 
@@ -216,7 +218,7 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    operations.do_serve(plugin_name=None, host=host, port=port)
+    asyncio.run(operations.do_serve(plugin_name=None, host=host, port=port))
 
 
 @app.command(
@@ -240,7 +242,7 @@ def clean_data(
 
     deletes all dumped files and/or drop uploaded sources tables
     """
-    operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all)
+    asyncio.run(operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all))
 
 
 @app.command(
