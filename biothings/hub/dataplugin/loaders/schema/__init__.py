@@ -9,6 +9,7 @@ import pathlib
 
 SCHEMA_DIRECTORY = pathlib.Path(__file__).resolve().absolute().parent
 
+
 def load_manifest_schema() -> dict:
     """
     Loads the schema structure from the schema module

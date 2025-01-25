@@ -109,7 +109,6 @@ class BaseAssistant(abc.ABC):
         """
 
 
-
 class GithubAssistant(BaseAssistant):
     plugin_type = "github"
 

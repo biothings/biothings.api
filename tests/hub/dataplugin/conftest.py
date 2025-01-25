@@ -19,7 +19,6 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-
 @pytest.fixture(scope="session")
 def temporary_mock_data(tmp_path_factory):
     """
