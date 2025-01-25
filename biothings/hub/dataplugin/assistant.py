@@ -12,6 +12,7 @@ from biothings.utils.common import (
     get_plugin_name_from_remote_manifest,
     parse_folder_name_from_url,
 )
+from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 
 
