@@ -6,6 +6,7 @@ Fixtures defined in a conftest.py can be used by any test in that package withou
 (pytest will automatically discover them).
 """
 
+import importlib
 import logging
 import os.path
 import shutil
@@ -26,6 +27,15 @@ config_mod.ES_HOST = "http://localhost:9200"  # optional
 config_mod.ES_INDICES = {"dev": "main_build_configuration"}
 config_mod.ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]
 config_mod.LOG_FOLDER = os.path.join(config_mod.DATA_ARCHIVE_ROOT, "logs")
+config_mod.DATA_SRC_DATABASE = "data_src_database"
+config_mod.DATA_TARGET_DATABASE = "testing_target.db"
+config_mod.DATA_SRC_SERVER = "localhost"
+config_mod.DATA_TARGET_SERVER = "testing_target.server"
+config_mod.HUB_DB_BACKEND = {
+    "module": "biothings.utils.sqlite3",
+    "sqlite_db_folder": ".biothings_hub",
+}
+config_mod.hub_db = importlib.import_module(config_mod.HUB_DB_BACKEND["module"])
 
 sys.modules["config"] = config_mod
 sys.modules["biothings.config"] = config_mod

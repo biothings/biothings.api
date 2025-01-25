@@ -40,7 +40,7 @@
             "properties": {
                 "license_url": {
                     "type": "string",
-                    "descripton": "web url pointing to the data license",
+                    "description": "web url pointing to the data license",
                     "examples": [
                         "https://creativecommons.org/publicdomain/zero/1.0/",
                         "https://creativecommons.org/licenses/by/4.0/"
@@ -56,7 +56,7 @@
                 },
                 "url": {
                     "type": "string",
-                    "description": "General web url about the data itself. If not applicabled, the license url would suffice",
+                    "description": "General web url about the data itself. If not applicable, the license url would suffice",
                     "examples": [
                         "https://www.ebi.ac.uk/chebi/aboutChebiForward.do/",
                         "https://www.ncbi.nlm.nih.gov/research/pubtator3/"
@@ -73,6 +73,7 @@
         "requires": {
             "object": "array",
             "description": "list of dependencies required by the plugin. Similar to a requirements.txt file",
+            "minItems": 0,
             "items": {
                 "type": "string"
             },
@@ -104,6 +105,7 @@
                         },
                         {
                             "type": "array",
+                            "minItems": 1,
                             "items": {
                                 "type": "string",
                                 "format": "uri"
@@ -162,13 +164,13 @@
                     "examples": [
                         {
                             "plugin_name": "hartho",
-                            "doucment_type": "assocation"
+                            "documents_type": "association"
                         }
                     ]
                 },
                 "mapping": {
                     "type": "string",
-                    "description": "Reference to a module function that generates an elasticsearch mapping for the data source. Format: 'module:function'",
+                    "description": "Reference to a module function that generates an Elasticsearch mapping for the data source. Format: 'module:function'",
                     "examples": [
                         "mapping:elasticsearch_mapping"
                     ]
@@ -184,7 +186,7 @@
                 },
                 "parallelizer": {
                     "type": "string",
-                    "description": "Reference to a module function that handles parallelizationwhen multiple input files use the same data source parser. Format: 'module:function'",
+                    "description": "Reference to a module function that handles parallelization when multiple input files use the same data source parser. Format: 'module:function'",
                     "examples": [
                         "parallelizer:parallel_jobs"
                     ]
@@ -198,7 +200,8 @@
         },
         "uploaders": {
             "type": "array",
-            "description": "Collection of uploaders that represent a multi-uploader strategy for handling the data. Could be used if there are different flavors of the data source that contain slight variations, so we want to have multiple elasticsearch indicies to represent the different data source flavors",
+            "description": "Collection of uploaders that represent a multi-uploader strategy for handling the data. Could be used if there are different flavors of the data source that contain slight variations, so we want to have multiple Elasticsearch indices to represent the different data source flavors",
+            "minItems": 1,
             "items": {
                 "type": "object",
                 "description": "Indicates to the biothings backend how to build the uploader class along with parsing and uploading the downloaded data source",
@@ -220,7 +223,7 @@
                         "examples": [
                             {
                                 "plugin_name": "hartho",
-                                "doucment_type": "assocation"
+                                "document_type": "association"
                             }
                         ]
                     },

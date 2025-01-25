@@ -11,6 +11,7 @@ import sys
 import textwrap
 import urllib.parse
 from string import Template
+from typing import Union
 
 import jsonschema
 import yaml
@@ -28,6 +29,7 @@ from biothings.utils.common import (
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
+from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
 
 
 class LoaderException(Exception):
@@ -139,19 +141,29 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def validate_manifest(self, manifest: dict):
         """
+        Validate a manifest instance using the biothings-manifest schema.
+
         Handles manifest validation to provide proper error messaging when a user
         provides an invalid manifest. Given these manifests can be written by anyone
         we want particularly clear error messages when validating the manifest
+
+        A lot of the logic taken from jsonschema.validate function because want to provide
+        validation but not necessarily overload the end-user with schema details
         """
         manifest_schema = load_manifest_schema()
+        schema_validator_class = jsonschema.validators.validator_for(manifest_schema)
+
         try:
-            jsonschema.validate(manifest, manifest_schema)
-        except jsonschema.exceptions.ValidationError as validation_error:
-            self.logger.exception(validation_error)
-            raise validation_error
+            schema_validator_class.check_schema(manifest_schema)
         except jsonschema.exceptions.SchemaError as schema_error:
             self.logger.exception(schema_error)
             raise schema_error
+
+        validator = schema_validator_class(manifest_schema)
+        validation_error = jsonschema.exceptions.best_match(validator.iter_errors(manifest))
+        if validation_error is not None:
+            refined_validation_error = determine_validation_error_category(validation_error)
+            raise refined_validation_error
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
@@ -169,21 +181,23 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.logger.debug(f"Loading manifest: {mf_yaml}")
                 with open(mf_yaml, "r", encoding="utf-8") as manifest_handle:
                     manifest = yaml.safe_load(manifest_handle)
+            else:
+                self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
+                self.invalidate_plugin("No manifest found")
 
             try:
                 self.validate_manifest(manifest)
+            except jsonschema.exceptions.ValidationError as validation_error:
+                self.logger.exception(validation_error)
+                raise LoaderException from validation_error
             except Exception as gen_exc:
                 self.logger.error("Unable to validate the manifest")
-                self.logger.exception(gen_exc)
                 raise LoaderException from gen_exc
 
             try:
                 self.interpret_manifest(manifest, data_folder.as_posix())
             except Exception as gen_exc:
                 self.invalidate_plugin("Error loading manifest: %s" % str(gen_exc))
-            # else:
-            #     self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
-            #     self.invalidate_plugin("No manifest found")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 

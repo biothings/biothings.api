@@ -1,16 +1,23 @@
+"""
+Utility functions for the biothings-cli tool
+
+These are semantically separated from the operations
+in that these functions aide in helping the operations
+perform a task. Usually anything releated to plugin metadata,
+job handling, and data manipulation should logically exist here
+"""
+
 import asyncio
 import logging
 import math
 import os
 import pathlib
 import shutil
-import sys
 import time
 from pprint import pformat
-from types import SimpleNamespace
-from typing import Union
+from typing import Callable, Union
 
-import tornado.template
+import rich
 import typer
 import yaml
 from rich import box, print as rprint
@@ -18,11 +25,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from biothings.cli.manager import CLIJobManager
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.utils.workers import upload_worker
 import biothings.utils.inspect as btinspect
 from biothings.cli.structure import TEMPLATE_DIRECTORY
 
@@ -30,133 +37,16 @@ from biothings.cli.structure import TEMPLATE_DIRECTORY
 logger = logging.getLogger(name="biothings-cli")
 
 
-def run_sync_or_async_job(func, *args, **kwargs):
-    """When func is defined as either normal or async function/method, we will call this function properly and return the results.
+def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **kwargs):
+    """
+    When func is defined as either normal or async function/method, we will call this function properly and return the results.
     For an async function/method, we will use CLIJobManager to run it.
     """
     if asyncio.iscoroutinefunction(func):
-        from biothings.utils.manager import CLIJobManager
-
-        job_manager = CLIJobManager()
         kwargs["job_manager"] = job_manager
         return job_manager.loop.run_until_complete(func(*args, **kwargs))
-    else:
-        # otherwise just run it as normal
-        return func(*args, **kwargs)
 
-
-def load_plugin(plugin_name: str = None, dumper: bool = True, uploader: bool = True, logger: logging.Logger = None):
-    """
-    Return a plugin object for the given plugin_name.
-    If dumper is True, include a dumper instance in the plugin object.
-    If uploader is True, include uploader_classes in the plugin object.
-
-    If <plugin_name> is not valid, raise the proper error and exit.
-    """
-    _plugin_name, working_dir = get_plugin_name(plugin_name, with_working_dir=True)
-    if plugin_name is None:
-        # current working_dir has the data plugin
-        data_plugin_dir = pathlib.Path(working_dir)
-        data_folder = pathlib.Path(".").resolve().absolute()
-        plugin_args = {"plugin_path": working_dir, "plugin_name": None, "data_folder": data_folder}
-    else:
-        data_plugin_dir = pathlib.Path(working_dir, _plugin_name)
-        plugin_args = {"plugin_path": _plugin_name, "plugin_name": None, "data_folder": None}
-    try:
-        dumper_manager, uploader_manager = load_plugin_managers(**plugin_args)
-    except Exception as gen_exc:
-        logger.exception(gen_exc)
-        if plugin_name is None:
-            plugin_loading_error_message = (
-                "This command must be run inside a data plugin folder. Please go to a data plugin folder and try again!"
-            )
-        else:
-            plugin_loading_error_message = (
-                f'The data plugin folder "{data_plugin_dir}" is not a valid data plugin folder. Please try another.'
-            )
-        logger.error(plugin_loading_error_message, extra={"markup": True})
-        raise typer.Exit(1)
-
-    current_plugin = SimpleNamespace(
-        plugin_name=_plugin_name,
-        data_plugin_dir=data_plugin_dir,
-        in_plugin_dir=plugin_name is None,
-    )
-    if dumper:
-        dumper_class = dumper_manager[_plugin_name][0]
-        _dumper = dumper_class()
-        _dumper.prepare()
-        current_plugin.dumper = _dumper
-    if uploader:
-        uploader_classes = uploader_manager[_plugin_name]
-        if not isinstance(uploader_classes, list):
-            uploader_classes = [uploader_classes]
-        current_plugin.uploader_classes = uploader_classes
-    return current_plugin
-
-
-def load_plugin_managers(
-    plugin_path: Union[str, pathlib.Path], plugin_name: str = None, data_folder: Union[str, pathlib.Path] = None
-):
-    """
-    Load a data plugin from <plugin_path>, and return a tuple of (dumper_manager, upload_manager)
-    """
-    from biothings import config
-    from biothings.hub.dataload.dumper import DumperManager
-    from biothings.hub.dataload.uploader import UploaderManager
-    from biothings.hub.dataplugin.assistant import LocalAssistant
-    from biothings.hub.dataplugin.manager import DataPluginManager
-    from biothings.utils.hub_db import get_data_plugin
-
-    _plugin_path = pathlib.Path(plugin_path).resolve()
-    config.DATA_PLUGIN_FOLDER = _plugin_path.parent.as_posix()
-    sys.path.append(str(_plugin_path.parent))
-
-    if plugin_name is None:
-        plugin_name = _plugin_path.name
-
-    if data_folder is None:
-        data_folder = pathlib.Path(f"./{plugin_name}")
-    data_folder = pathlib.Path(data_folder).resolve().absolute()
-
-    plugin_manager = DataPluginManager(job_manager=None)
-    dmanager = DumperManager(job_manager=None)
-    upload_manager = UploaderManager(job_manager=None)
-
-    LocalAssistant.data_plugin_manager = plugin_manager
-    LocalAssistant.dumper_manager = dmanager
-    LocalAssistant.uploader_manager = upload_manager
-
-    assistant = LocalAssistant(f"local://{plugin_name}")
-    assistant_debug_info = (
-        f"[green]Assistant Plugin Name:[/green][bold] "
-        f"[lightsalmon1]{assistant.plugin_name}[/lightsalmon1]\n"
-        f"[green]Assistant Plugin Path:[/green][bold] "
-        f"[lightsalmon1]{_plugin_path.as_posix()}[/lightsalmon1]\n"
-        f"[green]Data Plugin Folder:[/green][bold] "
-        f"[lightsalmon1]{config.DATA_PLUGIN_FOLDER}[/lightsalmon1]"
-    )
-    logger.debug(assistant_debug_info, extra={"markup": True})
-
-    dp = get_data_plugin()
-    dp.remove({"_id": assistant.plugin_name})
-    dp.insert_one(
-        {
-            "_id": assistant.plugin_name,
-            "plugin": {
-                "url": f"local://{plugin_name}",
-                "type": assistant.plugin_type,
-                "active": True,
-            },
-            "download": {
-                "data_folder": str(data_folder),  # tmp path to your data plugin
-            },
-        }
-    )
-    p_loader = assistant.loader
-    p_loader.load_plugin()
-
-    return p_loader.__class__.dumper_manager, assistant.__class__.uploader_manager
+    return func(*args, **kwargs)
 
 
 def get_plugin_name(plugin_name=None, with_working_dir=True):
@@ -241,7 +131,6 @@ def show_hubdb_content():
         hub_db.get_event(),
     ]
     hub_db_content = []
-
     for collection in coll_list:
         content = collection.find()
         if content:
@@ -512,19 +401,6 @@ def show_uploaded_sources(working_dir, plugin_name):
         )
 
 
-def serve(host, port, plugin_name, table_space):
-    """
-    Serve a simple API server to query the data plugin source.
-    """
-    from biothings import config
-    from biothings.utils import hub_db
-    from biothings.cli.web_app import main
-
-    src_db = hub_db.get_src_db()
-    rprint(f"[green]Serving data plugin source: {plugin_name}[/green]")
-    asyncio.run(main(host=host, port=port, db=src_db, table_space=table_space))
-
-
 def remove_files_in_folder(folder_path):
     """
     Remove all files in a folder.
@@ -539,3 +415,51 @@ def remove_files_in_folder(folder_path):
         except Exception as e:
             rprint("[red]Failed to delete %s. Reason: %s [/red]" % (file_path, e))
     shutil.rmtree(folder_path)
+
+
+def clean_dumped_files(data_folder: Union[str, pathlib.Path], plugin_name: str):
+    """
+    Remove all dumped files by a data plugin in the data folder.
+    """
+    if not os.path.isdir(data_folder):
+        rich.print(f"[red]Data folder {data_folder} not found! Nothing has been dumped yet[/red]")
+        return
+    if not os.listdir(data_folder):
+        rich.print("[red]Empty folder![/red]")
+    else:
+        rich.print(f"[green]There are all files dumped by [bold]{plugin_name}[/bold]:[/green]")
+        print("\n".join(os.listdir(data_folder)))
+        delete = typer.confirm("Do you want to delete them?")
+        if not delete:
+            raise typer.Abort()
+        remove_files_in_folder(data_folder)
+        rich.print("[green]Deleted![/green]")
+
+
+def clean_uploaded_sources(working_dir, plugin_name):
+    """
+    Remove all uploaded sources by a data plugin in the working directory.
+    """
+    from biothings import config
+    from biothings.utils import hub_db
+
+    uploaders = get_uploaders(working_dir)
+    src_db = hub_db.get_src_db()
+    uploaded_sources = []
+    for item in src_db.collection_names():
+        if item in uploaders:
+            uploaded_sources.append(item)
+        for uploader_name in uploaders:
+            if item.startswith(f"{uploader_name}_archive_") or item.startswith(f"{uploader_name}_temp_"):
+                uploaded_sources.append(item)
+    if not uploaded_sources:
+        rich.print("[red]No source has been uploaded yet! [/red]")
+    else:
+        rich.print(f"[green]There are all sources uploaded by [bold]{plugin_name}[/bold]:[/green]")
+        print("\n".join(uploaded_sources))
+        delete = typer.confirm("Do you want to drop them?")
+        if not delete:
+            raise typer.Abort()
+        for source in uploaded_sources:
+            src_db[source].drop()
+        rich.print("[green]All collections are dropped![/green]")

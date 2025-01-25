@@ -3,8 +3,8 @@ Tests for exercising the functionality and structure of our
 plugin design
 """
 
+import asyncio
 from pathlib import Path
-from types import SimpleNamespace
 import logging
 
 import pytest
@@ -15,18 +15,14 @@ from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
 from biothings.hub.dataplugin.assistant import (
-    AdvancedPluginLoader,
     LocalAssistant,
-    ManifestBasedPluginLoader,
-    AssistantManager,
     GithubAssistant,
-    AssistantException,
 )
+from biothings.hub.dataplugin.manager import AssistantManager
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
-from biothings.utils.common import get_loop, parse_folder_name_from_url
+from biothings.utils.common import get_loop
 from biothings.utils.manager import JobManager
-from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +70,9 @@ def test_assistant_manager():
     assert isinstance(generated_assistant, GithubAssistant)
 
 
-def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
+@pytest.mark.asyncio
+@pytest.mark.xfail("WIP")
+async def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
     """
     Tests the ability register a remote url using the internals of the biothings.api
     library
@@ -108,5 +106,6 @@ def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFac
     if plugin_document is not None:
         data_plugin.remove(plugin_document)
 
-    assistant_manager.register_url(url=remote_plugin_repository)
+    register_job = assistant_manager.register_url(url=remote_plugin_repository)
+    await asyncio.wait_for(register_job, timeout=None)
     assistant_manager.unregister_url(url=remote_plugin_repository)

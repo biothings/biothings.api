@@ -3,6 +3,7 @@ Mock handler for parsing data associated with our plugin
 """
 
 from pathlib import Path
+import uuid
 
 
 def size_loader(data_folder):
@@ -14,5 +15,9 @@ def size_loader(data_folder):
     }
     """
     for file_path_object in Path(data_folder).glob("**/*"):
-        document = {"name": file_path_object.name, "size": Path(file_path_object).stat().st_size}
+        document = {
+            "_id": str(uuid.uuid4()),
+            "name": file_path_object.name,
+            "size": Path(file_path_object).stat().st_size,
+        }
         yield document

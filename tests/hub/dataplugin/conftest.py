@@ -4,7 +4,7 @@ Fixtures for mocking different types of plugin types
 
 from pathlib import Path
 import functools
-import http
+import http.server
 import json
 import logging
 import os
@@ -17,6 +17,7 @@ import pytest
 
 
 logger = logging.getLogger(__name__)
+
 
 
 @pytest.fixture(scope="session")
