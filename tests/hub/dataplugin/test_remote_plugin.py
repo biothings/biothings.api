@@ -4,10 +4,8 @@ plugin design
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 import logging
 
-import pytest
 import _pytest
 
 
@@ -15,18 +13,14 @@ from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
 from biothings.hub.dataplugin.assistant import (
-    AdvancedPluginLoader,
     LocalAssistant,
-    ManifestBasedPluginLoader,
-    AssistantManager,
     GithubAssistant,
-    AssistantException,
 )
+from biothings.hub.dataplugin.manager import AssistantManager
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
-from biothings.utils.common import get_loop, parse_folder_name_from_url
+from biothings.utils.common import get_loop
 from biothings.utils.manager import JobManager
-from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(__name__)
@@ -108,5 +102,6 @@ def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFac
     if plugin_document is not None:
         data_plugin.remove(plugin_document)
 
+    breakpoint()
     assistant_manager.register_url(url=remote_plugin_repository)
     assistant_manager.unregister_url(url=remote_plugin_repository)
