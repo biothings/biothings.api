@@ -1,13 +1,13 @@
-import functools
+"""
+Entrypoint for the biothings-cli tool
+"""
+
 import importlib.util
-import inspect
 import logging
 import os
-import pathlib
 import sys
 
 
-from biothings.cli.log import setup_logging
 from biothings.cli.settings import (
     setup_biothings_configuration,
     setup_commandline_configuration,
@@ -55,9 +55,11 @@ def main():
     setup_logging_configuration(logging_level)
     setup_biothings_configuration()
 
-    from biothings.cli.dataplugin import app as dataplugin_app
-    from biothings.cli.dataplugin_hub import app as dataplugin_hub_app
+    from biothings.cli.dataplugin import dataplugin_application
+    from biothings.cli.hub import hub_application
+    from biothings.cli.manifest import manifest_application
 
-    cli.add_typer(dataplugin_app, name="dataplugin")
-    cli.add_typer(dataplugin_hub_app, name="dataplugin-hub")
+    cli.add_typer(dataplugin_application, name="dataplugin")
+    cli.add_typer(hub_application, name="dataplugin-hub")
+    cli.add_typer(manifest_application, name="manifest")
     return cli()

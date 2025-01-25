@@ -6,10 +6,13 @@ from collections import UserDict
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
+import json
 from typing import NamedTuple, Optional
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
+
+from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
@@ -144,8 +147,6 @@ class _BuildDoc(UserDict):
 
         # Case 1:
         # As a dummy indexer
-        # Used in validate_mapping, ...
-
         if backend is None:
             return _BuildBackend()
 
@@ -728,9 +729,9 @@ class IndexManager(BaseManager):
         if not build_doc.get("build_config"):
             raise ValueError("Cannot find build config for '%s'." % build_name)
 
-        idx = self._select_indexer(build_name)
-        idx = idx(build_doc, indexer_env_, index_name)
-        job = idx.index(self.job_manager, ids=ids, **kwargs)
+        indexer_class = self._select_indexer(build_name)
+        indexer_instance = indexer_class(build_doc, indexer_env_, index_name)
+        job = indexer_instance.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
         job.add_done_callback(self.logger.debug)
 

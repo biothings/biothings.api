@@ -328,7 +328,7 @@ class BaseSourceUploader(object):
         if hasattr(self.__class__, "__metadata__"):
             _doc.update(self.__class__.__metadata__)
         # try to find information about the uploader source code
-        from biothings.hub.dataplugin.assistant import AssistedUploader
+        from biothings.hub.dataplugin.loaders.loader import AssistedUploader
 
         if issubclass(self.__class__, AssistedUploader):
             # it's a plugin, we'll just point to the plugin folder

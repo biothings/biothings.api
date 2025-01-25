@@ -5,6 +5,7 @@
     POST /<biothing_type>
 
 """
+
 from biothings.tests.web import BiothingsWebAppTest
 
 # import setup_es to make sure the ES index is setup
