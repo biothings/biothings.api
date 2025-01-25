@@ -23,7 +23,7 @@ long_help = (
     + "\n   :rocket::boom::sparkling_heart:"
 )
 
-app = typer.Typer(
+hub_application = typer.Typer(
     help=long_help,
     short_help=short_help,
     no_args_is_help=True,
@@ -31,7 +31,7 @@ app = typer.Typer(
 )
 
 
-@app.command(
+@hub_application.command(
     name="create",
     help="Create a new data plugin from the tempplate",
 )
@@ -44,17 +44,20 @@ def create_data_plugin(
         Optional[bool],
         typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
     ] = False,
-    # parallelizer: bool = typer.Option(False, "--parallelizer", help="Using parallelizer or not? Default: No"),
     parallelizer: Annotated[
         Optional[bool],
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):
-    """*create* command for creating a new data plugin from the template"""
+    """
+    *create* command
+
+    creates a new data plugin from a pre-defined template
+    """
     operations.do_create(name, multi_uploaders, parallelizer, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     name="dump",
     help="Download source data files to local",
 )
@@ -64,11 +67,15 @@ def dump_data(
         typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
     ] = "",
 ):
-    """*dump* command for downloading source data files to local"""
+    """
+    *dump* command
+
+    downloads source data files to the local file system
+    """
     operations.do_dump(plugin_name, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     name="upload",
     help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
 )
@@ -84,19 +91,21 @@ def upload_source(
             help="The maximum number of batches that should be uploaded. Batch size is 1000 docs",
         ),
     ] = None,
-    # multi_uploaders: bool = typer.Option(
-    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
-    # ),
-    # parallelizer: bool = typer.Option(
-    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
-    # ),
 ):
-    """*upload* command for converting downloaded data from dump step into JSON documents and upload the to the source database.
-    A local sqlite database used to store the uploaded data"""
+    """
+    *upload* command
+
+    ***NOTE***
+    Only works correctly if the dump command has been run
+
+    converts the data from the dump operation into JSON documents. Then uploads to a local
+    source database. Default database is sqlite3, but mongodb is supported if configured and an
+    instance is setup
+    """
     operations.do_upload(plugin_name, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     "dump_and_upload",
     help="Download data source to local folder then convert to Json document and upload to the source database",
 )
@@ -105,19 +114,19 @@ def dump_and_upload(
         str,
         typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
     ] = "",
-    # multi_uploaders: bool = typer.Option(
-    #     False, "--multi-uploaders", help="Add this option if you want to create multiple uploaders"
-    # ),
-    # parallelizer: bool = typer.Option(
-    #     False, "--parallelizer", help="Using parallelizer or not? Default: No"
-    # ),
 ):
-    """*dump_and_upload* command for downloading source data files to local, then converting them into JSON documents and uploading them to the source database.
-    Two steps in one command."""
+    """
+    *dump_and_upload* command
+
+    performs the dump and then upload commands sequentially
+    1) downloads source data files to local file system
+    2) converts them into JSON documents
+    3) uploads those JSON documents to the source database.
+    """
     operations.do_dump_and_upload(plugin_name, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     name="list",
     help="Listing dumped files or uploaded sources",
 )
@@ -130,11 +139,15 @@ def listing(
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = False,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
-    """*list* command for listing dumped files and/or uploaded sources"""
+    """
+    *list* command
+
+    lists dumped files and/or uploaded sources
+    """
     operations.do_list(plugin_name, dump, upload, hubdb, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     "inspect",
     help="Giving detailed information about the structure of documents coming from the parser",
 )
@@ -171,14 +184,14 @@ def inspect_source(
             """,
         ),
     ] = None,
-    # merge: Annotated[
-    #     Optional[bool],
-    #     typer.Option(
-    #         "--merge",
-    #         "-m",
-    #         help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
-    #     ),
-    # ] = False,
+    merge: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--merge",
+            "-m",
+            help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
+        ),
+    ] = False,
     output: Annotated[
         Optional[str],
         typer.Option(
@@ -188,7 +201,11 @@ def inspect_source(
         ),
     ] = None,
 ):
-    """*inspect* command for giving detailed information about the structure of documents coming from the parser after the upload step"""
+    """
+    *inspect* command
+
+    gives detailed information about the structure of documents coming from the parser after the upload step
+    """
     operations.do_inspect(
         plugin_name=plugin_name,
         sub_source_name=sub_source_name,
@@ -200,7 +217,7 @@ def inspect_source(
     )
 
 
-@app.command("serve")
+@hub_application.command("serve")
 def serve(
     plugin_name: Annotated[
         str,
@@ -245,7 +262,7 @@ def serve(
     operations.do_serve(plugin_name=plugin_name, host=host, port=port, logger=logger)
 
 
-@app.command(
+@hub_application.command(
     name="clean",
     help="Delete all dumped files and drop uploaded sources tables",
     no_args_is_help=True,
@@ -265,5 +282,9 @@ def clean_data(
         ),
     ] = False,
 ):
-    """*clean* command for deleting all dumped files and/or drop uploaded sources tables"""
+    """
+    *clean* command
+
+    deletes all dumped files and/or drops uploaded sources tables
+    """
     operations.do_clean(plugin_name, dump=dump, upload=upload, clean_all=clean_all, logger=logger)

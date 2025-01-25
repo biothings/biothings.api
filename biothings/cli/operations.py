@@ -58,7 +58,6 @@ import rich
 import tornado.template
 import typer
 
-from biothings.utils.workers import upload_worker
 from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
     process_inspect,
@@ -69,6 +68,8 @@ from biothings.cli.utils import (
     clean_dumped_files,
     clean_uploaded_sources,
 )
+from biothings.cli.structure import TEMPLATE_DIRECTORY
+from biothings.utils.workers import upload_worker
 
 
 logger = logging.getLogger(name="biothings-cli")
@@ -78,29 +79,30 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     """
     Create a new data plugin from the template
     """
-    working_dir = pathlib.Path().cwd()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
-        logger.error("Data plugin with the same name is already exists, please remove it before create")
+    working_directory = pathlib.Path().cwd()
+    new_plugin_directory = working_directory.joinpath(name)
+    if new_plugin_directory.is_dir():
+        logger.error(
+            "Data plugin with the same name is already exists. Please remove {new_plugin_directory) before proceeding"
+        )
         sys.exit(1)
-    shutil.copytree(template_dir, plugin_dir)
+
+    shutil.copytree(TEMPLATE_DIRECTORY, new_plugin_directory)
 
     # create manifest file
-    loader = tornado.template.Loader(plugin_dir)
+    loader = tornado.template.Loader(new_plugin_directory)
     parsed_template = (
         loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
-    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
+    manifest_file_path = os.path.join(working_directory, name, "manifest.yaml")
     with open(manifest_file_path, "w", encoding="utf-8") as fh:
         fh.write(parsed_template)
 
     # remove manifest template
-    os.unlink(f"{plugin_dir}/manifest.yaml.tpl")
+    os.unlink(f"{new_plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
-        os.unlink(f"{plugin_dir}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {plugin_dir}")
+        os.unlink(f"{new_plugin_directory}/parallelizer.py")
+    logger.info(f"Successfully created data plugin template at: \n {new_plugin_directory}")
 
 
 async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
@@ -304,7 +306,6 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
-
     from biothings import config
     from biothings.utils import hub_db
     from biothings.cli.web_app import main

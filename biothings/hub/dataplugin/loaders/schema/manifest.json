@@ -1,0 +1,280 @@
+{
+    "$id": "manifest.schema.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Manifest definition for our plugin architecture",
+    "type": "object",
+    "properties": {
+        "version": {
+            "type": "string"
+        },
+        "display_name": {
+            "type": "string",
+            "description": "Will be displayed as the 'friendly` name on the Biothings Studio"
+        },
+        "biothing_type": {
+            "type": "string",
+            "description": "Can be used to provide the default value to some hub functions (e.g. in quick_index as the default doc_type value",
+            "examples": [
+                "node",
+                "interaction",
+                "trial",
+                "cell",
+                "gene",
+                "variant",
+                "indication",
+                "geneset",
+                "disease",
+                "food",
+                "phenotype",
+                "umls",
+                "cooccurrence",
+                "reaction",
+                "anatomy",
+                "drug",
+                "chemical",
+                "association"
+            ]
+        },
+        "__metadata__": {
+            "type": "object",
+            "properties": {
+                "license_url": {
+                    "type": "string",
+                    "description": "web url pointing to the data license",
+                    "examples": [
+                        "https://creativecommons.org/publicdomain/zero/1.0/",
+                        "https://creativecommons.org/licenses/by/4.0/"
+                    ]
+                },
+                "license": {
+                    "type": "string",
+                    "description": "the data provision license name / title",
+                    "examples": [
+                        "Creative Commons Public Domain Dedication CC0 1.0 Universal license",
+                        "CC BY 4.0"
+                    ]
+                },
+                "url": {
+                    "type": "string",
+                    "description": "General web url about the data itself. If not applicable, the license url would suffice",
+                    "examples": [
+                        "https://www.ebi.ac.uk/chebi/aboutChebiForward.do/",
+                        "https://www.ncbi.nlm.nih.gov/research/pubtator3/"
+                    ]
+                },
+                "description": {
+                    "type": "string",
+                    "description": "string providing details about the dataplugin"
+                }
+            },
+            "required": [],
+            "additionalProperties": true
+        },
+        "requires": {
+            "object": "array",
+            "description": "list of dependencies required by the plugin. Similar to a requirements.txt file",
+            "minItems": 0,
+            "items": {
+                "type": "string"
+            },
+            "examples": [
+                [
+                    "requests",
+                    "ete3",
+                    "bs4"
+                ],
+                [
+                    "httpx",
+                    "pandas"
+                ],
+                [
+                    "numpy"
+                ],
+                []
+            ]
+        },
+        "dumper": {
+            "type": "object",
+            "description": "Indicates to the biothings backend how to build the dumper class and then download the data source",
+            "properties": {
+                "data_url": {
+                    "oneOf": [
+                        {
+                            "type": "string",
+                            "format": "uri"
+                        },
+                        {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string",
+                                "format": "uri"
+                            }
+                        }
+                    ],
+                    "description": "Data source url(s). Supported protocols are: [http, https, ftp, docker]. Only one protocol supported per dataplugin (for example: cannot mix http with ftp)",
+                    "examples": [
+                        [
+                            "https://s3.pgkb.org/data/annotations.zip",
+                            "https://s3.pgkb.org/data/drugLabels.zip",
+                            "https://s3.pgkb.org/data/occurrences.zip"
+                        ],
+                        "ftp.ncbi.nlm.nih.gov/pub/lu/PubTator3/"
+                    ]
+                },
+                "uncompress": {
+                    "type": "boolean",
+                    "description": "If true, then decompress the downloaded data source. Supports the following compression types: ]zip, gz, bz2, xz]"
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "Cron-job like syntax for triggering a dump on the specified schedule. Syntax: (Seconds, Minutes, Hours, Day of Month, Month, Day of Week)",
+                    "examples": [
+                        "'* * * * * */10'"
+                    ]
+                },
+                "release": {
+                    "type": "string",
+                    "description": "Reference to a module function that generates a release string value. Format: 'module:function'",
+                    "examples": [
+                        "version:get_release"
+                    ]
+                }
+            },
+            "required": [
+                "data_url",
+                "uncompress"
+            ],
+            "additionalProperties": false
+        },
+        "uploader": {
+            "type": "object",
+            "description": "Indicates to the biothings backend how to build the uploader class along with parsing and uploading the downloaded data source",
+            "properties": {
+                "parser": {
+                    "type": "string",
+                    "description": "Reference to a module function that handles parsing the data source format. Format: 'module:function'. The module function expects one argument (the data folder path)",
+                    "examples": [
+                        "parser:load_data"
+                    ]
+                },
+                "parser_kwargs": {
+                    "type": "object",
+                    "description": "Additional key-value pair arguments that will get passed to the parser function represented by the `parser` property",
+                    "examples": [
+                        {
+                            "plugin_name": "hartho",
+                            "documents_type": "association"
+                        }
+                    ]
+                },
+                "mapping": {
+                    "type": "string",
+                    "description": "Reference to a module function that generates an Elasticsearch mapping for the data source. Format: 'module:function'",
+                    "examples": [
+                        "mapping:elasticsearch_mapping"
+                    ]
+                },
+                "on_duplicates": {
+                    "type": "string",
+                    "description": "Protocol for how to handle documents with duplicate `_id` values from the parser. For `error` we raise an exception and terminate. For `ignore` we simply ignore the duplicate value and don't add it to the uploaded collection. For `merge` we attempt to merge the values of the two documents sharing an `_id` using a pre-defined merge strategy. If unsure, default to setting the value to `error`",
+                    "enum": [
+                        "error",
+                        "ignore",
+                        "merge"
+                    ]
+                },
+                "parallelizer": {
+                    "type": "string",
+                    "description": "Reference to a module function that handles parallelization when multiple input files use the same data source parser. Format: 'module:function'",
+                    "examples": [
+                        "parallelizer:parallel_jobs"
+                    ]
+                }
+            },
+            "required": [
+                "parser",
+                "on_duplicates"
+            ],
+            "additionalProperties": false
+        },
+        "uploaders": {
+            "type": "array",
+            "description": "Collection of uploaders that represent a multi-uploader strategy for handling the data. Could be used if there are different flavors of the data source that contain slight variations, so we want to have multiple elasticsearch indices to represent the different data source flavors",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "description": "Indicates to the biothings backend how to build the uploader class along with parsing and uploading the downloaded data source",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name to represent this specific uploader strategy or type. Must be unique from all other uploader names in the `uploaders` collection"
+                    },
+                    "parser": {
+                        "type": "string",
+                        "description": "Reference to a module function that handles parsing the data source format. Format: 'module:function'. The module function expects one argument (the data folder path)",
+                        "examples": [
+                            "parser:load_data"
+                        ]
+                    },
+                    "parser_kwargs": {
+                        "type": "object",
+                        "description": "Additional key-value pair arguments that will get passed to the parser function represented by the `parser` property",
+                        "examples": [
+                            {
+                                "plugin_name": "hartho",
+                                "document_type": "association"
+                            }
+                        ]
+                    },
+                    "mapping": {
+                        "type": "string",
+                        "description": "Reference to a module function that generates an elasticsearch mapping for the data source. Format: 'module:function'",
+                        "examples": [
+                            "mapping:elasticsearch_mapping"
+                        ]
+                    },
+                    "on_duplicates": {
+                        "type": "string",
+                        "description": "Protocol for how to handle documents with duplicate `_id` values from the parser. For `error` we raise an exception and terminate. For `ignore` we simply ignore the duplicate value and don't add it to the uploaded collection. For `merge` we attempt to merge the values of the two documents sharing an `_id` using a pre-defined merge strategy. Default value is `error`",
+                        "enum": [
+                            "error",
+                            "ignore",
+                            "merge"
+                        ]
+                    },
+                    "parallelizer": {
+                        "type": "string",
+                        "description": "Reference to a module function that handles parallelizationwhen multiple input files use the same data source parser. Format: 'module:function'",
+                        "examples": [
+                            "parallelizer:parallel_jobs"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "parser",
+                    "on_duplicates"
+                ],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": [
+        "version",
+        "dumper"
+    ],
+    "oneOf": [
+        {
+            "required": [
+                "uploader"
+            ]
+        },
+        {
+            "required": [
+                "uploaders"
+            ]
+        }
+    ],
+    "additionalProperties": false
+}

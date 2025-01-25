@@ -293,7 +293,7 @@ def create_backend(db_col_names, name_only=False, follow_ref=False, **kwargs):
     col = None
     db = None
     is_mongo = True
-    if type(db_col_names) == str:
+    if isinstance(db_col_names, str):
         # first check build doc, if there's backend_url key, we'll use it instead of
         # direclty using db_col_names as target collection (see LinkDataBuilder)
         bdoc = get_src_build().find_one({"_id": db_col_names})

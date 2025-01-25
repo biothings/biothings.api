@@ -109,6 +109,9 @@ class CLIAssistant(BaseAssistant):
                 raise gen_exc
         return self._plugin_name
 
+    def can_handle(self) -> bool:
+        return True
+
     def load_plugin(self):
         """
         Return a plugin object for the given plugin_name.
