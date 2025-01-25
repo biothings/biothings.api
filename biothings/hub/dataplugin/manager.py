@@ -24,8 +24,8 @@ from biothings.utils.common import (
 from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.manager import BaseSourceManager
-import biothings.hub.dataload.dumper as dumper
-from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant
+from biothings.hub.dataload import dumper
+from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant, AssistantException
 
 
 class DataPluginManager(dumper.DumperManager):
