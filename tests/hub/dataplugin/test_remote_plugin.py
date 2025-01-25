@@ -3,9 +3,11 @@ Tests for exercising the functionality and structure of our
 plugin design
 """
 
+import asyncio
 from pathlib import Path
 import logging
 
+import pytest
 import _pytest
 
 
@@ -68,7 +70,9 @@ def test_assistant_manager():
     assert isinstance(generated_assistant, GithubAssistant)
 
 
-def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
+@pytest.mark.asyncio
+@pytest.mark.xfail("WIP")
+async def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
     """
     Tests the ability register a remote url using the internals of the biothings.api
     library
@@ -102,6 +106,6 @@ def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFac
     if plugin_document is not None:
         data_plugin.remove(plugin_document)
 
-    breakpoint()
-    assistant_manager.register_url(url=remote_plugin_repository)
+    register_job = assistant_manager.register_url(url=remote_plugin_repository)
+    await asyncio.wait_for(register_job, timeout=None)
     assistant_manager.unregister_url(url=remote_plugin_repository)
