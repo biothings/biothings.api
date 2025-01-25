@@ -3,19 +3,15 @@ import os
 import urllib.parse
 
 import requests
-import yaml
 
 from biothings import config as btconfig
-from biothings.hub.dataload.dumper import DockerContainerDumper, LastModifiedFTPDumper, LastModifiedHTTPDumper
 from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
 from biothings.hub.dataplugin.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
-from biothings.utils import storage
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
     get_plugin_name_from_remote_manifest,
     parse_folder_name_from_url,
 )
-from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 
 
@@ -36,7 +32,7 @@ class BaseAssistant(abc.ABC):
         "advanced": AdvancedPluginLoader,
     }
 
-    def __init__(self, url):
+    def __init__(self, url: str):
         self.url = url
         self._plugin_name = None
         self._src_folder = None
@@ -164,6 +160,27 @@ class LocalAssistant(BaseAssistant):
 
     @property
     def plugin_name(self):
+        """
+        We attempt to derive the plugin name from the url as we expect the URL
+        (for local plugins) to follow the structure local://<pluginname>
+
+        Formats local://pluginname so it's in hostname.
+        (we leverage urlsplit over urlparse due to lack of need for parameter parsing)
+        https://docs.python.org/3/library/urllib.parse.html#structured-parse-results
+
+        If we discover a subdirectory we raise an error for moment due to lack of subdirectory
+        support at the moment for our pathing
+
+        This can be verified by checking the `path` value from the SplitResult
+
+        url -> local://plugin-name
+        Supported:
+        > ParseResult(scheme='local', netloc='plugin-name', path='', params='', query='', fragment='')
+
+        url -> local://sub-directory/plugin-name
+        Unsupported:
+        > ParseResult(scheme='local', netloc='plugin-name', path='sub-directory', params='', query='', fragment='')
+        """
         if not self._plugin_name:
             split = urllib.parse.urlsplit(self.url)
             # format local://pluginname so it's in hostname.
