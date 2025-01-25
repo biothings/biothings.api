@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from functools import partial
 from pprint import pformat
+from typing import Union
 
 import aiocron
 
@@ -32,6 +33,7 @@ from biothings.utils.hub_db import (
     get_src_build_config,
     get_src_dump,
     get_src_master,
+    get_src_db,
 )
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
@@ -59,7 +61,7 @@ class ResumeException(Exception):
     pass
 
 
-class DataBuilder(object):
+class DataBuilder:
     """
     Generic data builder.
     """
@@ -498,7 +500,7 @@ class DataBuilder(object):
             self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
             self.src_meta[mainsrc]["stats"].update({src: count})
 
-    def resolve_sources(self, sources):
+    def resolve_sources(self, sources: Union[str, list[str]]):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
@@ -509,8 +511,7 @@ class DataBuilder(object):
         """
         if isinstance(sources, str):
             sources = [sources]
-
-        src_db = mongo.get_src_db()
+        src_db = get_src_db()
         cols = src_db.collection_names()
         masters = self.source_backend.get_src_master_docs()
         found = []
@@ -1032,7 +1033,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
 
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
-        src = mongo.get_src_db()
+        src = get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
         dest = DocMongoBackend(tgt, tgt[dest_name])
@@ -1154,7 +1155,7 @@ class BuilderManager(BaseManager):
                 build=partial(get_src_build),
                 master=partial(get_src_master),
                 dump=partial(get_src_dump),
-                sources=partial(mongo.get_src_db),
+                sources=partial(get_src_db),
             )
         )
         return source_backend
@@ -1368,7 +1369,7 @@ class BuilderManager(BaseManager):
         except KeyError as key_error:
             raise BuilderException("No such builder for '%s'" % build_name) from key_error
         except ResourceNotReady as resource_error:
-            raise BuilderException(f"Some datasources aren't ready for the merge: {e}") from resource_error
+            raise BuilderException(f"Some datasources aren't ready for the merge: {resource_error}") from resource_error
 
     def list_sources(self, build_name):
         """

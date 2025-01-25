@@ -215,13 +215,16 @@ async def test_search_phase_execution_exception_not_rejected_execution():
     assert exc_info.value.details["debug"]["error"]["reason"] == "any kind of execution"
     assert exc_info.value.details["debug"]["error"]["root_cause"][0]["reason"] == "reason"
 
+
 @pytest.mark.asyncio
 async def test_too_many_requests_error():
     @capturesESExceptions
     async def func():
-        exc = TransportError({
-            "status_code": 429,
-        })
+        exc = TransportError(
+            {
+                "status_code": 429,
+            }
+        )
         exc.status_code = 429
         exc.error = "too_many_requests"
         exc.info = "too_many_requests"

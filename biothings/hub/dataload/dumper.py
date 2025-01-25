@@ -485,9 +485,11 @@ class BaseDumper:
 
     @property
     def new_data_folder(self):
-        """Generate a new data folder path using src_root_folder and
+        """
+        Generate a new data folder path using src_root_folder and
         specified suffix attribute. Also sync current (aka previous) data
         folder previously registeted in database.
+
         This method typically has to be called in create_todump_list()
         when the dumper actually knows some information about the resource,
         like the actual release.
