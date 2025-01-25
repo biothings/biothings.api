@@ -6,7 +6,7 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
-from biothings.hub.dataplugin.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
+from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
     get_plugin_name_from_remote_manifest,
@@ -106,12 +106,6 @@ class BaseAssistant(abc.ABC):
     def can_handle(self) -> bool:
         """
         Return true if assistant can handle the code
-        """
-
-    @abc.abstractmethod
-    def load_plugin(self):
-        """
-        Load plugin and register its components
         """
 
 

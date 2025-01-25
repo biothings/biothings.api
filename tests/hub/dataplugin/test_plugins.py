@@ -12,7 +12,8 @@ import pytest
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
-from biothings.hub.dataplugin.assistant import AdvancedPluginLoader, LocalAssistant, ManifestBasedPluginLoader
+from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
+from biothings.hub.dataplugin.assistant import LocalAssistant
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
 from biothings.utils.workers import upload_worker
@@ -169,7 +170,6 @@ def test_plugin_dump(plugin):
     current_plugin.dumper.release_client()
 
     dp.remove({"_id": current_plugin.plugin_name})
-    data_folder = current_plugin.dumper.new_data_folder
 
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)

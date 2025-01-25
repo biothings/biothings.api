@@ -4,7 +4,7 @@ Fixtures for mocking different types of plugin types
 
 from pathlib import Path
 import functools
-import http
+import http.server
 import json
 import logging
 import os
