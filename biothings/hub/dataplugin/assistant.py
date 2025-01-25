@@ -135,7 +135,7 @@ class GithubAssistant(BaseAssistant):
             return headers.get("server").lower() == "github.com"
         except Exception as gen_exc:
             self.logger.exception(gen_exc)
-            self.logger.error("%s plugin can't handle URL '%s': %s" % (self.plugin_type, self.url, e))
+            self.logger.error("%s plugin can't handle URL '%s'", self.plugin_type, self.url)
             return False
 
     def get_classdef(self):

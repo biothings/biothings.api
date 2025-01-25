@@ -80,10 +80,8 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     Create a new data plugin from the template
     """
     working_dir = pathlib.Path().cwd()
-    biothing_source_dir = pathlib.Path(__file__).parent.parent.resolve()
-    template_dir = os.path.join(biothing_source_dir, "hub", "dataplugin", "templates")
-    plugin_dir = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_dir):
+    plugin_directory = os.path.join(working_dir, name)
+    if os.path.isdir(plugin_directory):
         logger.error("Data plugin with the same name is already exists, please remove it before create")
         sys.exit(1)
     shutil.copytree(TEMPLATE_DIRECTORY, plugin_directory)
