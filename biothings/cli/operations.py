@@ -79,27 +79,30 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     """
     Create a new data plugin from the template
     """
-    working_dir = pathlib.Path().cwd()
-    plugin_directory = os.path.join(working_dir, name)
-    if os.path.isdir(plugin_directory):
-        logger.error("Data plugin with the same name is already exists, please remove it before create")
+    working_directory = pathlib.Path().cwd()
+    new_plugin_directory = working_directory.joinpath(name)
+    if new_plugin_directory.is_dir():
+        logger.error(
+            "Data plugin with the same name is already exists. Please remove {new_plugin_directory) before proceeding"
+        )
         sys.exit(1)
-    shutil.copytree(TEMPLATE_DIRECTORY, plugin_directory)
+
+    shutil.copytree(TEMPLATE_DIRECTORY, new_plugin_directory)
 
     # create manifest file
-    loader = tornado.template.Loader(plugin_directory)
+    loader = tornado.template.Loader(new_plugin_directory)
     parsed_template = (
         loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     )
-    manifest_file_path = os.path.join(working_dir, name, "manifest.yaml")
+    manifest_file_path = os.path.join(working_directory, name, "manifest.yaml")
     with open(manifest_file_path, "w", encoding="utf-8") as fh:
         fh.write(parsed_template)
 
     # remove manifest template
-    os.unlink(f"{plugin_directory}/manifest.yaml.tpl")
+    os.unlink(f"{new_plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
-        os.unlink(f"{plugin_directory}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {plugin_directory}")
+        os.unlink(f"{new_plugin_directory}/parallelizer.py")
+    logger.info(f"Successfully created data plugin template at: \n {new_plugin_directory}")
 
 
 async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
