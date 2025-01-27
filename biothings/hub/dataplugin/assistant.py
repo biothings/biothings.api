@@ -5,7 +5,7 @@ import urllib.parse
 import requests
 
 from biothings import config as btconfig
-from biothings.hub.dataplugin.manager import GitDataPlugin, ManualDataPlugin
+from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
 from biothings.hub.dataplugin.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
