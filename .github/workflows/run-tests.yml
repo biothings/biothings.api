@@ -29,7 +29,7 @@ jobs:
 
     services:
       Elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
         env:
           "discovery.type" : single-node
           "xpack.security.enabled": false
