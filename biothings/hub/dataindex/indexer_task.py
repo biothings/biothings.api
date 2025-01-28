@@ -92,7 +92,7 @@ class ESIndex(BaseESIndex):
                 document_id = op_details.get('_id')
                 reason = op_details.get('error', {}).get('reason')
                 self.logger.error(error)
-                self.logger.error(f"Document ID {document_id} failed: {reason}")
+                self.logger.error("Document ID %s failed: %s", document_id, reason)
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?
