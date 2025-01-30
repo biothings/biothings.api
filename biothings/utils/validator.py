@@ -1,6 +1,6 @@
 import importlib
 import os
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List, Union
 
 from pydantic import ValidationError
 
@@ -33,8 +33,13 @@ def generate_base_model(model_name: str) -> str:
 """
 
 
-def generate_key_name(k: str, v: str) -> str:
-    return f"""    {k}: Optional[Union[{v}, List[{v}]]] = None
+def generate_key_name(k: str, v: Union[str, List[str]]) -> str:
+    if isinstance(v, list):
+        union_types = ", ".join(v)
+        return f"""    {k}: Optional[Union[{union_types}, List[Union[{union_types}]]]] = None
+"""
+    else:
+        return f"""    {k}: Optional[Union[{v}, List[{v}]]] = None
 """
 
 
@@ -50,7 +55,7 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
         "float": "float",
         "half_float": "float",
         "scaled_float": "float",
-        "date": "str",
+        "date": ["str", "date", "datetime"],
         "boolean": "bool",
         "binary": "bytes",
         "integer_range": "tuple",
@@ -75,10 +80,12 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
 
 
 def create_pydantic_model(schema: Dict[str, Any], model_name: str):
-    base_imports = """from typing import Any, List, Optional, Union
+    base_imports = """from datetime import date, datetime
+from typing import Any, List, Optional, Union
 
 from dateutil.parser import parse
 from pydantic import BaseModel, field_validator
+
 
 """
 
