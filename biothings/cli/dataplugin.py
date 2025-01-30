@@ -265,15 +265,15 @@ def clean_data(
 
 
 @dataplugin_application.command(
-    name="build",
-    help="Build a data plugin",
+    name="index",
+    help="Create a data index for a data plugin",
 )
-def build_plugin(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for building")],
+def index_plugin(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for indexing")],
 ):
     """
-    *build* command
+    *index* command
 
-    generates a build image and elasticsearch index for a data plugin
+    generates a index image and elasticsearch index for a data plugin
     """
-    asyncio.run(operations.do_build(plugin_name=plugin_name), debug=True)
+    asyncio.run(operations.do_index(plugin_name=plugin_name), debug=True)

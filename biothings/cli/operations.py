@@ -16,7 +16,7 @@ Grouped into the following categories
 > def do_upload(plugin_name=None, show_uploaded=True):
 > def do_dump_and_upload(plugin_name):
 > def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
-> async def do_build(plugin_name: str):
+> async def do_index(plugin_name: str):
 
 
 ------------------------------------------------------------------------------------
@@ -187,12 +187,15 @@ async def do_dump_and_upload(plugin_name: str) -> None:
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
-async def do_build(plugin_name: str):
+async def do_index(plugin_name: str):
     """
-    Performs a build of the plugin
+    Creats an elasticsearch data-index for the plugin
 
-    Handles the build configuration generation, source merging
+    Handles the index configuration generation, source merging
     from the source to the target, and then index generation
+
+    Modified version of the quick_index function call found here:
+    biothings/hub/__init__.py
     """
     from biothings import config
 
