@@ -57,9 +57,7 @@ def main():
 
     from biothings.cli.dataplugin import dataplugin_application
     from biothings.cli.hub import hub_application
-    from biothings.cli.manifest import manifest_application
 
     cli.add_typer(dataplugin_application, name="dataplugin")
     cli.add_typer(hub_application, name="dataplugin-hub")
-    cli.add_typer(manifest_application, name="manifest")
     return cli()
