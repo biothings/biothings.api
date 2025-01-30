@@ -12,10 +12,10 @@ Grouped into the following categories
 --------------------------------------------------------------------------------
 ### data download / upload ###
 --------------------------------------------------------------------------------
-> def do_dump(plugin_name=None, show_dumped=True):
-> def do_upload(plugin_name=None, show_uploaded=True):
-> def do_dump_and_upload(plugin_name):
-> def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
+> async def do_dump(plugin_name=None, show_dumped=True):
+> async def do_upload(plugin_name=None, show_uploaded=True):
+> async def do_dump_and_upload(plugin_name):
+> async def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
 > async def do_index(plugin_name: str):
 
 
@@ -23,7 +23,7 @@ Grouped into the following categories
 ### data inspection ###
 ------------------------------------------------------------------------------------
 
-> def do_inspect(
+> async def do_inspect(
       plugin_name=None,
       sub_source_name=None,
       mode="type,stats",
@@ -35,18 +35,27 @@ Grouped into the following categories
 --------------------------------------------------------------------------------
 ### mock web server ###
 --------------------------------------------------------------------------------
-> def do_serve(plugin_name=None, host="localhost", port=9999):
+> async def do_serve(plugin_name=None, host="localhost", port=9999):
 
 
 --------------------------------------------------------------------------------
 ### data cleaning ###
 --------------------------------------------------------------------------------
-> def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
+> async def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
+
+
+--------------------------------------------------------------------------------
+### manifest actions ###
+--------------------------------------------------------------------------------
+> async def validate_manifest(manifest_file: Union[str, pathlib.Path]):
+> async def display_schema():
 
 
 ------------------------------------------------------------------------------------
 """
 
+from typing import Union
+import json
 import logging
 import os
 import pathlib
@@ -54,6 +63,10 @@ import shutil
 import sys
 import uuid
 
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+import jsonschema
 import rich
 import tornado.template
 import typer
@@ -347,3 +360,83 @@ async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = F
 
     if upload:
         clean_uploaded_sources(assistant_instance.plugin_directory, assistant_instance.plugin_name)
+
+
+async def display_schema():
+    """
+    Loads the jsonschema definition file and displays it to the
+    console
+    """
+    from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
+
+    manifest_schema = load_manifest_schema()
+    schema_validator = jsonschema.validators.validator_for(manifest_schema)
+    valid_schema = False
+    try:
+        schema_validator.check_schema(manifest_schema)
+        valid_schema = True
+    except jsonschema.exceptions.SchemaError as schema_error:
+        logger.exception(schema_error)
+
+    schema_repr = json.dumps(manifest_schema, indent=2)
+
+    console = Console()
+    panel = Panel(
+        f"* [bold green]Valid Schema[/bold green]: {valid_schema}\n"
+        f"* [bold green]Schema Contents[/bold green]:\n{schema_repr}",
+        title="[bold green]Biothings JSONSchema Information[/bold green]",
+        subtitle="[bold green]Biothings JSONSchema Information[/bold green]",
+        box=box.ASCII,
+    )
+    console.print(panel)
+
+
+async def validate_manifest(manifest_file: Union[str, pathlib.Path]):
+    """
+    Loads the manifest file and validates it against the schema file
+    If an error exists it will display the error to the enduser
+    """
+    from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader
+
+    manifest_file = pathlib.Path(manifest_file).resolve().absolute()
+    plugin_name = manifest_file.parent.name
+    manifest_loader = ManifestBasedPluginLoader(plugin_name=plugin_name)
+
+    manifest_state = {"path": manifest_file, "valid": False, "repr": None, "error": None}
+
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as manifest_handle:
+            manifest = json.load(manifest_handle)
+    except json.JSONDecodeError as decode_error:
+        logger.exception(decode_error)
+        manifest_state["error"] = f"{manifest_file} is not valid JSON"
+
+    manifest_state["repr"] = json.dumps(manifest, indent=2)
+
+    try:
+        manifest_loader.validate_manifest(manifest)
+    except Exception as gen_exc:
+        logger.exception(gen_exc)
+        manifest_state["error"] = f"{manifest_file} doesn't conform to the schema"
+    else:
+        manifest_state["valid"] = True
+
+    console = Console()
+    panel_message = (
+        f"* [bold green]Plugin Name[/bold green]: {plugin_name}\n"
+        f"* [bold green]Manifest Path[/bold green]: {manifest_state['path']}\n"
+        f"* [bold green]Valid Manifest[/bold green]: {manifest_state['valid']}\n"
+    )
+
+    if manifest_state["error"] is not None:
+        panel_message += f"* [bold green]Manifest Error[/bold green]: {manifest_state['error']}\n"
+    elif manifest_state["error"] is None and manifest_state["repr"] is not None:
+        panel_message += f"* [bold green]Manifest Contents[/bold green]:\n{manifest_state['repr']}\n"
+
+    panel = Panel(
+        renderable=panel_message,
+        title="[bold green]Biothings Manifest Validation[/bold green]",
+        subtitle="[bold green]Biothings Manifest Validation[/bold green]",
+        box=box.ASCII,
+    )
+    console.print(panel)

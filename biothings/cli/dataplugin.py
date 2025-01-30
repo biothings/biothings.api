@@ -1,9 +1,13 @@
-import asyncio
+"""
+Module for creating the cli interface for the dataplugin interface
+"""
+
 from typing import Optional
+import asyncio
 import logging
 
-import typer
 from typing_extensions import Annotated
+import typer
 
 from biothings.cli import operations
 
@@ -277,3 +281,31 @@ def index_plugin(
     generates a index image and elasticsearch index for a data plugin
     """
     asyncio.run(operations.do_index(plugin_name=plugin_name), debug=True)
+
+
+@dataplugin_application.command(
+    name="schema",
+    help="Display the biothings manifest schema contents",
+    no_args_is_help=False,
+)
+def plugin_schema():
+    """
+    *schema* command
+
+    Displays the schema contents storied in the biothings project
+    """
+    asyncio.run(operations.display_schema())
+
+
+@dataplugin_application.command(
+    name="validate",
+    help="Validates a provided manfiest file against the json schema",
+    no_args_is_help=True,
+)
+def plugin_manifest(manifest_file: str) -> None:
+    """
+    *validate* command
+
+    Displays the schema contents storied in the biothings project
+    """
+    asyncio.run(operations.validate_manifest(manifest_file))
