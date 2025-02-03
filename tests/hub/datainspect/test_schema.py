@@ -5,7 +5,7 @@ for our data type translations
 
 import json
 
-from biothings.hub.datainspect.document_inspect import (
+from biothings.hub.datainspect.doc_inspect import (
     DeepStatsMode,
     inspect,
     inspect_docs,

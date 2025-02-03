@@ -9,7 +9,7 @@ import biothings.utils.es as es
 from biothings import config
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
-from biothings.hub.datainspect.document_inspect import (
+from biothings.hub.datainspect.doc_inspect import (
     inspect_docs,
     get_converters,
     merge_record,

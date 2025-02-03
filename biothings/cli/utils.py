@@ -149,7 +149,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     Perform inspect for the given source. It's used in do_inspect function below
     """
     from biothings.utils import hub_db
-    from biothings.hub.datainspect.document_inspect import (
+    from biothings.hub.datainspect.doc_inspect import (
         inspect_docs,
         get_converters,
         merge_record,

@@ -3,7 +3,7 @@ import math
 from pprint import pformat
 
 from biothings.utils.common import splitstr
-from biothings.hub.datainspect.document_inspect import (
+from biothings.hub.datainspect.doc_inspect import (
     DeepStatsMode,
     inspect,
     inspect_docs,
