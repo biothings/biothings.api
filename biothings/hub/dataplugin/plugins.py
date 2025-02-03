@@ -4,7 +4,7 @@ structure and type
 """
 
 from biothings.utils.hub_db import get_data_plugin
-import biothings.hub.dataload.dumper as dumper
+from biothings.hub.dataload import dumper
 
 
 class GitDataPlugin(dumper.GitDumper):

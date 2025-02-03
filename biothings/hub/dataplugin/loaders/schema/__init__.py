@@ -12,7 +12,10 @@ SCHEMA_DIRECTORY = pathlib.Path(__file__).resolve().absolute().parent
 
 def load_manifest_schema() -> dict:
     """
-    Loads the manifest schema definition from the `schema` directory
+    Loads the schema structure from the schema module
+    using the implicit directory structure of both
+    the `__init__.py` and `manifest.json` being in
+    the same directory
     """
     manifest_schema_file = SCHEMA_DIRECTORY.joinpath("manifest.json")
     with open(manifest_schema_file, "r", encoding="utf-8") as schema_handle:

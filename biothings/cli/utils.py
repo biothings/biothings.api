@@ -30,7 +30,7 @@ from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-import biothings.utils.inspect as btinspect
+from biothings.cli.structure import TEMPLATE_DIRECTORY
 
 
 logger = logging.getLogger(name="biothings-cli")
@@ -149,6 +149,15 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     Perform inspect for the given source. It's used in do_inspect function below
     """
     from biothings.utils import hub_db
+    from biothings.hub.datainspect.doc_inspect import (
+        inspect_docs,
+        get_converters,
+        merge_record,
+        compute_metadata,
+        stringify_inspect_doc,
+        flatten_and_validate,
+        run_converters,
+    )
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
@@ -170,11 +179,11 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     pre_mapping = "mapping" in mode
     src_cols = src_db[source_name]
     inspected = {}
-    converters, mode = btinspect.get_converters(mode)
+    converters, mode = get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
     cur = src_cols.find()
-    res = btinspect.inspect_docs(
+    res = inspect_docs(
         cur,
         mode=mode,
         clean=clean,
@@ -188,20 +197,20 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     )
 
     for m in mode:
-        inspected[m] = btinspect.merge_record(inspected[m], res[m], m)
+        inspected[m] = merge_record(inspected[m], res[m], m)
     for m in mode:
         if m == "mapping":
             try:
                 inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
                 # metadata for mapping only once generated
-                inspected = btinspect.compute_metadata(inspected, m)
+                inspected = compute_metadata(inspected, m)
             except es.MappingError as e:
                 inspected["mapping"] = {"pre-mapping": inspected["mapping"], "errors": e.args[1]}
         else:
-            inspected = btinspect.compute_metadata(inspected, m)
-    btinspect.run_converters(inspected, converters)
+            inspected = compute_metadata(inspected, m)
+    run_converters(inspected, converters)
 
-    res = btinspect.stringify_inspect_doc(inspected)
+    res = stringify_inspect_doc(inspected)
     _map = {"results": res, "data_provider": repr(data_provider), "duration": timesofar(t0)}
 
     # _map["started_at"] = started_at
@@ -217,8 +226,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     mapping = _map["results"].get("mapping", {})
     type_and_stats = {
         source_name: {
-            _mode: btinspect.flatten_and_validate(_map["results"].get(_mode, {}), do_validate)
-            for _mode in ["type", "stats"]
+            _mode: flatten_and_validate(_map["results"].get(_mode, {}), do_validate) for _mode in ["type", "stats"]
         }
     }
     mapping_table = None

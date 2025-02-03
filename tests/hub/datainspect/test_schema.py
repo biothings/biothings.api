@@ -1,86 +1,26 @@
+"""
+Tests for verifying the schema generation methods
+for our data type translations
+"""
+
 import json
 
-import bson
-
-from biothings.utils.common import is_str
-
-
-def generate_json_schema(dmap):
-    scalarmap = {
-        str: "string",
-        int: "integer",
-        float: "number",
-        bool: "boolean",
-        bson.int64.Int64: "number",
-        None: "null",
-    }
-
-    def merge_type(typ1, typ2):
-        if isinstance(typ1, list):
-            if isinstance(typ2, list):
-                typ1.extend(typ2)
-            else:
-                typ1.append(typ2)
-        elif isinstance(typ2, list):
-            typ1 = [typ1] + typ1
-        else:
-            typ1 = [typ1, typ2]
-
-        return list(set(typ1))
-
-    schema = {}
-
-    if isinstance(dmap, dict):
-        for k in dmap:
-            if is_str(k):
-                esch = generate_json_schema(dmap[k])
-                if schema:
-                    if schema["type"] == "object":
-                        # we just complete 'properties', key already defined previously
-                        pass
-                    elif schema["type"] == "array":
-                        if not schema.get("properties"):
-                            schema["properties"] = {}
-                            schema["type"] = merge_type(schema["type"], "object")
-                    elif isinstance(schema["type"], list):
-                        assert set(schema["type"]) == {"object", "array"}
-                    else:
-                        raise Exception("Previous schema type not expected: %s" % schema["type"])
-
-                else:
-                    schema = {"type": "object", "properties": {}}
-                schema["properties"][k] = esch
-            # elif type(k) == type:    # TODO: remove this line
-            elif isinstance(k, type):
-                if k == list:
-                    if schema:
-                        # already defined for this key, mixed types
-                        schema.update({"items": {}})
-                        schema["type"] = merge_type(schema["type"], "array")
-                    else:
-                        schema = {"type": "array", "items": {}}
-                    esch = generate_json_schema(dmap[k])
-                    schema["items"] = generate_json_schema(dmap[k])
-                else:
-                    if schema:
-                        schema["type"] = merge_type(schema["type"], scalarmap[k])
-                    else:
-                        schema = {"type": scalarmap[k]}
-            elif k is None:
-                schema = {"type": None}
-            else:
-                raise Exception("no not here, k: %s" % k)
-    else:
-        pass
-
-    return schema
+from biothings.hub.datainspect.doc_inspect import (
+    DeepStatsMode,
+    inspect,
+    inspect_docs,
+    merge_record,
+    merge_scalar_list,
+    typify_inspect_doc,
+)
+from biothings.hub.datainspect.schema import generate_json_schema
+import biothings.utils.jsondiff
 
 
-def test():
-    # TODO: Move these test to tests folder, or maybe already moved over? Chunlei
-    # can't use assert directly, as we can't ensure the order of types (for instance)
-    import biothings.utils.jsondiff
-    from biothings.utils.inspect import inspect_docs, typify_inspect_doc
+def test_schema_generation(temporary_data_storage):
+    """
+    Tests a variety of scenarios for our schema generation
+    """
 
     biothings.utils.jsondiff.UNORDERED_LIST = True
     jsondiff = biothings.utils.jsondiff.make
@@ -238,23 +178,35 @@ def test():
     # run from app folder, biothings as symlink
 
     # small real-life collection
-    cgi_schema = json.load(open("biothings/tests/cgi_schema.json"))
-    cgi_map = typify_inspect_doc(json.load(open("biothings/tests/cgi_map.json")))
-    schema = generate_json_schema(cgi_map)
-    assert jsondiff(cgi_schema, schema) == []
+    cgi_schema_file = temporary_data_storage.joinpath("cgi_schema.json")
+    cgi_map_file = temporary_data_storage.joinpath("cgi_map.json")
+    with open(cgi_schema_file, "r", encoding="utf-8") as schema_handle, open(
+        cgi_map_file, "r", encoding="utf-8"
+    ) as map_handle:
+        cgi_schema = json.load(schema_handle)
+        cgi_map = json.load(map_handle)
+        cgi_map = typify_inspect_doc(cgi_map)
+        schema = generate_json_schema(cgi_map)
+        assert jsondiff(cgi_schema, schema) == []
 
-    clinvar_schema = json.load(open("biothings/tests/clinvar_schema.json"))
-    clinvar_map = typify_inspect_doc(json.load(open("biothings/tests/clinvar_map.json")))
-    schema = generate_json_schema(clinvar_map)
-    assert jsondiff(clinvar_schema, schema) == []
+    clinvar_schema_file = temporary_data_storage.joinpath("clinvar_schema.json")
+    clinvar_map_file = temporary_data_storage.joinpath("clinvar_map.json")
+    with open(clinvar_schema_file, "r", encoding="utf-8") as schema_handle, open(
+        clinvar_map_file, "r", encoding="utf-8"
+    ) as map_handle:
+        clinvar_schema = json.load(schema_handle)
+        clinvar_map = json.load(map_handle)
+        clinvar_map = typify_inspect_doc(clinvar_map)
+        schema = generate_json_schema(clinvar_map)
+        assert jsondiff(clinvar_schema, schema) == []
 
-    mygene_schema = json.load(open("biothings/tests/mygene_schema.json"))
-    mygene_map = typify_inspect_doc(json.load(open("biothings/tests/mygene_map.json")))
-    schema = generate_json_schema(mygene_map)
-    assert jsondiff(mygene_schema, schema) == []
-
-    print("All test OK")
-
-
-if __name__ == "__main__":
-    test()
+    mygene_schema_file = temporary_data_storage.joinpath("mygene_schema.json")
+    mygene_map_file = temporary_data_storage.joinpath("mygene_map.json")
+    with open(mygene_schema_file, "r", encoding="utf-8") as schema_handle, open(
+        mygene_map_file, "r", encoding="utf-8"
+    ) as map_handle:
+        mygene_schema = json.load(schema_handle)
+        mygene_map = json.load(map_handle)
+        mygene_map = typify_inspect_doc(mygene_map)
+        schema = generate_json_schema(mygene_map)
+        assert jsondiff(mygene_schema, schema) == []
