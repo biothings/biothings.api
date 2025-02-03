@@ -19,13 +19,7 @@ import yaml
 from biothings import config as btconfig
 from biothings.hub.dataload.dumper import DockerContainerDumper, LastModifiedFTPDumper, LastModifiedHTTPDumper
 from biothings.utils import storage
-from biothings.utils.common import (
-    get_class_from_classpath,
-    get_plugin_name_from_local_manifest,
-    get_plugin_name_from_remote_manifest,
-    parse_folder_name_from_url,
-    rmdashfr,
-)
+from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
@@ -181,6 +175,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.logger.debug(f"Loading manifest: {mf_yaml}")
                 with open(mf_yaml, "r", encoding="utf-8") as manifest_handle:
                     manifest = yaml.safe_load(manifest_handle)
+            else:
+                self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
+                self.invalidate_plugin("No manifest found")
 
             try:
                 self.validate_manifest(manifest)
@@ -195,9 +192,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.interpret_manifest(manifest, data_folder.as_posix())
             except Exception as gen_exc:
                 self.invalidate_plugin("Error loading manifest: %s" % str(gen_exc))
-            # else:
-            #     self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
-            #     self.invalidate_plugin("No manifest found")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 
