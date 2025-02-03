@@ -1,12 +1,9 @@
-import inspect
 import json
 import os
 import pprint
-import re
 import sys
 import textwrap
 import shutil
-import urllib.parse
 
 
 try:
