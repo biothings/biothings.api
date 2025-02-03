@@ -33,6 +33,7 @@ def generate_base_model(model_name: str) -> str:
 """
 
 
+# TODO list of types to be unique
 def generate_key_name(k: str, v: Union[str, List[str]]) -> str:
     if isinstance(v, list):
         union_types = ", ".join(v)
@@ -44,6 +45,7 @@ def generate_key_name(k: str, v: Union[str, List[str]]) -> str:
 
 
 def generate_model(schema: Dict[str, Any], model_name: str) -> str:
+    # Elasticsearch data type to Pydantic type mapping
     es_to_pydantic = {
         "text": "str",
         "keyword": "str",
@@ -109,7 +111,7 @@ from pydantic import BaseModel, field_validator
     return model
 
 
-def commit_validator(model: str, validation_path: str, name: str):
+def commit_validator(model: str, validation_path: str, src_name: str):
     """Write the Pydantic model to a file
     Args:
         model: Pydantic model
@@ -118,7 +120,7 @@ def commit_validator(model: str, validation_path: str, name: str):
     # create directory if it doesn't exist
     if not os.path.exists(validation_path):
         os.makedirs(validation_path)
-    model_path = os.path.join(validation_path, f"{name}_model.py")
+    model_path = os.path.join(validation_path, f"{src_name}_model.py")
     with open(model_path, "w") as f:
         f.write(model)
 
@@ -126,7 +128,7 @@ def commit_validator(model: str, validation_path: str, name: str):
 def import_validator(model_path: str, klass: str):
     """Import the Pydantic model
     Args: validation_path: path to import the model
-    klass: class name of the model
+    klass: class name of the model corresponding to the uploader source name
     """
     spec = importlib.util.spec_from_file_location("model_module", model_path)
     model_module = importlib.util.module_from_spec(spec)
