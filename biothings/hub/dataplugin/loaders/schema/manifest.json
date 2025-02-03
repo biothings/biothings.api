@@ -200,7 +200,7 @@
         },
         "uploaders": {
             "type": "array",
-            "description": "Collection of uploaders that represent a multi-uploader strategy for handling the data. Could be used if there are different flavors of the data source that contain slight variations, so we want to have multiple elasticsearch indices to represent the different data source flavors",
+            "description": "Collection of uploaders that represent a multi-uploader strategy for handling the data. Could be used if there are different flavors of the data source that contain slight variations, so we want to have multiple Elasticsearch indices to represent the different data source flavors",
             "minItems": 1,
             "items": {
                 "type": "object",
