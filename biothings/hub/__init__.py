@@ -627,7 +627,7 @@ class HubServer(object):
 
         dp_manager = DataPluginManager(job_manager=self.managers["job_manager"])
         self.managers["dataplugin_manager"] = dp_manager
-        from biothings.hub.dataplugin.assistant import AssistantManager
+        from biothings.hub.dataplugin.manager import AssistantManager
 
         args = self.mixargs("dataplugin")
         assistant_manager = AssistantManager(
