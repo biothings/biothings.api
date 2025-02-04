@@ -595,7 +595,7 @@ class BaseSourceUploader(object):
             pinfo["step"] = "validate_src"
             got_error = False
 
-            extra = {"model_file": model_path}
+            extra = {"model_file": "/hub" + model_path.split("/hub", 1)[1]}
             self.register_status("validating", subkey="validate", **extra)
             self.unprepare()
             job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
