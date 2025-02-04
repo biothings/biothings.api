@@ -25,9 +25,7 @@ def generate_date_validator(date_fields: str) -> str:
                     return [parse(item) for item in v]
                 except Exception as e:
                     raise ValueError(f"Invalid date format: {{v}}") from e
-            elif all(isinstance(item, datetime) for item in v):
-                return v
-            elif all(isinstance(item, date) for item in v):
+            elif all(isinstance(item, datetime) for item in v) or all(isinstance(item, date) for item in v):
                 return v
             else:
                 raise ValueError(
@@ -39,9 +37,7 @@ def generate_date_validator(date_fields: str) -> str:
                     return parse(v)
                 except Exception as e:
                     raise ValueError(f"Invalid date format: {{v}}") from e
-            elif isinstance(v, datetime):
-                return v
-            elif isinstance(v, date):
+            elif isinstance(v, datetime) or isinstance(v, date):
                 return v
             else:
                 raise ValueError(
