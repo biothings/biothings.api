@@ -14,17 +14,40 @@ except ImportError:
 
 def generate_date_validator(date_fields: str) -> str:
     fields_str = ", ".join(f'"{field}"' for field in date_fields)
+
     return f"""
-    @field_validator({fields_str})
+    @field_validator({fields_str}, mode="before")
     @classmethod
     def date_validator(cls, v):
-        try:
-            if isinstance(v, list):
-                return [parse(date) for date in v]
+        if isinstance(v, list):
+            if all(isinstance(item, str) for item in v):
+                try:
+                    return [parse(item) for item in v]
+                except Exception as e:
+                    raise ValueError(f"Invalid date format: {{v}}") from e
+            elif all(isinstance(item, datetime) for item in v):
+                return v
+            elif all(isinstance(item, date) for item in v):
+                return v
             else:
-                return parse(v)
-        except Exception as e:
-            raise ValueError(f"Invalid date format: {{v}}") from e
+                raise ValueError(
+                    f"All items in the list must be of the same type (str, date, or datetime): {{v}}"
+                )
+        else:
+            if isinstance(v, str):
+                try:
+                    return parse(v)
+                except Exception as e:
+                    raise ValueError(f"Invalid date format: {{v}}") from e
+            elif isinstance(v, datetime):
+                return v
+            elif isinstance(v, date):
+                return v
+            else:
+                raise ValueError(
+                    f"Invalid date: {{v}} of type: {{type(v)}} must be of type str, date, or datetime"
+                )
+
 """
 
 
@@ -33,11 +56,11 @@ def generate_base_model(model_name: str) -> str:
 """
 
 
-# TODO list of types to be unique
 def generate_key_name(k: str, v: Union[str, List[str]]) -> str:
     if isinstance(v, list):
         union_types = ", ".join(v)
-        return f"""    {k}: Optional[Union[{union_types}, List[Union[{union_types}]]]] = None
+        list_union_types = ", ".join(f"List[{t}]" for t in v)
+        return f"""    {k}: Optional[Union[{union_types}, {list_union_types}]] = None
 """
     else:
         return f"""    {k}: Optional[Union[{v}, List[{v}]]] = None
@@ -45,7 +68,6 @@ def generate_key_name(k: str, v: Union[str, List[str]]) -> str:
 
 
 def generate_model(schema: Dict[str, Any], model_name: str) -> str:
-    # Elasticsearch data type to Pydantic type mapping
     es_to_pydantic = {
         "text": "str",
         "keyword": "str",
@@ -71,7 +93,7 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
     base_model = generate_base_model(model_name)
     for k, v in schema.items():
         if isinstance(v, dict) and "properties" in v.keys():
-            base_model += generate_key_name(k, k.capitalize())
+            base_model += generate_key_name(k, model_name + "_" + k.capitalize())
         else:
             base_model += generate_key_name(k, es_to_pydantic.get(v["type"], "Any"))
             if v["type"] == "date":
@@ -82,7 +104,8 @@ def generate_model(schema: Dict[str, Any], model_name: str) -> str:
 
 
 def create_pydantic_model(schema: Dict[str, Any], model_name: str):
-    base_imports = """from datetime import date, datetime
+    base_imports = """# This is an auto-generated file used to validate data for a specific data source.
+from datetime import date, datetime
 from typing import Any, List, Optional, Union
 
 from dateutil.parser import parse
@@ -96,7 +119,7 @@ from pydantic import BaseModel, field_validator
             if "properties" in field_info:
                 model = parse_schema(
                     field_info["properties"],
-                    field_name.capitalize(),
+                    model_name + "_" + field_name.capitalize(),
                     model,
                 )
 
