@@ -531,7 +531,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
             uninstalled_requirements = set()
             for req in requirements:
-                subprocess_result = subprocess.run([sys.executable, "-m", "pip", "show", req])
+                subprocess_result = subprocess.run(
+                    [sys.executable, "-m", "pip", "show", req], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
                 if subprocess_result.returncode != 0:
                     uninstalled_requirements.add(req)
                 else:
