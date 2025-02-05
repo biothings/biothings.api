@@ -102,7 +102,7 @@ hub_requires = hubcore_requires + [
 
 # minimal requirements for to run biothings CLI
 cli_requires = [
-    "typer[all]>=0.9.0",  # required for CLI, also install rich package with [all]
+    "typer>=0.12.1",  # required for CLI, also install rich package with [all]
 ]
 
 docker_requires = [
