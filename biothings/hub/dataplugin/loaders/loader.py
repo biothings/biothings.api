@@ -600,8 +600,12 @@ class AdvancedPluginLoader(BasePluginLoader):
 
     def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
-        df = plugin["download"]["data_folder"]
-        return "__init__.py" in os.listdir(df)
+        df = pathlib.Path(plugin["download"]["data_folder"])
+        if df.exists():
+            data_folder_files = {file.name for file in df.iterdir()}
+            return "__init__.py" in data_folder_files
+        else:
+            return False
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
