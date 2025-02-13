@@ -97,6 +97,8 @@ def track(func):
             # despite saying "job" "id" this is pid/thread name
             worker["job"]["id"] = _id
             pidfile = os.path.join(config.RUN_DIR, "%s.pickle" % fn)
+            pickle.dump(worker, open(pidfile, "wb"))
+            results = func(*args, **kwargs)
         except Exception as e:
             import traceback
 
