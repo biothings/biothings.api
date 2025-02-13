@@ -539,8 +539,6 @@ class HubServer(object):
         pass
 
     def start_web_api_server(self):
-        if not self.configured:
-            self.configure()
         self.logger.info("Starting '%s'", self.name)
         if self.routes:
             self.logger.info("Starting Hub API server on port %s" % config.HUB_API_PORT)
@@ -571,11 +569,14 @@ class HubServer(object):
             self.logger.info("No route defined, API server won't start")
 
     def start(self):
-        loop = self.managers["job_manager"].loop
+        if not self.configured:
+            self.configure()
         self.start_web_api_server()
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
         self.logger.info("Starting Hub SSH server on port %s" % config.HUB_SSH_PORT)
+
+        loop = self.managers["job_manager"].loop
         self.ssh_server = start_ssh_server(
             loop,
             self.name,
