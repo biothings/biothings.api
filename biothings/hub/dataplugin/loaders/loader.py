@@ -23,7 +23,12 @@ from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
 from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
-from biothings.hub.dataload.dumper import AssistedDumper
+from biothings.hub.dataload.dumper import (
+    AssistedDumper,
+    DockerContainerDumper,
+    LastModifiedFTPDumper,
+    LastModifiedHTTPDumper,
+)
 from biothings.hub.dataload.uploader import AssistedUploader
 
 
