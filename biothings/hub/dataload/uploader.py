@@ -33,7 +33,7 @@ class ResourceError(Exception):
     pass
 
 
-class BaseSourceUploader(object):
+class BaseSourceUploader:
     """
     Default datasource uploader. Database storage can be done
     in batch or line by line. Duplicated records aren't not allowed
@@ -326,9 +326,8 @@ class BaseSourceUploader(object):
         # type of id being stored in these docs
         if hasattr(self.__class__, "__metadata__"):
             _doc.update(self.__class__.__metadata__)
-        # try to find information about the uploader source code
-        from biothings.hub.dataplugin.loaders.loader import AssistedUploader
 
+        # try to find information about the uploader source code
         if issubclass(self.__class__, AssistedUploader):
             # it's a plugin, we'll just point to the plugin folder
             src_file = self.__class__.DATA_PLUGIN_FOLDER
@@ -521,6 +520,31 @@ class BaseSourceUploader(object):
             return self._state[attr]
         else:
             raise AttributeError(attr)
+
+
+class AssistedUploader(BaseSourceUploader):
+    from biothings import config
+
+    __database__ = config.DATA_SRC_DATABASE
+    DATA_PLUGIN_FOLDER = None
+
+    # define storage strategy, override in subclass as necessary
+    storage_class = BasicStorage
+
+    # Will be override in subclasses
+    # name of the resource and collection name used to store data
+    # (see regex_name though for exceptions)
+    name = None
+    # if several resources, this one if the main name,
+    # it's also the _id of the resource in src_dump collection
+    # if set to None, it will be set to the value of variable "name"
+    main_source = None
+    # in case resource used split collections (so data is spread accross
+    # different colleciton, regex_name should be specified so all those split
+    # collections can be found using it (used when selecting mappers for instance)
+    regex_name = None
+
+    keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
