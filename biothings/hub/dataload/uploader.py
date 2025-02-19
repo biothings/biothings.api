@@ -522,29 +522,9 @@ class BaseSourceUploader:
             raise AttributeError(attr)
 
 
-class AssistedUploader(BaseSourceUploader):
-    from biothings import config
-
-    __database__ = config.DATA_SRC_DATABASE
+class AssistedUploader:
     DATA_PLUGIN_FOLDER = None
 
-    # define storage strategy, override in subclass as necessary
-    storage_class = BasicStorage
-
-    # Will be override in subclasses
-    # name of the resource and collection name used to store data
-    # (see regex_name though for exceptions)
-    name = None
-    # if several resources, this one if the main name,
-    # it's also the _id of the resource in src_dump collection
-    # if set to None, it will be set to the value of variable "name"
-    main_source = None
-    # in case resource used split collections (so data is spread accross
-    # different colleciton, regex_name should be specified so all those split
-    # collections can be found using it (used when selecting mappers for instance)
-    regex_name = None
-
-    keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
