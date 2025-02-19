@@ -40,7 +40,7 @@ install_requires = [
     "requests>=2.21.0",
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.1; python_version >= "3.8.0"',
+    'tornado==6.4.2; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
     "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
@@ -102,7 +102,7 @@ hub_requires = hubcore_requires + [
 
 # minimal requirements for to run biothings CLI
 cli_requires = [
-    "typer[all]>=0.9.0",  # required for CLI, also install rich package with [all]
+    "typer>=0.12.1",  # required for CLI, also install rich package with [all]
 ]
 
 docker_requires = [
