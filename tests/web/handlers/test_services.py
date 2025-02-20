@@ -1,8 +1,8 @@
 """
-    Test Metadata Endpoint
+Test Metadata Endpoint
 
-    GET /v1/metadata
-    GET /v1/metadata/fields
+GET /v1/metadata
+GET /v1/metadata/fields
 
 """
 

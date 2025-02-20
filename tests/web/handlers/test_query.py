@@ -1,8 +1,8 @@
 """
-    Test Query Endpoint
+Test Query Endpoint
 
-    GET /query
-    POST /query
+GET /query
+POST /query
 
 """
 

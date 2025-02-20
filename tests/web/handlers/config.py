@@ -1,5 +1,5 @@
 """
-    Web settings to override for testing.
+Web settings to override for testing.
 """
 
 import os

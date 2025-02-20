@@ -1,4 +1,4 @@
-""" Backend access class. """
+"""Backend access class."""
 
 from functools import partial
 

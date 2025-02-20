@@ -3,7 +3,7 @@
 # AND IS NO LONGER COMPATIBLE WITH THE LATEST CODEBASE
 
 """
-    Utils for creating swagger spec from a config_web module.
+Utils for creating swagger spec from a config_web module.
 
 """
 from collections import OrderedDict

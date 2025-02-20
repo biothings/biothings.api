@@ -75,7 +75,7 @@ hubcore_requires = [
 hub_requires = hubcore_requires + [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
-    #"aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
+    # "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
     "asyncssh==2.11.0",  # needs libffi-dev installed (apt-get)
     # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
@@ -97,7 +97,7 @@ hub_requires = hubcore_requires + [
     'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
-    "pytest" # to run hub api pytests
+    "pytest",  # to run hub api pytests
 ]
 
 # minimal requirements for to run biothings CLI

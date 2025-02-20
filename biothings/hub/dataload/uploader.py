@@ -526,7 +526,6 @@ class AssistedUploader:
     DATA_PLUGIN_FOLDER = None
 
 
-
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
     """Same as default uploader, but will store records and ignore if
     any duplicated error occuring (use with caution...). Storage

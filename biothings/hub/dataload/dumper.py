@@ -587,6 +587,7 @@ class AssistedDumper:
     dumpers. Built entirely through the MetaDumper metaclass
     dumper type.
     """
+
     DATA_PLUGIN_FOLDER = None
 
 
