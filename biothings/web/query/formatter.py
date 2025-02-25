@@ -1,10 +1,10 @@
 """
-    Search Result Formatter
+Search Result Formatter
 
-    Transform the raw query result into consumption-friendly
-    structures by possibly removing from, adding to, and/or
-    flattening the raw response from the database engine for
-    one or more individual queries.
+Transform the raw query result into consumption-friendly
+structures by possibly removing from, adding to, and/or
+flattening the raw response from the database engine for
+one or more individual queries.
 
 """
 

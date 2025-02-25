@@ -1,9 +1,9 @@
 """
-    Biothings API Launcher
+Biothings API Launcher
 
-    In this module, we have three framework-specific launchers
-    and a command-line utility to provide both programmatic and
-    command-line access to start Biothings APIs.
+In this module, we have three framework-specific launchers
+and a command-line utility to provide both programmatic and
+command-line access to start Biothings APIs.
 
 """
 

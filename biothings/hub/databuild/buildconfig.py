@@ -1,31 +1,31 @@
 """
-    A build config contains autobuild configs and other information.
+A build config contains autobuild configs and other information.
 
-    TODO: not all features already supported in the code
+TODO: not all features already supported in the code
 
-    For exmaple:
-    {
-        "_id": "mynews",
-        "name": "mynews",
-        "doc_type": "news",
-        "sources": ["mynews"],
-        "root": ["mynews"],
-        "builder_class": "biothings.hub.databuild.builder.DataBuilder",
-        "autobuild": { ... },
-        "autopublish": { ... },
-        "build_version": "%Y%m%d%H%M"
-    }
+For exmaple:
+{
+    "_id": "mynews",
+    "name": "mynews",
+    "doc_type": "news",
+    "sources": ["mynews"],
+    "root": ["mynews"],
+    "builder_class": "biothings.hub.databuild.builder.DataBuilder",
+    "autobuild": { ... },
+    "autopublish": { ... },
+    "build_version": "%Y%m%d%H%M"
+}
 
-    Autobuild:
-    - build
-    - diff/snapshot
+Autobuild:
+- build
+- diff/snapshot
 
-    Autopublish:
-    - release note
-    - publish
+Autopublish:
+- release note
+- publish
 
-    Autorelease:
-    - release
+Autorelease:
+- release
 
 """
 
