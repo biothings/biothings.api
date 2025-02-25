@@ -1,9 +1,9 @@
 """
-    Test Custom Cache Age
+Test Custom Cache Age
 
-    GET /case/1
-    GET /case/2
-    GET /case/3
+GET /case/1
+GET /case/2
+GET /case/3
 
 """
 

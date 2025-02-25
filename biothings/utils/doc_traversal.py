@@ -1,4 +1,4 @@
-""" Some utility functions that do document traversal """
+"""Some utility functions that do document traversal"""
 
 from biothings.utils.common import is_seq
 

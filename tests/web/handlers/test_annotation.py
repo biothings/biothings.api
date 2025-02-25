@@ -1,8 +1,8 @@
 """
-    Test Annotation Endpoint
+Test Annotation Endpoint
 
-    GET  /<biothing_type>/<id>
-    POST /<biothing_type>
+GET  /<biothing_type>/<id>
+POST /<biothing_type>
 
 """
 

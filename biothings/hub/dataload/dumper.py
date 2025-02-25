@@ -581,34 +581,14 @@ class BaseDumper:
                 pass
 
 
-class AssistedDumper(BaseDumper):
+class AssistedDumper:
     """
     Dumper class definition built for the manifest-based
     dumpers. Built entirely through the MetaDumper metaclass
     dumper type.
     """
 
-    # override in subclass accordingly
-    SRC_NAME = None
-    SRC_ROOT_FOLDER = None  # source folder (without version/dates)
     DATA_PLUGIN_FOLDER = None
-
-    # Should an upload be triggered after dump ?
-    AUTO_UPLOAD = True
-
-    # attribute used to generate data folder path suffix
-    # by default, it uses self.release value, which is typically set in self.set_release method
-    SUFFIX_ATTR = "release"
-
-    # Max parallel downloads (None = no limit).
-    MAX_PARALLEL_DUMP = None
-    # waiting time between download (0.0 = no waiting)
-    SLEEP_BETWEEN_DOWNLOAD = 0.0
-
-    # keep all release (True) or keep only the latest ?
-    ARCHIVE = True
-
-    SCHEDULE = None  # crontab format schedule, if None, won't be scheduled
 
 
 class FTPDumper(BaseDumper):

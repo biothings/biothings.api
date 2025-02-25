@@ -10,7 +10,6 @@ import subprocess
 import sys
 import textwrap
 import urllib.parse
-from string import Template
 from typing import Union
 
 import jsonschema
@@ -23,7 +22,13 @@ from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
 from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
 from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
-from biothings.hub.dataload.dumper import AssistedDumper
+from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
+from biothings.hub.dataload.dumper import (
+    AssistedDumper,
+    DockerContainerDumper,
+    LastModifiedFTPDumper,
+    LastModifiedHTTPDumper,
+)
 from biothings.hub.dataload.uploader import AssistedUploader
 
 
@@ -281,7 +286,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             else:
                 dumper_configuration["SET_RELEASE_FUNC"] = ""
 
-            dklass = None
             pnregex = r"^[A-z_][\w\d]+$"
             assert re.compile(pnregex).match(
                 self.plugin_name
@@ -289,6 +293,15 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             dumper_name = f"{self.plugin_name.capitalize()}Dumper"
             "%s"
             try:
+                dumper_configuration["DUMPER_NAME"] = dumper_name
+                dumper_configuration["SRC_NAME"] = self.plugin_name
+                if dumper_section.get("schedule"):
+                    schedule = """'%s'""" % dumper_section["schedule"]
+                else:
+                    schedule = "None"
+                dumper_configuration["SCHEDULE"] = schedule
+                dumper_configuration["UNCOMPRESS"] = dumper_section.get("uncompress", False)
+
                 if hasattr(btconfig, "DUMPER_TEMPLATE"):
                     tpl_file = btconfig.DUMPER_TEMPLATE
                 else:
@@ -298,33 +311,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         tpl_file = os.path.join(os.path.dirname(curmodpath), "docker_dumper.py.tpl")
                     else:
                         tpl_file = os.path.join(os.path.dirname(curmodpath), "dumper.py.tpl")
-                tpl = Template(open(tpl_file).read())
-                dumper_configuration["DUMPER_NAME"] = dumper_name
-                dumper_configuration["SRC_NAME"] = self.plugin_name
-                if dumper_section.get("schedule"):
-                    schedule = """'%s'""" % dumper_section["schedule"]
-                else:
-                    schedule = "None"
-                dumper_configuration["SCHEDULE"] = schedule
-                dumper_configuration["UNCOMPRESS"] = dumper_section.get("uncompress", False)
-                pystr = tpl.substitute(dumper_configuration)
-                # print(pystr)
-                code = compile(pystr, "<string>", "exec")
-                spec = importlib.util.spec_from_loader(self.plugin_name, loader=None)
-                mod = importlib.util.module_from_spec(spec)
-                exec(code, mod.__dict__, mod.__dict__)
-                dklass = getattr(mod, dumper_name)
-                # we need to inherit from a class here in this file so it can be pickled
-                assisted_dumper_class = type(
-                    "AssistedDumper_%s" % self.plugin_name,
-                    (
-                        AssistedDumper,
-                        dklass,
-                    ),
-                    {},
-                )
-                assisted_dumper_class.python_code = pystr
-
+                assisted_dumper_class = generate_assisted_dumper_class(tpl_file, dumper_configuration)
                 return assisted_dumper_class
 
             except Exception:
@@ -416,17 +403,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 else:
                     confdict["__metadata__"] = {}
 
-                if hasattr(btconfig, "DUMPER_TEMPLATE"):
-                    tpl_file = btconfig.DUMPER_TEMPLATE
-                elif sub_source_name:
-                    curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath), "subuploader.py.tpl")
-                else:
-                    # default: assuming in ..../biothings/hub/dataplugin/
-                    curmodpath = os.path.realpath(__file__)
-                    tpl_file = os.path.join(os.path.dirname(curmodpath), "uploader.py.tpl")
-                tpl = Template(open(tpl_file).read())
-
                 if uploader_section.get("parallelizer"):
                     indentfunc, func = self.get_code_for_mod_name(uploader_section["parallelizer"])
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
@@ -467,24 +443,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 else:
                     confdict["MAPPING_FUNC"] = ""
 
-                pystr = tpl.substitute(confdict)
-                # print(pystr)
-                code = compile(pystr, "<string>", "exec")
-                spec = importlib.util.spec_from_loader(self.plugin_name + sub_source_name, loader=None)
-                mod = importlib.util.module_from_spec(spec)
-                exec(code, mod.__dict__, mod.__dict__)
-                uklass = getattr(mod, uploader_name)
-                # we need to inherit from a class here in this file so it can be pickled
-                assisted_uploader_class = type(
-                    "AssistedUploader_%s" % self.plugin_name + sub_source_name,
-                    (
-                        AssistedUploader,
-                        uklass,
-                    ),
-                    {},
-                )
-                assisted_uploader_class.python_code = pystr
+                if hasattr(btconfig, "DUMPER_TEMPLATE"):
+                    tpl_file = btconfig.DUMPER_TEMPLATE
+                elif sub_source_name:
+                    curmodpath = os.path.realpath(__file__)
+                    tpl_file = os.path.join(os.path.dirname(curmodpath), "subuploader.py.tpl")
+                else:
+                    # default: assuming in ..../biothings/hub/dataplugin/
+                    curmodpath = os.path.realpath(__file__)
+                    tpl_file = os.path.join(os.path.dirname(curmodpath), "uploader.py.tpl")
 
+                assisted_uploader_class = generate_assisted_uploader_class(tpl_file, confdict)
                 return assisted_uploader_class
 
             except Exception as gen_exc:
