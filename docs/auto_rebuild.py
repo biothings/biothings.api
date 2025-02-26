@@ -5,6 +5,7 @@ Run it from the root of the src tree in a console as:
 
     python auto_rebuild.py
 """
+
 import os.path
 import subprocess
 

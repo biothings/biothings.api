@@ -40,7 +40,7 @@ install_requires = [
     "requests>=2.21.0",
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.1; python_version >= "3.8.0"',
+    'tornado==6.4.2; python_version >= "3.8.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
     "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
@@ -75,8 +75,8 @@ hubcore_requires = [
 hub_requires = hubcore_requires + [
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
-    #"aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
-    "asyncssh==2.11.0",  # needs libffi-dev installed (apt-get)
+    # "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
+    "asyncssh>=2.19.0",  # needs libffi-dev installed (apt-get)
     # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
     "jsonpointer",  # for utils.jsonpatch
@@ -97,12 +97,12 @@ hub_requires = hubcore_requires + [
     'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
-    "pytest" # to run hub api pytests
+    "pytest",  # to run hub api pytests
 ]
 
 # minimal requirements for to run biothings CLI
 cli_requires = [
-    "typer[all]>=0.9.0",  # required for CLI, also install rich package with [all]
+    "typer>=0.12.1",  # required for CLI, also install rich package with [all]
 ]
 
 docker_requires = [

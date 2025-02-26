@@ -1,23 +1,23 @@
 """
-    Search Execution Engine
+Search Execution Engine
 
-    Take the output of the query builder and feed
-    to the corresponding database engine. This stage
-    typically resolves the db destination from a
-    biothing_type and applies presentation and/or
-    networking parameters.
+Take the output of the query builder and feed
+to the corresponding database engine. This stage
+typically resolves the db destination from a
+biothing_type and applies presentation and/or
+networking parameters.
 
-    Example:
+Example:
 
-    >>> from biothings.web.query import ESQueryBackend
-    >>> from elasticsearch import Elasticsearch
-    >>> from elasticsearch_dsl import Search
+>>> from biothings.web.query import ESQueryBackend
+>>> from elasticsearch import Elasticsearch
+>>> from elasticsearch_dsl import Search
 
-    >>> backend = ESQueryBackend(Elasticsearch())
-    >>> backend.execute(Search().query("match", _id="1017"))
+>>> backend = ESQueryBackend(Elasticsearch())
+>>> backend.execute(Search().query("match", _id="1017"))
 
-    >>> _["hits"]["hits"][0]["_source"].keys()
-    dict_keys(['taxid', 'symbol', 'name', ... ])
+>>> _["hits"]["hits"][0]["_source"].keys()
+dict_keys(['taxid', 'symbol', 'name', ... ])
 
 """
 

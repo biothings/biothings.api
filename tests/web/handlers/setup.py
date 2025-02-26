@@ -1,9 +1,9 @@
 # pylint: disable=unexpected-keyword-arg
 """
-    Manage sample dataset and mapping for testing
+Manage sample dataset and mapping for testing
 
-    - Run this file directly to (re)generate sample files.
-    - Define pytest session level fixture.
+- Run this file directly to (re)generate sample files.
+- Define pytest session level fixture.
 
 """
 import json

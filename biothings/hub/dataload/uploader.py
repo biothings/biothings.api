@@ -33,7 +33,7 @@ class ResourceError(Exception):
     pass
 
 
-class BaseSourceUploader(object):
+class BaseSourceUploader:
     """
     Default datasource uploader. Database storage can be done
     in batch or line by line. Duplicated records aren't not allowed
@@ -326,9 +326,8 @@ class BaseSourceUploader(object):
         # type of id being stored in these docs
         if hasattr(self.__class__, "__metadata__"):
             _doc.update(self.__class__.__metadata__)
-        # try to find information about the uploader source code
-        from biothings.hub.dataplugin.loaders.loader import AssistedUploader
 
+        # try to find information about the uploader source code
         if issubclass(self.__class__, AssistedUploader):
             # it's a plugin, we'll just point to the plugin folder
             src_file = self.__class__.DATA_PLUGIN_FOLDER
@@ -521,6 +520,10 @@ class BaseSourceUploader(object):
             return self._state[attr]
         else:
             raise AttributeError(attr)
+
+
+class AssistedUploader:
+    DATA_PLUGIN_FOLDER = None
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):
