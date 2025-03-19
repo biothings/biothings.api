@@ -121,6 +121,7 @@ from biothings.utils.version import check_new_version, get_version  # noqa: E402
 # adjust some loggers...
 if os.environ.get("HUB_VERBOSE", "0") != "1":
     logging.getLogger("elasticsearch").setLevel(logging.ERROR)
+    logging.getLogger("elastic_transport.transport").setLevel(logging.ERROR)
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     logging.getLogger("requests").setLevel(logging.ERROR)
     logging.getLogger("botocore").setLevel(logging.ERROR)
