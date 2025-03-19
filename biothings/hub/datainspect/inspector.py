@@ -288,15 +288,6 @@ class InspectorManager(BaseManager):
                         _map["started_at"] = started_at
                         _map["duration"] = timesofar(t0)
 
-                        # when inspecting with "stats" mode, we can get huge number but mongo
-                        # can't store more than 2^64, make sure to get rid of big nums there
-                        def clean_big_nums(k, v):
-                            # TODO: same with float/double? seems mongo handles more there ?
-                            if isinstance(v, int) and v > 2**64:
-                                return k, math.nan
-                            else:
-                                return k, v
-
                         dict_traverse(_map, clean_big_nums)
                         # register begin of inspection (differ slightly depending on type)
                         if "mapping" in mode and "errors" in res["mapping"] and "pre-mapping" in res["mapping"]:
