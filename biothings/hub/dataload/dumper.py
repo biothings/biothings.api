@@ -582,6 +582,16 @@ class BaseDumper:
                 pass
 
 
+class AssistedDumper:
+    """
+    Dumper class definition built for the manifest-based
+    dumpers. Built entirely through the MetaDumper metaclass
+    dumper type.
+    """
+
+    DATA_PLUGIN_FOLDER = None
+
+
 class FTPDumper(BaseDumper):
     FTP_HOST = ""
     CWD_DIR = ""

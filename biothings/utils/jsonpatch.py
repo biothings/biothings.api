@@ -30,7 +30,7 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-""" Apply JSON-Patches (RFC 6902) """
+"""Apply JSON-Patches (RFC 6902)"""
 
 from __future__ import unicode_literals
 

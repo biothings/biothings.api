@@ -6,7 +6,7 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
-from biothings.hub.dataplugin.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
+from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
     get_plugin_name_from_remote_manifest,
