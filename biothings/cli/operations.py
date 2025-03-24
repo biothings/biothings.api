@@ -55,6 +55,7 @@ Grouped into the following categories
 """
 
 from typing import Union
+import asyncio
 import json
 import logging
 import os
@@ -73,15 +74,17 @@ import typer
 
 from biothings.cli.assistant import CLIAssistant
 from biothings.cli.utils import (
+    clean_dumped_files,
+    clean_uploaded_sources,
+    display_inspection_table,
     process_inspect,
     run_sync_or_async_job,
     show_dumped_files,
     show_hubdb_content,
     show_uploaded_sources,
-    clean_dumped_files,
-    clean_uploaded_sources,
 )
 from biothings.cli.structure import TEMPLATE_DIRECTORY
+from biothings.hub.databuild.builder import BuilderException
 from biothings.utils.workers import upload_worker
 
 
@@ -125,25 +128,23 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     from biothings import config
     from biothings.utils import hub_db
 
+    if plugin_name is None:
+        plugin_name = pathlib.Path.cwd().name
+
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
     dumper = assistant_instance.get_dumper_class()
+    dumper.__class__.AUTO_UPLOAD = False
     job_manager = assistant_instance.dumper_manager.job_manager
-    run_sync_or_async_job(job_manager, dumper.create_todump_list, force=True)
 
-    for item in dumper.to_dump:
-        logger.info('Downloading remote data from "%s"...', item["remote"])
-        dumper.download(item["remote"], item["local"])
-        logger.info('Downloaded locally as "%s"', item["local"])
-
-    dumper.steps = ["post"]
-    dumper.post_dump()
-    dumper.register_status("success")
-    dumper.release_client()
+    dump_jobs = assistant_instance.dumper_manager.dump_src(
+        src=plugin_name, force=False, skip_manual=False, schedule=False, check_only=False
+    )
+    await asyncio.gather(*dump_jobs)
 
     dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
-    data_folder = dumper.new_data_folder
+    data_folder = dumper.current_data_folder
 
     if show_dumped:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
@@ -154,7 +155,69 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
 async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
+
+    The callback in the hub leverages the `upload_src` method
+
+    >>> if self.managers.get("upload_manager"):
+    >>>     self.commands["upload"] = self.managers["upload_manager"].upload_src
+    >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
+    >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
     """
+    if plugin_name is None:
+        plugin_name = pathlib.Path.cwd().name
+
+    assistant_instance = CLIAssistant(plugin_name)
+    uploader_classes = assistant_instance.get_uploader_class()
+    for uploader_class in uploader_classes:
+        uploader = uploader_class.create(db_conn_info="")
+        uploader.make_temp_collection()
+        uploader.prepare()
+        uploader.update_master()
+
+        if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
+            logger.error(
+                'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
+                uploader.data_folder,
+                uploader.fullname,
+            )
+            raise typer.Exit(1)
+
+        upload_worker(
+            uploader.fullname,
+            uploader.__class__.storage_class,
+            uploader.load_data,
+            uploader.temp_collection_name,
+            10000,
+            1,
+            uploader.data_folder,
+            db=uploader.db,
+        )
+        uploader.switch_collection()
+        uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
+        uploader.clean_archived_collections()
+
+    if show_uploaded:
+        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
+        show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
+    return assistant_instance
+
+
+async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True):
+    """
+    Perform upload for the given list of uploader_classes
+
+    The callback in the hub leverages the `upload_src` method
+
+    >>> if self.managers.get("upload_manager"):
+    >>>     self.commands["upload"] = self.managers["upload_manager"].upload_src
+    >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
+    >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
+
+    This is a modified version of the ParallelUploader `update_data` source call
+    """
+    if plugin_name is None:
+        plugin_name = pathlib.Path.cwd().name
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -171,16 +234,28 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
             )
             raise typer.Exit(1)
         else:
-            upload_worker(
-                uploader.fullname,
-                uploader.__class__.storage_class,
-                uploader.load_data,
-                uploader.temp_collection_name,
-                10000,
-                1,
-                uploader.data_folder,
-                db=uploader.db,
-            )
+            job_parameters = uploader.jobs()
+            jobs = []
+            job_manager = assistant_instance.dumper_manager.job_manager
+            uploader.unprepare()
+            for batch_number, data_load_arguments in enumerate(job_parameters):
+                pinfo = uploader.get_pinfo()
+                pinfo["step"] = "update_data"
+                pinfo["description"] = f"{data_load_arguments}"
+                job = await job_manager.defer_to_process(
+                    pinfo,
+                    upload_worker,
+                    uploader.fullname,  # worker name
+                    uploader.storage_class,  # storage class
+                    uploader.load_data,  # loading function
+                    uploader.temp_collection_name,  # destination collection name
+                    10000,  # batch size
+                    batch_number,  # batch number
+                    *data_load_arguments,  # loading function arguments
+                    # db=uploader.db,
+                )
+                jobs.append(job)
+            await asyncio.gather(*jobs)
             uploader.switch_collection()
             uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
             uploader.clean_archived_collections()
@@ -214,7 +289,6 @@ async def do_index(plugin_name: str):
 
     assistant_instance = CLIAssistant(plugin_name)
     assistant_instance.build_manager.configure()
-    assistant_instance.build_manager.poll()
 
     plugin_identifier = uuid.uuid4()
     build_configuration_name = f"{plugin_name}-{plugin_identifier}-configuration"
@@ -234,6 +308,30 @@ async def do_index(plugin_name: str):
             builder_class=builder_class,
             params=build_config_params,
         )
+        data_builder = assistant_instance.build_manager[build_configuration_name]
+        breakpoint()
+        try:
+            sources = assistant_instance.build_manager.list_sources(build_configuration_name)
+            data_builder.get_mapping(sources)
+        except BuilderException as mapping_build_exception:
+            logger.info("No registered mapping found. Auto-generating mapping for source(s) %s", sources)
+            generated_mapping = process_inspect(
+                source_name=sources[0],
+                mode="mapping",
+                limit=None,
+                merge=False,
+                logger=logger,
+                do_validate=True,
+            )
+
+            uploader_manager = assistant_instance.uploader_manager
+            uploader_class = uploader_manager.register[plugin_name][0]
+            plugin_uploader = uploader_class(db_conn_info="")
+            plugin_uploader.prepare()
+            plugin_uploader.update_master()
+            master_document = plugin_uploader.generate_doc_src_master()
+            master_document["mapping"] = generated_mapping["results"]["mapping"]
+            plugin_uploader.save_doc_src_master(master_document)
 
         # create a temporary build
         await assistant_instance.build_manager.merge(
@@ -276,17 +374,21 @@ async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = Tru
     return assistant_instance
 
 
-async def do_inspect(
-    plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False, output=None
-):
+async def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False):
     """
     Perform inspection on a data plugin.
     """
-    if not limit:
-        limit = None
+    from biothings.hub.databuild.builder import create_backend
+    from biothings.hub.datainspect.inspector import InspectorManager
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
+    inspect_manager = InspectorManager(
+        upload_manager=assistant_instance.uploader_manager,
+        build_manager=assistant_instance.build_manager,
+        job_manager=assistant_instance.job_manager,
+    )
+    data_provider = create_backend(db_col_names="", name_only=False, follow_ref=False)
     if len(uploader_classes) > 1:
         if not sub_source_name:
             logger.error(
@@ -311,11 +413,14 @@ async def do_inspect(
     if sub_source_name and sub_source_name not in table_space:
         logger.error('Your source name "%s" does not exits', sub_source_name)
         raise typer.Exit(code=1)
+
     if sub_source_name:
-        process_inspect(sub_source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
+        inspection_mapping = process_inspect(sub_source_name, mode, limit, merge, logger=logger, do_validate=True)
+        display_inspection_table(inspection_mapping)
     else:
         for source_name in table_space:
-            process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True, output=output)
+            inspection_mapping = process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True)
+            display_inspection_table(inspection_mapping)
 
 
 async def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
