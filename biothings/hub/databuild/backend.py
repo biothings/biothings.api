@@ -16,31 +16,31 @@ from biothings.utils.hub_db import get_source_fullname, get_src_build
 # Source specific backend (deals with build config, master docs, etc...)
 class SourceDocBackendBase(DocBackendBase):
     def __init__(self, build_config, build, master, dump, sources):
-        if type(build_config) == partial:
+        if isinstance(build_config, partial):
             self._build_config_provider = build_config
             self._build_config = None
         else:
             self._build_config_provider = None
             self._build_config = build_config
-        if type(build) == partial:
+        if isinstance(build, partial):
             self._build_provider = build
             self._build = None
         else:
             self._build_provider = None
             self._build = build
-        if type(master) == partial:
+        if isinstance(master, partial):
             self._master_provider = master
             self._master = None
         else:
             self._master_provider = None
             self._master = master
-        if type(dump) == partial:
+        if isinstance(dump, partial):
             self._dump_provider = dump
             self._dump = None
         else:
             self._dump_provider = None
             self._dump = dump
-        if type(sources) == partial:
+        if isinstance(sources, partial):
             self._sources_provider = sources
             self._sources = None
         else:
@@ -295,7 +295,7 @@ def create_backend(db_col_names, name_only=False, follow_ref=False, **kwargs):
     is_mongo = True
     if isinstance(db_col_names, str):
         # first check build doc, if there's backend_url key, we'll use it instead of
-        # direclty using db_col_names as target collection (see LinkDataBuilder)
+        # directly using db_col_names as target collection (see LinkDataBuilder)
         bdoc = get_src_build().find_one({"_id": db_col_names})
         if follow_ref and bdoc and bdoc.get("backend_url") and bdoc["backend_url"] != db_col_names:
             return create_backend(bdoc["backend_url"], name_only=name_only, follow_ref=follow_ref, **kwargs)
@@ -359,7 +359,7 @@ def merge_src_build_metadata(build_docs):
     prevent any unexpected conflicts...
     """
     assert (
-        type(build_docs) == list and len(build_docs) >= 2
+        isinstance(build_docs, list) and len(build_docs) >= 2
     ), "More than one build document must be passed in order metadata"
     first = build_docs[0]
     others = build_docs[1:]
@@ -368,7 +368,7 @@ def merge_src_build_metadata(build_docs):
         new_meta = new_doc.get("_meta", {})
         for k, v in new_meta.items():
             # src_version, src, stats: merge
-            if type(v) == dict:
+            if isinstance(v, dict):
                 meta.setdefault(k, {})
                 meta[k].update(v)
             # build_version, build_date: override
