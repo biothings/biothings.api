@@ -11,6 +11,7 @@ import importlib
 import importlib.util
 import inspect
 import logging
+import os
 import pathlib
 import sys
 
@@ -121,6 +122,11 @@ def setup_biothings_configuration():
             }
         },
     }
+
+    # job manager configuration properties
+    configuration_instance.RUN_DIR = pathlib.Path().cwd()
+    configuration_instance.HUB_MAX_WORKERS = os.cpu_count()
+    configuration_instance.MAX_QUEUED_JOBS = 1000
 
     try:
         configuration_instance.hub_db = importlib.import_module(configuration_instance.HUB_DB_BACKEND["module"])
