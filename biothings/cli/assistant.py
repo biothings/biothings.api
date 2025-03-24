@@ -13,7 +13,9 @@ Supported plugin locations
 
 """
 
+import asyncio
 import logging
+import os
 import pathlib
 import sys
 
@@ -22,7 +24,7 @@ import typer
 
 from biothings.utils.common import get_plugin_name_from_local_manifest
 from biothings.hub.dataplugin.assistant import BaseAssistant
-from biothings.cli.manager import CLIJobManager
+from biothings.utils.manager import JobManager
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -44,7 +46,16 @@ class CLIAssistant(BaseAssistant):
         from biothings.hub.dataload.uploader import UploaderManager
         from biothings.hub.dataplugin.manager import DataPluginManager
 
-        self.job_manager = CLIJobManager()
+        self.job_manager = JobManager(
+            loop=asyncio.get_running_loop(),
+            process_queue=None,
+            thread_queue=None,
+            max_memory_usage=None,
+            num_workers=os.cpu_count(),
+            num_threads=16,
+            auto_recycle=True,
+        )
+
         self.build_manager = BuilderManager(job_manager=self.job_manager)
         self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager)
         self.dumper_manager = DumperManager(job_manager=self.job_manager)
