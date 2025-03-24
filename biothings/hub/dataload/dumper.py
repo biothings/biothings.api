@@ -517,7 +517,7 @@ class BaseDumper:
         try:
             return self.src_doc.get("download", {}).get("data_folder") or self.new_data_folder
         except DumperException:
-            # exception raied from new_data_folder generation, we give up
+            # exception raised from new_data_folder generation, we give up
             return None
 
     @property
@@ -843,12 +843,11 @@ class HTTPDumper(BaseDumper):
                 self.logger.info("Remote URL %s gave http code %s, ignored", remoteurl, response.status_code)
                 return None
             else:
-                raise DumperException(
-                    "Error while downloading '%s' (status: %s, reason: %s)",
-                    remoteurl,
-                    response.status_code,
-                    response.reason,
+                dumper_download_error = (
+                    f"Error while downloading '{remoteurl}' "
+                    f"(status: {response.status_code}, reason: {response.reason})",
                 )
+                raise DumperException(dumper_download_error)
 
         # note: this has to explicit, either on a global (class) level or per file to dump
         if self.__class__.RESOLVE_FILENAME and response.headers.get("content-disposition"):

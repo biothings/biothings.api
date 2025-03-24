@@ -88,11 +88,11 @@ class DataBuilder:
         self.target_name = target_name
         self._partial_source_backend = None
         self._partial_target_backend = None
-        if type(source_backend) == partial:
+        if isinstance(source_backend, partial):
             self._partial_source_backend = source_backend
         else:
             self._state["source_backend"] = source_backend
-        if type(target_backend) == partial:
+        if isinstance(target_backend, partial):
             self._partial_target_backend = target_backend
         else:
             self._state["target_backend"] = target_backend
@@ -313,7 +313,7 @@ class DataBuilder:
         backend_url = self.target_backend.get_backend_url()
         build_info = {
             "_id": target_name,
-            # TODO: deprecate target_backend & target_name, use backed_url instead
+            # TODO: deprecate target_backend & target_name, use backend_url instead
             "target_backend": self.target_backend.name,
             "target_name": target_name,
             "backend_url": backend_url,
@@ -1092,7 +1092,7 @@ def set_pending_to_build(conf_name=None):
     if conf_name:
         qfilter = {"_id": conf_name}
     logging.info(
-        "Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons")
+        "Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configurations")
     )
     src_build_config.update(qfilter, {"$addToSet": {"pending": "build"}})
 
@@ -1188,7 +1188,7 @@ class BuilderManager(BaseManager):
         return builder_class
 
     def register_builder(self, build_name):
-        # will use partial to postponse object creations and their db connection
+        # will use partial to postpone object creations and their db connection
         # as we don't want to keep connection alive for undetermined amount of time
         # declare source backend
         def create(build_name):
@@ -1487,7 +1487,7 @@ class BuilderManager(BaseManager):
     def clean_temp_collections(self, build_name, date=None, prefix=""):
         """
         Delete all target collections created from builder named
-        "build_name" at given date (or any date is none given -- carefull...).
+        "build_name" at given date (or any date is none given -- careful ...).
         Date is a string (YYYYMMDD or regex)
         Common collection name prefix can also be specified if needed.
         """

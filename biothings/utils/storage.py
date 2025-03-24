@@ -56,7 +56,7 @@ class CheckSizeStorage(BaseStorage):
 
 
 class BasicStorage(BaseStorage):
-    def doc_iterator(self, doc_d, batch=True, batch_size=10000):
+    def doc_iterator(self, doc_d: list[dict], batch: bool = True, batch_size: int = 10000):
         if isinstance(doc_d, (types.GeneratorType, list)) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
@@ -83,8 +83,9 @@ class BasicStorage(BaseStorage):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
 
-    def process(self, doc_d, batch_size, max_batch_num=None):
+    def process(self, doc_d: list[dict], batch_size: int, max_batch_num: int = None):
         self.logger.info("Uploading to the DB...")
+        self.logger.debug("Upload to temp_collection %s", self.temp_collection)
         t0 = time.time()
         total = 0
         batch_num = 0

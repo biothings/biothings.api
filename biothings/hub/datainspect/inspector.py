@@ -1,5 +1,4 @@
 import asyncio
-import math
 import random
 import time
 from datetime import datetime
@@ -32,7 +31,7 @@ class InspectorError(Exception):
     pass
 
 
-# commong function used to call inspector
+# common function used to call inspector
 def inspect_data(backend_provider, ids, mode, pre_mapping, **kwargs):
     col = create_backend(backend_provider).target_collection
     cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
@@ -107,10 +106,10 @@ class InspectorManager(BaseManager):
     def inspect(
         self,
         data_provider,
-        mode="type",
-        batch_size=10000,
-        limit=None,
-        sample=None,
+        mode: str = "type",
+        batch_size: int = 10000,
+        limit: int = None,
+        sample: float = None,
         **kwargs,
     ):
         """
@@ -138,6 +137,10 @@ class InspectorManager(BaseManager):
         # target collection). Also, the way results and statuses are registered is
         # different for uploader and builder...
         # So, there are lots of "if", be careful if you want to modify that code.
+        #
+        # Then why the fuck is it all in the same function mate
+        # We need to have different functions for different operations rather than trying
+        # to do it all in one
 
         data_provider_type = None  # where to register results (if possible to do so)
         registerer_obj = None  # who should register result
@@ -201,10 +204,9 @@ class InspectorManager(BaseManager):
                 if limit is None:
                     self.logger.info("Inspecting all the documents")
                 else:
-                    nonlocal batch_size
                     # adjust batch_size so we inspect only "limit" docs if batch is smaller than the limit
-                    if batch_size > limit:
-                        batch_size = limit
+                    nonlocal batch_size
+                    batch_size = min(batch_size, limit)
                     self.logger.info("Inspecting only %s documents", limit)
                 # make it pickleable
                 if data_provider_type == "source":
