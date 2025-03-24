@@ -90,6 +90,13 @@ def upload_source(
             help="The maximum number of batches that should be uploaded. Default Batch size is 10000 docs",
         ),
     ] = None,
+    parallel: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--parallel",
+            help="Used for uploaders that leverage the ParallelizedUploader source for the plugin",
+        ),
+    ] = False,
 ):
     """
     *upload* command
@@ -101,7 +108,10 @@ def upload_source(
     source database. Default database is sqlite3, but mongodb is supported if configured and an
     instance is setup
     """
-    asyncio.run(operations.do_upload(plugin_name=None))
+    if parallel:
+        asyncio.run(operations.do_parallel_upload(plugin_name=None))
+    else:
+        asyncio.run(operations.do_upload(plugin_name=None))
 
 
 @dataplugin_application.command(
