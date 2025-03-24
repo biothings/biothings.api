@@ -189,6 +189,13 @@ class DatabaseClient(IDatabase):
     def __getitem__(self, name):
         return Database(self.sqlite_db_folder, name)
 
+    @property
+    def address(self):
+        return self.dbfile
+
+    def get_conn(self):
+        return sqlite3.connect(self.dbfile)
+
 
 class Sqlite3BulkWriteResult:
     """
@@ -270,7 +277,7 @@ class Sqlite3BulkWriteError(Exception):
     """
 
 
-class Collection(object):
+class Collection:
     def __init__(self, colname, db):
         self.colname = colname
         self.db = db
@@ -519,7 +526,6 @@ class Collection(object):
             try:
                 raw_documents.append(document._doc)
             except Exception as gen_exp:
-                breakpoint()
                 pass
 
         try:
