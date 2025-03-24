@@ -9,7 +9,6 @@ job handling, and data manipulation should logically exist here
 
 import asyncio
 import logging
-import math
 import os
 import pathlib
 import shutil
@@ -30,7 +29,6 @@ from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.cli.structure import TEMPLATE_DIRECTORY
 
 
 logger = logging.getLogger(name="biothings-cli")
@@ -38,7 +36,9 @@ logger = logging.getLogger(name="biothings-cli")
 
 def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **kwargs):
     """
-    When func is defined as either normal or async function/method, we will call this function properly and return the results.
+    When func is defined as either normal or async function/method, we will call
+    this function properly and return the results.
+
     For an async function/method, we will use CLIJobManager to run it.
     """
     if asyncio.iscoroutinefunction(func):
@@ -144,19 +144,20 @@ def show_hubdb_content():
     )
 
 
-def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
+def process_inspect(source_name, mode, limit, merge, logger, do_validate) -> dict:
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
     from biothings.utils import hub_db
     from biothings.hub.datainspect.doc_inspect import (
-        inspect_docs,
-        get_converters,
-        merge_record,
+        clean_big_nums,
         compute_metadata,
-        stringify_inspect_doc,
         flatten_and_validate,
+        get_converters,
+        inspect_docs,
+        merge_record,
         run_converters,
+        stringify_inspect_doc,
     )
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
@@ -182,6 +183,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     converters, mode = get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
+
     cur = src_cols.find()
     res = inspect_docs(
         cur,
@@ -202,6 +204,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         if m == "mapping":
             try:
                 inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
+
                 # metadata for mapping only once generated
                 inspected = compute_metadata(inspected, m)
             except es.MappingError as e:
@@ -212,23 +215,19 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
 
     res = stringify_inspect_doc(inspected)
     _map = {"results": res, "data_provider": repr(data_provider), "duration": timesofar(t0)}
-
-    # _map["started_at"] = started_at
-
-    def clean_big_nums(k, v):
-        # TODO: same with float/double? seems mongo handles more there ?
-        if isinstance(v, int) and v > 2**64:
-            return k, math.nan
-        else:
-            return k, v
-
     dict_traverse(_map, clean_big_nums)
-    mapping = _map["results"].get("mapping", {})
+    return _map
+
+
+def display_inspection_table(source_name: str, mode: str, inspection_mapping: dict):
+    mapping = inspection_mapping["results"].get("mapping", {})
     type_and_stats = {
         source_name: {
-            _mode: flatten_and_validate(_map["results"].get(_mode, {}), do_validate) for _mode in ["type", "stats"]
+            _mode: flatten_and_validate(inspect_mapping["results"].get(_mode, {}), do_validate)
+            for _mode in ["type", "stats"]
         }
     }
+
     mapping_table = None
     if "mapping" in mode and mapping:
         if mapping.get("errors"):
@@ -242,6 +241,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
             )
             mapping_table.add_column(f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan")
             mapping_table.add_row(to_json(mapping, indent=True, sort_keys=True))
+
     report = []
     problem_summary = []
     if "stats" in mode:
@@ -315,19 +315,19 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     elif mapping_table:
         console.print(mapping_table)
 
-    if "mapping" in mode and mapping and output:
-        # TODO: the following block is commented out because we don't need to append the mapping info to the existing. Delete this block if we verify it's not needed.
-        # with open(output, "w+") as fp:
-        #     current_content = fp.read()
-        #     if current_content:
-        #         current_content = load_json(current_content)
-        #     else:
-        #         current_content = {}
-        #     current_content.update(mapping)
-        #     fp.write(to_json(current_content, indent=True, sort_keys=True))
-        with open(output, "w", encoding="utf-8") as fp:
-            fp.write(to_json(mapping, indent=True, sort_keys=True))
-            rprint(f"[green]Successfully wrote the mapping info to the JSON file: [bold]{output}[/bold][/green]")
+
+def write_mapping_to_file(output_file: str, mapping: Union[str, pathlib.Path]):
+    """
+    Takes the generated mapping data and writes it to a local file
+    """
+    if mapping is not None:
+        with open(output_file, "w", encoding="utf-8") as file_handle:
+            file_handle.write(to_json(mapping, indent=True, sort_keys=True))
+            rprint(
+                ("[green]Successfully wrote the mapping info to the JSON file: " f"[bold]{output_file}[/bold][/green]")
+            )
+    else:
+        rprint("[red]Mapping is empty nothing to write to JSON file[/red]")
 
 
 def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
