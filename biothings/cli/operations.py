@@ -24,13 +24,13 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 
 > async def do_inspect(
-      plugin_name=None,
-      sub_source_name=None,
-      mode="type,stats",
-      limit=None,
-      merge=False,
-      output=None,
-  ):
+    plugin_name: str = None,
+    sub_source_name: str=None,
+    mode: str="type,stats",
+    limit: int=None,
+    merge: bool=False,
+    output: Union[str, pathlib.Path] = None
+):
 
 --------------------------------------------------------------------------------
 ### mock web server ###
@@ -78,10 +78,10 @@ from biothings.cli.utils import (
     clean_uploaded_sources,
     display_inspection_table,
     process_inspect,
-    run_sync_or_async_job,
     show_dumped_files,
     show_hubdb_content,
     show_uploaded_sources,
+    write_mapping_to_file,
 )
 from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.hub.databuild.builder import BuilderException
@@ -95,7 +95,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     """
     Create a new data plugin from the template
     """
-    working_directory = pathlib.Path().cwd()
+    working_directory = pathlib.P, ath().cwd()
     new_plugin_directory = working_directory.joinpath(name)
     if new_plugin_directory.is_dir():
         logger.error(
@@ -374,7 +374,14 @@ async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = Tru
     return assistant_instance
 
 
-async def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,stats", limit=None, merge=False):
+async def do_inspect(
+    plugin_name: str = None,
+    sub_source_name: str = None,
+    mode: str = "type,stats",
+    limit: int = None,
+    merge: bool = False,
+    output: Union[str, pathlib.Path] = None,
+):
     """
     Perform inspection on a data plugin.
     """
@@ -383,12 +390,6 @@ async def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,s
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
-    inspect_manager = InspectorManager(
-        upload_manager=assistant_instance.uploader_manager,
-        build_manager=assistant_instance.build_manager,
-        job_manager=assistant_instance.job_manager,
-    )
-    data_provider = create_backend(db_col_names="", name_only=False, follow_ref=False)
     if len(uploader_classes) > 1:
         if not sub_source_name:
             logger.error(
@@ -415,12 +416,21 @@ async def do_inspect(plugin_name: str = None, sub_source_name=None, mode="type,s
         raise typer.Exit(code=1)
 
     if sub_source_name:
-        inspection_mapping = process_inspect(sub_source_name, mode, limit, merge, logger=logger, do_validate=True)
-        display_inspection_table(inspection_mapping)
+        inspection_mapping = process_inspect(sub_source_name, mode, limit, merge)
+        display_inspection_table(
+            source_name=sub_source_name, mode=mode, inspection_mapping=inspection_mapping, validate=True
+        )
+        if output is not None:
+            write_mapping_to_file(output, inspection_mapping)
     else:
-        for source_name in table_space:
-            inspection_mapping = process_inspect(source_name, mode, limit, merge, logger=logger, do_validate=True)
-            display_inspection_table(inspection_mapping)
+        for source_index, source_name in enumerate(table_space):
+            inspection_mapping = process_inspect(source_name, mode, limit, merge)
+            display_inspection_table(
+                source_name=source_name, mode=mode, inspection_mapping=inspection_mapping, validate=True
+            )
+            if output is not None:
+                sub_output = f"{output}{source_index}"
+                write_mapping_to_file(sub_output, inspection_mapping)
 
 
 async def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):

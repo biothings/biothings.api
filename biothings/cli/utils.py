@@ -144,7 +144,7 @@ def show_hubdb_content():
     )
 
 
-def process_inspect(source_name, mode, limit, merge, logger, do_validate) -> dict:
+def process_inspect(source_name, mode, limit, merge) -> dict:
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
@@ -152,7 +152,6 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate) -> dic
     from biothings.hub.datainspect.doc_inspect import (
         clean_big_nums,
         compute_metadata,
-        flatten_and_validate,
         get_converters,
         inspect_docs,
         merge_record,
@@ -219,11 +218,15 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate) -> dic
     return _map
 
 
-def display_inspection_table(source_name: str, mode: str, inspection_mapping: dict):
+def display_inspection_table(source_name: str, mode: str, inspection_mapping: dict, validate: bool = True):
+    from biothings.hub.datainspect.doc_inspect import (
+        flatten_and_validate,
+    )
+
     mapping = inspection_mapping["results"].get("mapping", {})
     type_and_stats = {
         source_name: {
-            _mode: flatten_and_validate(inspect_mapping["results"].get(_mode, {}), do_validate)
+            _mode: flatten_and_validate(inspection_mapping["results"].get(_mode, {}), validate)
             for _mode in ["type", "stats"]
         }
     }
