@@ -6,18 +6,22 @@ from collections import UserDict
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
-import json
 from typing import NamedTuple, Optional
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
 
-from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
-from biothings.utils.common import get_class_from_classpath, get_random_string, iter_n, merge, traverse
+from biothings.utils.common import (
+    get_class_from_classpath,
+    get_random_string,
+    iter_n,
+    merge,
+    traverse,
+)
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
@@ -702,7 +706,7 @@ class IndexManager(BaseManager):
 
         path = None
         doc = self._srcbuild.find_one({"_id": build_name})
-        for path_in_doc, _ in traverse(doc or dict(), True):
+        for path_in_doc, _ in traverse(doc or {}, True):
             if path_in_doc in rules:
                 if not path:
                     path = path_in_doc
@@ -731,9 +735,10 @@ class IndexManager(BaseManager):
 
         indexer_class = self._select_indexer(build_name)
         indexer_instance = indexer_class(build_doc, indexer_env_, index_name)
+        self.logger.info("Created indexer instance %s", indexer_instance)
         job = indexer_instance.index(self.job_manager, ids=ids, **kwargs)
         job = asyncio.ensure_future(job)
-        job.add_done_callback(self.logger.debug)
+        # job.add_done_callback(self.logger.debug)
 
         return job
 
