@@ -473,7 +473,7 @@ class DataBuilder:
         src_master = self.source_backend.master
         for collection in self.build_config["sources"]:
             meta = src_master.find_one({"_id": collection})
-            if "mapping" in meta and meta["mapping"]:
+            if isinstance(meta, dict) and meta.get("mapping", None) is not None:
                 mapping = merge_struct(mapping, meta["mapping"])
             else:
                 raise BuilderException('"%s" has no mapping data' % collection)
