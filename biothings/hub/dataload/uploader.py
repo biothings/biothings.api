@@ -21,7 +21,7 @@ from biothings.utils.storage import (
     NoBatchIgnoreDuplicatedStorage,
     NoStorage,
 )
-from biothings.utils.validator import commit_validator, create_pydantic_model, import_validator, validate_documents
+from biothings.utils.validator import commit_validator, import_validator, validate_documents
 from biothings.utils.version import get_source_code_info
 from biothings.utils.workers import upload_worker
 
@@ -86,6 +86,7 @@ class BaseSourceUploader(object):
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
         # Pydantic model settings
+        self.auto_validate = False
         self.validation_dir = kwargs.get("validation_dir")
         self.validation_model = ""
 
@@ -784,7 +785,7 @@ class UploaderManager(BaseSourceManager):
     """
 
     SOURCE_CLASS = BaseSourceUploader
-    VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
+    # VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
 
     def __init__(self, poll_schedule=None, *args, **kwargs):
         super(UploaderManager, self).__init__(*args, **kwargs)
@@ -945,9 +946,10 @@ class UploaderManager(BaseSourceManager):
         for inst in insts:
             await inst.load(*args, **kwargs)
 
-        if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
-
-            for inst in insts:
+        # if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
+        for inst in insts:
+            logging.error("..... THIS IS auto_validate: %s" % inst.auto_validate)
+            if validate or inst.auto_validate:
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):

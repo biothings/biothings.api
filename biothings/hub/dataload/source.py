@@ -403,7 +403,8 @@ class SourceManager(BaseSourceManager):
         try:
             m = self.src_master.find_one({"_id": name})
             return m.get("mapping")
-        except AttributeError:
+        except AttributeError as e:
+            logging.exception(e)
             raise ValueError("No mapping found for source '%s'" % name)
 
     def create_model_str(self, name):
