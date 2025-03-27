@@ -81,6 +81,8 @@ from biothings.cli.utils import (
     show_dumped_files,
     show_hubdb_content,
     show_uploaded_sources,
+    show_source_build,
+    show_source_index,
     write_mapping_to_file,
 )
 from biothings.cli.structure import TEMPLATE_DIRECTORY
@@ -95,11 +97,14 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     """
     Create a new data plugin from the template
     """
-    working_directory = pathlib.P, ath().cwd()
+    working_directory = pathlib.Path().cwd()
     new_plugin_directory = working_directory.joinpath(name)
     if new_plugin_directory.is_dir():
         logger.error(
-            "Data plugin with the same name is already exists. Please remove {new_plugin_directory) before proceeding"
+            (
+                "Data plugin with the same name is already exists. "
+                "Please remove {new_plugin_directory) before proceeding"
+            )
         )
         sys.exit(1)
 
@@ -107,18 +112,17 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
 
     # create manifest file
     loader = tornado.template.Loader(new_plugin_directory)
-    parsed_template = (
-        loader.load("manifest.yaml.tpl").generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
-    )
+    manifest_template = loader.load("manifest.yaml.tpl")
+    populated_manifest = manifest_template.generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
     manifest_file_path = os.path.join(working_directory, name, "manifest.yaml")
     with open(manifest_file_path, "w", encoding="utf-8") as fh:
-        fh.write(parsed_template)
+        fh.write(populated_manifest)
 
     # remove manifest template
     os.unlink(f"{new_plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
         os.unlink(f"{new_plugin_directory}/parallelizer.py")
-    logger.info(f"Successfully created data plugin template at: \n {new_plugin_directory}")
+    logger.info("Successfully created data plugin template at: %s\n", new_plugin_directory)
 
 
 async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
@@ -133,21 +137,28 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
 
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
-    dumper = assistant_instance.get_dumper_class()
-    dumper.__class__.AUTO_UPLOAD = False
-    job_manager = assistant_instance.dumper_manager.job_manager
+    dumper_class = assistant_instance.dumper_manager[plugin_name][0]
+    dumper_instance = assistant_instance.dumper_manager.create_instance(dumper_class)
+    dumper_instance.__class__.AUTO_UPLOAD = False
 
-    dump_jobs = assistant_instance.dumper_manager.dump_src(
-        src=plugin_name, force=False, skip_manual=False, schedule=False, check_only=False
+    if dumper_instance.need_prepare():
+        dumper_instance.prepare()
+        dumper_instance.set_release()
+
+    dump_job = dumper_instance.dump(
+        job_manager=assistant_instance.job_manager,
+        force=False,
     )
-    await asyncio.gather(*dump_jobs)
+    await asyncio.gather(dump_job)
 
     dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
-    data_folder = dumper.current_data_folder
+
+    dumper_instance.register_status(status="success")
+    logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
     if show_dumped:
-        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
+        data_folder = dumper_instance.current_data_folder
         show_dumped_files(data_folder, assistant_instance.plugin_name)
     return assistant_instance
 
@@ -171,15 +182,16 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     for uploader_class in uploader_classes:
         uploader = uploader_class.create(db_conn_info="")
         uploader.make_temp_collection()
+        uploader.prepare_src_dump()
         uploader.prepare()
         uploader.update_master()
 
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
-            logger.error(
-                'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
-                uploader.data_folder,
-                uploader.fullname,
+            uploader_error_message = (
+                'Data folder "%s" for "%s" is empty or does not exist yet. '
+                "Please ensure you have run `biothings-cli dataplugin dump`"
             )
+            logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
             raise typer.Exit(1)
 
         upload_worker(
@@ -233,32 +245,33 @@ async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True
                 uploader.fullname,
             )
             raise typer.Exit(1)
-        else:
-            job_parameters = uploader.jobs()
-            jobs = []
-            job_manager = assistant_instance.dumper_manager.job_manager
-            uploader.unprepare()
-            for batch_number, data_load_arguments in enumerate(job_parameters):
-                pinfo = uploader.get_pinfo()
-                pinfo["step"] = "update_data"
-                pinfo["description"] = f"{data_load_arguments}"
-                job = await job_manager.defer_to_process(
-                    pinfo,
-                    upload_worker,
-                    uploader.fullname,  # worker name
-                    uploader.storage_class,  # storage class
-                    uploader.load_data,  # loading function
-                    uploader.temp_collection_name,  # destination collection name
-                    10000,  # batch size
-                    batch_number,  # batch number
-                    *data_load_arguments,  # loading function arguments
-                    # db=uploader.db,
-                )
-                jobs.append(job)
-            await asyncio.gather(*jobs)
-            uploader.switch_collection()
-            uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
-            uploader.clean_archived_collections()
+        job_parameters = uploader.jobs()
+        jobs = []
+        job_manager = assistant_instance.dumper_manager.job_manager
+        uploader.unprepare()
+        for batch_number, data_load_arguments in enumerate(job_parameters):
+            pinfo = uploader.get_pinfo()
+            pinfo["step"] = "update_data"
+            pinfo["description"] = f"{data_load_arguments}"
+            job = await job_manager.defer_to_process(
+                pinfo,
+                upload_worker,
+                uploader.fullname,  # worker name
+                uploader.storage_class,  # storage class
+                uploader.load_data,  # loading function
+                uploader.temp_collection_name,  # destination collection name
+                10000,  # batch size
+                batch_number,  # batch number
+                *data_load_arguments,  # loading function arguments
+                # db=uploader.db,
+            )
+            jobs.append(job)
+        await asyncio.gather(*jobs)
+        uploader.switch_collection()
+
+        # keep 3 archived collections, good enough for CLI, default is 10
+        uploader.keep_archive = 3
+        uploader.clean_archived_collections()
 
     if show_uploaded:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
@@ -297,55 +310,56 @@ async def do_index(plugin_name: str):
 
     build_config_params = {"num_shards": 1, "num_replicas": 0}
 
+    builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
+    sources = [plugin_name]
+    document_type = "temporary"
+    assistant_instance.build_manager.create_build_configuration(
+        build_configuration_name,
+        doc_type=document_type,
+        sources=sources,
+        builder_class=builder_class,
+        params=build_config_params,
+    )
+    data_builder = assistant_instance.build_manager[build_configuration_name]
+
+    elasticsearch_mapping = None
     try:
-        builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
-        sources = [plugin_name]
-        document_type = "temporary"
-        assistant_instance.build_manager.create_build_configuration(
-            build_configuration_name,
-            doc_type=document_type,
-            sources=sources,
-            builder_class=builder_class,
-            params=build_config_params,
+        elasticsearch_mapping = data_builder.get_mapping(sources)
+    except BuilderException:
+        logger.info("No registered mapping found. Auto-generating mapping for source(s) %s", sources)
+        generated_mapping = process_inspect(
+            source_name=sources[0],
+            mode="mapping",
+            limit=None,
+            merge=False,
         )
-        data_builder = assistant_instance.build_manager[build_configuration_name]
-        breakpoint()
-        try:
-            sources = assistant_instance.build_manager.list_sources(build_configuration_name)
-            data_builder.get_mapping(sources)
-        except BuilderException as mapping_build_exception:
-            logger.info("No registered mapping found. Auto-generating mapping for source(s) %s", sources)
-            generated_mapping = process_inspect(
-                source_name=sources[0],
-                mode="mapping",
-                limit=None,
-                merge=False,
-                logger=logger,
-                do_validate=True,
-            )
+        elasticsearch_mapping = generated_mapping["results"]["mapping"]
 
-            uploader_manager = assistant_instance.uploader_manager
-            uploader_class = uploader_manager.register[plugin_name][0]
-            plugin_uploader = uploader_class(db_conn_info="")
-            plugin_uploader.prepare()
-            plugin_uploader.update_master()
-            master_document = plugin_uploader.generate_doc_src_master()
-            master_document["mapping"] = generated_mapping["results"]["mapping"]
-            plugin_uploader.save_doc_src_master(master_document)
+        uploader_manager = assistant_instance.uploader_manager
+        uploader_class = uploader_manager.register[plugin_name][0]
+        plugin_uploader = uploader_class(db_conn_info="")
+        plugin_uploader.prepare()
+        plugin_uploader.update_master()
+        master_document = plugin_uploader.generate_doc_src_master()
+        master_document["mapping"] = elasticsearch_mapping
+        plugin_uploader.save_doc_src_master(master_document)
 
-        # create a temporary build
-        await assistant_instance.build_manager.merge(
-            build_name=build_configuration_name,
-            target_name=build_name,
-            force=True,
-            steps=("merge", "metadata"),
-        )
+    # create a temporary build
+    merge_job = assistant_instance.build_manager.merge(
+        build_name=build_configuration_name,
+        target_name=build_name,
+        force=True,
+        steps=("merge", "metadata"),
+    )
+    await asyncio.gather(merge_job)
 
-        indexer_env = "localhub"
-        assistant_instance.index_manager.configure(config.INDEX_CONFIG)
-        await assistant_instance.index_manager.index(indexer_env, build_name=build_name, index_name=index_name)
-    except Exception as gen_exp:
-        raise gen_exp
+    indexer_env = "commandhub"
+    assistant_instance.index_manager.configure(config.INDEX_CONFIG)
+    index_job = assistant_instance.index_manager.index(indexer_env, build_name=build_name, index_name=index_name)
+    await asyncio.gather(index_job)
+
+    show_source_build(data_builder, build_configuration_name)
+    await show_source_index(index_name, assistant_instance.index_manager, elasticsearch_mapping)
 
 
 async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
@@ -385,9 +399,6 @@ async def do_inspect(
     """
     Perform inspection on a data plugin.
     """
-    from biothings.hub.databuild.builder import create_backend
-    from biothings.hub.datainspect.inspector import InspectorManager
-
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     if len(uploader_classes) > 1:
@@ -437,7 +448,6 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
-    from biothings import config
     from biothings.utils import hub_db
     from biothings.cli.web_app import main
 

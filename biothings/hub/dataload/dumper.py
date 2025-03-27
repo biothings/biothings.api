@@ -1364,10 +1364,12 @@ class DumperManager(BaseSourceManager):
     SOURCE_CLASS = BaseDumper
 
     def get_source_ids(self):
-        """Return displayable list of registered source names (not private)"""
-        # skip private ones starting with __
-        # skip those deriving from bt.h.autoupdate.dumper.BiothingsDumper, they're used for autohub
-        # and considered internal (note: only one dumper per source, so [0])
+        """
+        Return displayable list of registered source names (not private)
+        > skip private ones starting with __
+        > skip those deriving from bt.h.autoupdate.dumper.BiothingsDumper, they're used for autohub
+        > and considered internal (note: only one dumper per source, so [0])
+        """
         from biothings.hub.autoupdate.dumper import BiothingsDumper
 
         registered = sorted(
@@ -1465,12 +1467,13 @@ class DumperManager(BaseSourceManager):
             logging.error("Error while dumping '%s': %s" % (src, e))
             raise
 
-    def mark_success(self, src, dry_run=True):
-        result = []
+    def mark_success(self, src: str, dry_run: bool = True):
         if src in self.register:
             klasses = self.register[src]
         else:
-            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+            raise DumperException(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+
+        result = []
         for _, klass in enumerate(klasses):
             inst = self.create_instance(klass)
             result.append(inst.mark_success(dry_run=dry_run))

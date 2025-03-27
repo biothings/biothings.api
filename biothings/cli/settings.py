@@ -116,7 +116,7 @@ def setup_biothings_configuration():
     configuration_instance.INDEX_CONFIG = {
         "indexer_select": {},
         "env": {
-            "localhub": {
+            "commandhub": {
                 "host": "http://localhost:9200",
                 "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": True, "max_retries": 10}},
             }

@@ -8,6 +8,7 @@ job handling, and data manipulation should logically exist here
 """
 
 import asyncio
+import json
 import logging
 import os
 import pathlib
@@ -219,9 +220,7 @@ def process_inspect(source_name, mode, limit, merge) -> dict:
 
 
 def display_inspection_table(source_name: str, mode: str, inspection_mapping: dict, validate: bool = True):
-    from biothings.hub.datainspect.doc_inspect import (
-        flatten_and_validate,
-    )
+    from biothings.hub.datainspect.doc_inspect import flatten_and_validate
 
     mapping = inspection_mapping["results"].get("mapping", {})
     type_and_stats = {
@@ -380,35 +379,37 @@ def show_uploaded_sources(working_dir, plugin_name):
     uploaders = get_uploaders(working_dir)
     src_db = hub_db.get_src_db()
     uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
-    if not uploaded_sources:
-        console.print(
-            Panel(
-                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
-                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
-                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
-                + "Empty source!",
-                title="[bold]Upload[/bold]",
-                title_align="left",
-            )
+
+    try:
+        database_path = pathlib.Path(working_dir).resolve().absolute().joinpath(src_db.dbfile)
+    except TypeError:
+        database_path = str(src_db.db_conn)
+    if uploaded_sources:
+        upload_source_repr = "\n        ".join(uploaded_sources)
+        archive_source_repr = "\n        ".join(archived_sources)
+        temp_source_repr = "\n        ".join(temp_sources)
+
+        upload_message = (
+            f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+            f"[green]Database Path:[/green] [bold]{database_path}[/bold]\n"
+            f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+            "    -[green] Collections:[/green]"
+            f"[bold]\n        {upload_source_repr}[/bold]\n"
+            "    -[green] Archived collections:[/green]"
+            f"[bold]\n        {archive_source_repr}[/bold]\n"
+            "    -[green] Temporary collections:[/green]"
+            f"[bold]\n        {temp_source_repr}[/bold]\n"
         )
     else:
-        console.print(
-            Panel(
-                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
-                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
-                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
-                + "    -[green] Collections:[/green] [bold]\n        "
-                + "\n        ".join(uploaded_sources)
-                + "[/bold] \n"
-                + "    -[green] Archived collections:[/green][bold]\n        "
-                + "\n        ".join(archived_sources)
-                + "[/bold] \n"
-                + "    -[green] Temporary collections:[/green][bold]\n        "
-                + "\n        ".join(temp_sources),
-                title="[bold]Upload[/bold]",
-                title_align="left",
-            )
+        upload_message = (
+            f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+            f"[green]Database Path:[/green] [bold]{database_path}[/bold]\n"
+            f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+            "No sources found from uploaded collection"
         )
+
+    upload_panel = Panel(upload_message, title="[bold]Upload[/bold]", title_align="left")
+    console.print(upload_panel)
 
 
 def remove_files_in_folder(folder_path):
@@ -473,3 +474,45 @@ def clean_uploaded_sources(working_dir, plugin_name):
         for source in uploaded_sources:
             src_db[source].drop()
         rich.print("[green]All collections are dropped![/green]")
+
+
+def show_source_build(build_instance: "DataBuilder", build_configuration_name: str):
+    """
+    A helper function to show the build information for the plugin source
+    """
+    console = Console()
+
+    build_configuration = build_instance.build_config
+    build_console_message = (
+        f"[green1]Build Configuration Name: [/green1] [bold]{build_configuration_name}[/bold]\n"
+        f"[green1]Build Version: [/green1] [bold]{build_instance.get_build_version()}[/bold]\n"
+        f"[green1]Builder Class: [/green1] [bold]{build_configuration['builder_class']}[/bold]\n"
+        f"[green1]Source(s):[/green1] [bold]{build_configuration['sources']}[/bold]\n"
+        f"[green1]Document Type:[/green1] [bold]{build_configuration['doc_type']}[/bold]\n"
+    )
+
+    build_panel = Panel(build_console_message, title="[bold]Build[/bold]", title_align="left")
+    console.print(build_panel)
+
+    build_console_message = (
+        f"[green1]Build Backend Source: [/green1] [bold]{build_configuration_name}[/bold]\n"
+        f"[green1]Build Backend Target: [/green1] [bold]{build_configuration_name}[/bold]\n"
+    )
+
+    build_panel = Panel(build_console_message, title="[bold]Build Backend[/bold]", title_align="left")
+    console.print(build_panel)
+
+
+async def show_source_index(index_name: str, index_manager: "IndexManager", elasticsearch_mapping: dict):
+    """
+    A helper function to show the elasticsearch index for the plugin source
+    """
+    index_lookup = await index_manager.get_indexes_by_name(index_name)
+
+    console = Console()
+    index_console_message = (
+        f"[green1]Index Properties: [/green1] [bold]{json.dumps(index_lookup, indent=2, default=str)}[/bold]\n"
+        f"[green1]Elasticsearch Mapping: [/green1] [bold]{json.dumps(elasticsearch_mapping, indent=2)}[/bold]\n"
+    )
+    index_panel = Panel(index_console_message, title="[bold]Index[/bold]", title_align="left")
+    console.print(index_panel)

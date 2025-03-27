@@ -398,7 +398,7 @@ class BaseSourceManager(BaseManager):
             # from "from biothings.hub.... import aclass" statements and would be incorrectly registered
             # we only look for classes defined straight from the actual module
             if (
-                type(something) == type
+                isinstance(something, type)
                 and issubclass(something, self.__class__.SOURCE_CLASS)
                 and not something.__module__.startswith("biothings.hub")
             ):
