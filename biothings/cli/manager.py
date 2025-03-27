@@ -3,7 +3,7 @@ Basic interface to represent the regular JobManager for our biothings-cli module
 """
 
 import asyncio
-from typing import Any, Callable
+from typing import Callable
 
 
 class CLIJobManager:
