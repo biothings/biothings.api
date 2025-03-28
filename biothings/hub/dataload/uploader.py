@@ -950,7 +950,6 @@ class UploaderManager(BaseSourceManager):
 
         # if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
         for inst in insts:
-            logging.error("..... THIS IS auto_validate: %s" % inst.auto_validate)
             if validate or inst.auto_validate:
                 await inst.validate_src(*args, **kwargs)
 
