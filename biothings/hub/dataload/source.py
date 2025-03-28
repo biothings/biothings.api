@@ -316,7 +316,9 @@ class SourceManager(BaseSourceManager):
                 if getattr(upk, "__metadata__", {}).get("src_meta"):
                     src.setdefault("__metadata__", {}).setdefault(name, {})
                     src["__metadata__"][name] = upk.__metadata__["src_meta"]
+                self.logger.info(f"List attributes for source '{name}': {dir(upk)}")
                 if hasattr(upk, "auto_validate"):
+                    self.logger.info("TRUE: %s", upk.auto_validate)
                     src.setdefault("auto_validate", {}).setdefault(name, {})
                     src["auto_validate"][name] = getattr(upk, "auto_validate")
             # simplify as needed (if only one source in metadata, remove source key level,
