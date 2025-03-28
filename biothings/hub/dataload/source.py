@@ -185,8 +185,6 @@ class SourceManager(BaseSourceManager):
                     mini["validate"]["sources"][job]["error"] = info["err"]
                 if info.get("tb"):
                     mini["validate"]["sources"][job]["traceback"] = info["tb"]
-                if detailed:
-                    self.set_mapping_src_meta(job, mini)
         if src.get("inspect"):
             mini["inspect"] = {"sources": {}}
             for job, info in src["inspect"]["jobs"].items():
@@ -285,7 +283,7 @@ class SourceManager(BaseSourceManager):
             if dpm:
                 src = bydpsrcs.get(_id)
                 if src:
-                    assert len(dpm[_id]) == 1, "Expected only one uploader, got: %s" % dpm[_id]
+                    assert len(dpm[_id]) == 1, "Expected only one dumper, got: %s" % dpm[_id]
                     klass = dpm[_id][0]
                     src.pop("_id")
                     if hasattr(klass, "data_plugin_error"):
@@ -318,6 +316,7 @@ class SourceManager(BaseSourceManager):
                 if getattr(upk, "__metadata__", {}).get("src_meta"):
                     src.setdefault("__metadata__", {}).setdefault(name, {})
                     src["__metadata__"][name] = upk.__metadata__["src_meta"]
+                    src["__metadata__"][name]["auto_validate"] = getattr(upk, "auto_validate")
             # simplify as needed (if only one source in metadata, remove source key level,
             # or if licenses are the same amongst sources, keep one copy)
             if len(src.get("__metadata__", {})) == 1:
