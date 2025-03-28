@@ -316,7 +316,9 @@ class SourceManager(BaseSourceManager):
                 if getattr(upk, "__metadata__", {}).get("src_meta"):
                     src.setdefault("__metadata__", {}).setdefault(name, {})
                     src["__metadata__"][name] = upk.__metadata__["src_meta"]
-                    src["__metadata__"][name]["auto_validate"] = getattr(upk, "auto_validate")
+                if hasattr(upk, "auto_validate"):
+                    src.setdefault("auto_validate", {}).setdefault(name, {})
+                    src["auto_validate"][name] = getattr(upk, "auto_validate")
             # simplify as needed (if only one source in metadata, remove source key level,
             # or if licenses are the same amongst sources, keep one copy)
             if len(src.get("__metadata__", {})) == 1:
