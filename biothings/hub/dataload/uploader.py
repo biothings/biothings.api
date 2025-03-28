@@ -65,6 +65,8 @@ class BaseSourceUploader(object):
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
+    auto_validate = False  # if True, will automatically validate the data using the Pydantic model
+
     def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
@@ -86,7 +88,7 @@ class BaseSourceUploader(object):
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
         # Pydantic model settings
-        self.auto_validate = False
+        self.auto_validate = self.__class__.auto_validate
         self.validation_dir = kwargs.get("validation_dir")
         self.validation_model = ""
 
