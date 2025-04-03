@@ -24,10 +24,10 @@ _IDExists = namedtuple("IDExists", ("id", "exists"))
 
 
 class ESIndex(BaseESIndex):
-    def __init__(self, client, index_name, **bulk_index_args):
+    def __init__(self, client, index_name, logger=None, **bulk_index_args):
         super().__init__(client, index_name)
         self.bulk_index_args = bulk_index_args
-        self.logger = _ensure_logger(None)
+        self.logger = _ensure_logger(logger)
 
     # --------------------
     # bulk operations (m*)
