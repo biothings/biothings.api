@@ -24,21 +24,3 @@ jobs:
         run: pip install build
       - name: Build wheel
         run: python -m build
-
-  build_package_py37:
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.7"]
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: pip install build
-      - name: Build wheel
-        run: python -m build
