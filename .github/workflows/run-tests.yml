@@ -12,7 +12,36 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ '3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
+        python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run Tests
+        run: pytest tests
+        # env:
+        #   HUB_CONFIG: 'tests.test_config'
+
+    services:
+      Elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+        env:
+          "discovery.type" : single-node
+          "xpack.security.enabled": false
+        ports:
+          - 9200:9200
+
+  install_and_run_tests_py37:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.7"]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
