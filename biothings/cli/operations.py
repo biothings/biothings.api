@@ -54,7 +54,6 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 """
 
-from typing import Union
 import asyncio
 import json
 import logging
@@ -63,16 +62,18 @@ import pathlib
 import shutil
 import sys
 import uuid
+from typing import Union
 
-from rich import box
-from rich.console import Console
-from rich.panel import Panel
 import jsonschema
 import rich
 import tornado.template
 import typer
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
 
 from biothings.cli.assistant import CLIAssistant
+from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.cli.utils import (
     clean_dumped_files,
     clean_uploaded_sources,
@@ -80,15 +81,13 @@ from biothings.cli.utils import (
     process_inspect,
     show_dumped_files,
     show_hubdb_content,
-    show_uploaded_sources,
     show_source_build,
     show_source_index,
+    show_uploaded_sources,
     write_mapping_to_file,
 )
-from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.hub.databuild.builder import BuilderException
 from biothings.utils.workers import upload_worker
-
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -406,9 +405,9 @@ async def do_inspect(
             logger.error(
                 (
                     'This is a multiple uploaders data plugin, so "--sub-source-name" must be provided! '
-                    'Accepted values of "--sub-source-name" are: %s',
-                    ", ".join(uploader.name for uploader in uploader_classes),
-                )
+                    'Accepted values of "--sub-source-name" are: %s'
+                ),
+                ", ".join(uploader.name for uploader in uploader_classes),
             )
             raise typer.Exit(code=1)
         logger.info(
@@ -448,8 +447,8 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
-    from biothings.utils import hub_db
     from biothings.cli.web_app import main
+    from biothings.utils import hub_db
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
