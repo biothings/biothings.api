@@ -2,7 +2,6 @@ import datetime
 import os
 import time
 from functools import partial
-from pathlib import Path
 
 try:
     import aiocron
@@ -143,7 +142,10 @@ class BaseStatusRegisterer:
                 # we'll just return the single doc
                 # otherwise it's up to the caller to do something with that
                 doc = doc.pop()
-        assert doc, "No document could be found"
+
+        if doc is None:
+            raise ManagerError(f"Unable to find document. Key: {key_name}. Stage: {stage}")
+
         return doc
 
     @property
@@ -154,7 +156,9 @@ class BaseStatusRegisterer:
         raise NotImplementedError("implement me in sub-class")
 
     def register_status(self, doc, stage, status, transient=False, init=False, **extra):
-        assert self.collection, "No collection set"
+        if self.collection is None:
+            raise ManagerError("No collection set found while attempting to register status")
+
         # stage: "snapshot", "publish", etc... depending on the what's being done
         job_info = {
             "status": status,
@@ -166,7 +170,9 @@ class BaseStatusRegisterer:
         # register status can be about different stages:
         stage_info.setdefault(stage, {}).update(extra[stage])
         stage_key = list(extra[stage].keys())
-        assert len(stage_key) == 1, stage_key
+
+        if len(stage_key) != 1:
+            raise ManagerError(f"Unexpected number of stage mapping keys {len(stage_key)}")
         stage_key = stage_key.pop()
         if transient:
             # record some "in-progress" information

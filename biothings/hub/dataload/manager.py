@@ -7,11 +7,15 @@ from pathlib import Path
 from typing import Union
 
 from biothings import config
-from biothings.hub.manager import BaseManager, UnknownResource
+from biothings.hub.manager import BaseManager, UnknownResource, ResourceError
 from biothings.utils.hub_db import get_src_conn
 from biothings.utils.manager import JobManager
 
 logger = config.logger
+
+
+class SourceManagerError(Exception):
+    pass
 
 
 class BaseSourceManager(BaseManager):
@@ -96,7 +100,6 @@ class BaseSourceManager(BaseManager):
                 source_module = importlib.util.module_from_spec(module_specification)
                 if src in sys.modules:
                     logger.warning("%s module discovered in sys.modules", src)
-                    prior_module = {src: sys.modules.pop(src)}
                 sys.modules[src] = source_module
                 module_specification.loader.exec_module(source_module)
                 logger.info("Successfully loaded module %s", source_module)
@@ -113,7 +116,9 @@ class BaseSourceManager(BaseManager):
 
         elif isinstance(src, dict):
             # source has several other sub sources
-            assert len(src) == 1, "Should have only one element in source dict '%s'" % src
+            if len(src) != 1:
+                raise SourceManagerError(f"Should have only one element in source dict '{src}'")
+
             _, sub_srcs = list(src.items())[0]
             for src in sub_srcs:
                 self.register_source(src, fail_on_notfound)
@@ -146,14 +151,17 @@ class BaseSourceManager(BaseManager):
 
         self.register_classes(klasses)
 
-    def register_sources(self, sources):
-        assert not isinstance(sources, str), "sources argument is a string, should pass a list"
+    def register_sources(self, sources: list):
+
+        if isinstance(sources, str):
+            raise SourceManagerError(f"Expected sources argument formatted as a list. Received string: {source}")
+
         self.register.clear()
         for src in sources:
             try:
                 # batch registration, we'll silently ignore not-found sources
                 self.register_source(src, fail_on_notfound=False)
-            except (UnknownResource, ResourceError) as e:
-                logger.info("Can't register source '%s', skip it; %s", src, e)
-
+            except (UnknownResource, ResourceError) as register_error:
+                logger.exception(register_error)
                 logger.error(traceback.format_exc())
+                logger.warning("Unable to register source {src}. Skipping source registration ...")
