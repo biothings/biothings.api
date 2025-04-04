@@ -10,7 +10,7 @@ from functools import partial
 import boto3
 from config import logger as logging
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import TransportError
+from elasticsearch.exceptions import TransportError, NotFoundError
 
 from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY
@@ -299,6 +299,17 @@ class SnapshotEnv:
         set_pending_to_release_note(build_id)
         return {}
 
+    def snapshot_exists(self, snapshot_name, build_doc):
+        cfg = self.repcfg.format(build_doc)
+        snapshot = Snapshot(self.client, cfg.repo, snapshot_name)
+        try:
+            return snapshot.exists()
+        except NotFoundError:
+            return False
+        except Exception as e:
+            logging.exception(f"Error checking if snapshot '{snapshot_name}' exists: {e}")
+            raise
+
 
 class SnapshotManager(BaseManager):
     """
@@ -434,12 +445,12 @@ class SnapshotManager(BaseManager):
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
 
-    def list_snapshots(self, env=None, **filters):
-        return cleaner.find(  # filters support dotfield.
+    def list_snapshots(self, env=None, return_db_cols=True, **filters):
+        return cleaner.find(  # filters support dotfield
             get_src_build(),
             env=env,
             group_by="build_config",
-            return_db_cols=True,
+            return_db_cols=return_db_cols,
             **filters,
         )
 
@@ -449,6 +460,7 @@ class SnapshotManager(BaseManager):
         keep=3,  # the number of most recent snapshots to keep in one group
         group_by="build_config",  # the attr of which its values form groups
         dryrun=True,  # display the snapshots to be deleted without deleting them
+        ignoreErrors=False,  # continue deleting snapshots even if an error occurs
         **filters,  # a set of criterions to limit which snapshots are to be cleaned
     ):
         """Delete past snapshots and keep only the most recent ones.
@@ -460,7 +472,7 @@ class SnapshotManager(BaseManager):
         """
 
         # filters support dotfield.
-        snapshots = cleaner.find(get_src_build(), env, keep, group_by, **filters)
+        snapshots = cleaner.find(get_src_build(), env=env, keep=keep, group_by=group_by, **filters)
 
         if dryrun:
             return "\n".join(
@@ -474,11 +486,15 @@ class SnapshotManager(BaseManager):
             )
 
         # return the number of snapshots successfully deleted
-        return cleaner.delete(get_src_build(), snapshots, self)
+        return cleaner.delete(get_src_build(), snapshots, self, ignoreErrors)
 
-    def delete_snapshots(self, snapshots_data):
+    def delete_snapshots(self, snapshots_data, ignoreErrors=False):
         async def delete(environment, snapshot_names):
-            return self.cleanup(env=environment, keep=0, dryrun=False, _id={"$in": snapshot_names})
+            if environment == "__no_env__":
+                environment = None
+            return self.cleanup(
+                env=environment, keep=0, dryrun=False, ignoreErrors=ignoreErrors, _id={"$in": snapshot_names}
+            )
 
         def done(f):
             try:
@@ -499,3 +515,110 @@ class SnapshotManager(BaseManager):
         except Exception as ex:
             logging.exception("Error while deleting snapshots. error: %s", ex, extra={"notify": True})
         return jobs
+
+    def delete_snapshot_from_db(self, build_name, snapshot_name):
+        """
+        Delete a snapshot entry from the MongoDB database.
+
+        This method removes the specified snapshot from the build document in the source build collection.
+        Called when a snapshot is found to be missing in the snapshot environment during validation.
+
+        Parameters:
+            build_name (str): The name of the build from which to delete the snapshot.
+            snapshot_name (str): The name of the snapshot to delete.
+
+        Returns:
+            None
+        """
+        collection = get_src_build()
+        collection.update_one(
+            {"_id": build_name},
+            {"$unset": {f"snapshot.{snapshot_name}": 1}},
+        )
+        logging.info("Snapshot '%s' deleted from build '%s' in MongoDB", snapshot_name, build_name)
+
+    def validate_snapshots(self):
+        """
+        Validate the snapshots stored in the database.
+
+        This method checks each snapshot in the source build collection to verify whether it exists
+        in the corresponding snapshot environment. If a snapshot does not exist in the environment,
+        it is removed from the database. This helps keep the database in sync with the actual snapshots
+        present in the environments.
+
+        The validation process is executed asynchronously and any errors encountered during validation are logged.
+
+        Returns:
+            job (asyncio.Task): The asynchronous task representing the validation process.
+        """
+
+        async def validate():
+            logging.info("Starting validation of snapshots...")
+            collection = get_src_build()
+            snapshots = self.list_snapshots(return_db_cols=True)
+            errors = []
+            snapshots_deleted = 0
+
+            for group in snapshots:
+                for snapshot_data in group["items"]:
+                    snapshot_name = snapshot_data["_id"]
+                    build_name = snapshot_data["build_name"]
+                    environment = snapshot_data.get("environment") or snapshot_data["conf"]["indexer"]["env"]
+
+                    if not environment:
+                        msg = (
+                            f"[{snapshot_name}] Snapshot '{snapshot_name}' does not have an environment "
+                            "associated with it. Skipping validation."
+                        )
+                        logging.warning(msg)
+                        errors.append(msg)
+                        continue
+
+                    try:
+                        env = self.register[environment]
+                    except KeyError:
+                        msg = (
+                            f"[{snapshot_name}] Environment '{environment}' is not registered and "
+                            "connection details are unavailable. Consider adding it to the hub "
+                            "configuration otherwise manual deletion is required."
+                        )
+                        logging.error(msg)
+                        errors.append(msg)
+                        continue
+
+                    build_doc = collection.find_one({"_id": build_name})
+
+                    try:
+                        exists = env.snapshot_exists(snapshot_name, build_doc)
+                        if not exists:
+                            logging.info("Deleting snapshot '%s' from MongoDB", snapshot_name)
+                            self.delete_snapshot_from_db(build_name, snapshot_name)
+                            snapshots_deleted += 1
+                    except Exception as e:
+                        msg = f"Error checking snapshot '{snapshot_name}': {str(e)}"
+                        logging.exception(msg)
+                        errors.append(msg)
+            logging.info("Validation of snapshots completed.")
+            return {"snapshots_deleted": snapshots_deleted, "errors": errors}
+
+        def done(f):
+            try:
+                result = f.result()
+                snapshots_deleted = result.get("snapshots_deleted", 0)
+                errors = result.get("errors", [])
+                if errors:
+                    error_message = "\n".join(errors)
+                    logging.error("Validation completed with errors:\n%s", error_message, extra={"notify": True})
+                else:
+                    logging.info(
+                        "Validation successful, %d snapshots deleted.", snapshots_deleted, extra={"notify": True}
+                    )
+            except Exception as e:
+                logging.exception("Validation failed: %s", e, extra={"notify": True})
+
+        try:
+            job = self.job_manager.submit(validate)
+            job.add_done_callback(done)
+        except Exception as ex:
+            logging.exception("Error while submitting validation job: %s", ex, extra={"notify": True})
+        return job

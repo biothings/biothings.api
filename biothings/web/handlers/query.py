@@ -225,6 +225,7 @@ class BiothingHandler(BaseQueryHandler):
         GET -> {...} or [{...}, ...]
         POST -> [{...}, ...]
     """
+
     name = "annotation"
 
     @capture_exceptions

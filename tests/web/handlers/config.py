@@ -1,6 +1,7 @@
 """
-    Web settings to override for testing.
+Web settings to override for testing.
 """
+
 import os
 
 from custom_cache_handler import CustomCacheHandler, DefautlAPIHandler

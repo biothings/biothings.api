@@ -1,10 +1,11 @@
 """
-    Test Annotation Endpoint
+Test Annotation Endpoint
 
-    GET  /<biothing_type>/<id>
-    POST /<biothing_type>
+GET  /<biothing_type>/<id>
+POST /<biothing_type>
 
 """
+
 from biothings.tests.web import BiothingsWebAppTest
 
 # import setup_es to make sure the ES index is setup

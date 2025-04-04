@@ -1,4 +1,5 @@
-""" Functions to return versions of things. """
+"""Functions to return versions of things."""
+
 import functools
 import logging
 

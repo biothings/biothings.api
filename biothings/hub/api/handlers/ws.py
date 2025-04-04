@@ -52,7 +52,7 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         except json.JSONDecodeError as err:
             err_note = "malformed json message: %s" % message
             err.add_note(err_note)
-            err_to_raise = err      # we need to assign it here, otherwise it's lost outside of this block
+            err_to_raise = err  # we need to assign it here, otherwise it's lost outside of this block
         except KeyError as err:
             err_note = "malformed socket message: %s" % message
             err.add_note(err_note)

@@ -130,7 +130,7 @@ def capturesESExceptions(func):
         # most of the exception handlings from this point on are based on
         # experience. further documentation in details will be helpful.
         except TransportError as exc:
-            if hasattr(exc, 'info') and isinstance(exc.info, dict):
+            if hasattr(exc, "info") and isinstance(exc.info, dict):
                 error_info = exc.info.get("error", {})
                 error_type = error_info.get("type", "")
                 reason = error_info.get("reason", "")
@@ -150,7 +150,7 @@ def capturesESExceptions(func):
                 else:  # unexpected
                     raise
 
-            elif getattr(exc, 'status_code', None) in (429, "N/A"):
+            elif getattr(exc, "status_code", None) in (429, "N/A"):
                 raise QueryPipelineException(503)
 
             else:  # unexpected
