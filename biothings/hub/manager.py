@@ -51,33 +51,30 @@ class BaseManager:
 
     def __repr__(self):
         registered = sorted(list(self.register.keys()))
-        return "<%s [%d registered]: %s>" % (
-            self.__class__.__name__,
-            len(self.register),
-            registered,
-        )
+        return f"<{self.__class__.__name__} [{len(self.register)} registered]: {registered}>"
 
-    def __getitem__(self, src_name):
+    def __getitem__(self, src_name: str):
         try:
             # as a main-source
             return self.register[src_name]
-        except KeyError:
+        except KeyError as source_key_register_error:
             try:
                 # as a sub-source
                 main, sub = src_name.split(".")
                 srcs = self.register[main]
+
                 # there can be many uploader for one resource (when each is dealing
                 # with one specific file but upload to the same collection for instance)
                 # so we want to make sure user is aware of this and not just return one
                 # uploader when many are needed
                 # on the other hand, if only one avail, just return it
-                res = [src for src in srcs if src.name == sub]
-                if not res:
-                    raise KeyError(src_name)
-                return res
-            except (ValueError, AttributeError, KeyError):
-                # nope, can't find it...
-                raise KeyError(src_name)
+                subsource_result = [src for src in srcs if src.name == sub]
+                if not subsource_result:
+                    raise source_key_register_error
+
+                return subsource_result
+            except (ValueError, AttributeError, KeyError) as subsource_key_register_error:
+                raise source_key_register_error from subsource_key_register_error
 
     def poll(self, state, func, col):
         """
@@ -196,7 +193,8 @@ class BaseStatusRegisterer:
             doc = self.collection.find_one({"_id": doc["_id"]})
         else:
             # merge extra at root level
-            doc["jobs"] and doc["jobs"].append(job_info)
+            if doc["jobs"] is not None and isinstance(doc["jobs"], list):
+                doc["jobs"].append(job_info)
 
             def merge_index_info(target, d):
                 if not isinstance(target, dict):

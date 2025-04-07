@@ -120,8 +120,8 @@ class BaseSourceManager(BaseManager):
                 raise SourceManagerError(f"Should have only one element in source dict '{src}'")
 
             _, sub_srcs = list(src.items())[0]
-            for src in sub_srcs:
-                self.register_source(src, fail_on_notfound)
+            for subsrc in sub_srcs:
+                self.register_source(subsrc, fail_on_notfound)
             return
         elif isinstance(src, type.ModuleType):
             source_module = src
