@@ -149,13 +149,9 @@ class MetadataSourceHandler(BaseQueryHandler):
             meta["software"] = self.biothings.devinfo.get()
 
         else:  # remove debug info
-            meta = {
-                "biothing_type": meta.get("biothing_type"),
-                "build_date": meta.get("build_date"),
-                "build_version": meta.get("build_version"),
-                "src": meta.get("src"),
-                "stats": meta.get("stats"),
-            }
+            for field in list(meta):
+                if field.startswith("_"):
+                    meta.pop(field, None)
 
         if iscoroutinefunction(self.extras):
             meta = await self.extras(meta)
