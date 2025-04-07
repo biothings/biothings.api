@@ -27,7 +27,7 @@ class BaseSourceManager(BaseManager):
     # define the class manager will look for. Set in a subclass
     SOURCE_CLASS = None
 
-    def __init__(self, job_manager: JobManager, datasource_path: Union[str, Path] = None, *args, **kwargs):
+    def __init__(self, job_manager: JobManager, *args, datasource_path: Union[str, Path] = None, **kwargs):
         super().__init__(job_manager, *args, **kwargs)
 
         if datasource_path is None:
@@ -81,7 +81,7 @@ class BaseSourceManager(BaseManager):
         if not klasses:
             if fail_on_notfound:
                 raise UnknownResource(
-                    "Can't find a class based on %s in module '%s'" % (self.__class__.SOURCE_CLASS.__name__, src_module)
+                    f"Can't find a class based on {self.__class__.SOURCE_CLASS} in module '{src_module}'"
                 )
         return klasses
 
@@ -120,8 +120,8 @@ class BaseSourceManager(BaseManager):
                 raise SourceManagerError(f"Should have only one element in source dict '{src}'")
 
             _, sub_srcs = list(src.items())[0]
-            for src in sub_srcs:
-                self.register_source(src, fail_on_notfound)
+            for subsrc in sub_srcs:
+                self.register_source(subsrc, fail_on_notfound)
             return
         elif isinstance(src, type.ModuleType):
             source_module = src
@@ -154,7 +154,7 @@ class BaseSourceManager(BaseManager):
     def register_sources(self, sources: list):
 
         if isinstance(sources, str):
-            raise SourceManagerError(f"Expected sources argument formatted as a list. Received string: {source}")
+            raise SourceManagerError(f"Expected sources argument formatted as a list. Received string: {sources}")
 
         self.register.clear()
         for src in sources:
