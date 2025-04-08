@@ -708,7 +708,7 @@ class LastModifiedBaseDumper(BaseDumper):
         raise NotImplementedError("Implement me in sub-class")
 
     def create_todump_list(self, force=False):
-        assert isinstance(self.__class__.SRC_URLS, list), "SRC_URLS should be a list"
+        assert isinstance(self.__class__.SRC_URLS, List), "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         self.set_release()  # so we can generate new_data_folder
         for src_url in self.__class__.SRC_URLS:
@@ -831,7 +831,7 @@ class HTTPDumper(BaseDumper):
         return True
 
     def download(
-        self, remoteurl: str, localfile: Union[str, Path], headers: dict = {}
+        self, remoteurl: str, localfile: Union[str, Path], headers: Dict = {}
     ) -> requests.models.Response:  # noqa: B006
         """
         Handles downloading of remote files over HTTP to the local file system
@@ -909,7 +909,7 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
         dt_tuple = email.utils.parsedate(res.headers[self.LAST_MODIFIED])
         # this utility function supports more malformed data so using this one
         if dt_tuple[5] == 60:
-            _ = list(dt_tuple)
+            _ = List(dt_tuple)
             _[5] = 59
             dt_tuple = tuple(_)
         # deal with potential leap second as defined in the RFC, good enough solution

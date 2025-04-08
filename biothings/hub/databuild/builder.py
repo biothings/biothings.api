@@ -500,7 +500,7 @@ class DataBuilder:
             self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
             self.src_meta[mainsrc]["stats"].update({src: count})
 
-    def resolve_sources(self, sources: Union[str, list[str]]):
+    def resolve_sources(self, sources: Union[str, List[str]]):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
