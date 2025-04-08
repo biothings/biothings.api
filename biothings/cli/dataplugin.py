@@ -61,15 +61,22 @@ def create_data_plugin(
 
 
 @dataplugin_application.command(name="dump")
-def dump_source():
+def dump_source(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    show_dump: Annotated[
+        Optional[bool],
+        typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
+    ] = True,
+):
     """
     Download the source data files to the local file system
     """
-    asyncio.run(operations.do_dump(plugin_name=None))
+    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump))
 
 
 @dataplugin_application.command(name="upload")
 def upload_source(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
     batch_limit: Annotated[
         Optional[int],
         typer.Option(
@@ -84,6 +91,10 @@ def upload_source(
             help="Used for uploaders that leverage the ParallelizedUploader source for the plugin",
         ),
     ] = False,
+    show_upload: Annotated[
+        Optional[bool],
+        typer.Option("--show-upload", help="Displays the uploader source result output after upload operation"),
+    ] = True,
 ):
     """
     Parse the downloaded data files from the dump operation and upload to the source database
@@ -94,10 +105,12 @@ def upload_source(
     [green]NOTE[/green]
     Only works correctly if the dump command has been run
     """
+    upload_arguments = {"plugin_name": plugin_name, "batch_limit": batch_limit, "show_uploaded": show_upload}
+
     if parallel:
-        asyncio.run(operations.do_parallel_upload(plugin_name=None))
+        asyncio.run(operations.do_parallel_upload(**upload_arguments))
     else:
-        asyncio.run(operations.do_upload(plugin_name=None))
+        asyncio.run(operations.do_upload(**upload_arguments))
 
 
 @dataplugin_application.command(name="dump_and_upload")
@@ -258,7 +271,7 @@ def clean_data(
 
 @dataplugin_application.command(name="index")
 def index_plugin(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for indexing")],
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
 ):
     """
     [red][bold](experimental)[/bold][/red] Create an elaticsearch index from a data source database
@@ -271,7 +284,7 @@ def index_plugin(
     [green]NOTE[/green]
     Only works correctly if the upload command has been run
     """
-    asyncio.run(operations.do_index(plugin_name=plugin_name), debug=True)
+    asyncio.run(operations.do_index(plugin_name=plugin_name))
 
 
 @dataplugin_application.command(name="schema")
@@ -290,7 +303,9 @@ def plugin_schema():
 
 
 @dataplugin_application.command(name="validate")
-def plugin_manifest(manifest_file: str) -> None:
+def plugin_manifest(
+    manifest_file: Annotated[str, typer.Option("--plugin", help="Data source manifest file")] = None,
+) -> None:
     """
     Validate a provided manfiest file
 
@@ -298,4 +313,4 @@ def plugin_manifest(manifest_file: str) -> None:
     Will not perform validation against the potential loading of modules
     within the manifest
     """
-    asyncio.run(operations.validate_manifest(manifest_file))
+    asyncio.run(operations.validate_manifest(manifest_file=manifest_file))

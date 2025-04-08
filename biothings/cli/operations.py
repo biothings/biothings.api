@@ -162,7 +162,7 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     return assistant_instance
 
 
-async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
+async def do_upload(plugin_name: str = None, batch_limit: int = None, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
 
@@ -176,6 +176,9 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     if plugin_name is None:
         plugin_name = pathlib.Path.cwd().name
 
+    if batch_limit is None:
+        batch_limit = 10000
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -187,7 +190,7 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
 
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
             uploader_error_message = (
-                'Data folder "%s" for "%s" is empty or does not exist yet. '
+                "Data folder '%s' for '%s' is empty or does not exist yet. "
                 "Please ensure you have run `biothings-cli dataplugin dump`"
             )
             logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
@@ -198,7 +201,7 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
             uploader.__class__.storage_class,
             uploader.load_data,
             uploader.temp_collection_name,
-            10000,
+            batch_limit,
             1,
             uploader.data_folder,
             db=uploader.db,
@@ -213,7 +216,7 @@ async def do_upload(plugin_name: str = None, show_uploaded: bool = True):
     return assistant_instance
 
 
-async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True):
+async def do_parallel_upload(plugin_name: str = None, batch_limit: int = None, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
 
@@ -229,6 +232,9 @@ async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True
     if plugin_name is None:
         plugin_name = pathlib.Path.cwd().name
 
+    if batch_limit is None:
+        batch_limit = 10000
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -238,11 +244,11 @@ async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True
         uploader.update_master()
 
         if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
-            logger.error(
-                'Data folder "%s" for "%s" is empty or does not exist yet. Have you run "dump" yet?',
-                uploader.data_folder,
-                uploader.fullname,
+            uploader_error_message = (
+                "Data folder '%s' for '%s' is empty or does not exist yet. "
+                "Please ensure you have run `biothings-cli dataplugin dump`"
             )
+            logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
             raise typer.Exit(1)
         job_parameters = uploader.jobs()
         jobs = []
@@ -259,7 +265,7 @@ async def do_parallel_upload(plugin_name: str = None, show_uploaded: bool = True
                 uploader.storage_class,  # storage class
                 uploader.load_data,  # loading function
                 uploader.temp_collection_name,  # destination collection name
-                10000,  # batch size
+                batch_limit,  # batch size
                 batch_number,  # batch number
                 *data_load_arguments,  # loading function arguments
                 # db=uploader.db,
@@ -515,17 +521,22 @@ async def display_schema():
     console.print(panel)
 
 
-async def validate_manifest(manifest_file: Union[str, pathlib.Path]):
+async def validate_manifest(manifest_file: Union[str, pathlib.Path] = None):
     """
     Loads the manifest file and validates it against the schema file
     If an error exists it will display the error to the enduser
     """
     from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader
 
-    manifest_file = pathlib.Path(manifest_file).resolve().absolute()
-    plugin_name = manifest_file.parent.name
-    manifest_loader = ManifestBasedPluginLoader(plugin_name=plugin_name)
+    if manifest_file is None:
+        plugin_directory = pathlib.Path.cwd()
+        plugin_name = plugin_directory.name
+        manifest_file = plugin_directory.joinpath("manifest.json")
+    else:
+        manifest_file = pathlib.Path(manifest_file).resolve().absolute()
+        plugin_name = manifest_file.parent.name
 
+    manifest_loader = ManifestBasedPluginLoader(plugin_name=plugin_name)
     manifest_state = {"path": manifest_file, "valid": False, "repr": None, "error": None}
 
     try:
