@@ -16,12 +16,12 @@ from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_release_note
+from biothings.hub.manager import BaseManager
 from biothings.utils.common import merge
 from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 
 from . import snapshot_cleanup as cleaner, snapshot_registrar as registrar
 from .snapshot_repo import Repository
