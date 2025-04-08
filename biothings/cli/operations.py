@@ -162,7 +162,7 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     return assistant_instance
 
 
-async def do_upload(plugin_name: str = None, batch_limit: int = None, show_uploaded: bool = True):
+async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
 
@@ -175,9 +175,6 @@ async def do_upload(plugin_name: str = None, batch_limit: int = None, show_uploa
     """
     if plugin_name is None:
         plugin_name = pathlib.Path.cwd().name
-
-    if batch_limit is None:
-        batch_limit = 10000
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
@@ -216,7 +213,7 @@ async def do_upload(plugin_name: str = None, batch_limit: int = None, show_uploa
     return assistant_instance
 
 
-async def do_parallel_upload(plugin_name: str = None, batch_limit: int = None, show_uploaded: bool = True):
+async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
 
@@ -231,9 +228,6 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = None, s
     """
     if plugin_name is None:
         plugin_name = pathlib.Path.cwd().name
-
-    if batch_limit is None:
-        batch_limit = 10000
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
@@ -250,6 +244,7 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = None, s
             )
             logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
             raise typer.Exit(1)
+
         job_parameters = uploader.jobs()
         jobs = []
         job_manager = assistant_instance.dumper_manager.job_manager
