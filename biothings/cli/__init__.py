@@ -49,7 +49,7 @@ def main():
     cli_rich_traceback_flag = os.environ.get("BTCLI_RICH_TRACEBACK", False)
 
     cli = setup_commandline_configuration(debug=cli_debug_flag, rich_traceback=cli_rich_traceback_flag)
-    logging_level = logging.INFO
+    logging_level = logging.WARNING
     if cli_debug_flag:
         logging_level = logging.DEBUG
     setup_logging_configuration(logging_level)
