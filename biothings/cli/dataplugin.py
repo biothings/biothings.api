@@ -81,7 +81,7 @@ def upload_source(
         Optional[int],
         typer.Option(
             "--batch-limit",
-            help="The maximum number of batches that should be uploaded",
+            help="The maximum number of documents per batch that should be uploaded",
         ),
     ] = 10000,
     parallel: Annotated[
