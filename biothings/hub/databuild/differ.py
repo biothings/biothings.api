@@ -12,13 +12,13 @@ from biothings import config as btconfig
 from biothings.hub import DIFFER_CATEGORY, DIFFMANAGER_CATEGORY
 from biothings.hub.databuild.backend import generate_folder
 from biothings.hub.datarelease import set_pending_to_release_note
+from biothings.hub.manager import BaseManager
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import dump, get_timestamp, loadobj, md5sum, rmdashfr, timesofar
 from biothings.utils.diff import diff_docs_jsonpatch
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import get_previous_collection, get_target_db, id_feeder
 from biothings.utils.serializer import to_json_file
 
