@@ -3,13 +3,9 @@ Tests for evaluating the module biothings.web.services.metadata
 """
 
 import logging
-import re
 
 from biothings.web import connections
 from biothings.web.services.metadata import BiothingsESMetadata, BiothingsMongoMetadata
-
-import pytest
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
