@@ -17,11 +17,11 @@ from biothings.hub.datainspect.doc_inspect import (
     flatten_and_validate,
     run_converters,
 )
+from biothings.hub.manager import BaseManager
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_source_fullname, get_src_build, get_src_dump
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import doc_feeder, id_feeder
 
 logging = config.logger

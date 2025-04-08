@@ -13,9 +13,9 @@ import pytest
 
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
+from biothings.hub.manager import BaseManager
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
 

@@ -22,10 +22,10 @@ from biothings.utils.common import (
     merge,
     traverse,
 )
+from biothings.hub.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import DatabaseClient, id_feeder
 
 from .indexer_cleanup import Cleaner

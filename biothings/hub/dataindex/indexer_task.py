@@ -24,9 +24,10 @@ _IDExists = namedtuple("IDExists", ("id", "exists"))
 
 
 class ESIndex(BaseESIndex):
-    def __init__(self, client, index_name, **bulk_index_args):
+    def __init__(self, client, index_name, logger=None, **bulk_index_args):
         super().__init__(client, index_name)
         self.bulk_index_args = bulk_index_args
+        self.logger = _ensure_logger(logger)
 
     # --------------------
     # bulk operations (m*)
@@ -82,7 +83,16 @@ class ESIndex(BaseESIndex):
             _doc.update(doc)  # with _id
             return _doc
 
-        return helpers.bulk(self.client, map(_action, docs), **self.bulk_index_args)[0]
+        try:
+            return helpers.bulk(self.client, map(_action, docs), **self.bulk_index_args)[0]
+        except helpers.BulkIndexError as e:
+            errors = e.errors
+            for error in errors:
+                _, op_details = next(iter(error.items()))  # e.g., 'index', {...}
+                document_id = op_details.get("_id")
+                reason = op_details.get("error", {}).get("reason")
+                self.logger.error(error)
+                self.logger.error("Document ID %s failed: %s", document_id, reason)
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?

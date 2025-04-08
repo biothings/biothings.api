@@ -17,6 +17,7 @@ import aiocron
 import biothings.utils.mongo as mongo
 from biothings import config as btconfig
 from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
+from biothings.hub.manager import BaseManager
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import (
     dotdict,
@@ -36,7 +37,6 @@ from biothings.utils.hub_db import (
     get_src_db,
 )
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import doc_feeder, id_feeder
 
 from ..databuild.backend import LinkTargetDocMongoBackend, SourceDocMongoBackend, TargetDocMongoBackend

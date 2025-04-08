@@ -6,7 +6,7 @@ import types
 from pprint import pformat
 
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
-from biothings.utils.manager import BaseSourceManager
+from biothings.hub.dataload.manager import BaseSourceManager
 
 
 class SourceManager(BaseSourceManager):

@@ -70,6 +70,7 @@ class TornadoAPILauncher(BiothingsAPIBaseLauncher):
 
         logging.getLogger("urllib3").setLevel(logging.ERROR)
         logging.getLogger("elasticsearch").setLevel(logging.WARNING)
+        logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
 
         if self.settings["debug"]:
             root_logger.setLevel(logging.DEBUG)

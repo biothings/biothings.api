@@ -1,7 +1,7 @@
 from functools import partial
 
 from biothings import config as btconfig
-from biothings.utils.manager import BaseManager
+from biothings.hub.manager import BaseManager
 
 logger = btconfig.logger
 
