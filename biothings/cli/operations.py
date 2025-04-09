@@ -371,12 +371,11 @@ async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = Tru
         dumper_instance = assistant_instance.get_dumper_class()
         data_folder = dumper_instance.current_data_folder
         if not data_folder:
-            # data_folder should be saved in hubdb already, if dump has been done successfully first
-            logger.error('Data folder is not available. Please run "dump" first.')
-            # Typically we should not need to use new_data_folder as the data_folder,
-            # but we keep the code commented out below for future reference
-            # utils.run_sync_or_async_job(dumper.create_todump_list, force=True)
-            # data_folder = dumper.new_data_folder
+            missing_data_folder_message = (
+                "Unable to list the dumped data files as the data folder is not available from the dumper instance. "
+                "It may have already been deleted or the command `biothings-cli dataplugin dump` was never run. "
+            )
+            logger.warning(missing_data_folder_message)
         else:
             show_dumped_files(data_folder, assistant_instance.plugin_name)
 
@@ -509,9 +508,11 @@ async def display_schema():
     panel = Panel(
         f"* [bold green]Valid Schema[/bold green]: {valid_schema}\n"
         f"* [bold green]Schema Contents[/bold green]:\n{schema_repr}",
-        title="[bold green]Biothings JSONSchema Information[/bold green]",
-        subtitle="[bold green]Biothings JSONSchema Information[/bold green]",
-        box=box.ASCII,
+        title="[white]Biothings JSONSchema Information[/white]",
+        title_align="left",
+        subtitle="[white]Biothings JSONSchema Information[/white]",
+        subtitle_align="left",
+        box=box.ROUNDED,
     )
     console.print(panel)
 
@@ -565,8 +566,10 @@ async def validate_manifest(manifest_file: Union[str, pathlib.Path] = None):
 
     panel = Panel(
         renderable=panel_message,
-        title="[bold green]Biothings Manifest Validation[/bold green]",
-        subtitle="[bold green]Biothings Manifest Validation[/bold green]",
-        box=box.ASCII,
+        title="[white]Biothings Manifest Validation[/white]",
+        title_align="left",
+        subtitle="[white]Biothings Manifest Validation[/white]",
+        subtitle_align="left",
+        box=box.ROUNDED,
     )
     console.print(panel)
