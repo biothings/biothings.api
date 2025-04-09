@@ -9,15 +9,12 @@ Configuration settings for the biothings-cli tool
 from typing import Literal
 import importlib
 import importlib.util
-import inspect
 import logging
 import os
 import pathlib
 import sys
 
-from rich.console import Console
 from rich.logging import RichHandler
-from rich.panel import Panel
 import typer
 
 
@@ -133,21 +130,5 @@ def setup_biothings_configuration():
     except ImportError as import_err:
         logging.exception(import_err)
         raise import_err
-    return configuration_instance
 
-    configuration_member_collection = [
-        f"[green]{configuration_key}:[/green][bold] [{configuration_value}[/bold]\n"
-        for configuration_key, configuration_value in inspect.getmembers(configuration_instance)
-        if configuration_value is not None
-    ]
-    configuration_debug_message = "[green]<biothings command-line configuration>[/green][bold]\n" "".join(
-        configuration_member_collection
-    )
-    console = Console()
-    console.print(
-        Panel(
-            configuration_debug_message,
-            title="[bold]Dump[/bold]",
-            title_align="left",
-        )
-    )
+    return configuration_instance
