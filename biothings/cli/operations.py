@@ -8,53 +8,43 @@ Grouped into the following categories
 --------------------------------------------------------------------------------
 > def do_create(name, multi_uploaders=False, parallelizer=False):
 
-
 --------------------------------------------------------------------------------
 ### data download / upload ###
 --------------------------------------------------------------------------------
-> async def do_dump(plugin_name=None, show_dumped=True):
-> async def do_upload(plugin_name=None, show_uploaded=True):
-> async def do_dump_and_upload(plugin_name):
-> async def do_list(plugin_name=None, dump=False, upload=False, hubdb=False):
-> async def do_index(plugin_name: str):
-
+> async def do_dump
+> async def do_upload
+> async def do_parallel_upload
+> async def do_dump_and_upload
+> async def do_list
+> async def do_index
 
 ------------------------------------------------------------------------------------
 ### data inspection ###
 ------------------------------------------------------------------------------------
-
-> async def do_inspect(
-    plugin_name: str = None,
-    sub_source_name: str=None,
-    mode: str="type,stats",
-    limit: int=None,
-    merge: bool=False,
-    output: Union[str, pathlib.Path] = None
-):
+> async def do_inspect
 
 --------------------------------------------------------------------------------
 ### mock web server ###
 --------------------------------------------------------------------------------
-> async def do_serve(plugin_name=None, host="localhost", port=9999):
-
+> async def do_serve
 
 --------------------------------------------------------------------------------
 ### data cleaning ###
 --------------------------------------------------------------------------------
-> async def do_clean(plugin_name=None, dump=False, upload=False, clean_all=False):
-
+> async def do_clean
 
 --------------------------------------------------------------------------------
 ### manifest actions ###
 --------------------------------------------------------------------------------
-> async def validate_manifest(manifest_file: Union[str, pathlib.Path]):
-> async def display_schema():
-
+> async def validate_manifest
+> async def display_schema
 
 ------------------------------------------------------------------------------------
 """
 
+from typing import Callable, Union
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -62,7 +52,6 @@ import pathlib
 import shutil
 import sys
 import uuid
-from typing import Union
 
 import jsonschema
 import rich
@@ -88,10 +77,65 @@ from biothings.cli.utils import (
 )
 from biothings.hub.databuild.builder import BuilderException
 from biothings.utils.workers import upload_worker
+from biothings.cli.exceptions import MissingPluginName
 
 logger = logging.getLogger(name="biothings-cli")
 
 
+def operation_mode(operation_method: Callable):
+    """
+    Based off the directory structure for where the biothings-cli
+    was invoked we set the "mode" to one of two states:
+
+    0) singular
+    The current working directory contains a singular data-plugin
+
+    In this case we don't require a plugin_name argument to be passed
+    at the command-line
+
+    1) hub
+    The current working directory contains N directories operating as a
+    "hub" or collection of data-plugins under one umbrella
+
+    In this case we do require a plugin_name argument to be passed
+    at the command-line. Otherwise we have no idea which data-plugin to
+    refer to
+
+    We attempt to load the plugin from this working directory. If we sucessfully load
+    either a manifest or advanced plugin, then we can safely say this is a singular
+    dataplugin
+
+    If we cannot load either a manifest or advanced plugin then we default assume that
+    the mode is hub
+    """
+
+    @functools.wraps(operation_method)
+    def determine_operation_mode(*args, **kwargs):
+        working_directory = pathlib.Path.cwd()
+        working_directory_files = {file.name for file in working_directory.iterdir()}
+
+        mode = None
+        if "manifest.json" in working_directory_files or "manifest.yaml" in working_directory_files:
+            logger.debug("Inferring singular manifest plugin from directory structure")
+            mode = "SINGULAR"
+        elif "__init__.py" in working_directory_files:
+            logger.debug("Inferring singular advanced plugin from directory structure")
+            mode = "SINGULAR"
+        else:
+            logger.debug("Inferring multiple plugins from directory structure")
+            mode = "HUB"
+
+        if mode == "HUB":
+            if kwargs.get("plugin_name", None) is None:
+                raise MissingPluginName(working_directory)
+
+        operation_result = operation_method(*args, **kwargs)
+        return operation_result
+
+    return determine_operation_mode
+
+
+@operation_mode
 def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = False):
     """
     Create a new data plugin from the template
@@ -124,6 +168,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     logger.info("Successfully created data plugin template at: %s\n", new_plugin_directory)
 
 
+@operation_mode
 async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
     """
     Perform dump for the given plugin
@@ -162,6 +207,7 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     return assistant_instance
 
 
+@operation_mode
 async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
@@ -213,6 +259,7 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
     return assistant_instance
 
 
+@operation_mode
 async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
     """
     Perform upload for the given list of uploader_classes
@@ -279,6 +326,7 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, 
     return assistant_instance
 
 
+@operation_mode
 async def do_dump_and_upload(plugin_name: str) -> None:
     """
     Perform both dump and upload for the given plugin
@@ -288,6 +336,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
+@operation_mode
 async def do_index(plugin_name: str):
     """
     Creats an elasticsearch data-index for the plugin
@@ -362,6 +411,7 @@ async def do_index(plugin_name: str):
     await show_source_index(index_name, assistant_instance.index_manager, elasticsearch_mapping)
 
 
+@operation_mode
 async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
     """
     List the dumped files, uploaded sources, or hubdb content.
@@ -387,6 +437,7 @@ async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = Tru
     return assistant_instance
 
 
+@operation_mode
 async def do_inspect(
     plugin_name: str = None,
     sub_source_name: str = None,
@@ -443,6 +494,7 @@ async def do_inspect(
                 write_mapping_to_file(sub_output, inspection_mapping)
 
 
+@operation_mode
 async def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
@@ -459,6 +511,7 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     await main(host=host, port=port, db=src_db, table_space=table_space)
 
 
+@operation_mode
 async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
     """
     Clean the dumped files, uploaded sources, or both.
@@ -486,6 +539,7 @@ async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = F
         clean_uploaded_sources(assistant_instance.plugin_directory, assistant_instance.plugin_name)
 
 
+@operation_mode
 async def display_schema():
     """
     Loads the jsonschema definition file and displays it to the
@@ -517,18 +571,23 @@ async def display_schema():
     console.print(panel)
 
 
-async def validate_manifest(manifest_file: Union[str, pathlib.Path] = None):
+@operation_mode
+async def validate_manifest(plugin_name: str = None, manifest_file: Union[str, pathlib.Path] = None):
     """
     Loads the manifest file and validates it against the schema file
     If an error exists it will display the error to the enduser
     """
     from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader
 
-    if manifest_file is None:
+    if plugin_name is None and manifest_file is None:
         plugin_directory = pathlib.Path.cwd()
         plugin_name = plugin_directory.name
         manifest_file = plugin_directory.joinpath("manifest.json")
-    else:
+    elif plugin_name is not None and manifest_file is None:
+        plugin_directory = pathlib.Path.cwd()
+        plugin_name = plugin_directory.name
+        manifest_file = plugin_directory.joinpath("manifest.json")
+    elif plugin_name is None and manifest_file is not None:
         manifest_file = pathlib.Path(manifest_file).resolve().absolute()
         plugin_name = manifest_file.parent.name
 

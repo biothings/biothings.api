@@ -4,7 +4,6 @@ Module for creating the cli interface for the dataplugin interface
 
 from typing import Optional
 import asyncio
-import logging
 
 from typing_extensions import Annotated
 import typer
@@ -12,14 +11,9 @@ import typer
 from biothings.cli import operations
 
 
-logger = logging.getLogger("biothings-cli")
-
-
-short_help = (
-    "[green]Test an individual data plugin locally and make simple queries to inspect your parsed data objects.[/green]"
-)
-long_help = (
-    short_help
+SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
+FULL_HELP = (
+    SHORT_HELP
     + "\n\n[magenta]   :sparkles: Go to your existing data plugin folder.[/magenta]"
     + "\n[magenta]   :sparkles: Dumping, uploading and inspecting your data plugin.[/magenta]"
     + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
@@ -32,8 +26,8 @@ long_help = (
 )
 
 dataplugin_application = typer.Typer(
-    help=long_help,
-    short_help=short_help,
+    help=FULL_HELP,
+    short_help=SHORT_HELP,
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
@@ -43,7 +37,7 @@ dataplugin_application = typer.Typer(
 def create_data_plugin(
     name: Annotated[
         str,
-        typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
+        typer.Option("--plugin-name", "-n", help="Provide a data source plugin name"),
     ] = "",
     multi_uploaders: Annotated[
         Optional[bool],
@@ -62,7 +56,7 @@ def create_data_plugin(
 
 @dataplugin_application.command(name="dump")
 def dump_source(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     show_dump: Annotated[
         Optional[bool],
         typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
@@ -76,7 +70,7 @@ def dump_source(
 
 @dataplugin_application.command(name="upload")
 def upload_source(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Data source plugin name")] = None,
     batch_limit: Annotated[
         Optional[int],
         typer.Option(
@@ -114,7 +108,9 @@ def upload_source(
 
 
 @dataplugin_application.command(name="dump_and_upload")
-def dump_and_upload():
+def dump_and_upload(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Data source plugin name")] = None,
+):
     """
     Sequentially execute the dump and upload commands
 
@@ -123,11 +119,12 @@ def dump_and_upload():
     2) converts them into JSON documents
     3) uploads those JSON documents to the source database.
     """
-    asyncio.run(operations.do_dump_and_upload(plugin_name=None))
+    asyncio.run(operations.do_dump_and_upload(plugin_name=plugin_name))
 
 
 @dataplugin_application.command(name="list")
 def listing(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = True,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = True,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
@@ -135,11 +132,12 @@ def listing(
     """
     List dumped files, uploaded sources, or internal hubdb contents
     """
-    asyncio.run(operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb))
+    asyncio.run(operations.do_list(plugin_name=plugin_name, dump=dump, upload=upload, hubdb=hubdb))
 
 
 @dataplugin_application.command(name="inspect")
 def inspect_source(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")
     ] = "",
@@ -193,11 +191,11 @@ def inspect_source(
     """
     asyncio.run(
         operations.do_inspect(
-            plugin_name=None,
+            plugin_name=plugin_name,
             sub_source_name=sub_source_name,
             mode=mode,
             limit=limit,
-            merge=False,
+            merge=merge,
             output=output,
         )
     )
@@ -205,6 +203,7 @@ def inspect_source(
 
 @dataplugin_application.command(name="serve")
 def serve(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     host: Annotated[
         Optional[str],
         typer.Option(
@@ -248,11 +247,12 @@ def serve(
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    asyncio.run(operations.do_serve(plugin_name=None, host=host, port=port))
+    asyncio.run(operations.do_serve(plugin_name=plugin_name, host=host, port=port))
 
 
 @dataplugin_application.command(name="clean", no_args_is_help=True)
 def clean_data(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Delete all dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Drop uploaded sources tables")] = False,
     clean_all: Annotated[
@@ -303,14 +303,15 @@ def plugin_schema():
 
 
 @dataplugin_application.command(name="validate")
-def plugin_manifest(
-    manifest_file: Annotated[str, typer.Option("--plugin", help="Data source manifest file")] = None,
+def validate_manifest(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
 ) -> None:
     """
-    Validate a provided manfiest file
+    [red][bold](experimental)[/bold][/red] Validate a provided manifest file
 
     Solely performs jsonschema validation against the manifest file.
     Will not perform validation against the potential loading of modules
     within the manifest
     """
-    asyncio.run(operations.validate_manifest(manifest_file=manifest_file))
+    operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file)
