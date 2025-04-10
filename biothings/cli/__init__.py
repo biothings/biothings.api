@@ -56,8 +56,6 @@ def main():
     setup_biothings_configuration()
 
     from biothings.cli.dataplugin import dataplugin_application
-    from biothings.cli.hub import hub_application
 
     cli.add_typer(dataplugin_application, name="dataplugin")
-    cli.add_typer(hub_application, name="dataplugin-hub")
     return cli()
