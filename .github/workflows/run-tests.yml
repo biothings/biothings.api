@@ -3,8 +3,7 @@ name: Tests
 on:
   push:
     branches:
-    - upgrade-es-python-in-gh-actions
-    # - master
+    - '*'
 
 jobs:
   install_and_run_tests:
