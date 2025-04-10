@@ -3,8 +3,7 @@ name: Build
 on:
   push:
     branches:
-      - upgrade-es-python-in-gh-actions
-      # - master
+      - master
 
 jobs:
   build_package:
