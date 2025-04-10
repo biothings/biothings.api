@@ -118,7 +118,6 @@ dev_requires = [
     "pytest-asyncio",
     "aioresponses",
     "pre-commit==2.17.0",
-    "psycopg2",
 ]
 
 # extra requirements for building docs
