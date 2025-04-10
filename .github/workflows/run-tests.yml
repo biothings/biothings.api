@@ -26,7 +26,9 @@ jobs:
         run: pytest tests
         # env:
         #   HUB_CONFIG: 'tests.test_config'
-
+      - name: Setup tmate debug session on failure
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
     services:
       Elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
