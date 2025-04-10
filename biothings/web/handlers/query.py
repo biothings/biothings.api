@@ -140,7 +140,7 @@ class MetadataSourceHandler(BaseQueryHandler):
 
     async def get(self):
         info = await self.metadata.refresh(self.biothing_type)
-        meta = self.metadata.get_metadata(self.biothing_type)
+        meta = self.metadata.get_metadata(self.biothing_type).copy()
 
         if self.args.raw:
             raise Finish(info)
