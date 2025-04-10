@@ -14,6 +14,7 @@ Supported plugin locations
 """
 
 import asyncio
+import copy
 import logging
 import os
 import pathlib
@@ -62,17 +63,24 @@ class CLIAssistant(BaseAssistant):
         self.index_manager = IndexManager(job_manager=self.job_manager)
         self.uploader_manager = UploaderManager(job_manager=self.job_manager)
 
-        self._plugin_name = None
-        self.plugin_directory = pathlib.Path().cwd()
-        if plugin_name is not None:
-            self._plugin_name = plugin_name
+        src_folder = None
+        if plugin_name is None:
+            self.plugin_directory = pathlib.Path().cwd()
+            plugin_name = self.plugin_directory.name
 
-        url = f"local://{self.plugin_name}"
-        super().__init__(url)
+            src_folder = pathlib.Path().cwd()
+            sys.path.append(str(src_folder.parent))
+            self.data_directory = pathlib.Path().cwd()
+        else:
+            self.plugin_directory = pathlib.Path().cwd().joinpath(plugin_name)
 
-        self._src_folder = pathlib.Path().cwd()
-        self.data_directory = pathlib.Path().cwd()
-        sys.path.append(str(self._src_folder.parent))
+            src_folder = copy.copy(self.plugin_directory)
+            sys.path.append(str(src_folder))
+            self.data_directory = copy.copy(self.plugin_directory)
+
+        url = f"local://{plugin_name}"
+        super().__init__(url, plugin_name, src_folder)
+
         config.DATA_PLUGIN_FOLDER = self._src_folder
         self.load_plugin()
 
