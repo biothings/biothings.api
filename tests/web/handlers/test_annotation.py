@@ -1,18 +1,24 @@
 """
-    Test Annotation Endpoint
+Test Annotation Endpoint
 
-    GET  /<biothing_type>/<id>
-    POST /<biothing_type>
+GET  /<biothing_type>/<id>
+POST /<biothing_type>
 
 """
-from biothings.tests.web import BiothingsWebAppTest
 
-# import setup_es to make sure the ES index is setup
-from setup import setup_es  # pylint: disable=unused-import   # noqa: F401
+import sys
+from biothings.tests.web import BiothingsWebAppTest
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestAnnotationGET(BiothingsWebAppTest):
     # ### Query Builder Keywords ###
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
 
     def test_00_hit(self):
         """GET /v1/gene/1017
@@ -200,6 +206,13 @@ class TestAnnotationGET(BiothingsWebAppTest):
 
 
 class TestAnnotationPOST(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def request(self, *args, **kwargs):
         method = kwargs.pop("method", "POST")
         return super().request(method=method, *args, **kwargs)

@@ -35,9 +35,53 @@ extend_skip = [
 ]
 
 [tool.pytest.ini_options]
+minversion = "6.2.5"
+
+# Options
+addopts = [
+    "-rA",
+    "-vv",
+    "--doctest-modules",
+    "--setup-show",
+    "--capture=tee-sys",
+    "--tb=line",
+    "--durations=0",
+    "--showlocals",
+    "--strict-markers",
+    "--color=yes",
+    "--code-highlight=yes",
+]
+
+# Path
+norecursedirs = [
+    ".svn",
+    ".git",
+    "_build",
+    "tmp*",
+    "lib",
+    "lib64",
+    "tools",
+    "biothings",
+    "tests/hub/dataplugin/data",
+    "tests/hub/datatransform",
+    "tests/web/handlers/data",
+]
+testpaths = [
+    "tests"
+]
+
+# Environment
+env = []
+
 markers = [
     "ReleaseNoteSrcBuildReaderAdapter",
     "ReleaseNoteSrcBuildReader",
     "ReleaseNoteSource",
     "ReleaseNoteTxt",
 ]
+
+# Logging
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)] %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"

@@ -1,15 +1,24 @@
 """
-    Test Query Endpoint
+Test Query Endpoint
 
-    GET /query
-    POST /query
+GET /query
+POST /query
 
 """
+
+import sys
 from biothings.tests.web import BiothingsWebAppTest
-from setup import setup_es  # pylint: disable=unused-import  # noqa: F401
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestQueryKeywords(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_00_facet(self):
         """GET /v1/query?q=__all__&aggs=type_of_gene
         {
@@ -749,10 +758,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert res2 == res
 
     def test_37_jmespath_nested(self):
-        res_0 = self.request(
-            "/v1/query?q=_id:1017&fields=exons.position"
-        ).json()
-        a_pos = res_0["hits"][0]["exons"][1]["position"][4][1]   #should be 55969576
+        res_0 = self.request("/v1/query?q=_id:1017&fields=exons.position").json()
+        a_pos = res_0["hits"][0]["exons"][1]["position"][4][1]  # should be 55969576
         res_1 = self.request(
             f"/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]"
         ).json()
@@ -770,14 +777,20 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert hits_3 == []
 
     def test_38_jmespath_exclude_empty(self):
-        res = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna=='NM_052827.4']").json()
+        res = self.request(
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna=='NM_052827.4']"
+        ).json()
         assert len(res["hits"]) == 10
-        res2 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna=='NM_052827.4']").json()
+        res2 = self.request(
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna=='NM_052827.4']"
+        ).json()
         assert len(res2["hits"]) == 1
 
     def test_39_jmespath_invalid(self):
         # invalid jmespath query should return 400
-        res = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation.rna|()", expect=400).json()
+        res = self.request(
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation.rna|()", expect=400
+        ).json()
         assert res["success"] is False
 
         # unknown target_field should leave the response untouched
@@ -785,7 +798,15 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res_1 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
         assert res_0["hits"] == res_1["hits"]
 
+
 class TestQueryString(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_00_all(self):
         """GET /query?q=__all__
         {
@@ -914,6 +935,12 @@ class TestQueryString(BiothingsWebAppTest):
 class TestQueryMatch(BiothingsWebAppTest):
     # nested match
     # https://github.com/biothings/biothings.api/issues/49
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
 
     def test_01(self):
         self.query(method="POST", json={"q": "1017"})
