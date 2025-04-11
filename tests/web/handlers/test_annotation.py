@@ -5,7 +5,6 @@ GET  /<biothing_type>/<id>
 POST /<biothing_type>
 
 """
-
 import sys
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule

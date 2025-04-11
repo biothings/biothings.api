@@ -1,6 +1,6 @@
-'''
+"""
 Deprecated. This module is not used any more
-'''
+"""
 
 import types
 import logging
@@ -9,10 +9,12 @@ enc = None
 dec = None
 try:
     import bson
+
     enc = bson.BSON.encode
     dec = bson.BSON.decode
 except ImportError:
     import json
+
     enc = json.dumps
     dec = json.loads
 
@@ -30,8 +32,7 @@ class ParserValidator(object):
     def set_err(self, err_type, data):
         self.errs.set_default(err_type, {"count": 0, "data": []})
         self.errs[err_type]["count"] += 1
-        if self.max_kept_errors is not None and self.errs[err_type][
-                "count"] <= self.max_kept_errors:
+        if self.max_kept_errors is not None and self.errs[err_type]["count"] <= self.max_kept_errors:
             self.errs[err_type]["data"].append(data)
 
     def analyze(self, data, check_id=True, root_key=None):
@@ -53,9 +54,11 @@ class ParserValidator(object):
         """
         assert callable(func), "%s is not callable" % func
         res = func(*args, **kwargs)
-        assert isinstance(res, list) or isinstance(res, types.GeneratorType), "%s returned a wrong type: %s" % (func, type(res))
-        self.logger.info("Return type is %s, now iterating over content" %
-                         type(res))
+        assert isinstance(res, list) or isinstance(res, types.GeneratorType), "%s returned a wrong type: %s" % (
+            func,
+            type(res),
+        )
+        self.logger.info("Return type is %s, now iterating over content" % type(res))
         cnt = 0
         for data in res:
             if not type(data) == dict:

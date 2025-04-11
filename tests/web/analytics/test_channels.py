@@ -17,9 +17,9 @@ async def test_send_Slack():
 
     assert await channel.handles(message)
 
-    with patch("aiohttp.ClientSession.post") as mock_post, \
-         patch("certifi.where") as mock_certifi, \
-         patch("ssl.create_default_context") as mock_ssl_context:
+    with patch("aiohttp.ClientSession.post") as mock_post, patch("certifi.where") as mock_certifi, patch(
+        "ssl.create_default_context"
+    ) as mock_ssl_context:
 
         # Mocking the post request response and certifi.where
         mock_post.return_value.__aenter__.return_value.status = 200

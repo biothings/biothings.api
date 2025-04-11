@@ -3,8 +3,7 @@ name: Tests
 on:
   push:
     branches:
-    - upgrade-es-python-in-gh-actions
-    # - master
+    - '*'
 
 jobs:
   install_and_run_tests:
@@ -12,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ '3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
+        python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -26,7 +25,9 @@ jobs:
         run: pytest tests
         # env:
         #   HUB_CONFIG: 'tests.test_config'
-
+      # - name: Setup tmate debug session on failure
+      #   if: ${{ failure() }}
+      #   uses: mxschmitt/action-tmate@v3
     services:
       Elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0

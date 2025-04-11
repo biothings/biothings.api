@@ -5,7 +5,6 @@ GET /query
 POST /query
 
 """
-
 import sys
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule

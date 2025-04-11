@@ -22,17 +22,6 @@ profile = "black"
 combine_as_imports = true
 line_length = 120
 src_paths = ["."]
-extend_skip = [
-    # 3rd party code, don't touch
-    "biothings/utils/jsondiff.py",
-    "biothings/utils/jsonpatch.py",
-    # deprecated code, don't touch
-    "biothings/utils/parallel.py",
-    "biothings/utils/parallel_mp.py",
-    "biothings/utils/shelve.py",
-    "biothings/hub/dataload/sync.py",
-    "biothings/hub/dataload/validator.py",
-]
 
 [tool.pytest.ini_options]
 minversion = "6.2.5"
@@ -61,10 +50,9 @@ norecursedirs = [
     "lib",
     "lib64",
     "tools",
-    "biothings",
     "tests/hub/dataplugin/data",
-    "tests/hub/datatransform",
     "tests/web/handlers/data",
+    "tests/hub/datatransform"
 ]
 testpaths = [
     "tests"

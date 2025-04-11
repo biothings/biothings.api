@@ -1,5 +1,5 @@
 """
-    Biothings Web Settings Default
+Biothings Web Settings Default
 """
 
 import re

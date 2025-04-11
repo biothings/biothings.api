@@ -33,7 +33,7 @@ class ResourceError(Exception):
     pass
 
 
-class BaseSourceUploader(object):
+class BaseSourceUploader:
     """
     Default datasource uploader. Database storage can be done
     in batch or line by line. Duplicated records aren't not allowed
@@ -259,6 +259,7 @@ class BaseSourceUploader(object):
         after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -269,8 +270,10 @@ class BaseSourceUploader(object):
                 self.collection.rename(new_name, dropTarget=True)
             self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
+        elif self.temp_collection_name and self.db[self.collection_name].count() == 0:
+            raise ResourceError("No data parsed into temp collection")
         else:
-            raise ResourceError("No temp collection (or it's empty)")
+            raise ResourceError("No temp collection to switch to")
 
     def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
         """Override as needed to perform operations after
@@ -323,9 +326,8 @@ class BaseSourceUploader(object):
         # type of id being stored in these docs
         if hasattr(self.__class__, "__metadata__"):
             _doc.update(self.__class__.__metadata__)
-        # try to find information about the uploader source code
-        from biothings.hub.dataplugin.assistant import AssistedUploader
 
+        # try to find information about the uploader source code
         if issubclass(self.__class__, AssistedUploader):
             # it's a plugin, we'll just point to the plugin folder
             src_file = self.__class__.DATA_PLUGIN_FOLDER
@@ -518,6 +520,10 @@ class BaseSourceUploader(object):
             return self._state[attr]
         else:
             raise AttributeError(attr)
+
+
+class AssistedUploader:
+    DATA_PLUGIN_FOLDER = None
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):

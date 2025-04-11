@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from functools import partial
 from pprint import pformat
+from typing import Union
 
 import aiocron
 
@@ -32,6 +33,7 @@ from biothings.utils.hub_db import (
     get_src_build_config,
     get_src_dump,
     get_src_master,
+    get_src_db,
 )
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import BaseManager
@@ -59,7 +61,7 @@ class ResumeException(Exception):
     pass
 
 
-class DataBuilder(object):
+class DataBuilder:
     """
     Generic data builder.
     """
@@ -303,6 +305,7 @@ class DataBuilder(object):
         acting on this target_name is registered in a "jobs" list.
         """
         assert self.build_config, "build_config needs to be specified first"
+
         # get it from source_backend, kind of weird...
         src_build = self.source_backend.build
         all_sources = self.build_config.get("sources", [])
@@ -332,10 +335,13 @@ class DataBuilder(object):
             job_info["time"] = timesofar(self.ti)
             t1 = round(time.time() - self.ti, 0)
             job_info["time_in_s"] = t1
+
         if "build" in extra:
             build_info.update(extra["build"])
+
         if "job" in extra:
             job_info.update(extra["job"])
+
         # create a new build entry in "build" dict if none exists
         build = src_build.find_one({"_id": target_name})
         if not build:
@@ -343,6 +349,7 @@ class DataBuilder(object):
             build_info["started_at"] = datetime.fromtimestamp(self.t0).astimezone()
             build_info["jobs"] = []
             src_build.insert_one(build_info)
+
         if init:
             # init timer for this step
             self.ti = time.time()
@@ -356,14 +363,14 @@ class DataBuilder(object):
             build["jobs"] and build["jobs"][-1].update(job_info)
 
             # build_info is common to all jobs, so we want to keep
-            # any existing data (well... except if it's explicitely specified)
+            # any existing data (well... except if it's explicitly specified)
             def merge_build_info(target, d):
                 if "__REPLACE__" in d.keys():
                     d.pop("__REPLACE__")
                     target = d
                 else:
                     for k, v in d.items():
-                        if type(v) == dict:
+                        if isinstance(v, dict):
                             if k in target:
                                 target[k] = merge_build_info(target[k], v)
                             else:
@@ -432,7 +439,7 @@ class DataBuilder(object):
 
     def get_stats(self, sources, job_manager):
         """
-        Return a dictionnary of metadata for this build. It's usually app-specific
+        Return a dictionary of metadata for this build. It's usually app-specific
         and this method may be overridden as needed. By default though, the total
         number of documents in the merged collection is stored (key "total")
 
@@ -493,7 +500,7 @@ class DataBuilder(object):
             self.src_meta.setdefault(mainsrc, {}).setdefault("stats", {})
             self.src_meta[mainsrc]["stats"].update({src: count})
 
-    def resolve_sources(self, sources):
+    def resolve_sources(self, sources: Union[str, List[str]]):
         """
         Source can be a string that may contain regex chars. It's usefull
         when you have plenty of sub-collections prefixed with a source name.
@@ -502,9 +509,9 @@ class DataBuilder(object):
         "blah_.*" can be specified in build_config. This method resolves potential
         regexed source name into real, existing collection names
         """
-        if type(sources) == str:
+        if isinstance(sources, str):
             sources = [sources]
-        src_db = mongo.get_src_db()
+        src_db = get_src_db()
         cols = src_db.collection_names()
         masters = self.source_backend.get_src_master_docs()
         found = []
@@ -571,7 +578,7 @@ class DataBuilder(object):
             ids = self.build_config.get("ids")
             if ids:
                 # config calls for a merge on specific _ids
-                if type(ids) == str:
+                if isinstance(ids, str):
                     # path to a file
                     m = map(lambda l: l.decode().strip(), open_compressed_file(ids).readlines())
                     ids = [_id for _id in m if not _id.startswith("#")]
@@ -607,9 +614,6 @@ class DataBuilder(object):
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
                     self.register_status("building", transient=True, init=True, job={"step": "metadata"})
-                    postjob = await job_manager.defer_to_thread(
-                        pinfo, partial(self.store_metadata, res, sources=sources, job_manager=job_manager)
-                    )
 
                     def stored(f):
                         try:
@@ -656,6 +660,9 @@ class DataBuilder(object):
                             self.logger.exception("failed %s: %s", strargs, e, extra={"notify": True})
                             raise
 
+                    postjob = await job_manager.defer_to_thread(
+                        pinfo, partial(self.store_metadata, res, sources=sources, job_manager=job_manager)
+                    )
                     postjob.add_done_callback(stored)
                     await postjob
 
@@ -1002,7 +1009,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     # note: dict are unhashable (no set) so either compare one each other (n^2-ish)
     # or use json strings (let's try json...)
     for _id in dids:
-        jl = set([json.dumps(e, sort_keys=True) for e in dids[_id]])
+        jl = {json.dumps(e, sort_keys=True) for e in dids[_id]}
         if len(jl) > 1:
             # different structure
             if fail_if_struct_is_different:
@@ -1026,7 +1033,7 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
 
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
-        src = mongo.get_src_db()
+        src = get_src_db()
         tgt = mongo.get_target_db()
         col = src[col_name]
         dest = DocMongoBackend(tgt, tgt[dest_name])
@@ -1111,7 +1118,7 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder. It can also be a list of classes, in which
         case the default used one is the first, when it's necessary to define multiple builders.
         """
-        super(BuilderManager, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
@@ -1148,7 +1155,7 @@ class BuilderManager(BaseManager):
                 build=partial(get_src_build),
                 master=partial(get_src_master),
                 dump=partial(get_src_dump),
-                sources=partial(mongo.get_src_db),
+                sources=partial(get_src_db),
             )
         )
         return source_backend
@@ -1227,7 +1234,9 @@ class BuilderManager(BaseManager):
         col.drop()
 
     def delete_merge(self, merge_name):
-        """Delete merged collections and associated metadata"""
+        """
+        Delete merged collections and associated metadata
+        """
         db = get_src_build()
         meta = db.find_one({"_id": merge_name})
         if meta:
@@ -1237,7 +1246,9 @@ class BuilderManager(BaseManager):
         self.delete_merged_data(merge_name)
 
     def archive_merge(self, merge_name):
-        """Delete merged collections and associated metadata"""
+        """
+        Delete merged collections and associated metadata
+        """
         db = get_src_build()
         meta = db.find_one({"_id": merge_name})
         if meta:
@@ -1298,11 +1309,11 @@ class BuilderManager(BaseManager):
         directly be accessed whether it's a standard class or not
         """
         obj = klass
-        if type(klass) == partial:
-            assert type(klass.func) == type
+        if isinstance(klass, partial):
+            assert isinstance(klass.func, type)
             btype = "partial"
             obj = klass.func
-        elif type(klass) == type:
+        elif isinstance(klass, type):
             btype = "class"
         else:
             raise TypeError("Unknown type for builder %s" % repr(klass))
@@ -1355,10 +1366,10 @@ class BuilderManager(BaseManager):
             bdr = self[build_name]
             job = bdr.merge(sources, target_name, job_manager=self.job_manager, **kwargs)
             return job
-        except KeyError:
-            raise BuilderException("No such builder for '%s'" % build_name)
-        except ResourceNotReady as e:
-            raise BuilderException(f"Some datasources aren't ready for the merge: {e}")
+        except KeyError as key_error:
+            raise BuilderException("No such builder for '%s'" % build_name) from key_error
+        except ResourceNotReady as resource_error:
+            raise BuilderException(f"Some datasources aren't ready for the merge: {resource_error}") from resource_error
 
     def list_sources(self, build_name):
         """
@@ -1401,6 +1412,7 @@ class BuilderManager(BaseManager):
 
             else:
                 old = dbbuild.find_one({"_id": old})
+
             meta_srcs = old.get("_meta", {}).get("src", {})
             new = {
                 "old_build": {
