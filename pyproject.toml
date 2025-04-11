@@ -49,7 +49,8 @@ norecursedirs = [
     "tmp*",
     "lib",
     "lib64",
-    "tools"
+    "tools",
+    "tests/hub/datatransform"
 ]
 testpaths = [
     "tests"
