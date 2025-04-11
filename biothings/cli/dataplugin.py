@@ -14,8 +14,8 @@ from biothings.cli import operations
 SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
 FULL_HELP = (
     SHORT_HELP
-    + "\n\n[magenta]   :sparkles: Run from an existing data plugin folder to evaluate a singular data plugin.[/magenta]"
-    + "\n\n[magenta]   :sparkles: Run from a parent folder containing multiple data plugins to operate like a hub.[/magenta]"
+    + "\n[magenta]   :sparkles: Run from an existing data plugin folder to evaluate a singular data plugin.[/magenta]"
+    + "\n[magenta]   :sparkles: Run from a parent folder containing multiple data plugins to operate like a hub.[/magenta]"
     + "\n[green]   :point_right: Set [bold]BTCLI_RICH_TRACEBACK=1[/bold] ENV variable to enable full and pretty-formatted tracebacks, [/green]"
     + "\n[green]   :point_right: Set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
     + "\n[green]   :point_right: Include a config.py at the working directory to override the default biothings.config settings.[/green]"
