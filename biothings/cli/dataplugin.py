@@ -14,14 +14,11 @@ from biothings.cli import operations
 SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
 FULL_HELP = (
     SHORT_HELP
-    + "\n\n[magenta]   :sparkles: Go to your existing data plugin folder.[/magenta]"
-    + "\n[magenta]   :sparkles: Dumping, uploading and inspecting your data plugin.[/magenta]"
-    + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
-    + "\n\n[green]   :point_right: Always run this command inside of your data plugin folder.[/green]"
-    + "\n[green]   :point_right: Default traceback errors are kept minimal, but you can set [bold]BTCLI_RICH_TRACEBACK=1[/bold][/green]"
-    + "\n[green]      ENV variable to enable full and pretty-formatted tracebacks, [/green]"
-    + "\n[green]      or set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
-    + "\n[green]   :point_right: You can include a config.py at the working directory to override the default biothings.config settings.[/green]"
+    + "\n\n[magenta]   :sparkles: Run from an existing data plugin folder to evaluate a singular data plugin.[/magenta]"
+    + "\n\n[green]   :point_right: Run from a parent folder containing multiple data plugins to operate like a hub.[/green]"
+    + "\n[green]   :point_right: Set [bold]BTCLI_RICH_TRACEBACK=1[/bold][/green] ENV variable to enable full and pretty-formatted tracebacks, [/green]"
+    + "\n[green]   :point_right: Set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
+    + "\n[green]   :point_right: Include a config.py at the working directory to override the default biothings.config settings.[/green]"
     + "\n   :rocket::boom::sparkling_heart:"
 )
 
