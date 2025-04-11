@@ -747,8 +747,9 @@ class UploaderManager(BaseSourceManager):
         instance.
         """
         if database_address is None:
-            address_connection = self.conn.address
-        inst = klass.create(db_conn_info=self.conn.address)
+            database_address = self.conn.address
+
+        inst = klass.create(db_conn_info=database_address)
         return inst
 
     def register_classes(self, klasses):
