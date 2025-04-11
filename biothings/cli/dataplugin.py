@@ -266,7 +266,7 @@ def clean_data(
     """
     Delete all dumped files and/or drop uploaded sources tables
     """
-    asyncio.run(operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all))
+    asyncio.run(operations.do_clean(plugin_name=plugin_name, dump=dump, upload=upload, clean_all=clean_all))
 
 
 @dataplugin_application.command(name="index")

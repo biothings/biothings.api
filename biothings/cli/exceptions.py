@@ -3,7 +3,7 @@ Exception definitions for the biothings-cli
 """
 
 from pathlib import Path
-from typing import Callable, Union
+from typing import Union
 
 
 class MissingPluginName(Exception):
