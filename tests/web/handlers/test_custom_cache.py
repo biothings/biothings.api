@@ -7,10 +7,19 @@ GET /case/3
 
 """
 
+import sys
 from biothings.tests.web import BiothingsWebAppTest
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestBase(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_01_get(self):
         """
         GET /case/1

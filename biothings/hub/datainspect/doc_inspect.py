@@ -612,18 +612,17 @@ class FieldInspection:
 
 @dataclass
 class FieldInspectValidation:
-    warnings: set() = field(default_factory=set)
+    warnings: set = field(default_factory=set)
     types: set = field(default_factory=set)
     has_multiple_types: bool = False
 
 
 def flatten_inspection_data(
-    # data: dict[str, any],       # This only works for Python 3.9+
     data: Dict[str, Any],
     current_deep: int = 0,
     parent_name: str = None,
     parent_type: str = None,
-) -> List[FieldInspection]:  # for py3.9+, we can use list[FieldInspection] directly without importing List
+) -> List[FieldInspection]:  # for py3.9+, we can use List[FieldInspection] directly without importing List
     """
     This function will convert the multiple depth nested inspection data into a flatten list
     Nested key will be appended with the parent key and seperate with a dot.
