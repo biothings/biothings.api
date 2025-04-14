@@ -15,10 +15,10 @@ from elasticsearch.helpers import BulkIndexError
 import biothings.utils.jsonpatch as jsonpatch
 from biothings import config as btconfig
 from biothings.hub import SYNCER_CATEGORY
+from biothings.hub.manager import BaseManager
 from biothings.utils.common import iter_n, loadobj, timesofar
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import doc_feeder, get_target_db, invalidate_cache
 from biothings.utils.storage import UpsertStorage
 

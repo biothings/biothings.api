@@ -17,7 +17,7 @@ class Stage(Enum):
 
 
 # IndexJobStateRegistrar CAN be further generalized
-# to replace utils.manager.BaseStatusRegisterer
+# to replace hub.manager.BaseStatusRegisterer
 
 
 class IndexJobStateRegistrar:
