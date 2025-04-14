@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Iterable, Optional, Union, cast
+from typing import Dict, List, Any, Iterable, Optional, Union, cast
 import collections
 import json
 import logging
@@ -258,7 +258,7 @@ class Sqlite3BulkWriteResult:
         return 0
 
     @property
-    def upserted_ids(self) -> Optional[dict[int, Any]]:
+    def upserted_ids(self) -> Optional[Dict[int, Any]]:
         """
         A map of operation index to the _id of the upserted document
         """
@@ -294,7 +294,7 @@ class Collection:
         return self.db
 
     def find_one(self, *args, **kwargs):
-        if args and len(args) == 1 and isinstance(args[0], dict):
+        if args and len(args) == 1 and isinstance(args[0], Dict):
             if len(args[0]) == 1 and "_id" in args[0]:
                 strdoc = (
                     self.get_conn()
@@ -321,7 +321,7 @@ class Collection:
         conn = self.get_conn()
         tbl_name = self.colname
 
-        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+        if args and len(args) == 1 and isinstance(args[0], Dict) and len(args[0]) > 0:
             # it's key/value search, args[0] like {"a.b": "test", "a.b.c", "value"}
             sub_queries = []
             for k, v in args[0].items():
@@ -388,7 +388,7 @@ class Collection:
         logger.debug('SQLite query: "%s"', _query)
         results = (json_loads(doc[0]) for doc in conn.execute(_query))  # results is a generator
         if return_list:
-            results = list(results)
+            results = List(results)
         if return_total:
             # get total count without limit and offset
             total = conn.execute(query.replace("SELECT document FROM", "SELECT COUNT(*) FROM")).fetchone()[0]
@@ -398,7 +398,7 @@ class Collection:
 
     def find(self, *args, **kwargs):
         results = []
-        if args and len(args) == 1 and isinstance(args[0], dict) and len(args[0]) > 0:
+        if args and len(args) == 1 and isinstance(args[0], Dict) and len(args[0]) > 0:
             # it's key/value search, let's iterate
             for doc in self.get_conn().execute("SELECT document FROM %s" % self.colname).fetchall():
                 found = []
@@ -430,14 +430,14 @@ class Collection:
         else:
             raise NotImplementedError("find: args=%s kwargs=%s" % (repr(args), repr(kwargs)))
 
-    def id_search(self, id_collection: list[str]) -> list[tuple]:
+    def id_search(self, id_collection: List[str]) -> List[tuple]:
         """
         Method for bulk searching against the _id column in the database.
         Primarily used for determining the culprit to the uniqueness integrity violation
         from a bulk write.
 
         args:
-            id_collection: list of strings representing the document _id value
+            id_collection: List of strings representing the document _id value
 
         output:
         """
@@ -452,7 +452,7 @@ class Collection:
                     logger.warning("Skipping %s for id search", id_value)
         return discovered_id
 
-    def insert_one(self, doc: dict, *args, **kwargs) -> None:
+    def insert_one(self, doc: Dict, *args, **kwargs) -> None:
         """
         single-document insert into the database
 
@@ -471,7 +471,7 @@ class Collection:
                 logger.error("Unable to complete transation (check the _id value for uniqueness). Document: %s", doc)
                 raise integrity_err
 
-    def insert(self, docs: Iterable[dict], *args, **kwargs) -> None:
+    def insert(self, docs: Iterable[Dict], *args, **kwargs) -> None:
         """
         multi-document insert into the database
 
@@ -501,7 +501,7 @@ class Collection:
             except sqlite3.IntegrityError as integrity_err:
                 logger.exception(integrity_err)
                 id_counter = collections.Counter([doc["_id"] for doc in rendered_documents])
-                discovered_non_unique_id = list(
+                discovered_non_unique_id = List(
                     filter(lambda id_frequency: id_frequency[1] > 1, id_counter.most_common(10))
                 )
                 if len(discovered_non_unique_id) > 0:
@@ -509,7 +509,7 @@ class Collection:
                 raise integrity_err
 
     def bulk_write(
-        self, docs: Iterable[Union[dict, InsertOne, ReplaceOne, UpdateOne]], *args, **kwargs
+        self, docs: Iterable[Union[Dict, InsertOne, ReplaceOne, UpdateOne]], *args, **kwargs
     ) -> Sqlite3BulkWriteResult:
         """
         "Overridden method" to mimic the structure of mongodb as our design followed a lot of

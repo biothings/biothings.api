@@ -49,7 +49,10 @@ norecursedirs = [
     "tmp*",
     "lib",
     "lib64",
-    "tools"
+    "tools",
+    "tests/hub/dataplugin/data",
+    "tests/web/handlers/data",
+    "tests/hub/datatransform"
 ]
 testpaths = [
     "tests"
@@ -70,8 +73,3 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
-
-log_file = "logs/pytest.log"
-log_file_level = "INFO"
-log_file_format = "%(asctime)s [%(levelname)] %(message)s"
-log_file_date_format = "%Y-%m-%d %H:%M:%S"

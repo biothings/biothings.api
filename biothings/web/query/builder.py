@@ -14,12 +14,12 @@ q: str, a query term,
 
 options: dotdict, optional query options.
 
-    scopes: list[str], the fields to look for the query term.
+    scopes: List[str], the fields to look for the query term.
             the meaning of scopes being an empty list or a
             None object/not provided is controlled by specific
             class implementations or not defined.
 
-    _source: list[str], fields to return in the result.
+    _source: List[str], fields to return in the result.
     size: int, maximum number of hits to return.
     from_: int, starting index of result to return.
     sort: str, customized sort keys for result list
@@ -672,12 +672,12 @@ class ESQueryBuilder:
         # if not all((
         #         isinstance(q, (list, tuple)),
         #         all(isinstance(_q, str) for _q in q))):
-        #     raise TypeError("Expect q: Union[list[str], str].", q)
+        #     raise TypeError("Expect q: Union[List[str], str].", q)
 
         # if not all((
         #         isinstance(scopes, (list, tuple)),
         #         all(isinstance(_s, (list, tuple, str)) for _s in scopes))):
-        #     raise TypeError("Expect scopes: list[Union[list[str], str]].", scopes)
+        #     raise TypeError("Expect scopes: List[Union[List[str], str]].", scopes)
 
         if not len(q) == len(scopes):
             raise ValueError("Expect len(q) == len(scopes).")

@@ -6,13 +6,19 @@ GET /v1/metadata/fields
 
 """
 
+import sys
 from biothings.tests.web import BiothingsWebAppTest
-
-# import setup_es to make sure the ES index is setup
-from setup import setup_es  # pylint: disable=unused-import   # noqa: F401
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestMetadata(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_00_meta(self):
         """GET /v1/metadata
         {
@@ -95,6 +101,13 @@ class TestMetadata(BiothingsWebAppTest):
 
 
 class TestMetadataLicense(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def _wait(self):
         try:
             self.wait(timeout=3)
@@ -163,6 +176,13 @@ class TestMetadataLicense(BiothingsWebAppTest):
 
 
 class TestStatus(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_01_get(self):
         """
         GET /status
