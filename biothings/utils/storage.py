@@ -5,7 +5,7 @@ import json
 import operator
 import time
 import types
-from typing import Iterable
+from typing import Iterable, List
 
 import sqlite3
 from sqlite3 import IntegrityError
@@ -316,7 +316,7 @@ class IgnoreDuplicatedStorage(BasicStorage):
 
         return total
 
-    def unique_documents(self, documents: Iterable[dict]) -> list[dict]:
+    def unique_documents(self, documents: Iterable[dict]) -> List[dict]:
         """
         Generates the set of id values from the provided batch of documents
         due to our documents being unhashable

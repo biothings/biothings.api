@@ -1,10 +1,12 @@
-import os
-
-import psycopg2
-import psycopg2.errors
 import pytest
 
-from biothings.utils.postgresql import Collection, Database
+try:
+    import os
+    import psycopg2
+    import psycopg2.errors
+    from biothings.utils.postgresql import Collection, Database
+except ImportError:
+    pytestmark = pytest.mark.skip(reason="Skipping PostgreSQL tests due to missing psycopg2 dependency")
 
 
 @pytest.fixture(scope="module")
