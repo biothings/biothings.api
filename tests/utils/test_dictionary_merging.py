@@ -1,6 +1,9 @@
-from concurrent.futures import ThreadPoolExecutor
+"""
+Tests our merging function in the biothings.utils.common module
+for handling merging of different dictionary records
+"""
 
-from biothings.utils.common import get_loop_with_max_workers, merge
+from biothings.utils.common import merge
 
 
 def test_merge_0():
@@ -74,15 +77,3 @@ def test_merge_5():
 
     merge_result = merge(x, y)
     assert expected_merge_result == merge_result
-
-
-def test_get_loop():
-    # Given
-    max_workers = 2
-
-    # Action
-    loop = get_loop_with_max_workers(max_workers=max_workers)
-
-    # Asserts
-    assert isinstance(loop._default_executor, ThreadPoolExecutor)
-    assert loop._default_executor._max_workers == max_workers
