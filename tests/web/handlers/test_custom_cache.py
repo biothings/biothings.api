@@ -8,14 +8,11 @@ GET /case/3
 """
 
 import sys
-from biothings.tests.web import BiothingsDataTest
+from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
 
-class TestBase(BiothingsDataTest):
-    host = "mygene.info"
-    prefix = "v3"
-
+class TestBase(BiothingsWebAppTest):
     @property
     def config(self):
         if not hasattr(self, "_config"):
