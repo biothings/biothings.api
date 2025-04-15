@@ -15,7 +15,7 @@ from biothings.web.query import (
 )
 
 
-def test_mongo():
+def test_mongodb_pipeline():
     client = connections.get_mongo_client("mongodb://su05:27017/genedoc")
     pipeline = MongoQueryPipeline(
         MongoQueryBuilder(),
@@ -34,7 +34,7 @@ def test_mongo():
     print(pipeline.search("slc27a2b", scopes=["symbol"], _source=fields))
 
 
-def test_es():
+def test_elasticsearch_pipeline():
     client = connections.get_es_client("localhost:9200", True)
     pipeline = ESQueryPipeline(ESQueryBuilder(), ESQueryBackend(client), ESResultFormatter())
     # print(pipeline.fetch("ecf3767159a74988", rawquery=1))
@@ -44,7 +44,7 @@ def test_es():
     print(pipeline.search("nonexists", scopes=["name"]))
 
 
-def test_sql():
+def test_sqlite3_pipeline():
     client = connections.get_sql_client("mysql+pymysql://root@localhost/album")
     pipeline = SQLQueryPipeline(
         SQLQueryBuilder(
@@ -61,7 +61,3 @@ def test_sql():
     print(pipeline.fetch("1"))
     print(pipeline.search("Two Men with the Blues", scopes=["title"]))
     print(pipeline.search("1", biothing_type="track", scopes=["album.id"]))
-
-
-if __name__ == "__main__":
-    test_es()

@@ -13,7 +13,3 @@ def test_adjust_index_overrided():
     index = "original_index"
     index = backend.adjust_index(index, query)
     assert index == "any_index"
-
-
-if __name__ == "__main__":
-    test_adjust_index_overrided()

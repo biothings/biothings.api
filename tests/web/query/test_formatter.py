@@ -54,7 +54,3 @@ def test_es_3():
             one=True,
         )
     )
-
-
-if __name__ == "__main__":
-    test_es_3()
