@@ -252,7 +252,8 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             klass = dumper_section.get("class")
             dumper_configuration = getattr(self, "_dict_for_%s" % scheme)(dumper_urls)
 
-            dumper_configuration.setdefault("disabled", False)
+            # Add disabled flag to dumper configuration with default value False
+            dumper_configuration["DISABLED"] = dumper_section.get("disabled", False)
 
             if klass:
                 dumper_class = get_class_from_classpath(klass)
