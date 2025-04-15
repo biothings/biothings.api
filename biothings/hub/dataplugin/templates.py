@@ -41,6 +41,8 @@ def generate_assisted_dumper_class(template_file: Union[str, Path], dumper_confi
         )
         assisted_dumper_class.python_code = pystr
 
+        assisted_dumper_class.disabled = bool(dumper_configuration.get("disabled", False))
+
         globals()[metadumper_class] = assisted_dumper_class
         return assisted_dumper_class
 
