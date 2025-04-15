@@ -46,7 +46,3 @@ def test_sql():
     client = connections.sql.get_client("mysql+pymysql://<USER>:<PASSWORD>@localhost/album")
     result = client.execute("SELECT * FROM track")
     print(result.all())
-
-
-if __name__ == "__main__":
-    test_es_4()

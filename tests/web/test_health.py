@@ -48,7 +48,3 @@ def test_es_async_3():
         print(vars(response))
 
     asyncio.run(main())
-
-
-if __name__ == "__main__":
-    test_es_async_3()
