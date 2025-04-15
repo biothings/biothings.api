@@ -139,6 +139,10 @@
                     "examples": [
                         "version:get_release"
                     ]
+                },
+                "disabled": {
+                    "type": "boolean",
+                    "description": "If true, then the dumper will not be run. This is useful for testing purposes or if you want to disable the dumper without removing it from the manifest"
                 }
             },
             "required": [
