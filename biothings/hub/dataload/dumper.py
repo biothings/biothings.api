@@ -74,6 +74,8 @@ class BaseDumper:
 
     SCHEDULE = None  # crontab format schedule, if None, won't be scheduled
 
+    DISABLED = False  # True to disable this dumper class
+
     def __init__(self, src_name=None, src_root_folder=None, log_folder=None, archive=None):
         # unpickable attrs, grouped
         self.init_state()
@@ -1441,6 +1443,9 @@ class DumperManager(BaseSourceManager):
         jobs = []
         try:
             for _, klass in enumerate(klasses):
+                if getattr(klass, "DISABLED", False):
+                    logging.info("Skipping disabled dumper: %s" % klass.__name__)
+                    continue
                 if issubclass(klass, ManualDumper) and skip_manual:
                     logging.warning("Skip %s, it's a manual dumper" % klass)
                     continue
@@ -1572,6 +1577,7 @@ class DumperManager(BaseSourceManager):
                 "bases": bases,
                 "schedule": schedule,
                 "manual": issubclass(dumper, ManualDumper),
+                "disabled": getattr(dumper, "DISABLED", False)
             }
             src["name"] = _id
             src["_id"] = _id
