@@ -8,11 +8,13 @@ GET /case/3
 """
 
 import sys
-from biothings.tests.web import BiothingsWebAppTest
+from biothings.tests.web import BiothingsDataTest
 from biothings.web.settings.configs import ConfigModule
 
 
-class TestBase(BiothingsWebAppTest):
+class TestBase(BiothingsDataTest):
+    host = "mygene.info"
+    prefix = "v3"
 
     @property
     def config(self):
