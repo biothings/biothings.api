@@ -6,6 +6,7 @@ import pytest
 from biothings.utils.aws import download_s3_file, get_s3_file_contents, get_s3_folder, get_s3_url, send_s3_file
 
 
+@pytest.mark.skipif(reason="Invalid AWS access key in test records")
 class TestAWS:
     access_key = "AWS_ACCESS_ID"
     secret_key = "AWS_SECRET_KEY"
