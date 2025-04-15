@@ -248,7 +248,7 @@ class TestAnnotationPOST(BiothingsDataTest):
         res = self.request("/v3/gene", expect=400).json()
         assert "error" in res
 
-    @pytest.mark.xfail(reason="No longer a search miss")
+    @pytest.mark.xfail(reason="search query for ID 11 is no longer a search miss")
     def test_01_id_miss(self):
         """
         POST /v3/gene
@@ -288,7 +288,7 @@ class TestAnnotationPOST(BiothingsDataTest):
         assert res[0]["query"] == "1017"
         assert res[0]["taxid"] == 9606
 
-    @pytest.mark.xfail(reason="No longer a search miss")
+    @pytest.mark.xfail(reason="search query for ID 11 is no longer a search miss")
     def test_03_ids(self):
         """
         POST /v3/gene
@@ -317,6 +317,7 @@ class TestAnnotationPOST(BiothingsDataTest):
         assert res[1]["query"] == "11"
         assert res[1]["notfound"]
 
+    @pytest.mark.xfail(reason="search query for ID 11 is no longer a search miss")
     def test_10_form_encoded(self):
         """
         POST /v3/gene
@@ -363,6 +364,7 @@ class TestAnnotationPOST(BiothingsDataTest):
         assert res[0]["query"] == "1017"
         assert res[0]["taxid"] == 9606
 
+    @pytest.mark.xfail(reason="search query for ID 11 is no longer a search miss")
     def test_12_json_type_int(self):
         """
         POST /v3/gene

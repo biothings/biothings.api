@@ -24,7 +24,6 @@ class TestQueryKeywords(BiothingsDataTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
-    @pytest.mark.xfail(reason="unexpected query facets change")
     def test_00_facet(self):
         """GET /v3/query?q=__all__&aggs=type_of_gene
         {
@@ -824,6 +823,7 @@ class TestQueryString(BiothingsDataTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
+    @pytest.mark.xfail(reason="change in search query max scoring result")
     def test_00_all(self):
         """GET /query?q=__all__
         {
@@ -859,6 +859,8 @@ class TestQueryString(BiothingsDataTest):
         }
         """
         self.query(q="", hits=False)
+
+    pytest.mark.xfail(reason="taxid:9606 corresponds to _id 2146 rather than 1017")
 
     def test_03_querystring(self):
         """GET /query?q=taxid:9606
