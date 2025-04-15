@@ -487,8 +487,6 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         installation of the plugin requirements, and assigning of the plugin
         metadata
         """
-        # check if the manifest is disabled
-        manifest.setdefault("DISABLED", False)
 
         # start with requirements before importing anything
         if manifest.get("requires"):
