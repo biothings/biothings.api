@@ -103,7 +103,3 @@ def test_slack_policy_5():
     print(policy.mentions(logging.ERROR))  # 40
     print(policy.mentions(45))
     print(policy.mentions(logging.CRITICAL))  # 50
-
-
-if __name__ == "__main__":
-    test_slack_policy_5()
