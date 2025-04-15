@@ -33,7 +33,6 @@ class TestAnnotationGET(BiothingsDataTest):
             ...
         }
         """
-        breakpoint()
         res = self.request("/v3/gene/1017").json()
         assert res["HGNC"] == "1771"
         assert "_version" in res
