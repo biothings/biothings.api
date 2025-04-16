@@ -176,12 +176,9 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     from biothings import config
     from biothings.utils import hub_db
 
-    if plugin_name is None:
-        plugin_name = pathlib.Path.cwd().name
-
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
-    dumper_class = assistant_instance.dumper_manager[plugin_name][0]
+    dumper_class = assistant_instance.dumper_manager[assistant_instance.plugin_name][0]
     dumper_instance = assistant_instance.dumper_manager.create_instance(dumper_class)
     dumper_instance.__class__.AUTO_UPLOAD = False
 
