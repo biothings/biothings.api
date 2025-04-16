@@ -25,7 +25,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from biothings.cli.manager import CLIJobManager
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
@@ -33,20 +32,6 @@ from biothings.utils.serializer import load_json, to_json
 
 
 logger = logging.getLogger(name="biothings-cli")
-
-
-def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **kwargs):
-    """
-    When func is defined as either normal or async function/method, we will call
-    this function properly and return the results.
-
-    For an async function/method, we will use CLIJobManager to run it.
-    """
-    if asyncio.iscoroutinefunction(func):
-        kwargs["job_manager"] = job_manager
-        return job_manager.loop.run_until_complete(func(*args, **kwargs))
-
-    return func(*args, **kwargs)
 
 
 def get_plugin_name(plugin_name=None, with_working_dir=True):
