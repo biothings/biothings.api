@@ -5,8 +5,13 @@ import sys
 import types
 from pprint import pformat
 
+from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
+
+from biothings.utils.loggers import get_logger
+from biothings.utils.validator import create_pydantic_model
 from biothings.hub.dataload.manager import BaseSourceManager
+
 
 
 class SourceManager(BaseSourceManager):
@@ -26,6 +31,15 @@ class SourceManager(BaseSourceManager):
         self.src_dump = get_src_dump()
         # honoring BaseSourceManager interface (gloups...-
         self.register = {}
+        # setup logger
+        self.log_folder = btconfig.LOG_FOLDER
+        self.setup()
+
+    def setup(self):
+        self.setup_log()
+
+    def setup_log(self):
+        self.logger, _ = get_logger("sourcemanager")
 
     def reload(self):
         # clear registers
@@ -158,6 +172,21 @@ class SourceManager(BaseSourceManager):
                 count += info.get("count") or 0
                 if detailed:
                     self.set_mapping_src_meta(job, mini)
+        if src.get("validate"):
+            mini["validate"] = {"sources": {}}
+            for job, info in src["validate"]["jobs"].items():
+                mini["validate"]["sources"][job] = {
+                    "time": info.get("time"),
+                    "status": info.get("status"),
+                    "started_at": info.get("started_at"),
+                    "release": info.get("release"),
+                    "data_folder": info.get("data_folder"),
+                    "model_file": info.get("model_file"),
+                }
+                if info.get("err"):
+                    mini["validate"]["sources"][job]["error"] = info["err"]
+                if info.get("tb"):
+                    mini["validate"]["sources"][job]["traceback"] = info["tb"]
         if src.get("inspect"):
             mini["inspect"] = {"sources": {}}
             for job, info in src["inspect"]["jobs"].items():
@@ -241,11 +270,22 @@ class SourceManager(BaseSourceManager):
                                 ].get("uploader")
                             except Exception as e:
                                 logging.error("Source is invalid: %s\n%s" % (e, pformat(src)))
+                    if src.get("validate"):
+                        for subname in src["validate"].get("jobs", {}):
+                            try:
+                                sources[src["name"]].setdefault("validate", {"sources": {}})["sources"].setdefault(
+                                    subname, {}
+                                )
+                                sources[src["name"]]["validate"]["sources"][subname]["uploader"] = src["upload"][
+                                    "jobs"
+                                ][subname].get("uploader")
+                            except Exception as e:
+                                logging.error("Source is invalid: %s\n%s" % (e, pformat(src)))
             # deal with plugin info if any
             if dpm:
                 src = bydpsrcs.get(_id)
                 if src:
-                    assert len(dpm[_id]) == 1, "Expected only one uploader, got: %s" % dpm[_id]
+                    assert len(dpm[_id]) == 1, "Expected only one dumper, got: %s" % dpm[_id]
                     klass = dpm[_id][0]
                     src.pop("_id")
                     if hasattr(klass, "data_plugin_error"):
@@ -278,6 +318,9 @@ class SourceManager(BaseSourceManager):
                 if getattr(upk, "__metadata__", {}).get("src_meta"):
                     src.setdefault("__metadata__", {}).setdefault(name, {})
                     src["__metadata__"][name] = upk.__metadata__["src_meta"]
+                if hasattr(upk, "auto_validate"):
+                    src.setdefault("auto_validate", {}).setdefault(name, {})
+                    src["auto_validate"][name] = getattr(upk, "auto_validate")
             # simplify as needed (if only one source in metadata, remove source key level,
             # or if licenses are the same amongst sources, keep one copy)
             if len(src.get("__metadata__", {})) == 1:
@@ -356,3 +399,59 @@ class SourceManager(BaseSourceManager):
         except KeyError as e:
             logging.exception(e)
             raise ValueError(f"Can't delete information, not found in document: {e}")
+
+    def get_mapping(self, name):
+        """Get the mapping for a given source name"""
+        # either given a fully qualified source or just sub-source
+        try:
+            m = self.src_master.find_one({"_id": name})
+            return m.get("mapping")
+        except AttributeError as e:
+            logging.exception(e)
+            raise ValueError("No mapping found for source '%s'" % name)
+
+    def create_model_str(self, name):
+        """Create a pydantic model string for a given source name"""
+        mapping = self.get_mapping(name)
+        model_str = create_pydantic_model(mapping, name.casefold())
+        return model_str
+
+    def get_model_str(self, name, upk):
+        """Get a pydantic model string for a given source name"""
+        try:
+            subsrc = name.split(".")[1]
+        except IndexError:
+            subsrc = name
+        try:
+            validation_path = self.upload_manager.get_validation_path(upk)
+            model_path = os.path.join(validation_path, f"{subsrc}_model.py")
+            with open(model_path, "r") as f:
+                model_str = f.read()
+                return model_str
+        except FileNotFoundError:
+            logging.error("No model found for source '%s' creating model string from mapping", name)
+            return self.create_model_str(subsrc)
+
+    def save_pydantic_model(self, name):
+        """Save a pydantic model string for a given source name"""
+        upk = self.upload_manager[name]
+        assert len(upk) == 1, "Expected only one uploader, got: %s" % upk
+        upk = upk[0]
+        inst = self.upload_manager.create_instance(upk)
+        model_str = self.get_model_str(name, upk)
+        inst.commit_pydantic_model(model_str)
+        self.logger.info("Saved pydantic model for source '%s'", name)
+
+    def run_pydantic_validation(self, name, model_file=None):
+        kwargs = {"model_file": model_file}
+        return self.upload_manager.validate_src(name, **kwargs)
+
+    def get_validations(self, name):
+        """Get the Pydantic models for a given source name"""
+        upk = self.upload_manager[name]
+        # pick any uploader they should all use the same model directory
+        upk = upk[0]
+        validation_dir = self.upload_manager.get_validation_path(upk)
+        if not os.path.exists(validation_dir):
+            return []
+        return [f for f in os.listdir(validation_dir) if f.endswith(".py")]
