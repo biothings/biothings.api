@@ -507,6 +507,15 @@ BIOTHINGS_ROLE = "slave"
 # Additional optional settings avaiable if needed: #
 ####################################################
 
+# for running tests locally in our biothings hub with testing api
+APITEST_PATH = ConfigurationError("Define path to folder which will contain pytests")
+
+APITEST_CONFIG = ConfigurationDefault(
+    default=ConfigurationValue("""'config_web_local'"""),
+    desc="Provide a default hub logger instance (use setup_default_log(name,log_folder)",
+)
+
+
 # Pass any optional tornado settings to tornado.httpserver.HTTPServer
 # see biothings.hub.api.start_api
 # TORNADO_SETTINGS = {
