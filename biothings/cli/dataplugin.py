@@ -284,10 +284,21 @@ def index_plugin(
     asyncio.run(operations.do_index(plugin_name=plugin_name))
 
 
-@dataplugin_application.command(name="schema")
-def plugin_schema():
+@dataplugin_application.command(name="validate")
+def validate_manifest(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
+    show_schema: Annotated[bool, typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
+) -> None:
     """
-    Display the biothings manifest schema
+    [red][bold](experimental)[/bold][/red] Validate a provided manifest file via JSONSchema
+
+    Performs jsonschema validation against the manifest file.
+    Will not perform validation against the potential loading of modules
+    within the manifest
+
+    if the --show-schema argument is applied, then display the biothings
+    manifest schema
 
     The schema is located within the biothings repository at the following
     path relative to root:
@@ -296,19 +307,6 @@ def plugin_schema():
     For a reference about jsonschema itself, see the following:
     https://json-schema.org/
     """
-    asyncio.run(operations.display_schema())
-
-
-@dataplugin_application.command(name="validate")
-def validate_manifest(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
-    manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
-) -> None:
-    """
-    [red][bold](experimental)[/bold][/red] Validate a provided manifest file
-
-    Solely performs jsonschema validation against the manifest file.
-    Will not perform validation against the potential loading of modules
-    within the manifest
-    """
     operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file)
+    if show_schema:
+        asyncio.run(operations.display_schema())
