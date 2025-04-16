@@ -1,8 +1,8 @@
 """
-This module contains util functions may be shared by both BioThings data-hub and web components.
-In general, do not include utils depending on any third-party modules.
-Note: unittests available in biothings.tests.hub
+Module for document inspection methods and associated
+helper methods
 """
+
 import copy
 import enum
 import logging
@@ -24,7 +24,7 @@ from biothings.utils.dataload import dict_walk
 from biothings.utils.docs import flatten_doc
 
 
-class BaseMode(object):
+class BaseMode:
     # dict storing the actual specific values the mode deals with
     template = {}
     # key under which values are stored for this mode
@@ -58,14 +58,12 @@ class StatsMode(BaseMode):
     key = "_stats"
 
     def sumiflist(self, val):
-        # if type(val) == list:   # TODO: remove this line
         if isinstance(val, list):
             return sum(val)
         else:
             return val
 
     def maxminiflist(self, val, func):
-        # if type(val) == list:   # TODO: remove this line
         if isinstance(val, list):
             return func(val)
         else:
@@ -112,12 +110,12 @@ class DeepStatsMode(StatsMode):
     key = "_stats"
 
     def merge(self, target_stats, tomerge_stats):
-        super(DeepStatsMode, self).merge(target_stats, tomerge_stats)
+        super().merge(target_stats, tomerge_stats)
         # extend values
         target_stats.get("__vals", []).extend(tomerge_stats.get("__vals", []))
 
     def report(self, val, drep, orig_struct=None):
-        super(DeepStatsMode, self).report(val, drep, orig_struct)
+        super().report(val, drep, orig_struct)
         # keep track of vals for now, stats are computed at the end
         drep[self.key]["__vals"].append(val)
 
@@ -284,7 +282,6 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
     if mapt is None:
         mapt = {}
 
-    # if type(struct) == dict:    # TODO: remove this line
     if isinstance(struct, dict):
         # was this struct already explored before ? was it a list for that previous doc ?
         # then we have to pretend here it's also a list even if not, because we want to
@@ -305,7 +302,7 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
         if mode_inst:
             mapt.setdefault(mode_inst.key, copy.deepcopy(mode_inst.template[mode_inst.key]))
             mode_inst.report(1, mapt, struct)
-    elif type(struct) == list:
+    elif isinstance(struct, list):
         mapl = {}
         for e in struct:
             typ = inspect(e, key=key, mapt=mapl, mode=mode, level=level + 1)
@@ -322,7 +319,6 @@ def inspect(struct, key=None, mapt=None, mode="type", level=0, logger=logging):
         else:
             mapt.setdefault(list, {})
             mapt[list].update(mapl)
-    # elif is_scalar(struct) or type(struct) == datetime:   # TODO: remove this line
     elif is_scalar(struct) or isinstance(struct, datetime):
         typ = type(struct)
         if mode == "type":
@@ -417,7 +413,7 @@ def get_converters(modes, logger=logging):
     converters = []
     # should we actually run another mode and then convert the results ?
     if "jsonschema" in modes:
-        from biothings.utils.jsonschema import generate_json_schema
+        from biothings.hub.datainspect.schema import generate_json_schema
 
         # first get schema with mode="type", then convert the results
         # note "type" can't also be specified as jsonschema will replace
@@ -463,7 +459,8 @@ def inspect_docs(
     metadata=True,
     auto_convert=True,
 ):
-    """Inspect docs and return a summary of its structure:
+    """
+    Inspect docs and return a summary of its structure:
 
     Args:
         mode: possible values are:
@@ -489,7 +486,6 @@ def inspect_docs(
                       output to another mode's output, eg. type to jsonschema)
     """
 
-    # if type(mode) == str:    # TODO: remove this line
     if isinstance(mode, str):
         modes = [mode]
     else:
@@ -616,19 +612,19 @@ class FieldInspection:
 
 @dataclass
 class FieldInspectValidation:
-    warnings: set() = field(default_factory=set)
+    warnings: set = field(default_factory=set)
     types: set = field(default_factory=set)
     has_multiple_types: bool = False
 
 
 def flatten_inspection_data(
-    # data: dict[str, any],       # This only works for Python 3.9+
     data: Dict[str, Any],
     current_deep: int = 0,
     parent_name: str = None,
     parent_type: str = None,
-) -> List[FieldInspection]:  # for py3.9+, we can use list[FieldInspection] directly without importing List
-    """This function will convert the multiple depth nested inspection data into a flatten list
+) -> List[FieldInspection]:  # for py3.9+, we can use List[FieldInspection] directly without importing List
+    """
+    This function will convert the multiple depth nested inspection data into a flatten list
     Nested key will be appended with the parent key and seperate with a dot.
     """
 
@@ -702,7 +698,8 @@ def flatten_inspection_data(
 
 
 class InspectionValidation:
-    """This class provide a mechanism to validate and flag any field which:
+    """
+    This class provide a mechanism to validate and flag any field which:
     - contains whitespace
     - contains upper cased letter or special characters
         (lower-cased is recommended, in some cases the upper-case field names are acceptable,

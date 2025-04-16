@@ -18,11 +18,11 @@ from biothings.hub.databuild.backend import create_backend, generate_folder
 from biothings.hub.databuild.buildconfig import AutoBuildConfig
 from biothings.hub.datarelease import set_pending_to_publish
 from biothings.hub.datarelease.releasenote import ReleaseNoteTxt
+from biothings.hub.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.hub import publish_data_version, template_out
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager, BaseStatusRegisterer
 from biothings.utils.mongo import get_previous_collection
 
 from .releasenote import ReleaseNoteSource, ReleaseNoteSrcBuildReader
@@ -385,7 +385,7 @@ class SnapshotPublisher(BasePublisher):
             )
 
         if isinstance(steps, tuple):
-            steps = list(steps)    # may not be necessary, but previous steps default is a list, so let's be consistent
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
         elif type(steps) == str:
             steps = [steps]
         if not bdoc:

@@ -13,9 +13,9 @@ import pytest
 
 from biothings import config as btconfig
 from biothings.hub import APITESTER_CATEGORY
+from biothings.hub.manager import BaseManager
 from biothings.utils.hub_db import get_api
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.web.launcher import BiothingsAPILauncher
 
 
@@ -24,6 +24,7 @@ class LoggerFile:
     File-like object that writes to a logger at a specific level.
     This object is used to redirect stdout/stderr to a logger.
     """
+
     def __init__(self, logger, level):
         self.logger = logger
         self.level = level
@@ -140,14 +141,22 @@ class APIManager(BaseManager):
         assert self.job_manager
         has_pytests = False
         try:
-            if btconfig.APITEST_CONFIG_ROOT and btconfig.APITEST_CONFIG and btconfig.APITEST_ROOT and btconfig.APITEST_PATH:
+            if (
+                btconfig.APITEST_CONFIG_ROOT
+                and btconfig.APITEST_CONFIG
+                and btconfig.APITEST_ROOT
+                and btconfig.APITEST_PATH
+            ):
                 has_pytests = True
         except AttributeError:
-            self.logger.error("Missing APIRTEST_CONFIG_ROOT or API_CONFIG or APITEST_ROOT or APITEST_PATH. Skipping pytests for '%s'", api_id)
+            self.logger.error(
+                "Missing APIRTEST_CONFIG_ROOT or API_CONFIG or APITEST_ROOT or APITEST_PATH. Skipping pytests for '%s'",
+                api_id,
+            )
 
         try:
             old_dir = os.getcwd()
-            #if has_pytest is true then run the pytests
+            # if has_pytest is true then run the pytests
             if has_pytests:
                 # have to change directory otherwise pytest will not find the conftest.py file
                 self.logger.info("Changing directory from %s to %s", old_dir, btconfig.APITEST_ROOT)
@@ -161,7 +170,9 @@ class APIManager(BaseManager):
                     pinfo = self.get_pinfo()
                     pinfo["description"] = "Running API tests"
                     # defer_to_process leaves the websocket open for unknown reasons when trying to stop the api so we use defer_to_thread
-                    job = await self.job_manager.defer_to_thread(pinfo, partial(self.log_pytests, path, "localhost:" + str(port)))
+                    job = await self.job_manager.defer_to_thread(
+                        pinfo, partial(self.log_pytests, path, "localhost:" + str(port))
+                    )
                     got_error = None
 
                     def updated(f):
@@ -179,6 +190,7 @@ class APIManager(BaseManager):
                     await job
                     if isinstance(got_error, Exception):
                         raise got_error
+
                 job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
                 return job
         except Exception as e:

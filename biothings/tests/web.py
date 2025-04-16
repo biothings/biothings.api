@@ -1,79 +1,80 @@
 """
-    Biothings Test Helpers
+Biothings Test Helpers
 
-    There are two types of test classes that provide utilities to
-    three types of test cases, developed in the standalone apps.
+There are two types of test classes that provide utilities to
+three types of test cases, developed in the standalone apps.
 
-    The two types of test classes are:
-        BiothingsWebTest, which targets a running web server.
-        BiothingsWebAppTest, which targets a web server config file.
+The two types of test classes are:
+    BiothingsWebTest, which targets a running web server.
+    BiothingsWebAppTest, which targets a web server config file.
 
-    To further illustrate, for any biothings web applications, it
-    typically conforms to the following architectures:
+To further illustrate, for any biothings web applications, it
+typically conforms to the following architectures:
 
-    Layer 3: A web server that implements the behaviors defined below.
-    Layer 2: A config file that defines how to serve data from ES.
-    Layer 1: An Elasticsearch server with data.
+Layer 3: A web server that implements the behaviors defined below.
+Layer 2: A config file that defines how to serve data from ES.
+Layer 1: An Elasticsearch server with data.
 
-    And for the two types of test classes, to explain their differences
-    in the context of the layered design described above:
-        BiothingsWebTest targets an existing Layer 3 endpoint.
-        BiothingsWebAppTest targets layer 2 and runs its own layer 3.
-        Note no utility is provided to directly talk to layer 1.
+And for the two types of test classes, to explain their differences
+in the context of the layered design described above:
+    BiothingsWebTest targets an existing Layer 3 endpoint.
+    BiothingsWebAppTest targets layer 2 and runs its own layer 3.
+    Note no utility is provided to directly talk to layer 1.
 
-    The above discussed the python structures provided as programming
-    utilities, on the other hand, there are three types of use cases,
-    or testing objectives:
-        L3 Data test, which is aimed to test the data integrity of an API.
-            It subclasses BiothingsWebTest and ensures all layers working.
-            The data has to reside in elasticsearch already.
-        L3 Feature test, which is aimed to test the API implementation.
-            It makes sure the settings in config file is reflected.
-            These tests work on production data and require constant
-            updates to keep the test cases in sync with the actual data.
-            These test cases subclass BiothingsWebTest as well and asl
-            require existing production data in elasticsearch.
-        L2 Feature test, doing basically the same things as above but uses
-            a small set of data that it ingests into elasticsearch.
-            This is a lightweight test for development and automated testings
-            for each new commit. It comes with data it will ingest in ES
-            and does not require any existing data setup to run.
+The above discussed the python structures provided as programming
+utilities, on the other hand, there are three types of use cases,
+or testing objectives:
+    L3 Data test, which is aimed to test the data integrity of an API.
+        It subclasses BiothingsWebTest and ensures all layers working.
+        The data has to reside in elasticsearch already.
+    L3 Feature test, which is aimed to test the API implementation.
+        It makes sure the settings in config file is reflected.
+        These tests work on production data and require constant
+        updates to keep the test cases in sync with the actual data.
+        These test cases subclass BiothingsWebTest as well and asl
+        require existing production data in elasticsearch.
+    L2 Feature test, doing basically the same things as above but uses
+        a small set of data that it ingests into elasticsearch.
+        This is a lightweight test for development and automated testings
+        for each new commit. It comes with data it will ingest in ES
+        and does not require any existing data setup to run.
 
-    To illustrate the differences in a chart:
-    +--------------+---------------------+-----------------+-------------+---------------------------+
-    | Objectives   | Class               | Test Target     | ES Has Data | Automated Testing Trigger |
-    +--------------+---------------------+-----------------+-------------+---------------------------+
-    | L3 Data Test | BiothingsWebTest    | A Running API   | Yes         | Data Release              |
-    +--------------+---------------------+-----------------+-------------+---------------------------+
-    | L3 Feature T.| BiothingsWebTest    | A Running API   | Yes         | Data Release & New Commit |
-    +--------------+---------------------+-----------------+-------------+---------------------------+
-    | L2 Feature T.| BiothingsWebAppTest | A config module | No*         | New Commit                |
-    +--------------+---------------------+-----------------+-------------+---------------------------+
-    * For L2 Feature Test, data is defined in the test cases and will be automatically ingested into
-      Elasticsearch at the start of the testing and get deleted after testing finishes. The other
-      two types of testing require existing production data on the corresponding ES servers.
+To illustrate the differences in a chart:
++--------------+---------------------+-----------------+-------------+---------------------------+
+| Objectives   | Class               | Test Target     | ES Has Data | Automated Testing Trigger |
++--------------+---------------------+-----------------+-------------+---------------------------+
+| L3 Data Test | BiothingsWebTest    | A Running API   | Yes         | Data Release              |
++--------------+---------------------+-----------------+-------------+---------------------------+
+| L3 Feature T.| BiothingsWebTest    | A Running API   | Yes         | Data Release & New Commit |
++--------------+---------------------+-----------------+-------------+---------------------------+
+| L2 Feature T.| BiothingsWebAppTest | A config module | No*         | New Commit                |
++--------------+---------------------+-----------------+-------------+---------------------------+
+* For L2 Feature Test, data is defined in the test cases and will be automatically ingested into
+  Elasticsearch at the start of the testing and get deleted after testing finishes. The other
+  two types of testing require existing production data on the corresponding ES servers.
 
-    In development, it is certainly possible for a particular test case
-    to fall under multiple test types, then the developer can use proper
-    inheritance structures to avoid repeating the specific test case.
+In development, it is certainly possible for a particular test case
+to fall under multiple test types, then the developer can use proper
+inheritance structures to avoid repeating the specific test case.
 
-    In terms of naming conventions, sometimes the L3 tests are grouped
-    together and called remote tests, as they mostly target remote servers.
-    And the L2 tests are called local tests, as they starts a local server.
+In terms of naming conventions, sometimes the L3 tests are grouped
+together and called remote tests, as they mostly target remote servers.
+And the L2 tests are called local tests, as they starts a local server.
 
-    L3 Envs:
+L3 Envs:
 
-    TEST_SCHEME
-    TEST_PREFIX
-    TEST_HOST
-    TEST_CONF
+TEST_SCHEME
+TEST_PREFIX
+TEST_HOST
+TEST_CONF
 
-    L2 Envs:
+L2 Envs:
 
-    TEST_KEEPDATA
-    < Config Module Override >
+TEST_KEEPDATA
+< Config Module Override >
 
 """
+
 import glob
 import inspect
 import json
@@ -233,9 +234,7 @@ class BiothingsWebTestBase:
 
 
 class BiothingsWebTest(BiothingsWebTestBase):
-    """
-
-    """
+    """ """
 
     @pytest.fixture(autouse=True)
     def set_host(self, request):

@@ -1,9 +1,18 @@
 import random
+import sys
 
 from biothings.tests.web import BiothingsWebAppTest
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestAuthn(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_401(self):
         resp = self.request("/user1", expect=401)
         assert resp.headers["WWW-Authenticate"] == "Bearer realm=dummy_bearer"

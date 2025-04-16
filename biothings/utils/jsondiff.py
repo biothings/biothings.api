@@ -1,4 +1,4 @@
-'''
+"""
 The MIT License (MIT)
 
 Copyright (c) 2014 Ilya Volkov
@@ -20,7 +20,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-'''
+"""
 
 # when comparing list, should we have the same order ?
 # default: yes, so no unordered lists
@@ -31,16 +31,21 @@ UNORDERED_LIST = False
 USE_LIST_OPS = False
 
 
-__all__ = ["make",] 
+__all__ = [
+    "make",
+]
+
 
 def _store_index(a, x, v):
     lo = 0
     hi = len(a)
     while lo < hi:
-        mid = (lo+hi)//2
+        mid = (lo + hi) // 2
         try:
-            if a[mid][0] < x: lo = mid+1
-            else: hi = mid
+            if a[mid][0] < x:
+                lo = mid + 1
+            else:
+                hi = mid
         except TypeError:
             hi = mid
     if lo < len(a) and a[lo][0] == x:
@@ -48,14 +53,17 @@ def _store_index(a, x, v):
     else:
         a.insert(lo, (x, [v]))
 
+
 def _take_index(a, x):
     lo = 0
     hi = len(a)
     while lo < hi:
-        mid = (lo+hi)//2
+        mid = (lo + hi) // 2
         try:
-            if a[mid][0] < x: lo = mid+1
-            else: hi = mid
+            if a[mid][0] < x:
+                lo = mid + 1
+            else:
+                hi = mid
         except TypeError:
             hi = mid
     if lo < len(a) and a[lo][0] == x:
@@ -63,10 +71,11 @@ def _take_index(a, x):
             return a[lo][1].pop()
     return None
 
+
 class _compare_info(object):
     def __init__(self):
         self.removed = []
-        self.added   = []
+        self.added = []
         self.__root = root = []
         root[:] = [root, root, None]
 
@@ -102,24 +111,28 @@ class _compare_info(object):
         while curr is not root:
             if curr[1] is not root:
                 op_first, op_second = curr[2], curr[1][2]
-                if op_first.key == op_second.key and \
-                        op_first.path == op_second.path and \
-                        type(op_first) == _op_remove and \
-                        type(op_second) == _op_add:
+                if (
+                    op_first.key == op_second.key
+                    and op_first.path == op_second.path
+                    and type(op_first) == _op_remove
+                    and type(op_second) == _op_add
+                ):
                     yield _op_replace(op_second.path, op_second.key, op_second.value).get()
                     curr = curr[1][1]
                     continue
             yield curr[2].get()
-            curr = curr[1]   
+            curr = curr[1]
+
 
 class _op_base(object):
     def __init__(self, path, key, value):
-        self.path  = path
-        self.key   = key
+        self.path = path
+        self.key = key
         self.value = value
 
     def __repr__(self):
         return str(self.get())
+
 
 class _op_add(_op_base):
     def _on_undo_remove(self, path, key):
@@ -139,7 +152,8 @@ class _op_add(_op_base):
         return key
 
     def get(self):
-        return {'op': 'add', 'path': _path_join(self.path, self.key), 'value': self.value}
+        return {"op": "add", "path": _path_join(self.path, self.key), "value": self.value}
+
 
 class _op_remove(_op_base):
     def _on_undo_remove(self, path, key):
@@ -159,7 +173,8 @@ class _op_remove(_op_base):
         return key
 
     def get(self):
-        return {'op': 'remove', 'path': _path_join(self.path, self.key)}
+        return {"op": "remove", "path": _path_join(self.path, self.key)}
+
 
 class _op_replace(_op_base):
     def _on_undo_remove(self, path, key):
@@ -169,14 +184,15 @@ class _op_replace(_op_base):
         return key
 
     def get(self):
-        return {'op': 'replace', 'path': _path_join(self.path, self.key), 'value': self.value}
+        return {"op": "replace", "path": _path_join(self.path, self.key), "value": self.value}
+
 
 class _op_move(object):
     def __init__(self, oldpath, oldkey, path, key):
         self.oldpath = oldpath
-        self.oldkey  = oldkey
-        self.path    = path
-        self.key     = key
+        self.oldkey = oldkey
+        self.path = path
+        self.key = key
 
     def _on_undo_remove(self, path, key):
         if self.oldpath == path:
@@ -205,15 +221,17 @@ class _op_move(object):
         return key
 
     def get(self):
-        return {'op': 'move', 'path': _path_join(self.path, self.key), 'from': _path_join(self.oldpath, self.oldkey)}
-    
+        return {"op": "move", "path": _path_join(self.path, self.key), "from": _path_join(self.oldpath, self.oldkey)}
+
     def __repr__(self):
         return str(self.get())
 
+
 def _path_join(path, key):
     if key != None:
-        return path + '/' + str(key).replace('~', '~0').replace('/', '~1')
+        return path + "/" + str(key).replace("~", "~0").replace("/", "~1")
     return path
+
 
 def _item_added(path, key, info, item):
     index = _take_index(info.removed, item)
@@ -230,6 +248,7 @@ def _item_added(path, key, info, item):
         new_op = _op_add(path, key, item)
         new_index = info.insert(new_op)
         _store_index(info.added, item, new_index)
+
 
 def _item_removed(path, key, info, item):
     new_op = _op_remove(path, key, item)
@@ -249,8 +268,10 @@ def _item_removed(path, key, info, item):
     else:
         _store_index(info.removed, item, new_index)
 
+
 def _item_replaced(path, key, info, item):
     info.insert(_op_replace(path, key, item))
+
 
 def _compare_dicts(path, info, src, dst):
     added_keys = dst.keys() - src.keys()
@@ -261,6 +282,7 @@ def _compare_dicts(path, info, src, dst):
         _item_added(path, str(key), info, dst[key])
     for key in src.keys() & dst.keys():
         _compare_values(path, key, info, src[key], dst[key])
+
 
 def _compare_lists(path, info, src, dst):
     len_src, len_dst = len(src), len(dst)
@@ -280,7 +302,7 @@ def _compare_lists(path, info, src, dst):
                 _item_added(path, key, info, dst[key])
     else:
         if len_src != len_dst or (not UNORDERED_LIST and src != dst):
-            _item_replaced(path, None , info, dst)
+            _item_replaced(path, None, info, dst)
         else:
             found_diff = False
             # lengths are the same so we just need to compare src against dst
@@ -290,23 +312,21 @@ def _compare_lists(path, info, src, dst):
                     found_diff = True
                     break
             if found_diff:
-                _item_replaced(path, None , info, dst)
+                _item_replaced(path, None, info, dst)
 
 
 def _compare_values(path, key, info, src, dst):
     if src == dst:
         return
-    elif isinstance(src, dict) and \
-            isinstance(dst, dict):
+    elif isinstance(src, dict) and isinstance(dst, dict):
         _compare_dicts(_path_join(path, key), info, src, dst)
-    elif isinstance(src, list) and \
-            isinstance(dst, list):
+    elif isinstance(src, list) and isinstance(dst, list):
         _compare_lists(_path_join(path, key), info, src, dst)
     else:
         _item_replaced(path, key, info, dst)
 
+
 def make(src, dst, **kwargs):
     info = _compare_info()
-    _compare_values('', None, info, src, dst)
+    _compare_values("", None, info, src, dst)
     return [op for op in info.execute()]
-

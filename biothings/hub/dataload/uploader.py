@@ -10,10 +10,11 @@ from typing import Iterable, Optional
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
+from biothings.hub.manager import ResourceNotFound
+from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseSourceManager, ResourceNotFound
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -36,7 +37,7 @@ class ResourceError(Exception):
     pass
 
 
-class BaseSourceUploader(object):
+class BaseSourceUploader:
     """
     Default datasource uploader. Database storage can be done
     in batch or line by line. Duplicated records aren't not allowed
@@ -268,6 +269,7 @@ class BaseSourceUploader(object):
         after a successful loading, rename temp_collection to regular collection name,
         and renaming existing collection to a temp name for archiving purpose.
         """
+
         if self.temp_collection_name and self.db[self.temp_collection_name].count() > 0:
             if self.collection_name in self.db.collection_names():
                 # renaming existing collections
@@ -278,8 +280,10 @@ class BaseSourceUploader(object):
                 self.collection.rename(new_name, dropTarget=True)
             self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
+        elif self.temp_collection_name and self.db[self.collection_name].count() == 0:
+            raise ResourceError("No data parsed into temp collection")
         else:
-            raise ResourceError("No temp collection (or it's empty)")
+            raise ResourceError("No temp collection to switch to")
 
     def post_update_data(self, steps, force, batch_size, job_manager, **kwargs):
         """Override as needed to perform operations after
@@ -332,9 +336,8 @@ class BaseSourceUploader(object):
         # type of id being stored in these docs
         if hasattr(self.__class__, "__metadata__"):
             _doc.update(self.__class__.__metadata__)
-        # try to find information about the uploader source code
-        from biothings.hub.dataplugin.assistant import AssistedUploader
 
+        # try to find information about the uploader source code
         if issubclass(self.__class__, AssistedUploader):
             # it's a plugin, we'll just point to the plugin folder
             src_file = self.__class__.DATA_PLUGIN_FOLDER
@@ -624,6 +627,10 @@ class BaseSourceUploader(object):
             self.logger.error(traceback.format_exc())
             self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc(), **extra)
             raise
+
+
+class AssistedUploader:
+    DATA_PLUGIN_FOLDER = None
 
 
 class NoBatchIgnoreDuplicatedSourceUploader(BaseSourceUploader):

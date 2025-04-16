@@ -18,6 +18,7 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
+
 import logging
 
 import orjson
@@ -97,14 +98,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
     def _parse_json(self):
         if not self.request.body:
-            raise HTTPError(
-                400,
-                reason=(
-                    "Empty body is not a valid JSON. "
-                    "Remove the content-type header, or "
-                    "provide an empty object in the body."
-                ),
-            )
+            return {}
         try:
             return orjson.loads(self.request.body)
         except orjson.JSONDecodeError:
@@ -199,7 +193,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
         message = {"code": status_code, "success": False, "error": reason}
         try:  # merge exception info
-            logger.debug("", exc_info=kwargs["exc_info"])    # log the full traceback in debug mode
+            logger.debug("", exc_info=kwargs["exc_info"])  # log the full traceback in debug mode
             exception = kwargs["exc_info"][1]
             if isinstance(exception.args[0], dict):
                 message.update(exception.args[0])
