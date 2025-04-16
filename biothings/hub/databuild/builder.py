@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from functools import partial
 from pprint import pformat
-from typing import Union
+from typing import List, Union
 
 import aiocron
 
