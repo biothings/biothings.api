@@ -345,6 +345,7 @@ def get_uploaders(working_dir: pathlib.Path) -> List[str]:
     data_plugin_name = working_dir.name
 
     manifest = get_manifest_content(working_dir)
+    manifest.setdefault("disabled", False)
     uploader_section = manifest.get("uploader", None)
     uploaders_section = manifest.get("uploaders", None)
     table_space = [data_plugin_name]
