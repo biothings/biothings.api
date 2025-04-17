@@ -12,9 +12,13 @@ from functools import partial
 from pprint import pformat
 from typing import List, Union
 
-import aiocron
+try:
+    import aiocron
+except ImportError:
+    # Suppress import error when we just run CLI
+    pass
 
-import biothings.utils.mongo as mongo
+from biothings.utils import mongo
 from biothings import config as btconfig
 from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.manager import BaseManager
@@ -39,11 +43,15 @@ from biothings.utils.hub_db import (
 from biothings.utils.loggers import get_logger
 from biothings.utils.mongo import doc_feeder, id_feeder
 
-from ..databuild.backend import LinkTargetDocMongoBackend, SourceDocMongoBackend, TargetDocMongoBackend
-from ..dataload.uploader import ResourceNotReady
-from .backend import create_backend
-from .buildconfig import AutoBuildConfig
-from .mapper import TransparentMapper
+from biothings.hub.databuild.backend import (
+    LinkTargetDocMongoBackend,
+    SourceDocMongoBackend,
+    TargetDocMongoBackend,
+    create_backend,
+)
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.hub.databuild.mapper import TransparentMapper
+from biothings.hub.dataload.uploader import ResourceNotReady
 
 logging = btconfig.logger
 
