@@ -53,8 +53,9 @@ def handler_configuration():
     # *****************************************************************************
     # Elasticsearch Variables
     # *****************************************************************************
-    config_mod.ES_INDEX = "bts_test"
-    config_mod.ES_DOC_TYPE = "gene"
+    config_mod.ES_INDEX = TEST_INDEX
+    config_mod.ES_INDICES = {None: "_all", TEST_DOC_TYPE: "_all"}
+    config_mod.ES_DOC_TYPE = TEST_DOC_TYPE
     config_mod.ES_SCROLL_SIZE = 60
 
     # *****************************************************************************
@@ -127,9 +128,6 @@ def setup_es(handler_data_storage: dict, handler_configuration):
 
     server_major_version = client.info()["version"]["number"].split(".")[0]
 
-    # NOTE: Temporary comment to bypass this check.
-    # Because we still use elasticsearch library ver under 8
-    # client_major_version = str(elasticsearch.__version__[0])
     # if server_major_version != client_major_version:
     #     pytest.exit('ES version does not match its python library.')
 

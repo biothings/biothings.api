@@ -8,15 +8,11 @@ POST /query
 
 import sys
 
-import pytest
-
-from biothings.tests.web import BiothingsDataTest
+from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
 
-class TestQueryKeywords(BiothingsDataTest):
-    host = "mygene.info"
-    prefix = "v3"
+class TestQueryKeywords(BiothingsWebAppTest):
 
     @property
     def config(self):
@@ -25,7 +21,7 @@ class TestQueryKeywords(BiothingsDataTest):
         return self._config
 
     def test_00_facet(self):
-        """GET /v3/query?q=__all__&aggs=type_of_gene
+        """GET /v1/query?q=__all__&aggs=type_of_gene
         {
             "facets": {
                 "type_of_gene": {
@@ -47,14 +43,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ...
         }
         """
-        res = self.request("/v3/query?q=__all__&aggs=type_of_gene").json()
+        res = self.request("/v1/query?q=__all__&aggs=type_of_gene").json()
         term = res["facets"]["type_of_gene"]["terms"][0]
         assert term["count"] == 82
         assert term["term"] == "protein-coding"
 
-    @pytest.mark.xfail(reason="unexpected query facets change")
     def test_01_facet_size(self):
-        """GET /v3/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2
+        """GET /v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2
         {
             "facets": {
                 "uniprot.TrEMBL": {
@@ -68,13 +63,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ...
         }
         """
-        res = self.request("/v3/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2").json()
+        res = self.request("/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=2").json()
         terms = res["facets"]["uniprot.TrEMBL"]["terms"]
         assert len(terms) == 2
 
-    @pytest.mark.xfail(reason="unexpected query facets change")
     def test_02_facet_size_default(self):
-        """GET /v3/query?q=__all__&aggs=uniprot.TrEMBL
+        """GET /v1/query?q=__all__&aggs=uniprot.TrEMBL
         {
             "facets": {
                 "uniprot.TrEMBL": {
@@ -88,13 +82,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ...
         }
         """
-        res = self.request("/v3/query?q=__all__&aggs=uniprot.TrEMBL").json()
+        res = self.request("/v1/query?q=__all__&aggs=uniprot.TrEMBL").json()
         terms = res["facets"]["uniprot.TrEMBL"]["terms"]
         assert len(terms) == 3
 
-    @pytest.mark.xfail(reason="unexpected query facets change")
     def test_03_facet_size_max(self):
-        """GET /v3/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10
+        """GET /v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10
         {
             "success": false,
             "status": 400,
@@ -105,14 +98,13 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         res = self.request(
-            "/v3/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10",
+            "/v1/query?q=__all__&aggs=uniprot.TrEMBL&facet_size=10",
             expect=400,
         ).json()
         assert res["success"] is False
 
-    @pytest.mark.xfail(reason="unexpected query facets change")
     def test_04_facet_nested(self):
-        """GET /v3/query?q=__all__&facets=symbol(alias)
+        """GET /v1/query?q=__all__&facets=symbol(alias)
         {
             "took": 32,
             "total": 100,
@@ -142,12 +134,12 @@ class TestQueryKeywords(BiothingsDataTest):
             }
         }
         """
-        res = self.request("/v3/query?q=__all__&facets=symbol(alias)").json()
+        res = self.request("/v1/query?q=__all__&facets=symbol(alias)").json()
         assert res["facets"]["symbol"]["terms"]
         assert res["facets"]["symbol"]["terms"][0]["alias"]
 
     def test_10_from(self):
-        """GET /v3/query?q=__all__&from=99
+        """GET /v1/query?q=__all__&from=99
         {
             "max_score": 1,
             "took": 6,
@@ -157,11 +149,11 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=__all__&from=99").json()
+        res = self.request("/v1/query?q=__all__&from=99").json()
         assert len(res["hits"]) == 1
 
     def test_11_from_oob(self):
-        """GET /v3/query?q=__all__&from=10001
+        """GET /v1/query?q=__all__&from=10001
         {
             "success": false,
             "status": 400,
@@ -171,11 +163,11 @@ class TestQueryKeywords(BiothingsDataTest):
             "max": 10000
         }
         """
-        res = self.request("/v3/query?q=__all__&from=10001", expect=400).json()
+        res = self.request("/v1/query?q=__all__&from=10001", expect=400).json()
         assert res["success"] is False
 
     def test_12_size(self):
-        """GET /v3/query?q=__all__&size=3
+        """GET /v1/query?q=__all__&size=3
         {
             "max_score": 1,
             "took": 1,
@@ -187,11 +179,11 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=__all__&size=3").json()
+        res = self.request("/v1/query?q=__all__&size=3").json()
         assert len(res["hits"]) == 3
 
     def test_13_size_oob(self):
-        """GET /v3/query?q=__all__&size=1001
+        """GET /v1/query?q=__all__&size=1001
         {
             "success": false,
             "status": 400,
@@ -201,12 +193,11 @@ class TestQueryKeywords(BiothingsDataTest):
             "max": 1000
         }
         """
-        res = self.request("/v3/query?q=__all__&size=1001", expect=400).json()
+        res = self.request("/v1/query?q=__all__&size=1001", expect=400).json()
         assert res["success"] is False
 
-    @pytest.mark.xfail(reason="unexpected change in explain query language")
     def test_14_explain(self):
-        """GET /v3/query?q=__any__&explain
+        """GET /v1/query?q=__any__&explain
         {
             "took": 5,
             "total": 100,
@@ -226,11 +217,11 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=__any__&explain").json()
+        res = self.request("/v1/query?q=__any__&explain").json()
         assert "_explanation" in res["hits"][0]
 
     def test_15_sort(self):
-        """GET /v3/query?q=__all__&sort=taxid
+        """GET /v1/query?q=__all__&sort=taxid
         {
             "max_score": null,
             "took": 21,
@@ -243,13 +234,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=__all__&sort=taxid").json()
+        res = self.request("/v1/query?q=__all__&sort=taxid").json()
         assert res["hits"][0]["taxid"] == 7091
         assert res["hits"][1]["taxid"] == 7425
         assert res["hits"][2]["taxid"] == 7764
 
     def test_16_sort_desc(self):
-        """GET /v3/query?q=__all__&sort=-taxid
+        """GET /v1/query?q=__all__&sort=-taxid
         {
             "max_score": null,
             "took": 21,
@@ -262,13 +253,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=__all__&sort=-taxid").json()
+        res = self.request("/v1/query?q=__all__&sort=-taxid").json()
         assert res["hits"][0]["taxid"] == 2587831
         assert res["hits"][1]["taxid"] == 1868482
         assert res["hits"][2]["taxid"] == 1841481
 
     def test_17_sorted_false_dotfield(self):
-        """GET /v3/query?q=1017&dotfield&_sorted=false
+        """GET /v1/query?q=1017&dotfield&_sorted=false
         {
             "took": 16,
             "total": 1,
@@ -296,12 +287,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&dotfield&_sorted=false").json()
+        res = self.request("/v1/query?q=1017&dotfield&_sorted=false").json()
         protein = res["hits"][0]["accession.translation.protein"]
         assert protein[0] == "BAA32794.1"
 
     def test_20_always_list(self):
-        """GET /v3/query?q=1017&always_list=symbol
+        """GET /v1/query?q=1017&always_list=symbol
         {
             "took": 23,
             "total": 1,
@@ -316,13 +307,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&always_list=symbol").json()
+        res = self.request("/v1/query?q=1017&always_list=symbol").json()
         hit = res["hits"][0]
         assert "symbol" in hit
         assert hit["symbol"] == ["CDK2"]
 
     def test_21_always_list_noop(self):
-        """GET /v3/query?q=1017&always_list=alias,accession.genomic
+        """GET /v1/query?q=1017&always_list=alias,accession.genomic
         {
             "took": 23,
             "total": 1,
@@ -348,13 +339,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&always_list=alias,accession.genomic").json()
+        res = self.request("/v1/query?q=1017&always_list=alias,accession.genomic").json()
         hit = res["hits"][0]
         assert isinstance(hit["alias"], list)
         assert isinstance(hit["accession"]["genomic"], list)
 
     def test_22_always_list_multilist(self):
-        """GET /v3/query?q=1017&always_list=exons.position,exons.chr
+        """GET /v1/query?q=1017&always_list=exons.position,exons.chr
         {
             "took": 27,
             "total": 1,
@@ -388,14 +379,14 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&always_list=exons.position,exons.chr").json()
+        res = self.request("/v1/query?q=1017&always_list=exons.position,exons.chr").json()
         exons = res["hits"][0]["exons"]
         for item in exons:
             assert isinstance(item["chr"], list)
             assert isinstance(item["position"], list)
 
     def test_23_always_list_obj(self):
-        """GET /v3/query?q=1017&always_list=genomic_pos_hg19
+        """GET /v1/query?q=1017&always_list=genomic_pos_hg19
         {
             "took": 11,
             "total": 1,
@@ -417,12 +408,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&always_list=genomic_pos_hg19").json()
+        res = self.request("/v1/query?q=1017&always_list=genomic_pos_hg19").json()
         genomic = res["hits"][0]["genomic_pos_hg19"]
         assert isinstance(genomic, list)
 
     def test_24_allow_null(self):
-        """GET /v3/query?q=1017&allow_null=__test__
+        """GET /v1/query?q=1017&allow_null=__test__
         {
             "took": 8,
             "total": 1,
@@ -439,12 +430,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&allow_null=__test__").json()
+        res = self.request("/v1/query?q=1017&allow_null=__test__").json()
         hit = res["hits"][0]
         assert hit["__test__"] is None
 
     def test_25_allow_null_list(self):
-        """GET /v3/query?q=1017&allow_null=accession.translation.__test__
+        """GET /v1/query?q=1017&allow_null=accession.translation.__test__
         {
             "took": 11,
             "total": 1,
@@ -472,13 +463,13 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&allow_null=accession.translation.__test__").json()
+        res = self.request("/v1/query?q=1017&allow_null=accession.translation.__test__").json()
         translations = res["hits"][0]["accession"]["translation"]
         for item in translations:
             assert item["__test__"] is None
 
     def test_26_allow_null_list_always(self):
-        """GET /v3/query?q=1017&allow_null=accession.translation.__test__
+        """GET /v1/query?q=1017&allow_null=accession.translation.__test__
                                 &always_list=accession.translation.__test__
         {
             "took": 9,
@@ -509,7 +500,7 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         res = self.request(
-            "/v3/query?q=1017"
+            "/v1/query?q=1017"
             "&allow_null=accession.translation.__test__"
             "&always_list=accession.translation.__test__"
         ).json()
@@ -518,7 +509,7 @@ class TestQueryKeywords(BiothingsDataTest):
             assert item["__test__"] == []
 
     def test_27_allow_null_dotfield(self):
-        """GET /v3/query?q=1017&allow_null=genomic_pos.__test__&dotfield
+        """GET /v1/query?q=1017&allow_null=genomic_pos.__test__&dotfield
         {
             ...
             "hits": [
@@ -537,12 +528,12 @@ class TestQueryKeywords(BiothingsDataTest):
             ]
         }
         """
-        res = self.request("/v3/query?q=1017&allow_null=genomic_pos.__test__&dotfield").json()
+        res = self.request("/v1/query?q=1017&allow_null=genomic_pos.__test__&dotfield").json()
         hit = res["hits"][0]
         assert hit["genomic_pos.__test__"] is None
 
     def test_28_allow_null_dotfield_list(self):
-        """GET /v3/query?q=1017&allow_null=accession.translation.__test__&dotfield
+        """GET /v1/query?q=1017&allow_null=accession.translation.__test__&dotfield
         {
             "took": 8,
             "total": 1,
@@ -559,13 +550,13 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         res = self.request(
-            "/v3/query?q=1017&dotfield" "&allow_null=accession.translation.__test__",
+            "/v1/query?q=1017&dotfield" "&allow_null=accession.translation.__test__",
         ).json()
         hit = res["hits"][0]
         assert hit["accession.translation.__test__"] == []
 
     def test_29_allow_null_dotfield_list_always(self):
-        """GET /v3/query?q=1017&allow_null=accession.translation.__test__
+        """GET /v1/query?q=1017&allow_null=accession.translation.__test__
                                 &always_list=accession.translation.__test__
                                 &dotfield
         {
@@ -584,7 +575,7 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         res = self.request(
-            "/v3/query?q=1017&dotfield"
+            "/v1/query?q=1017&dotfield"
             "&allow_null=accession.translation.__test__"
             "&always_list=accession.translation.__test__"
         ).json()
@@ -592,36 +583,36 @@ class TestQueryKeywords(BiothingsDataTest):
         assert hit["accession.translation.__test__"] == []
 
     def test_30_scroll(self):
-        """GET /v3/query?q=__all__&fetch_all
+        """GET /v1/query?q=__all__&fetch_all
         {
             "_scroll_id": ...,
             ...
         }
         """
-        res = self.request("/v3/query?q=__all__&fetch_all").json()
+        res = self.request("/v1/query?q=__all__&fetch_all").json()
         number_hits = len(res["hits"])
         assert number_hits == 60
 
         scroll_id = res["_scroll_id"]
 
-        res = self.request("/v3/query?scroll_id=" + scroll_id).json()
+        res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         number_hits = len(res["hits"])
         assert number_hits == 40
 
         scroll_id = res["_scroll_id"]
 
-        res = self.request("/v3/query?scroll_id=" + scroll_id).json()
+        res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         assert res["success"] is False
 
     def test_31_scroll_stale(self):
-        """GET /v3/query?scroll_id=<invalid>
+        """GET /v1/query?scroll_id=<invalid>
         {
             "success": false,
             "status": 400,
             "error": "Invalid or stale scroll_id."
         }
         """
-        res = self.request("/v3/query?scroll_id=<invalid>", expect=400).json()
+        res = self.request("/v1/query?scroll_id=<invalid>", expect=400).json()
         assert res["success"] is False
 
     def test_32_filter(self):
@@ -645,7 +636,7 @@ class TestQueryKeywords(BiothingsDataTest):
         """
 
         res = self.request(
-            "/v3/query?q={q}&aggs={aggs}&filter={_filter}".format(
+            "/v1/query?q={q}&aggs={aggs}&filter={_filter}".format(
                 q="cyclin dependent kinase 2",
                 aggs="type_of_gene",
                 _filter="taxid:216574",
@@ -678,7 +669,7 @@ class TestQueryKeywords(BiothingsDataTest):
         """
 
         res = self.request(
-            "/v3/query?q={q}&aggs={aggs}&post_filter={post_filter}".format(
+            "/v1/query?q={q}&aggs={aggs}&post_filter={post_filter}".format(
                 q="cyclin dependent kinase 2",
                 aggs="type_of_gene",
                 post_filter="taxid:216574",
@@ -691,7 +682,7 @@ class TestQueryKeywords(BiothingsDataTest):
         assert term["term"] == "protein-coding"
 
     def test_34_jmespath(self):
-        """GET /v3/query?q=_id:1017&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]
+        """GET /v1/query?q=_id:1017&fields=accession.rna&jmespath=accession.rna|[?contains(@, `NM_`) || contains(@, `XM_`)]
         {
             "hits": [
                 {
@@ -711,12 +702,12 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         # get the original len of accession.rna field
-        res = self.request("/v3/query?q=_id:1017&fields=accession.rna").json()
+        res = self.request("/v1/query?q=_id:1017&fields=accession.rna").json()
         len_0 = len(res["hits"][0]["accession"]["rna"])
         assert len_0 > 0
         # apply jmespath transformation to filter rna list to those contain either NM_ or XM_
         res = self.request(
-            "/v3/query?q=symbol:cdk2&species=human&fields=accession.rna&jmespath=accession.rna|[?contains(@, 'NM_') || contains(@, 'XM_')]"
+            "/v1/query?q=symbol:cdk2&species=human&fields=accession.rna&jmespath=accession.rna|[?contains(@, 'NM_') || contains(@, 'XM_')]"
         ).json()
         transformed_rna = res["hits"][0]["accession"]["rna"]
         assert len(transformed_rna) > 0
@@ -724,7 +715,7 @@ class TestQueryKeywords(BiothingsDataTest):
         assert [x for x in transformed_rna if not (x.startswith("NM_") or x.startswith("XM_"))] == []
 
     def test_35_jmespath_root(self):
-        """GET /v3/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}
+        """GET /v1/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}
         {
             "hits": [
                 {
@@ -734,17 +725,17 @@ class TestQueryKeywords(BiothingsDataTest):
         }
         """
         # set target field to `.` to apply jmespath to the root object
-        res = self.request("/v3/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}").json()
+        res = self.request("/v1/query?q=_id:1017&fields=exons&jmespath=.|{exon_count: length(exons)}").json()
         assert res["hits"][0]["exon_count"] == 3
 
         # empty target field works the same as `.` to apply jmespath to the root object
-        res = self.request("/v3/query?q=_id:1017&fields=exons&jmespath=|{exon_count: length(exons)}").json()
+        res = self.request("/v1/query?q=_id:1017&fields=exons&jmespath=|{exon_count: length(exons)}").json()
         assert res["hits"][0]["exon_count"] == 3
 
     def test_36_jmespath_post(self):
         """Test jmespath works for POST query as well"""
         res = self.request(
-            "/v3/query",
+            "/v1/query",
             method="POST",
             json={
                 "q": [1017, 406715],
@@ -761,7 +752,7 @@ class TestQueryKeywords(BiothingsDataTest):
 
         # jmespath should work the same if passed as a query parameter
         res2 = self.request(
-            "/v3/query?jmespath=pathway.reactome|[?contains(name, 'DNA')]",
+            "/v1/query?jmespath=pathway.reactome|[?contains(name, 'DNA')]",
             method="POST",
             json={
                 "q": [1017, 406715],
@@ -772,50 +763,48 @@ class TestQueryKeywords(BiothingsDataTest):
         assert res2 == res
 
     def test_37_jmespath_nested(self):
-        res_0 = self.request("/v3/query?q=_id:1017&fields=exons.position").json()
+        res_0 = self.request("/v1/query?q=_id:1017&fields=exons.position").json()
         a_pos = res_0["hits"][0]["exons"][1]["position"][4][1]  # should be 55969576
         res_1 = self.request(
-            f"/v3/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]"
+            f"/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]"
         ).json()
         pos_1 = [x["position"] for x in res_1["hits"][0]["exons"]]
         assert pos_1 == [[], [[55969474, 55969576]], []]
         res_2 = self.request(
-            f"/v3/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]&jmespath_exclude_empty=1"
+            f"/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`{a_pos}`]&jmespath_exclude_empty=1"
         ).json()
         pos_2 = [x["position"] for x in res_2["hits"][0]["exons"]]
         assert pos_2 == [[[55969474, 55969576]]]
         res_3 = self.request(
-            "/v3/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`0`]&jmespath_exclude_empty=1"
+            "/v1/query?q=_id:1017&fields=exons.position&jmespath=exons.position|[?[1]==`0`]&jmespath_exclude_empty=1"
         ).json()
         hits_3 = res_3["hits"]
         assert hits_3 == []
 
     def test_38_jmespath_exclude_empty(self):
         res = self.request(
-            "/v3/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna=='NM_052827.4']"
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation|[?rna=='NM_052827.4']"
         ).json()
         assert len(res["hits"]) == 10
         res2 = self.request(
-            "/v3/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna=='NM_052827.4']"
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath_exclude_empty=1&jmespath=accession.translation|[?rna=='NM_052827.4']"
         ).json()
         assert len(res2["hits"]) == 1
 
     def test_39_jmespath_invalid(self):
         # invalid jmespath query should return 400
         res = self.request(
-            "/v3/query?q=_exists_:accession&fields=accession&jmespath=accession.translation.rna|()", expect=400
+            "/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.translation.rna|()", expect=400
         ).json()
         assert res["success"] is False
 
         # unknown target_field should leave the response untouched
-        res_0 = self.request("/v3/query?q=_exists_:accession&fields=accession").json()
-        res_1 = self.request("/v3/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
+        res_0 = self.request("/v1/query?q=_exists_:accession&fields=accession").json()
+        res_1 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
         assert res_0["hits"] == res_1["hits"]
 
 
-class TestQueryString(BiothingsDataTest):
-    host = "mygene.info"
-    prefix = "v3"
+class TestQueryString(BiothingsWebAppTest):
 
     @property
     def config(self):
@@ -823,7 +812,6 @@ class TestQueryString(BiothingsDataTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
-    @pytest.mark.xfail(reason="change in search query max scoring result")
     def test_00_all(self):
         """GET /query?q=__all__
         {
@@ -860,8 +848,6 @@ class TestQueryString(BiothingsDataTest):
         """
         self.query(q="", hits=False)
 
-    pytest.mark.xfail(reason="taxid:9606 corresponds to _id 2146 rather than 1017")
-
     def test_03_querystring(self):
         """GET /query?q=taxid:9606
         {
@@ -882,7 +868,7 @@ class TestQueryString(BiothingsDataTest):
         assert res["hits"][0]["_id"] == "1017"
 
     def test_10_userquery_query(self):
-        """GET /v3/query?q=gene&userquery=prefix
+        """GET /v1/query?q=gene&userquery=prefix
         {
             "took": 18,
             "total": 5,
@@ -890,11 +876,11 @@ class TestQueryString(BiothingsDataTest):
             "hits": [ ... ] // 5 items
         }
         """
-        res = self.request("/v3/query?q=gene&userquery=prefix").json()
+        res = self.request("/v1/query?q=gene&userquery=prefix").json()
         assert len(res["hits"]) == 5
 
     def test_11_userquery_query_rawquery(self):
-        """GET /v3/query?q=cdk2&userquery=prefix&rawquery
+        """GET /v1/query?q=cdk2&userquery=prefix&rawquery
         {
             "query": {
                 "bool": {
@@ -911,11 +897,11 @@ class TestQueryString(BiothingsDataTest):
             }
         }
         """
-        res = self.request("/v3/query?q=cdk2&userquery=prefix&rawquery").json()
+        res = self.request("/v1/query?q=cdk2&userquery=prefix&rawquery").json()
         assert res["query"]["function_score"]["query"]["bool"]["should"][0]["prefix"]["name"] == "cdk2"
 
     def test_12_userquery_filter_rawquery(self):
-        """GET /v3/query?q=cdk2&userquery=exrna&rawquery
+        """GET /v1/query?q=cdk2&userquery=exrna&rawquery
         {
             "query": {
                 "bool": {
@@ -937,7 +923,7 @@ class TestQueryString(BiothingsDataTest):
             }
         }
         """
-        res = self.request("/v3/query?q=cdk2&userquery=exrna&rawquery").json()
+        res = self.request("/v1/query?q=cdk2&userquery=exrna&rawquery").json()
         assert res["query"]["function_score"]["query"]["bool"]["filter"][0]["term"]["type_of_gene"] == "ncRNA"
 
     ### Invalid Values ###  # noqa: E266
@@ -947,15 +933,13 @@ class TestQueryString(BiothingsDataTest):
         # Sentry
         # Issue 529121368
         # Event 922fc99638cb4987bccbfd30c914ff03
-        _q = '/v3/query?q=c("ZNF398", "U2AF...'
+        _q = '/v1/query?q=c("ZNF398", "U2AF...'
         self.request(_q, expect=400)
 
 
-class TestQueryMatch(BiothingsDataTest):
+class TestQueryMatch(BiothingsWebAppTest):
     # nested match
     # https://github.com/biothings/biothings.api/issues/49
-    host = "mygene.info"
-    prefix = "v3"
 
     @property
     def config(self):
