@@ -47,22 +47,6 @@ class CLIAssistant(BaseAssistant):
         from biothings.hub.dataload.uploader import UploaderManager
         from biothings.hub.dataplugin.manager import DataPluginManager
 
-        self.job_manager = JobManager(
-            loop=asyncio.get_running_loop(),
-            process_queue=None,
-            thread_queue=None,
-            max_memory_usage=None,
-            num_workers=os.cpu_count(),
-            num_threads=16,
-            auto_recycle=True,
-        )
-
-        self.build_manager = BuilderManager(job_manager=self.job_manager)
-        self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager)
-        self.dumper_manager = DumperManager(job_manager=self.job_manager)
-        self.index_manager = IndexManager(job_manager=self.job_manager)
-        self.uploader_manager = UploaderManager(job_manager=self.job_manager)
-
         src_folder = None
         if plugin_name is None:
             self.plugin_directory = pathlib.Path().cwd()
@@ -80,6 +64,21 @@ class CLIAssistant(BaseAssistant):
 
         url = f"local://{plugin_name}"
         super().__init__(url, plugin_name, src_folder)
+
+        self.job_manager = JobManager(
+            loop=asyncio.get_running_loop(),
+            process_queue=None,
+            thread_queue=None,
+            max_memory_usage=None,
+            num_workers=os.cpu_count(),
+            num_threads=16,
+            auto_recycle=True,
+        )
+        self.build_manager = BuilderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.dumper_manager = DumperManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.index_manager = IndexManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.uploader_manager = UploaderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
 
         config.DATA_PLUGIN_FOLDER = self._src_folder
         self.load_plugin()
