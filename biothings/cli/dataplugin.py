@@ -307,6 +307,6 @@ def validate_manifest(
     For a reference about jsonschema itself, see the following:
     https://json-schema.org/
     """
-    operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file)
+    asyncio.run(operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file))
     if show_schema:
         asyncio.run(operations.display_schema())
