@@ -1,10 +1,12 @@
 import asyncio
 import copy
 import datetime
+import importlib
 import inspect
 import os
 import time
 from functools import partial
+from typing import Iterable, Optional
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
@@ -20,6 +22,7 @@ from biothings.utils.storage import (
     NoBatchIgnoreDuplicatedStorage,
     NoStorage,
 )
+from biothings.utils.validator import commit_validator, import_validator, validate_documents
 from biothings.utils.version import get_source_code_info
 from biothings.utils.workers import upload_worker
 
@@ -63,6 +66,8 @@ class BaseSourceUploader:
 
     keep_archive = 10  # number of archived collection to keep. Oldest get dropped first.
 
+    auto_validate = False  # if True, will automatically validate the data using the Pydantic model
+
     def __init__(self, db_conn_info, collection_name=None, log_folder=None, *args, **kwargs):
         """db_conn_info is a database connection info tuple (host,port) to fetch/store
         information about the datasource's state."""
@@ -83,6 +88,10 @@ class BaseSourceUploader:
         self.data_folder = None
         self.prepared = False
         self.src_doc = {}  # will hold src_dump's doc
+        # Pydantic model settings
+        self.auto_validate = self.__class__.auto_validate
+        self.validation_dir = kwargs.get("validation_dir")
+        self.validation_model = ""
 
     @property
     def fullname(self):
@@ -522,6 +531,103 @@ class BaseSourceUploader:
         else:
             raise AttributeError(attr)
 
+    def commit_pydantic_model(self, model_str):
+        try:
+            if model_dir := self.validation_dir:
+                self.logger.info("Generating model in validation_dir: %s", model_dir)
+                # create directory if it doesn't exist
+                if not os.path.exists(model_dir):
+                    os.makedirs(model_dir)
+            else:
+                raise ValueError("No module directory found for uploader source '%s'", self.fullname)
+            commit_validator(model_str, model_dir, self.name)
+            self.logger.info("Pydantic model created for uploader source '%s'", self.fullname)
+        except Exception as e:
+            self.logger.error("Error creating Pydantic model for uploader source '%s'", self.fullname)
+            raise e
+
+    def validate(self, model_path, docs: Optional[Iterable] = None):
+        """Validate documents in the collection using the Pydantic model
+        :param model_file: Pydantic model file to use for validation
+        :param docs: List of documents to validate
+        """
+
+        self.prepare()
+
+        model = import_validator(model_path, self.collection_name.casefold())
+        # for cli usage
+        if docs:
+            self.logger.info("Validating documents from an iterable")
+            validate_documents(model, docs)
+        else:
+            session = self._state["conn"].start_session()
+            src_collection = self._state["collection"]
+            self.logger.info("Validating documents from collection '%s'", src_collection)
+
+            with session:
+                docs = src_collection.find({}, no_cursor_timeout=True, session=session)
+                validate_documents(model, docs)
+
+    async def validate_src(self, job_manager=None, model_file=None, **kwargs):
+        """Validate the source data using the Pydantic model"""
+        try:
+            if not self.validation_dir:
+                raise ValueError("No validation directory found for uploader source '%s'", self.fullname)
+
+            # check if user has provided a model file if not use the default model file
+            if model_file:
+                self.logger.info("Using provided model file: %s", model_file)
+                model_path = os.path.join(self.validation_dir, f"{model_file}")
+            elif self.validation_model:
+                self.logger.info(
+                    "No model file provided, using default model file provided from uploader: %s", self.validation_model
+                )
+                model_path = os.path.join(self.validation_dir, f"{self.validation_model}")
+            else:
+                self.logger.info("No model file provided, using default model file: %s", f"{self.name}_model.py")
+                model_path = os.path.join(self.validation_dir, f"{self.name}_model.py")
+
+        except Exception as e:
+            self.logger.error(
+                "Error importing Pydantic model for uploader source '%s'. Make sure you have committed a valid pydantic model.",
+                self.fullname,
+            )
+            raise e
+
+        try:
+            assert job_manager, "Job manager is required for validation"
+            self.prepare()
+            pinfo = self.get_pinfo()
+            pinfo["step"] = "validate_src"
+            got_error = False
+
+            extra = {"model_file": "/hub" + model_path.split("/hub", 1)[1]}
+            self.register_status("validating", subkey="validate", **extra)
+            self.unprepare()
+            job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
+
+            def done(f):
+                nonlocal got_error
+                try:
+                    f.result()
+                except Exception as e:
+                    got_error = e
+
+            job.add_done_callback(done)
+            await job
+
+            if got_error:
+                raise got_error
+
+            self.register_status("success", subkey="validate", err=None, tb=None, **extra)
+        except Exception as e:
+            self.logger.exception("failed validation: %s" % e, extra={"notify": True})
+            import traceback
+
+            self.logger.error(traceback.format_exc())
+            self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc(), **extra)
+            raise
+
 
 class AssistedUploader:
     DATA_PLUGIN_FOLDER = None
@@ -688,6 +794,7 @@ class UploaderManager(BaseSourceManager):
     """
 
     SOURCE_CLASS = BaseSourceUploader
+    # VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
 
     def __init__(self, poll_schedule=None, *args, **kwargs):
         super(UploaderManager, self).__init__(*args, **kwargs)
@@ -741,7 +848,7 @@ class UploaderManager(BaseSourceManager):
             return klass
 
     def create_instance(self, klass):
-        inst = klass.create(db_conn_info=self.conn.address)
+        inst = klass.create(db_conn_info=self.conn.address, validation_dir=self.get_validation_path(klass))
         return inst
 
     def register_classes(self, klasses):
@@ -763,7 +870,7 @@ class UploaderManager(BaseSourceManager):
             jobs.extend(job)
         return asyncio.gather(*jobs)
 
-    def upload_src(self, src, *args, **kwargs):
+    def upload_src(self, src, validate=False, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
         Other args are passed to uploader's load() method
@@ -779,7 +886,7 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(
                     # partial(self.create_and_load, klass, job_manager=self.job_manager, *args, **kwargs)
-                    partial(self.create_and_load, klass, *args, **kwargs)  # Fix Flake8 B026
+                    partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
             tasks = asyncio.gather(*jobs)
@@ -841,12 +948,17 @@ class UploaderManager(BaseSourceManager):
         inst.unprepare()
         return compare_data
 
-    async def create_and_load(self, klass, *args, **kwargs):
+    async def create_and_load(self, klass, validate=False, *args, **kwargs):
         insts = self.create_instance(klass)
         if not isinstance(insts, list):
             insts = [insts]
         for inst in insts:
             await inst.load(*args, **kwargs)
+
+        # if validate or f"{inspect.getmodule(klass).__name__}.{klass.__name__}" in self.VALIDATIONS:
+        for inst in insts:
+            if validate or inst.auto_validate:
+                await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
         super(UploaderManager, self).poll(state, func, col=get_src_dump())
@@ -897,6 +1009,47 @@ class UploaderManager(BaseSourceManager):
         for name, klasses in self.register.items():
             res[name] = [klass.__name__ for klass in klasses]
         return res
+
+    def get_validation_path(self, klass):
+        module_name = inspect.getmodule(klass).__name__
+        spec = importlib.util.find_spec(module_name)
+        if spec and spec.origin:
+            module_path = os.path.dirname(spec.origin)
+        else:
+            raise ImportError(f"Module '{module_name}' not found")
+        return os.path.join(module_path, "validation")
+
+    async def create_and_validate(self, klass, *args, **kwargs):
+        inst = self.create_instance(klass)
+        await inst.validate_src(*args, **kwargs)
+
+    def validate_src(self, src, *args, **kwargs):
+        try:
+            klasses = self[src]
+        except KeyError:
+            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+        jobs = []
+        try:
+            for _, klass in enumerate(klasses):
+                logging.info("Creating Pydantic Validation Task for '%s'" % src)
+                kwargs["job_manager"] = self.job_manager
+                job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
+                jobs.append(job)
+            tasks = asyncio.gather(*jobs)
+
+            def done(f):
+                try:
+                    # just consume the result to raise exception
+                    f.result()
+                    logging.info("success", extra={"notify": True})
+                except Exception as e:
+                    logging.exception("failed: %s" % e, extra={"notify": True})
+
+            tasks.add_done_callback(done)
+            return jobs
+        except Exception as e:
+            logging.exception("Error while validating '%s': %s" % src, e, extra={"notify": True})
+            raise
 
 
 def set_pending_to_upload(src_name):

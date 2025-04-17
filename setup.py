@@ -98,6 +98,9 @@ hub_requires = hubcore_requires + [
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
     "pytest",  # to run hub api pytests
+    "pydantic>=2.0",  # for source data validation
+    "python-dateutil>=2.8.2",  # for date parsing
+
 ]
 
 # minimal requirements for to run biothings CLI

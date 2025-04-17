@@ -252,6 +252,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             klass = dumper_section.get("class")
             dumper_configuration = getattr(self, "_dict_for_%s" % scheme)(dumper_urls)
 
+            # Add disabled flag to dumper configuration with default value False
+            dumper_configuration["DISABLED"] = dumper_section.get("disabled", False)
+
             if klass:
                 dumper_class = get_class_from_classpath(klass)
                 dumper_configuration["BASE_CLASSES"] = klass
@@ -485,6 +488,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         installation of the plugin requirements, and assigning of the plugin
         metadata
         """
+
         # start with requirements before importing anything
         if manifest.get("requires"):
             requirements = manifest["requires"]
