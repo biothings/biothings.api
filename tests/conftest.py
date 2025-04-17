@@ -1,4 +1,4 @@
-""" 
+"""
 Ref: https://docs.pytest.org/en/latest/reference/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files
 
 The conftest.py file serves as a means of providing fixtures for an entire directory.

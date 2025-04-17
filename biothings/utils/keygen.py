@@ -6,6 +6,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from typing import List
 
 
 def generate_ssh_key(path):
@@ -39,7 +40,7 @@ class CertificateInformation:
     common_name: str
 
     passphare: str = None
-    dns_names: list[str] = field(default_factory=list)
+    dns_names: List[str] = field(default_factory=list)
 
 
 def generate_self_signed_cert_file(dir_path, **cert_info: CertificateInformation):

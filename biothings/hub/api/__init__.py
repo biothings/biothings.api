@@ -176,7 +176,7 @@ async def %(method)s(self):
 
 
 def generate_handler(shell, name, command_defs):
-    if not type(command_defs) == list:
+    if not isinstance(command_defs, list):
         command_defs = [command_defs]
 
     by_suffix = {}
@@ -252,7 +252,7 @@ def generate_handler(shell, name, command_defs):
 def create_handlers(shell, command_defs):
     routes = []
     for cmdname, config in command_defs.items():
-        if type(config) == list:
+        if isinstance(config, list):
             # multiple endpoints per handler
             commands = config
         else:

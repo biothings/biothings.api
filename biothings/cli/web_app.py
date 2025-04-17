@@ -10,12 +10,13 @@ import tornado.web
 from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
+from typing import List, Tuple
 
 from biothings.utils.common import traverse
 from biothings.utils.serializer import load_json, to_json
 
 
-async def get_available_routes(db, table_space) -> tuple[list, list]:
+async def get_available_routes(db, table_space) -> Tuple[list, list]:
     """
     return a list available URLs/routes based on the table_space and the actual collections in the database
     """
@@ -135,7 +136,7 @@ class CLIApplication(tornado.web.Application):
     The main application class, which defines the routes and handlers.
     """
 
-    def __init__(self, db, table_space: list[str], **settings):
+    def __init__(self, db, table_space: List[str], **settings):
         self.db = db
         self.table_space = table_space
         handlers = [

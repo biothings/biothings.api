@@ -16,6 +16,7 @@ class $DUMPER_NAME($BASE_CLASSES):
     SCHEDULE = $SCHEDULE
     UNCOMPRESS = $UNCOMPRESS
     SRC_URLS = $SRC_URLS
+    DISABLED = $DISABLED
     __metadata__ = {"src_meta" : $__metadata__}
 
     def post_dump(self, *args, **kwargs):

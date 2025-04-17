@@ -1,16 +1,23 @@
 """
-    Test Query Endpoint
+Test Query Endpoint
 
-    GET /query
-    POST /query
+GET /query
+POST /query
 
 """
-
+import sys
 from biothings.tests.web import BiothingsWebAppTest
-from setup import setup_es  # pylint: disable=unused-import  # noqa: F401
+from biothings.web.settings.configs import ConfigModule
 
 
 class TestQueryKeywords(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_00_facet(self):
         """GET /v1/query?q=__all__&aggs=type_of_gene
         {
@@ -792,6 +799,13 @@ class TestQueryKeywords(BiothingsWebAppTest):
 
 
 class TestQueryString(BiothingsWebAppTest):
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
+
     def test_00_all(self):
         """GET /query?q=__all__
         {
@@ -920,6 +934,12 @@ class TestQueryString(BiothingsWebAppTest):
 class TestQueryMatch(BiothingsWebAppTest):
     # nested match
     # https://github.com/biothings/biothings.api/issues/49
+
+    @property
+    def config(self):
+        if not hasattr(self, "_config"):
+            self._config = ConfigModule(sys.modules["config"])
+        return self._config
 
     def test_01(self):
         self.query(method="POST", json={"q": "1017"})

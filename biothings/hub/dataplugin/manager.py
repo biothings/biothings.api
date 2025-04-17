@@ -20,8 +20,8 @@ from biothings.utils.common import (
 )
 from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
-from biothings.utils.manager import BaseSourceManager
 from biothings.hub.dataload import dumper
+from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant, AssistantException
 
 
@@ -188,19 +188,22 @@ class AssistantManager(BaseSourceManager):
         for plugin in cur:
             try:
                 plugin_dir_name = os.path.basename(plugin["download"]["data_folder"])
-            except Exception as e:
-                self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
+            except Exception as gen_exc:
+                self.logger.exception(gen_exc)
+                self.logger.error("Couldn't load plugin %s", plugin)
                 continue
             plugin_name = get_plugin_name_from_local_manifest(plugin.get("download").get("data_folder"))
             if plugin_name and plugin["_id"] != plugin_name:
                 plugin = self.update_plugin_name(plugin, plugin_name)
+
             # remove plugins from folder list if already register
             if plugin_dir_name in plugin_dirs:
                 plugin_dirs.remove(plugin_dir_name)
             try:
                 self.load_plugin(plugin)
-            except Exception as e:
-                self.logger.warning("Couldn't load plugin '%s': %s" % (plugin["_id"], e))
+            except Exception as gen_exc:
+                self.logger.exception(gen_exc)
+                self.logger.error("Couldn't load plugin %s", plugin)
                 continue
         # some still unregistered ? (note: list always empty if autodiscover=False)
         if plugin_dirs:

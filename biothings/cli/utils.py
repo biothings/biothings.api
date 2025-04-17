@@ -15,7 +15,7 @@ import pathlib
 import shutil
 import time
 from pprint import pformat
-from typing import Callable, Union
+from typing import Callable, Union, List
 
 import rich
 import typer
@@ -350,7 +350,7 @@ def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
     return manifest
 
 
-def get_uploaders(working_dir: pathlib.Path) -> list[str]:
+def get_uploaders(working_dir: pathlib.Path) -> List[str]:
     """
     A helper function to get the uploaders from the manifest file in the working directory
     used in show_uploaded_sources function below
@@ -358,6 +358,7 @@ def get_uploaders(working_dir: pathlib.Path) -> list[str]:
     data_plugin_name = working_dir.name
 
     manifest = get_manifest_content(working_dir)
+    manifest.setdefault("disabled", False)
     uploader_section = manifest.get("uploader", None)
     uploaders_section = manifest.get("uploaders", None)
     table_space = [data_plugin_name]

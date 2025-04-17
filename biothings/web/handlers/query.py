@@ -140,7 +140,7 @@ class MetadataSourceHandler(BaseQueryHandler):
 
     async def get(self):
         info = await self.metadata.refresh(self.biothing_type)
-        meta = self.metadata.get_metadata(self.biothing_type)
+        meta = self.metadata.get_metadata(self.biothing_type).copy()
 
         if self.args.raw:
             raise Finish(info)
@@ -149,9 +149,12 @@ class MetadataSourceHandler(BaseQueryHandler):
             meta["software"] = self.biothings.devinfo.get()
 
         else:  # remove debug info
-            for field in list(meta):
-                if field.startswith("_"):
-                    meta.pop(field, None)
+            filtered_meta = {}
+            for key, value in meta.items():
+                if not key.startswith("_"):
+                    filtered_meta[key] = value
+            meta = filtered_meta
+
 
         if iscoroutinefunction(self.extras):
             meta = await self.extras(meta)

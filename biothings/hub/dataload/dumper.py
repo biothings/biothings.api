@@ -33,11 +33,12 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
+from biothings.hub.manager import ResourceError
 from biothings.hub.dataload.uploader import set_pending_to_upload
+from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.utils.common import rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseSourceManager, ResourceError
 from biothings.utils.parsers import docker_source_info_parser
 
 logging = btconfig.logger
@@ -72,6 +73,8 @@ class BaseDumper:
     ARCHIVE = True
 
     SCHEDULE = None  # crontab format schedule, if None, won't be scheduled
+
+    DISABLED = False  # True to disable this dumper class
 
     def __init__(self, src_name=None, src_root_folder=None, log_folder=None, archive=None):
         # unpickable attrs, grouped
@@ -587,7 +590,6 @@ class AssistedDumper(BaseDumper):
     dumpers. Built entirely through the MetaDumper metaclass
     dumper type.
     """
-
     # override in subclass accordingly
     SRC_NAME = None
     SRC_ROOT_FOLDER = None  # source folder (without version/dates)
@@ -728,7 +730,7 @@ class LastModifiedBaseDumper(BaseDumper):
         raise NotImplementedError("Implement me in sub-class")
 
     def create_todump_list(self, force=False):
-        assert isinstance(self.__class__.SRC_URLS, list), "SRC_URLS should be a list"
+        assert isinstance(self.__class__.SRC_URLS, List), "SRC_URLS should be a list"
         assert self.__class__.SRC_URLS, "SRC_URLS list is empty"
         self.set_release()  # so we can generate new_data_folder
         for src_url in self.__class__.SRC_URLS:
@@ -851,7 +853,7 @@ class HTTPDumper(BaseDumper):
         return True
 
     def download(
-        self, remoteurl: str, localfile: Union[str, Path], headers: dict = {}
+        self, remoteurl: str, localfile: Union[str, Path], headers: Dict = {}
     ) -> requests.models.Response:  # noqa: B006
         """
         Handles downloading of remote files over HTTP to the local file system
@@ -929,7 +931,7 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
         dt_tuple = email.utils.parsedate(res.headers[self.LAST_MODIFIED])
         # this utility function supports more malformed data so using this one
         if dt_tuple[5] == 60:
-            _ = list(dt_tuple)
+            _ = List(dt_tuple)
             _[5] = 59
             dt_tuple = tuple(_)
         # deal with potential leap second as defined in the RFC, good enough solution
@@ -1460,6 +1462,9 @@ class DumperManager(BaseSourceManager):
         jobs = []
         try:
             for _, klass in enumerate(klasses):
+                if getattr(klass, "DISABLED", False):
+                    logging.info("Skipping disabled dumper: %s" % klass.__name__)
+                    continue
                 if issubclass(klass, ManualDumper) and skip_manual:
                     logging.warning("Skip %s, it's a manual dumper" % klass)
                     continue
@@ -1591,6 +1596,7 @@ class DumperManager(BaseSourceManager):
                 "bases": bases,
                 "schedule": schedule,
                 "manual": issubclass(dumper, ManualDumper),
+                "disabled": getattr(dumper, "DISABLED", False)
             }
             src["name"] = _id
             src["_id"] = _id

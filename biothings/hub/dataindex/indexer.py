@@ -17,11 +17,11 @@ from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
+from biothings.hub.manager import BaseManager
 from biothings.utils.common import get_class_from_classpath, get_random_string, iter_n, merge, traverse
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.manager import BaseManager
 from biothings.utils.mongo import DatabaseClient, id_feeder
 
 from .indexer_cleanup import Cleaner

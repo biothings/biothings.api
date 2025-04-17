@@ -1,32 +1,32 @@
 """
-    Biothings Query Builder
+Biothings Query Builder
 
-    Turn the biothings query language to that of the database.
-    The interface contains a query term (q) and query options.
+Turn the biothings query language to that of the database.
+The interface contains a query term (q) and query options.
 
-    Depending on the underlying database choice, the data type
-    of the query term and query options vary. At a minimum,
-    a query builder should support:
+Depending on the underlying database choice, the data type
+of the query term and query options vary. At a minimum,
+a query builder should support:
 
-    q: str, a query term,
-        when not provided, always perform a match all query.
-        when provided as an empty string, always match none.
+q: str, a query term,
+    when not provided, always perform a match all query.
+    when provided as an empty string, always match none.
 
-    options: dotdict, optional query options.
+options: dotdict, optional query options.
 
-        scopes: list[str], the fields to look for the query term.
-                the meaning of scopes being an empty list or a
-                None object/not provided is controlled by specific
-                class implementations or not defined.
+    scopes: List[str], the fields to look for the query term.
+            the meaning of scopes being an empty list or a
+            None object/not provided is controlled by specific
+            class implementations or not defined.
 
-        _source: list[str], fields to return in the result.
-        size: int, maximum number of hits to return.
-        from_: int, starting index of result to return.
-        sort: str, customized sort keys for result list
+    _source: List[str], fields to return in the result.
+    size: int, maximum number of hits to return.
+    from_: int, starting index of result to return.
+    sort: str, customized sort keys for result list
 
-        aggs: str, customized aggregation string.
-        post_filter: str, when provided, the search hits are filtered after the aggregations are calculated.
-        facet_size: int, maximum number of agg results.
+    aggs: str, customized aggregation string.
+    post_filter: str, when provided, the search hits are filtered after the aggregations are calculated.
+    facet_size: int, maximum number of agg results.
 
 """
 
@@ -672,12 +672,12 @@ class ESQueryBuilder:
         # if not all((
         #         isinstance(q, (list, tuple)),
         #         all(isinstance(_q, str) for _q in q))):
-        #     raise TypeError("Expect q: Union[list[str], str].", q)
+        #     raise TypeError("Expect q: Union[List[str], str].", q)
 
         # if not all((
         #         isinstance(scopes, (list, tuple)),
         #         all(isinstance(_s, (list, tuple, str)) for _s in scopes))):
-        #     raise TypeError("Expect scopes: list[Union[list[str], str]].", scopes)
+        #     raise TypeError("Expect scopes: List[Union[List[str], str]].", scopes)
 
         if not len(q) == len(scopes):
             raise ValueError("Expect len(q) == len(scopes).")

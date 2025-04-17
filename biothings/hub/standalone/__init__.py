@@ -1,6 +1,6 @@
 """
-    This standalone module is originally located at "biothings/standalone" repo.
-    It's used for Standalone/Autohub instance.
+This standalone module is originally located at "biothings/standalone" repo.
+It's used for Standalone/Autohub instance.
 """
 
 import asyncio

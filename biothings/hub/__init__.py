@@ -121,6 +121,7 @@ from biothings.utils.version import check_new_version, get_version  # noqa: E402
 # adjust some loggers...
 if os.environ.get("HUB_VERBOSE", "0") != "1":
     logging.getLogger("elasticsearch").setLevel(logging.ERROR)
+    logging.getLogger("elastic_transport.transport").setLevel(logging.ERROR)
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     logging.getLogger("requests").setLevel(logging.ERROR)
     logging.getLogger("botocore").setLevel(logging.ERROR)
@@ -398,21 +399,24 @@ class HubServer(object):
         can be used to customize reloader, dataupload and websocket. If None, default config
         is used. If explicitely False, feature is deactivated.
         """
-        managers_custom_args = managers_custom_args or {}
+
+        if managers_custom_args is None:
+            managers_custom_args = {}
+        self.managers_custom_args = managers_custom_args
+
         self.name = name
         self.source_list = source_list
         self.logger, self.logfile = get_logger("hub")
-        self._passed_features = features
-        self._passed_managers_custom_args = managers_custom_args
         self.features = self.clean_features(features or self.DEFAULT_FEATURES)
-        self.managers_custom_args = managers_custom_args
         self.reloader_config = reloader_config or self.DEFAULT_RELOADER_CONFIG
         self.dataupload_config = dataupload_config or self.DEFAULT_DATAUPLOAD_CONFIG
         self.websocket_config = websocket_config or self.DEFAULT_WEBSOCKET_CONFIG
         self.autohub_config = autohub_config or self.DEFAULT_AUTOHUB_CONFIG
+
         # collect listeners that should be connected (push data through) to websocket
         self.ws_listeners = []
         self.api_config = api_config or self.DEFAULT_API_CONFIG
+
         # set during configure()
         self.managers = None
         self.api_endpoints = {}
@@ -535,14 +539,8 @@ class HubServer(object):
     def before_start(self):
         pass
 
-    def start(self):
-        if not self.configured:
-            self.configure()
+    def start_web_api_server(self):
         self.logger.info("Starting '%s'", self.name)
-        # can't use asyncio.get_event_loop() if python < 3.5.3 as it would return
-        # another instance of aio loop, take it from job_manager to make sure
-        # we share the same one
-        loop = self.managers["job_manager"].loop
         if self.routes:
             self.logger.info("Starting Hub API server on port %s" % config.HUB_API_PORT)
             # self.logger.info(self.routes)
@@ -570,9 +568,16 @@ class HubServer(object):
                     )
         else:
             self.logger.info("No route defined, API server won't start")
+
+    def start(self):
+        if not self.configured:
+            self.configure()
+        self.start_web_api_server()
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
         self.logger.info("Starting Hub SSH server on port %s" % config.HUB_SSH_PORT)
+
+        loop = self.managers["job_manager"].loop
         self.ssh_server = start_ssh_server(
             loop,
             self.name,
@@ -1159,7 +1164,8 @@ class HubServer(object):
             self.commands["export_plugin"] = partial(self.managers["assistant_manager"].export)
         if self.managers.get("dataplugin_manager"):
             self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
-        if "autohub" in self.DEFAULT_FEATURES:
+
+        if "autohub" in self.features:
             self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
             # dump commands
             self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
@@ -1212,6 +1218,15 @@ class HubServer(object):
             )
             self.extra_commands["source_save_mapping"] = CommandDefinition(
                 command=self.managers["source_manager"].save_mapping
+            )
+            self.extra_commands["source_save_pydantic_model"] = CommandDefinition(
+                command=self.managers["source_manager"].save_pydantic_model
+            )
+            self.extra_commands["source_pydantic_validation"] = CommandDefinition(
+                command=self.managers["source_manager"].run_pydantic_validation
+            )
+            self.extra_commands["source_validations"] = CommandDefinition(
+                command=self.managers["source_manager"].get_validations
             )
         if self.managers.get("dump_manager"):
             self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"], tracked=False)
@@ -1297,7 +1312,8 @@ class HubServer(object):
             self.extra_commands["start_api"] = CommandDefinition(command=self.managers["api_manager"].start_api)
             self.extra_commands["stop_api"] = CommandDefinition(command=self.managers["api_manager"].stop_api)
             self.extra_commands["test_api"] = CommandDefinition(command=self.managers["api_manager"].test_api)
-        if "upgrade" in self.DEFAULT_FEATURES:
+
+        if "upgrade" in self.features:
 
             def upgrade(code_base):  # just a wrapper over dumper
                 """Upgrade (git pull) repository for given code base name ("biothings_sdk" or "application")"""
@@ -1423,6 +1439,18 @@ class HubServer(object):
         if "source_save_mapping" in cmdnames:
             self.api_endpoints["source"].append(
                 EndpointDefinition(name="source_save_mapping", method="put", suffix="mapping")
+            )
+        if "source_save_pydantic_model" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="source_save_pydantic_model", method="put", suffix="create_validation")
+            )
+        if "source_pydantic_validation" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="source_pydantic_validation", method="post", suffix="validate")
+            )
+        if "source_validations" in cmdnames:
+            self.api_endpoints["source"].append(
+                EndpointDefinition(name="source_validations", method="get", suffix="validations")
             )
         if not self.api_endpoints["source"]:
             self.api_endpoints.pop("source")
