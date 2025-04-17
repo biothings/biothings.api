@@ -216,9 +216,6 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
     >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
     >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
     """
-    if plugin_name is None:
-        plugin_name = pathlib.Path.cwd().name
-
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -270,9 +267,6 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, 
 
     This is a modified version of the ParallelUploader `update_data` source call
     """
-    if plugin_name is None:
-        plugin_name = pathlib.Path.cwd().name
-
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -334,7 +328,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
 
 
 @operation_mode
-async def do_index(plugin_name: str):
+async def do_index(plugin_name: str = None):
     """
     Creats an elasticsearch data-index for the plugin
 
@@ -350,14 +344,14 @@ async def do_index(plugin_name: str):
     assistant_instance.build_manager.configure()
 
     plugin_identifier = uuid.uuid4()
-    build_configuration_name = f"{plugin_name}-{plugin_identifier}-configuration"
-    build_name = f"{plugin_name}-{plugin_identifier}"
+    build_configuration_name = f"{assistant_instance.plugin_name}-{plugin_identifier}-configuration"
+    build_name = f"{assistant_instance.plugin_name}-{plugin_identifier}"
     index_name = build_name.lower()
 
     build_config_params = {"num_shards": 1, "num_replicas": 0}
 
     builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
-    sources = [plugin_name]
+    sources = [assistant_instance.plugin_name]
     document_type = "temporary"
     assistant_instance.build_manager.create_build_configuration(
         build_configuration_name,
@@ -382,7 +376,7 @@ async def do_index(plugin_name: str):
         elasticsearch_mapping = generated_mapping["results"]["mapping"]
 
         uploader_manager = assistant_instance.uploader_manager
-        uploader_class = uploader_manager.register[plugin_name][0]
+        uploader_class = uploader_manager.register[assistant_instance.plugin_name][0]
         plugin_uploader = uploader_class(db_conn_info="")
         plugin_uploader.prepare()
         plugin_uploader.update_master()
@@ -504,7 +498,7 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     table_space = [item.name for item in uploader_classes]
 
     src_db = hub_db.get_src_db()
-    rich.print(f"[green]Serving data plugin source: {plugin_name}[/green]")
+    rich.print(f"[green]Serving data plugin source: {assistant_instance.plugin_name}[/green]")
     await main(host=host, port=port, db=src_db, table_space=table_space)
 
 
