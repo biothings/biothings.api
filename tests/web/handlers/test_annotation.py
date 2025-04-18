@@ -108,7 +108,7 @@ class TestAnnotationGET(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/gene/1017?rawquery").json()
-        assert res["query"]["function_score"]["query"]["multi_match"]["query"] == "1017"
+        assert res["query"]["multi_match"]["query"] == "1017"
 
     def test_22_format_yaml(self):
         """
@@ -177,8 +177,8 @@ class TestAnnotationGET(BiothingsWebAppTest):
         keys = set((self.request("/v1/gene/102812112?_sorted=false").json().keys()))
         assert "_id" in keys
         assert "_version" in keys
-        assert "_taxid" in keys
-        assert "_symbol" in keys
+        assert "taxid" in keys
+        assert "symbol" in keys
 
     def test_32_always_list(self):
         """
