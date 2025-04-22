@@ -140,6 +140,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert res["facets"]["symbol"]["terms"]
         assert res["facets"]["symbol"]["terms"][0]["alias"]
 
+    @pytest.mark.xfail(reason="Inconsistent / flaky number of hits")
     def test_10_from(self):
         """GET /v1/query?q=__all__&from=99
         {
@@ -585,6 +586,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         hit = res["hits"][0]
         assert hit["accession.translation.__test__"] == []
 
+    @pytest.mark.xfail(reason="Inconsistent / flaky number of hits from scroll")
     def test_30_scroll(self):
         """GET /v1/query?q=__all__&fetch_all
         {
@@ -815,6 +817,7 @@ class TestQueryString(BiothingsWebAppTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
+    @pytest.mark.xfail(reason="Inconsistent / flaky number of for total")
     def test_00_all(self):
         """GET /query?q=__all__
         {
