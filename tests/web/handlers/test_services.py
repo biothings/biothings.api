@@ -8,6 +8,8 @@ GET /v1/metadata/fields
 
 import sys
 
+import pytest
+
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
