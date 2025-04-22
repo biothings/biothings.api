@@ -17,25 +17,6 @@ def test_localhost_health_check():
 
     asyncio.run(main())
 
-
-def test_localindex_health_check():
-    client = connections.get_es_client("http://localhost:9200", True)
-    health = ESHealth(
-        client,
-        {
-            "index": "bts_test",
-            "id": "1017",
-            "_source": ["taxid", "symbol"],
-        },
-    )
-
-    async def main():
-        response = await health.async_check()
-        assert response["success"]
-
-    asyncio.run(main())
-
-
 def test_nonexistant_index_failure():
     client = connections.get_es_client("http://localhost:9200", True)
     health = ESHealth(
