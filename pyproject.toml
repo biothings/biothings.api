@@ -51,6 +51,7 @@ norecursedirs = [
     "lib64",
     "tools",
     "tests/hub/dataplugin/data",
+    "tests/hub/config/data",
     "tests/web/handlers/data",
 ]
 testpaths = [
