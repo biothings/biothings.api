@@ -369,10 +369,11 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     parser_kwargs = {parser_kwargs_serialized}
                     """
                     )
-            except ValueError:
-                raise LoaderException(
-                    "'parser' must be defined as 'module:parser_func' but got: '%s'" % uploader_section["parser"]
+            except ValueError as value_error:
+                loader_error_message = (
+                    f"`parser` must be defined as `module:parser_func` but got: `{uploader_section['parser']}`"
                 )
+                raise LoaderException(loader_error_message) from value_error
             try:
                 ondups = uploader_section.get("on_duplicates")
                 storage_class = storage.get_storage_class(ondups)
