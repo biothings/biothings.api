@@ -1,3 +1,5 @@
+import pytest
+
 from biothings.web import connections
 from biothings.web.query import (
     ESQueryBackend,
@@ -11,6 +13,7 @@ from biothings.web.query import (
 )
 
 
+@pytest.mark.xfail(reason="Backend setup required for pipeline testing")
 def test_mongodb_pipeline():
     client = connections.get_mongo_client("mongodb://localhost:27017")
     query_builder = MongoQueryBuilder()
@@ -29,6 +32,7 @@ def test_mongodb_pipeline():
     print(pipeline.search("slc27a2b", scopes=["symbol"], _source=fields))
 
 
+@pytest.mark.xfail(reason="Backend setup required for pipeline testing")
 def test_elasticsearch_pipeline():
     client = connections.get_es_client("http://localhost:9200", True)
     pipeline = ESQueryPipeline(ESQueryBuilder(), ESQueryBackend(client), ESResultFormatter())
