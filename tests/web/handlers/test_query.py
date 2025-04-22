@@ -151,7 +151,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         """
         res = self.request("/v1/query?q=__all__&from=99").json()
         number_hits = len(res["hits"])
-        assert number_hits == 1
+        assert number_hits == 7
 
     def test_11_from_oob(self):
         """GET /v1/query?q=__all__&from=10001
@@ -598,7 +598,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         number_hits = len(res["hits"])
-        assert number_hits == 40
+        assert number_hits == 46
 
         scroll_id = res["_scroll_id"]
 
@@ -824,7 +824,7 @@ class TestQueryString(BiothingsWebAppTest):
         """
         res = self.query(q="__all__")
         assert res["max_score"] == 1
-        assert res["total"] == 100
+        assert res["total"] == 106
 
     def test_01_any(self):
         """GET /query?q=__any__
@@ -879,7 +879,7 @@ class TestQueryString(BiothingsWebAppTest):
         """
         res = self.request("/v1/query?q=gene&userquery=prefix").json()
         num_hits = len(res["hits"])
-        assert num_hits == 5
+        assert num_hits == 6
 
     def test_11_userquery_query_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=prefix&rawquery
