@@ -161,6 +161,7 @@ def test_strangecases(simple_graph: nx.DiGraph):
     """
     # invalid input-type
     with pytest.raises(ValueError):
+
         @KeyLookup(simple_graph, "a-invalid", ["d", "e"], skip_on_failure=True)
         def load_document(data_folder):
             doc_lst = [{"_id": "a:1234"}, {"_id": "a:invalid"}, {"_id": "a:1234"}]
@@ -168,6 +169,7 @@ def test_strangecases(simple_graph: nx.DiGraph):
 
     # Invalid output-type
     with pytest.raises(ValueError):
+
         @KeyLookup(simple_graph, "a", ["d-invalid", "e"], skip_on_failure=True)
         def load_document(data_folder):  # noqa F811
             doc_lst = [{"_id": "a:1234"}, {"_id": "a:invalid"}, {"_id": "a:1234"}]
@@ -175,6 +177,7 @@ def test_strangecases(simple_graph: nx.DiGraph):
 
     # Invalid graph
     with pytest.raises(ValueError):
+
         @KeyLookup(graph_invalid, "a", ["d-invalid", "e"], skip_on_failure=True)
         def load_document(data_folder):  # noqa F811
             doc_lst = [{"_id": "a:1234"}, {"_id": "a:invalid"}, {"_id": "a:1234"}]

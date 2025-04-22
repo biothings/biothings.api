@@ -1,12 +1,14 @@
 import networkx as nx
 import pytest
 
+
 @pytest.fixture(scope="module")
 def graph_database_collections():
     """
     setup and teardown the expected mongodb structure for the datatransform tests
     """
     from biothings.utils import mongo
+
     # Collections for the first test
     db = mongo.get_src_db()
     db.create_collection("a")
@@ -87,6 +89,7 @@ def simple_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+
     graph_simple = nx.DiGraph()
 
     graph_simple.add_node("a")
@@ -113,6 +116,7 @@ def weighted_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+
     graph_weights = nx.DiGraph()
 
     graph_weights.add_node("aaa")
@@ -138,6 +142,7 @@ def one_to_many_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+
     graph_one2many = nx.DiGraph()
 
     graph_one2many.add_node("aa")
@@ -175,6 +180,7 @@ def mixed_backend_graph() -> nx.DiGraph:
     """
     from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
     from biothings.hub.datatransform.datatransform_api import MyGeneInfoEdge
+
     graph_mix = nx.DiGraph()
 
     graph_mix.add_node("mix1")
@@ -208,6 +214,7 @@ def mychem_api_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
+
     graph_mychem = nx.DiGraph()
 
     graph_mychem.add_node("chebi")
@@ -242,6 +249,7 @@ def regex_edge_graph() -> nx.DiGraph:
     """
     from biothings.hub.datatransform.datatransform import RegExEdge
     from biothings.hub.datatransform.datatransform_mdb import MongoDBEdge
+
     graph_regex = nx.DiGraph()
 
     graph_regex.add_node("a")
@@ -261,6 +269,7 @@ def pubchem_api_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_api import MyChemInfoEdge
+
     graph_pubchem = nx.DiGraph()
 
     graph_pubchem.add_node("inchi")
@@ -294,6 +303,7 @@ def case_insensitive_graph() -> nx.DiGraph:
     ##########################################################################
     """
     from biothings.hub.datatransform.datatransform_mdb import CIMongoDBEdge
+
     graph_ci = nx.DiGraph()
 
     graph_ci.add_node("a")
