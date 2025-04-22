@@ -8,43 +8,125 @@ Fixtures defined in a conftest.py can be used by any test in that package withou
 
 import importlib
 import logging
-import os.path
 import shutil
 import sys
+import types
 from pathlib import Path
 
 import pytest
+import _pytest
 
 from biothings.utils.common import DummyConfig
-
-config_mod = DummyConfig(name="config")
-config_mod.HUB_DB_BACKEND = {
-    "module": "biothings.utils.es",
-    "host": "http://localhost:9200",
-}
-config_mod.DATA_ARCHIVE_ROOT = "/tmp/testhub/datasources"
-config_mod.ES_HOST = "http://localhost:9200"  # optional
-config_mod.ES_INDICES = {"dev": "main_build_configuration"}
-config_mod.ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]
-config_mod.LOG_FOLDER = os.path.join(config_mod.DATA_ARCHIVE_ROOT, "logs")
-config_mod.DATA_SRC_DATABASE = "data_src_database"
-config_mod.DATA_TARGET_DATABASE = "testing_target.db"
-config_mod.DATA_SRC_SERVER = "localhost"
-config_mod.DATA_TARGET_SERVER = "testing_target.server"
-config_mod.HUB_DB_BACKEND = {
-    "module": "biothings.utils.sqlite3",
-    "sqlite_db_folder": ".biothings_hub",
-}
-config_mod.hub_db = importlib.import_module(config_mod.HUB_DB_BACKEND["module"])
-
-sys.modules["config"] = config_mod
-sys.modules["biothings.config"] = config_mod
-
-
-TEST_DATA_DIRECTORIES = ["tests/hub/dataplugin/data", "tests/hub/datainspect/schemas"]
-
+from biothings.utils.loggers import setup_default_log
 
 logger = logging.getLogger(__name__)
+
+
+class TestConfig(types.ModuleType):
+    """
+    More robust version of the `DummyConfig` type in the biothings backend
+
+    Allows for loading as a system module, along with the ability to copy
+    and mutate the module for test group specific behavior
+    """
+
+    def __init__(self, name: str, properties: dict, doc: str = None):
+        super().__init__(name, doc)
+        self.properties = properties
+        self.overridden_properties = {}
+        for attribute, value in self.properties.items():
+            setattr(self, attribute, value)
+
+    def override(self, properties: dict) -> None:
+        """
+        Adds additional properties on top of the root configuration
+
+        It stores them for when we want to reset the module behavior
+        to the original behavior
+
+        When we update the override the dictionary it will write over any existing
+        properties, both the original and potentially newly added ones
+        """
+        self.overridden_properties.update(properties)
+        for attribute, value in self.overridden_properties.items():
+            setattr(self, attribute, value)
+
+    def reset(self) -> None:
+        """
+        Resets the state to the original property definition
+
+        Eliminates all overriden properties and then re-adds them from the orginal
+        properties
+        """
+        for attribute in self.overridden_properties.keys():
+            delattr(self, attribute)
+
+        self.overridden_properties = {}
+
+        for attribute, value in self.properties.items():
+            setattr(self, attribute, value)
+
+
+@pytest.hookimpl()
+def pytest_sessionstart(session: _pytest.main.Session):
+    """
+    Setup the default root configuration before any tests have been collected.
+    We don't want to leverage a fixture as test collection occurs before fixture
+    collection, so we want to ensure the configuration is established
+    """
+    root_mapping = {
+        "DATA_SRC_SERVER": "localhost",
+        "DATA_SRC_PORT": 27017,
+        "DATA_SRC_DATABASE": "testhub_source",
+        "DATA_SRC_SERVER_USERNAME": "",
+        "DATA_SRC_SERVER_PASSWORD": "",
+        "DATA_TARGET_SERVER": "localhost",
+        "DATA_TARGET_PORT": 27017,
+        "DATA_TARGET_DATABASE": "testhub_target",
+        "DATA_TARGET_SERVER_USERNAME": "",
+        "DATA_TARGET_SERVER_PASSWORD": "",
+        "HUB_DB_BACKEND": {
+            "module": "biothings.utils.es",
+            "host": "http://localhost:9200",
+        },
+        "HUB_ENV": "",
+        "ACTIVE_DATASOURCES": [],
+        "DATA_HUB_DB_DATABASE": ".hubdb",
+        "DATA_PLUGIN_FOLDER": "/tmp/testhub/plugins",
+        "DATA_ARCHIVE_ROOT": "/tmp/testhub/datasources",
+        "DIFF_PATH": "/tmp/testhub/datasources/diff",
+        "RELEASE_PATH": "/tmp/testhub/datasources/release",
+        "LOG_FOLDER": "/tmp/testhub/datasources/logs",
+        "ES_HOST": "http://localhost:9200",
+        "ES_INDICES": {"dev": "main_build_configuration"},
+        "APITEST_PATH": str(Path(__file__).parent.absolute().resolve()),
+        "ANNOTATION_DEFAULT_SCOPES": ["_id", "symbol"],
+        "logger": setup_default_log("hub", "/tmp/testhub/datasources/logs"),
+        "hub_db": importlib.import_module("biothings.utils.es"),
+    }
+
+    try:
+        config_mod = TestConfig(name="root_config", properties=root_mapping, doc="Biothings SDK Root Configuration")
+        sys.modules["config"] = config_mod
+        sys.modules["biothings.config"] = config_mod
+    except Exception:
+        pytest.exit("Unexpected error while creating root test configuration")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def root_configuration() -> DummyConfig:
+    """
+    Loads the root configuration from the system modules for override in
+    lower-level classes
+    """
+    root_config = sys.modules.get("config", None)
+    root_biothings_config = sys.modules.get("biothings.config", None)
+
+    assert isinstance(root_config, TestConfig)
+    assert isinstance(root_biothings_config, TestConfig)
+    assert root_config == root_biothings_config
+
+    yield root_config
 
 
 @pytest.fixture(scope="session")
@@ -68,6 +150,7 @@ def temporary_data_storage(tmp_path_factory, request) -> Path:
       without modifying the stored test data within the repository
     > Cleans up the temporary directory after the test session has completed
     """
+    TEST_DATA_DIRECTORIES = ["tests/hub/dataplugin/data", "tests/hub/datainspect/schemas"]
     for test_function in request.session.items:
         test_location, test_node, test_name = test_function.location
         logger.info(f"Discovered {test_name}@{test_location} given node #{test_node}")
