@@ -52,7 +52,6 @@ norecursedirs = [
     "tools",
     "tests/hub/dataplugin/data",
     "tests/web/handlers/data",
-    "tests/hub/datatransform"
 ]
 testpaths = [
     "tests"
