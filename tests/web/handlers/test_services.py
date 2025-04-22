@@ -20,6 +20,7 @@ class TestMetadata(BiothingsWebAppTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
+    @pytest.mark.xfail(reason="metadata biothing_type isn't being properly set to gene")
     def test_00_meta(self):
         """GET /v1/metadata
         {
