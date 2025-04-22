@@ -17,6 +17,7 @@ def test_localhost_health_check():
 
     asyncio.run(main())
 
+
 def test_nonexistant_index_failure():
     client = connections.get_es_client("http://localhost:9200", True)
     health = ESHealth(

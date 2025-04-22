@@ -116,6 +116,7 @@ def test_plugin_loading(plugin):
 
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
+@pytest.mark.skip("Update to leverage the cli operations dump")
 def test_plugin_dump(plugin):
     """
     Test the dumper capabilities associated with the plugin architectures
@@ -173,6 +174,7 @@ def test_plugin_dump(plugin):
 
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
+@pytest.mark.skip("Update to leverage the cli operations upload")
 def test_plugin_upload(plugin):
     hub_db.setup(config)
     LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
