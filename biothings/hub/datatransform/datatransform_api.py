@@ -47,8 +47,10 @@ class DataTransformAPI(DataTransform):
         """
         Initialize the IDLookupAPI object.
         """
+        self.logger, _ = get_logger("keylookup_api")
+
         self._generate_return_fields()
-        super(DataTransformAPI, self).__init__(input_types, output_types, *args, **kwargs)
+        super().__init__(input_types, output_types, *args, **kwargs)
 
         # default value of None for client
         self.client = None
@@ -56,7 +58,6 @@ class DataTransformAPI(DataTransform):
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
-        self.logger, _ = get_logger("keylookup_api")
 
     def _valid_input_type(self, input_type):
         """
@@ -276,7 +277,7 @@ class DataTransformMyChemInfo(DataTransformAPI):
         Initialize the class by seting up the client object.
         """
         _output_types = output_types or self.output_types
-        super(DataTransformMyChemInfo, self).__init__(input_types, _output_types, skip_on_failure, skip_w_regex)
+        super().__init__(input_types, _output_types, skip_on_failure=skip_on_failure, skip_w_regex=skip_w_regex)
 
     def _get_client(self):
         """
@@ -301,7 +302,7 @@ class BiothingsAPIEdge(DataTransformEdge):
 
     def __init__(self, lookup, fields, weight=1, label=None, url=None):
         # pylint: disable=R0913
-        super(BiothingsAPIEdge, self).__init__(label)
+        super().__init__(label=label)
         self.init_state()
         if isinstance(lookup, str):
             self.scopes = [lookup]
@@ -437,7 +438,7 @@ class MyChemInfoEdge(BiothingsAPIEdge):
                        The default weight is 1.
         :type weight: int
         """
-        super(MyChemInfoEdge, self).__init__(lookup, field, weight, label, url)
+        super().__init__(lookup, field, weight, label, url)
 
 
 class MyGeneInfoEdge(BiothingsAPIEdge):
@@ -459,7 +460,7 @@ class MyGeneInfoEdge(BiothingsAPIEdge):
                        The default weight is 1.
         :type weight: int
         """
-        super(MyGeneInfoEdge, self).__init__(lookup, field, weight, label, url)
+        super().__init__(lookup, field, weight, label, url)
 
 
 ####################
@@ -487,7 +488,7 @@ class DataTransformMyGeneInfo(DataTransformAPI):
         Initialize the class by seting up the client object.
         """
         output_types = output_types or ["entrezgene"]
-        super(DataTransformMyGeneInfo, self).__init__(input_types, output_types, skip_on_failure, skip_w_regex)
+        super().__init__(input_types, output_types, skip_on_failure=skip_on_failure, skip_w_regex=skip_w_regex)
 
     def _get_client(self):
         """
