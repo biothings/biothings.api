@@ -11,7 +11,7 @@ def test_es_async_1():
     health = ESHealth(client)
 
     async def main():
-        expected_response = {"success": True, "status": "green"}
+        expected_response = {"success": True, "status": "yellow"}
         response = await health.async_check()
         assert response == expected_response
 

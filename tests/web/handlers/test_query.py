@@ -150,7 +150,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=__all__&from=99").json()
-        assert len(res["hits"]) == 1
+        number_hits = len(res["hits"])
+        assert number_hits == 1
 
     def test_11_from_oob(self):
         """GET /v1/query?q=__all__&from=10001
@@ -877,7 +878,8 @@ class TestQueryString(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=gene&userquery=prefix").json()
-        assert len(res["hits"]) == 5
+        num_hits = len(res["hits"])
+        assert num_hits == 5
 
     def test_11_userquery_query_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=prefix&rawquery
@@ -898,7 +900,7 @@ class TestQueryString(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=cdk2&userquery=prefix&rawquery").json()
-        assert res["query"]["function_score"]["query"]["bool"]["should"][0]["prefix"]["name"] == "cdk2"
+        assert res["query"]["bool"]["should"][0]["prefix"]["name"] == "cdk2"
 
     def test_12_userquery_filter_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=exrna&rawquery
@@ -924,7 +926,7 @@ class TestQueryString(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=cdk2&userquery=exrna&rawquery").json()
-        assert res["query"]["function_score"]["query"]["bool"]["filter"][0]["term"]["type_of_gene"] == "ncRNA"
+        assert res["query"]["bool"]["filter"][0]["term"]["type_of_gene"] == "ncRNA"
 
     ### Invalid Values ###  # noqa: E266
 

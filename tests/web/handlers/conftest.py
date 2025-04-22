@@ -46,7 +46,7 @@ class DefautlAPIHandler(BaseAPIHandler):
         self.finish(res)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def handler_configuration():
     config_mod = DummyConfig(name="config")
 
@@ -54,7 +54,7 @@ def handler_configuration():
     # Elasticsearch Variables
     # *****************************************************************************
     config_mod.ES_INDEX = TEST_INDEX
-    config_mod.ES_INDICES = {None: "_all", TEST_DOC_TYPE: "_all"}
+    config_mod.ES_INDICES = {None: "_all", TEST_DOC_TYPE: TEST_INDEX}
     config_mod.ES_DOC_TYPE = TEST_DOC_TYPE
     config_mod.ES_SCROLL_SIZE = 60
 
@@ -102,7 +102,7 @@ def handler_configuration():
     sys.modules["biothings.config"] = prior_biothings_config
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def handler_data_storage() -> dict:
     test_directory = pathlib.Path(__file__).resolve().absolute().parent
     data_location = test_directory.joinpath("data")
@@ -115,7 +115,7 @@ def handler_data_storage() -> dict:
     return file_storage_mapping
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_es(handler_data_storage: dict, handler_configuration):
     """
     Populate ES with test index and documents.

@@ -1,8 +1,6 @@
 import asyncio
 import logging
 
-import pytest
-
 from biothings.web import connections
 
 logging.basicConfig(level="DEBUG")
@@ -25,10 +23,3 @@ def test_es_2():  # see if the client is reused
 def test_es_3():  # async
     connections.es.get_async_client("http://localhost:9200")
     loop = asyncio.get_event_loop()
-
-
-@pytest.mark.xfail(reason="replace this test with a mongodb mock")
-def test_mongo():
-    client = connections.mongo.get_client("mongodb://su05:27017/genedoc")
-    collection = client["mygene_allspecies_20210510_yqynv8db"]
-    print(next(collection.find()))
