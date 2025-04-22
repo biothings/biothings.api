@@ -1,10 +1,16 @@
 import logging
+import os
+
+import pytest
 
 from biothings.utils.loggers import SlackHandler, SlackMentionPolicy
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_msg_builder():
-    import os
 
     URL = os.environ["SLACK_WEBHOOK"]
     SlackHandler.send(URL, "This is a test. Level 5.", 5, ())
@@ -20,6 +26,10 @@ def test_msg_builder():
     SlackHandler.send(URL, "This is a test. Level 55.", logging.CRITICAL, ("@channel",))
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_slack_policy_1():
     # []
     # []
@@ -32,6 +42,10 @@ def test_slack_policy_1():
     print(policy.mentions(logging.CRITICAL))
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_slack_policy_2():
     # []
     # []
@@ -44,6 +58,10 @@ def test_slack_policy_2():
     print(policy.mentions(logging.CRITICAL))
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_slack_policy_3():
     # []
     # []
@@ -54,6 +72,10 @@ def test_slack_policy_3():
     print(policy.mentions(logging.CRITICAL))
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_slack_policy_4():
     # []
     # []
@@ -83,6 +105,10 @@ def test_slack_policy_4():
     print(policy.mentions(logging.CRITICAL))  # 50
 
 
+@pytest.mark.skipif(
+    os.environ.get("SLACK_WEBHOOK", None) is None,
+    reason="SLACK_WEBHOOK environment variable must be set to run slack tests",
+)
 def test_slack_policy_5():
     # []
     # []
