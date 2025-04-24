@@ -61,7 +61,7 @@ def mock_data_hosting(temporary_mock_data):
                 self.server_close()
 
     server_address = ""
-    server_port = 5000
+    server_port = 4301
     server_coupling = (server_address, server_port)
 
     request_handler_callback = functools.partial(http.server.SimpleHTTPRequestHandler, directory=temporary_mock_data)
