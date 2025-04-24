@@ -118,6 +118,6 @@ def plugin(temporary_data_storage, mock_data_hosting, request):
     # This is so when we attempt to import the modules via importlib
     # (version, parser, etc ...) we can properly find the modules we've moved
     # off the python system path
-    sys.path.append(str(mock_plugin_directory))
+    sys.path.insert(0, str(mock_plugin_directory))
     yield mock_plugin_directory
     sys.path.remove(str(mock_plugin_directory))
