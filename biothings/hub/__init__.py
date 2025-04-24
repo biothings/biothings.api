@@ -325,7 +325,7 @@ class HubCommands(OrderedDict):
         super().__setitem__(k, v)
 
 
-class HubServer():
+class HubServer:
     DEFAULT_FEATURES = [
         "config",
         "job",

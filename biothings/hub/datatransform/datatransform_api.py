@@ -58,7 +58,6 @@ class DataTransformAPI(DataTransform):
         # Keep track of one_to_many relationships
         self.one_to_many_cnt = 0
 
-
     def _valid_input_type(self, input_type):
         """
         Check if the input_type is valid

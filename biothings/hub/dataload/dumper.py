@@ -1577,7 +1577,7 @@ class DumperManager(BaseSourceManager):
                 "bases": bases,
                 "schedule": schedule,
                 "manual": issubclass(dumper, ManualDumper),
-                "disabled": getattr(dumper, "DISABLED", False)
+                "disabled": getattr(dumper, "DISABLED", False),
             }
             src["name"] = _id
             src["_id"] = _id

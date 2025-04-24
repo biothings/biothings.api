@@ -155,7 +155,6 @@ class MetadataSourceHandler(BaseQueryHandler):
                     filtered_meta[key] = value
             meta = filtered_meta
 
-
         if iscoroutinefunction(self.extras):
             meta = await self.extras(meta)
         else:

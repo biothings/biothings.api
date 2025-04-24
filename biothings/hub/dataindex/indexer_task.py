@@ -89,8 +89,8 @@ class ESIndex(BaseESIndex):
             errors = e.errors
             for error in errors:
                 _, op_details = next(iter(error.items()))  # e.g., 'index', {...}
-                document_id = op_details.get('_id')
-                reason = op_details.get('error', {}).get('reason')
+                document_id = op_details.get("_id")
+                reason = op_details.get("error", {}).get("reason")
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
 
