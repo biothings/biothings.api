@@ -14,6 +14,31 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
+
+    services:
+      mongo:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd="mongosh --eval 'db.adminCommand(\"ping\")'" 
+          --health-interval=10s 
+          --health-timeout=5s 
+          --health-retries=5
+
+      Elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd="curl -f http://localhost:9200 || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -25,16 +50,3 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run Tests
         run: pytest tests
-        # env:
-        #   HUB_CONFIG: 'tests.test_config'
-      # - name: Setup tmate debug session on failure
-      #   if: ${{ failure() }}
-      #   uses: mxschmitt/action-tmate@v3
-    services:
-      Elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
-        env:
-          "discovery.type" : single-node
-          "xpack.security.enabled": false
-        ports:
-          - 9200:9200
