@@ -10,7 +10,7 @@ import subprocess
 import sys
 import textwrap
 import urllib.parse
-from typing import Union
+from typing import Tuple, Union
 
 import jsonschema
 import yaml
@@ -193,7 +193,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 
-    def get_code_for_mod_name(self, plugin_directory: Union[str, pathlib.Path], mod_name: str) -> tuple[str, str]:
+    def get_code_for_mod_name(self, plugin_directory: Union[str, pathlib.Path], mod_name: str) -> Tuple[str, str]:
         """
         Returns string literal and name of function, given a path
 
