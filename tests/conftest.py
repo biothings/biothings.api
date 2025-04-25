@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 import _pytest
 
-from biothings.utils.common import DummyConfig
 from biothings.utils.loggers import setup_default_log
 
 logger = logging.getLogger(__name__)
@@ -114,7 +113,7 @@ def pytest_sessionstart(session: _pytest.main.Session):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def root_configuration() -> DummyConfig:
+def root_configuration() -> TestConfig:
     """
     Loads the root configuration from the system modules for override in
     lower-level classes
