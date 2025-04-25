@@ -794,10 +794,6 @@ class UploaderManager(BaseSourceManager):
     SOURCE_CLASS = BaseSourceUploader
     # VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
 
-    def __init__(self, poll_schedule=None, *args, **kwargs):
-        super(UploaderManager, self).__init__(*args, **kwargs)
-        self.poll_schedule = poll_schedule
-
     def get_source_ids(self):
         """Return displayable list of registered source names (not private)"""
         # skip private ones starting with __
@@ -969,7 +965,7 @@ class UploaderManager(BaseSourceManager):
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
-        super(UploaderManager, self).poll(state, func, col=get_src_dump())
+        super().poll(state, func, col=get_src_dump())
 
     def source_info(self, source=None):
         src_dump = get_src_dump()

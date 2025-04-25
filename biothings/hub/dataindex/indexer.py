@@ -6,7 +6,8 @@ from collections import UserDict
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
-from typing import NamedTuple, Optional
+from pathlib import Path
+from typing import NamedTuple, Optional, Union
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
@@ -27,12 +28,19 @@ from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.mongo import DatabaseClient, id_feeder
+from biothings.utils.manager import JobManager
 
-from .indexer_cleanup import Cleaner
-from .indexer_payload import DEFAULT_INDEX_MAPPINGS, DEFAULT_INDEX_SETTINGS, IndexMappings, IndexSettings
-from .indexer_registrar import IndexJobStateRegistrar, MainIndexJSR, PostIndexJSR, PreIndexJSR
-from .indexer_schedule import Schedule, SchedulerMismatchError
-from .indexer_task import dispatch
+
+from biothings.hub.dataindex.indexer_cleanup import Cleaner
+from biothings.hub.dataindex.indexer_payload import (
+    DEFAULT_INDEX_MAPPINGS,
+    DEFAULT_INDEX_SETTINGS,
+    IndexMappings,
+    IndexSettings,
+)
+from biothings.hub.dataindex.indexer_registrar import IndexJobStateRegistrar, MainIndexJSR, PostIndexJSR, PreIndexJSR
+from biothings.hub.dataindex.indexer_schedule import Schedule, SchedulerMismatchError
+from biothings.hub.dataindex.indexer_task import dispatch
 
 # Summary
 # -------
@@ -591,7 +599,11 @@ class IndexManager(BaseManager):
 
     DEFAULT_INDEXER = Indexer
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        job_manager: JobManager,
+        poll_schedule=None,
+    ):
         """
         An example of config dict for this module.
         {
@@ -624,10 +636,9 @@ class IndexManager(BaseManager):
             }
         }
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(job_manager, poll_schedule)
         self._srcbuild = get_src_build()
         self._config = {}
-
         self.logger, self.logfile = get_logger("indexmanager")
 
     # Object Lifecycle Calls
