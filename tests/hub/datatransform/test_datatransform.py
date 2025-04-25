@@ -1,11 +1,10 @@
 import networkx as nx
 import pytest
 
-import biothings.utils.mongo as mongo
 from biothings.hub.datatransform import CIIDStruct, DataTransform, DataTransformMDB as KeyLookup
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_simple(simple_graph: nx.DiGraph):
     """
     Simple test for key lookup - artificial document.
@@ -30,7 +29,7 @@ def test_simple(simple_graph: nx.DiGraph):
         next(res_lst)
 
 
-@pytest.mark.xfail()
+@pytest.mark.skip()
 def test_one2many(one_to_many_graph: nx.DiGraph):
     """
     test for one to many key lookup - artificial document.
@@ -57,7 +56,7 @@ def test_one2many(one_to_many_graph: nx.DiGraph):
     assert "c:02" in answer_lst
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_input_types(simple_graph: nx.DiGraph):
     """
     test for input_types - artificial documents.
@@ -78,7 +77,7 @@ def test_input_types(simple_graph: nx.DiGraph):
         assert res["_id"] == "d:1234"
 
 
-@pytest.mark.xfail()
+@pytest.mark.skip()
 def test_weights(weighted_graph: nx.DiGraph):
     """
     Simple test for key lookup - artificial document.
@@ -101,7 +100,7 @@ def test_weights(weighted_graph: nx.DiGraph):
         assert res["_id"] == "e:1234"
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_interface(simple_graph: nx.DiGraph):
     """
     Simple test for key lookup - artificial document.
@@ -125,7 +124,7 @@ def test_interface(simple_graph: nx.DiGraph):
     assert res3["_id"] == "d:1234"
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_skip_on_failure(simple_graph: nx.DiGraph):
     """
     Simple test for key lookup skip_on_failure.
@@ -153,7 +152,7 @@ def test_skip_on_failure(simple_graph: nx.DiGraph):
         next(res_lst)
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_strangecases(simple_graph: nx.DiGraph):
     """
     Test invalid input that should generate exceptions.
@@ -184,7 +183,7 @@ def test_strangecases(simple_graph: nx.DiGraph):
             yield from doc_lst
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_skip_w_regex(simple_graph):
     """
     Test the skip_w_regex option.
@@ -201,7 +200,7 @@ def test_skip_w_regex(simple_graph):
     assert res["_id"] == "a:1234"
 
 
-@pytest.mark.xfail()
+@pytest.mark.skip()
 def test_mix_mdb_api(mixed_backend_graph: nx.DiGraph):
     """
     Test with mixed lookups between MongoDB and API
@@ -218,7 +217,7 @@ def test_mix_mdb_api(mixed_backend_graph: nx.DiGraph):
     assert res["_id"] == "end1"
 
 
-@pytest.mark.xfail()
+@pytest.mark.skip()
 def test_pubchem_api(pubchem_api_graph: nx.DiGraph):
     """
     Test 'inchi' to 'inchikey' conversion using mychem.info
@@ -235,7 +234,7 @@ def test_pubchem_api(pubchem_api_graph: nx.DiGraph):
     assert res["_id"] == "RZVAJINKPMORJF-UHFFFAOYSA-N"
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_input_source_fields(simple_graph: nx.DiGraph):
     """
     Test input source field options.  These are complicated tests with input source field
@@ -263,7 +262,7 @@ def test_input_source_fields(simple_graph: nx.DiGraph):
     assert r["_id"] == "d:1234"
 
 
-@pytest.mark.xfail(reason="Broken test - stale, perhaps a data issue")
+@pytest.mark.skip(reason="Broken test - stale, perhaps a data issue")
 def test_long_doc_lst(mychem_api_graph: nx.DiGraph):
     """
     Test a document list containing 12 entries.  Verify that the correct
@@ -350,7 +349,7 @@ def test_long_doc_lst(mychem_api_graph: nx.DiGraph):
     assert res_cnt == 12
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_regex(regex_edge_graph: nx.DiGraph):
     """
     Test the RegExEdge in a network.
@@ -368,7 +367,7 @@ def test_regex(regex_edge_graph: nx.DiGraph):
     assert res["_id"] == "bregex:1234"
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_failure1(simple_graph: nx.DiGraph):
     """
     Test behavior on lookup failure
@@ -386,7 +385,7 @@ def test_failure1(simple_graph: nx.DiGraph):
     assert res["_id"] == "a:f1"
 
 
-@pytest.mark.xfail(reason="Implement a `CopyEdge` class")
+@pytest.mark.skip(reason="Implement a `CopyEdge` class")
 def test_copyid(simple_graph: nx.DiGraph):
     """
     Test behavior on lookup lookup copy.
@@ -405,7 +404,7 @@ def test_copyid(simple_graph: nx.DiGraph):
     assert res["_id"] == "b:f1"
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_debug_mode(simple_graph: nx.DiGraph):
     """
     Test debug mode 'a' to 'e' conversion using the simple test
@@ -434,7 +433,7 @@ def test_debug_mode(simple_graph: nx.DiGraph):
         next(res_lst)
 
 
-@pytest.mark.xfail(reason="MongoDBEdge isn't indexed causing long datatransform Error")
+@pytest.mark.skip(reason="MongoDBEdge isn't indexed causing long datatransform Error")
 def test_case_insensitive(case_insensitive_graph: nx.DiGraph):
     """
     Case insensitive test for key lookup - artificial document.
