@@ -35,6 +35,9 @@ class TestMetadata(BiothingsWebAppTest):
         res = self.request("/v1/metadata").json()
         assert res["biothing_type"] == "gene"
 
+        res = self.request("/v1/metadata?dev").json()
+        assert res["_indices"] == ["bts_test"]
+
     def test_01_meta_dev(self):
         """GET /v1/metadata?dev
         {
