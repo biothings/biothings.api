@@ -87,7 +87,7 @@ def handler_configuration(userquery: pathlib.Path):
     config_mod.ALLOW_RANDOM_QUERY = True
     config_mod.ALLOW_NESTED_AGGS = True
 
-    config_mod.USERQUERY_DIR = userquery_directory
+    config_mod.USERQUERY_DIR = userquery
     config_mod.LICENSE_TRANSFORM = {"interpro": "pantherdb", "pantherdb.ortholog": "pantherdb"}  # For testing only.
 
     # *****************************************************************************
