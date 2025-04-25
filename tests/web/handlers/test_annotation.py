@@ -15,6 +15,8 @@ from biothings.web.settings.configs import ConfigModule
 class TestAnnotationGET(BiothingsWebAppTest):
     # ### Query Builder Keywords ###
 
+    TEST_DATA_DIR_NAME = "data"
+
     @property
     def config(self):
         if not hasattr(self, "_config"):

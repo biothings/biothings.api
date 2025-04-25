@@ -8,13 +8,13 @@ GET /v1/metadata/fields
 
 import sys
 
-import pytest
-
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
 
 class TestMetadata(BiothingsWebAppTest):
+
+    TEST_DATA_DIR_NAME = "data"
 
     @property
     def config(self):
@@ -22,7 +22,6 @@ class TestMetadata(BiothingsWebAppTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
-    @pytest.mark.xfail(reason="metadata biothing_type isn't being properly set to gene")
     def test_00_meta(self):
         """GET /v1/metadata
         {

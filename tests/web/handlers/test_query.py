@@ -16,6 +16,8 @@ from biothings.web.settings.configs import ConfigModule
 
 class TestQueryKeywords(BiothingsWebAppTest):
 
+    TEST_DATA_DIR_NAME = "data"
+
     @property
     def config(self):
         if not hasattr(self, "_config"):
@@ -140,7 +142,6 @@ class TestQueryKeywords(BiothingsWebAppTest):
         assert res["facets"]["symbol"]["terms"]
         assert res["facets"]["symbol"]["terms"][0]["alias"]
 
-    @pytest.mark.xfail(reason="Inconsistent / flaky number of hits")
     def test_10_from(self):
         """GET /v1/query?q=__all__&from=99
         {
@@ -154,7 +155,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
         """
         res = self.request("/v1/query?q=__all__&from=99").json()
         number_hits = len(res["hits"])
-        assert number_hits == 7
+        assert number_hits == 1
 
     def test_11_from_oob(self):
         """GET /v1/query?q=__all__&from=10001
@@ -586,7 +587,6 @@ class TestQueryKeywords(BiothingsWebAppTest):
         hit = res["hits"][0]
         assert hit["accession.translation.__test__"] == []
 
-    @pytest.mark.xfail(reason="Inconsistent / flaky number of hits from scroll")
     def test_30_scroll(self):
         """GET /v1/query?q=__all__&fetch_all
         {
@@ -602,7 +602,7 @@ class TestQueryKeywords(BiothingsWebAppTest):
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         number_hits = len(res["hits"])
-        assert number_hits == 46
+        assert number_hits == 40
 
         scroll_id = res["_scroll_id"]
 
@@ -817,7 +817,6 @@ class TestQueryString(BiothingsWebAppTest):
             self._config = ConfigModule(sys.modules["config"])
         return self._config
 
-    @pytest.mark.xfail(reason="Inconsistent / flaky number of for total")
     def test_00_all(self):
         """GET /query?q=__all__
         {
@@ -829,7 +828,7 @@ class TestQueryString(BiothingsWebAppTest):
         """
         res = self.query(q="__all__")
         assert res["max_score"] == 1
-        assert res["total"] == 106
+        assert res["total"] == 100
 
     def test_01_any(self):
         """GET /query?q=__any__
@@ -884,9 +883,8 @@ class TestQueryString(BiothingsWebAppTest):
         """
         res = self.request("/v1/query?q=gene&userquery=prefix").json()
         num_hits = len(res["hits"])
-        assert num_hits == 6
+        assert num_hits == 5
 
-    @pytest.mark.xfail(reason="Unexpected change in rawquery output")
     def test_11_userquery_query_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=prefix&rawquery
         {
@@ -908,7 +906,6 @@ class TestQueryString(BiothingsWebAppTest):
         res = self.request("/v1/query?q=cdk2&userquery=prefix&rawquery").json()
         assert res["query"]["bool"]["should"][0]["prefix"]["name"] == "cdk2"
 
-    @pytest.mark.xfail(reason="Unexpected change in rawquery output")
     def test_12_userquery_filter_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=exrna&rawquery
         {

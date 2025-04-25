@@ -13,6 +13,9 @@ from biothings.web.settings.configs import ConfigModule
 
 
 class TestBase(BiothingsWebAppTest):
+
+    TEST_DATA_DIR_NAME = "data"
+
     @property
     def config(self):
         if not hasattr(self, "_config"):
