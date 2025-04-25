@@ -7,9 +7,11 @@ Manage sample dataset and mapping for testing
 
 """
 import copy
+import json
 import pathlib
 import sys
 
+import elasticsearch
 import pytest
 
 from biothings.utils.common import DummyConfig
@@ -43,11 +45,10 @@ class DefautlAPIHandler(BaseAPIHandler):
 
 
 @pytest.fixture(scope="module")
-def userquery() -> pathlib.Path:
-    """
-    Generates the userquery data directory required for testing
-    """
-    data_directory = pathlib.Path(__file__).parent.joinpath("data")
+def handler_data_storage() -> dict:
+    test_directory = pathlib.Path(__file__).resolve().absolute().parent
+    data_directory = test_directory.joinpath("data")
+
     userquery_directory = data_directory.joinpath("userquery")
     assert userquery_directory.exists()
 
@@ -57,11 +58,17 @@ def userquery() -> pathlib.Path:
     query_data = userquery_directory / "prefix/query.txt"
     assert query_data.exists()
 
-    return userquery_directory
+    file_storage_mapping = {
+        "test_data.ndjson": data_directory.joinpath("test_data.ndjson"),
+        "test_mapping.json": data_directory.joinpath("test_mapping.json"),
+        "userquery": userquery_directory,
+    }
+
+    return file_storage_mapping
 
 
 @pytest.fixture(scope="module", autouse=True)
-def handler_configuration(userquery: pathlib.Path):
+def handler_configuration(handler_data_storage: dict):
 
     config_mod = DummyConfig(name="config")
 
@@ -87,7 +94,7 @@ def handler_configuration(userquery: pathlib.Path):
     config_mod.ALLOW_RANDOM_QUERY = True
     config_mod.ALLOW_NESTED_AGGS = True
 
-    config_mod.USERQUERY_DIR = userquery
+    config_mod.USERQUERY_DIR = handler_data_storage["userquery"]
     config_mod.LICENSE_TRANSFORM = {"interpro": "pantherdb", "pantherdb.ortholog": "pantherdb"}  # For testing only.
 
     # *****************************************************************************
@@ -115,3 +122,26 @@ def handler_configuration(userquery: pathlib.Path):
     yield config_mod
     sys.modules["config"] = prior_config
     sys.modules["biothings.config"] = prior_biothings_config
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_es(handler_data_storage: dict, handler_configuration) -> elasticsearch.Elasticsearch:
+    """
+    Populate ES with test index and documents.
+    Index to localhost:9200 only.
+    """
+    client = elasticsearch.Elasticsearch(hosts=TEST_HOST)
+    if not client.indices.exists(index=TEST_INDEX):
+        mapping_file = handler_data_storage["test_mapping.json"]
+        with open(str(mapping_file), "r", encoding="utf-8") as file:
+            mapping = json.load(file)
+
+        with open(str(handler_data_storage["test_data.ndjson"]), "r", encoding="utf-8") as file:
+            bulk_data = file.read()
+
+        client.indices.create(index=TEST_INDEX, **mapping)
+        client.bulk(body=bulk_data, index=TEST_INDEX)
+
+        client.indices.refresh()
+        yield client
+        client.indices.delete(index=TEST_INDEX)
