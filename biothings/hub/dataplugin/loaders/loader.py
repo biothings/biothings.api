@@ -10,7 +10,7 @@ import subprocess
 import sys
 import textwrap
 import urllib.parse
-from typing import Tuple, Union
+from typing import Dict, Tuple, Union
 
 import jsonschema
 import yaml
@@ -131,7 +131,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         df = pathlib.Path(plugin["download"]["data_folder"])
         return pathlib.Path(df, "manifest.json").exists() or pathlib.Path(df, "manifest.yaml").exists()
 
-    def validate_manifest(self, manifest: dict):
+    def validate_manifest(self, manifest: Dict):
         """
         Validate a manifest instance using the biothings-manifest schema.
 
@@ -245,7 +245,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         return indentfunc, funcname
 
     def get_dumper_dynamic_class(
-        self, plugin_directory: Union[str, pathlib.Path], dumper_section: dict, metadata: dict
+        self, plugin_directory: Union[str, pathlib.Path], dumper_section: Dict, metadata: Dict
     ):
         if dumper_section.get("data_url"):
             if not isinstance(dumper_section["data_url"], list):
@@ -502,7 +502,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest: dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
+    def interpret_manifest(self, manifest: Dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
         """
         Handles the interpretation and loading of the manifest contents
         to determine how to build the dumper and uploader classes,

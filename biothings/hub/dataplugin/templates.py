@@ -14,14 +14,14 @@ the interim we need the class generation to be at the root level of a module
 
 from pathlib import Path
 from string import Template
-from typing import Union
+from typing import Dict, Union
 import importlib
 
 from biothings.hub.dataload.dumper import AssistedDumper
 from biothings.hub.dataload.uploader import AssistedUploader
 
 
-def generate_assisted_dumper_class(template_file: Union[str, Path], dumper_configuration: dict):
+def generate_assisted_dumper_class(template_file: Union[str, Path], dumper_configuration: Dict):
     with open(template_file, "r", encoding="utf-8") as tpl_handle:
         template = Template(tpl_handle.read())
         pystr = template.substitute(dumper_configuration)
@@ -47,7 +47,7 @@ def generate_assisted_dumper_class(template_file: Union[str, Path], dumper_confi
         return assisted_dumper_class
 
 
-def generate_assisted_uploader_class(template_file: Union[str, Path], uploader_configuration: dict):
+def generate_assisted_uploader_class(template_file: Union[str, Path], uploader_configuration: Dict):
     with open(template_file, "r", encoding="utf-8") as tpl_handle:
         tpl = Template(tpl_handle.read())
         pystr = tpl.substitute(uploader_configuration)
