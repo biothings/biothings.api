@@ -1,3 +1,5 @@
+from pathlib import Path
+from typing import Union
 import abc
 import os
 import urllib.parse
@@ -33,10 +35,12 @@ class BaseAssistant(abc.ABC):
         "advanced": AdvancedPluginLoader,
     }
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, plugin_name: str = None, src_folder: Union[str, Path] = None):
         self.url = url
-        self._plugin_name = None
-        self._src_folder = None
+
+        self._plugin_name = plugin_name
+        self._src_folder = src_folder
+
         self._loader = None
         self.logfile = None
         self.logger = None
