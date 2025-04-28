@@ -18,10 +18,10 @@ except ImportError:
     # Suppress import error when we just run CLI
     pass
 
-from biothings.utils import mongo
 from biothings import config as btconfig
 from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.manager import BaseManager
+from biothings.utils import mongo
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import (
     dotdict,
@@ -41,6 +41,7 @@ from biothings.utils.hub_db import (
     get_src_db,
 )
 from biothings.utils.loggers import get_logger
+from biothings.utils.manager import JobManager
 from biothings.utils.mongo import doc_feeder, id_feeder
 
 from biothings.hub.databuild.backend import (
@@ -1108,12 +1109,11 @@ def set_pending_to_build(conf_name=None):
 class BuilderManager(BaseManager):
     def __init__(
         self,
+        job_manager: JobManager,
+        poll_schedule=None,
         source_backend_factory=None,
         target_backend_factory=None,
         builder_class=None,
-        poll_schedule=None,
-        *args,
-        **kwargs,
     ):
         """
         BuilderManager deals with the different builders used to merge datasources.
@@ -1126,7 +1126,7 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder. It can also be a list of classes, in which
         case the default used one is the first, when it's necessary to define multiple builders.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(job_manager=job_manager, poll_schedule=poll_schedule)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
@@ -1137,7 +1137,6 @@ class BuilderManager(BaseManager):
             self.arg_builder_classes = [builder_class]
         self.default_builder_class = self.arg_builder_classes[0] or DataBuilder
         self.builder_classes = {}
-        self.poll_schedule = poll_schedule
         self.setup_log()
 
     def clean_stale_status(self):

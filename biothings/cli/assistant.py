@@ -74,11 +74,11 @@ class CLIAssistant(BaseAssistant):
             num_threads=16,
             auto_recycle=True,
         )
-        self.build_manager = BuilderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
-        self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.dumper_manager = DumperManager(job_manager=self.job_manager, datasource_path=self.data_directory)
-        self.index_manager = IndexManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.uploader_manager = UploaderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
+        self.build_manager = BuilderManager(job_manager=self.job_manager)
+        self.index_manager = IndexManager(job_manager=self.job_manager)
 
         config.DATA_PLUGIN_FOLDER = self._src_folder
         self.load_plugin()
