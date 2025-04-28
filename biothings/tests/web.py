@@ -234,7 +234,6 @@ class BiothingsWebTestBase:
 
 
 class BiothingsWebTest(BiothingsWebTestBase):
-    """ """
 
     @pytest.fixture(autouse=True)
     def set_host(self, request):
@@ -325,11 +324,14 @@ class BiothingsWebAppTest(BiothingsWebTestBase, AsyncHTTPTestCase):
                     if os.environ.get("TEST_KEEPDATA"):
                         continue
                     raise RuntimeError(f"{index_name} already exists!")
-                with open(index_mapping_path, "r") as f:
+
+                with open(index_mapping_path, "r", encoding="utf-8") as f:
                     mapping = json.load(f)
                 data_path = os.path.join(data_dir_path, index_name + ".ndjson")
-                with open(data_path, "r") as f:
+
+                with open(data_path, "r", encoding="utf-8") as f:
                     bulk_data = f.read()
+
                 if version_info[0] == 6:
                     r = s.put(f"{es_host}/{index_name}", json=mapping, params={"include_type_name": "false"})
                 elif version_info[0] > 6:

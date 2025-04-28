@@ -11,10 +11,10 @@ from functools import wraps
 from biothings.utils.common import is_str, iter_n
 from biothings.utils.loggers import get_logger
 
-from .histogram import Histogram
+from biothings.hub.datatransform.histogram import Histogram
 
 
-class IDStruct(object):
+class IDStruct:
     """
     IDStruct - id structure for use with the DataTransform classes.  The basic idea
     is to provide a structure that provides a list of (original_id, current_id)
@@ -200,7 +200,7 @@ class IDStruct(object):
         self.debug[key] = other.get_debug(key)
 
 
-class DataTransform(object):
+class DataTransform:
     """DataTransform class.  This class is the public interface for
     the DataTransform module.  Much of the core logic is
     in the subclass."""
@@ -475,7 +475,7 @@ class DataTransform(object):
         return len(id_priority_list) + 1
 
 
-class DataTransformEdge(object):
+class DataTransformEdge:
     """
     DataTransformEdge.  This class contains information needed to
     transform one key to another.
@@ -566,7 +566,7 @@ class RegExEdge(DataTransformEdge):
                        with the lowest weight is preferred. The default weight is 1.
         :type weight: int
         """
-        super(RegExEdge, self).__init__(label)
+        super().__init__(label)
         self.from_regex = from_regex
         self.to_regex = to_regex
         self.weight = weight

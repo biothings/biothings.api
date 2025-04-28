@@ -84,7 +84,3 @@ class TestUnlistFunction(unittest.TestCase):
         data = {"key": {"subkey": "subvalue"}}
         expected = {"key": {"subkey": "subvalue"}}
         self.assertEqual(unlist(data), expected)
-
-
-if __name__ == "__main__":
-    unittest.main()

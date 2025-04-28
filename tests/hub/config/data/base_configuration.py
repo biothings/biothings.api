@@ -12,7 +12,7 @@
 # *must* be defined
 #
 
-import os
+from pathlib import Path
 
 from biothings.utils.loggers import setup_default_log
 
@@ -71,15 +71,15 @@ DATA_PLUGIN_FOLDER = "/tmp/testhub/plugins"
 
 # Path to folder containing diff files
 # Usually inside DATA_ARCHIVE_ROOT
-DIFF_PATH = os.path.join(DATA_ARCHIVE_ROOT, "diff")
+DIFF_PATH = ""
 
 # Path to folder containing release note files
 # Usually inside DATA_ARCHIVE_ROOT
-RELEASE_PATH = os.path.join(DATA_ARCHIVE_ROOT, "release")
+RELEASE_PATH = ""
 
 # Define path to folder which will contain log files
 # Usually inside DATA_ARCHIVE_ROOT
-LOG_FOLDER = os.path.join(DATA_ARCHIVE_ROOT, "logs")
+LOG_FOLDER = "/tmp/testhub/datasources/logs"
 
 # Provide a default hub logger instance (use setup_default_log(name,log_folder)
 logger = setup_default_log("hub", LOG_FOLDER)
@@ -87,3 +87,68 @@ logger = setup_default_log("hub", LOG_FOLDER)
 ES_HOST = "http://localhost:9200"  # optional
 ES_INDICES = {"dev": "main_build_configuration"}
 ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]
+
+S3_SNAPSHOT_BUCKET = ""
+S3_REGION = ""
+DATA_HUB_DB_DATABASE = ".hubdb"
+APITEST_PATH = str(Path(__file__).parent.absolute().resolve())
+
+# descONE
+ONE = 1
+
+# * section alpha *#
+B = "B"
+
+C = "C"  # ends with space should be stripped descC
+
+# not a param, not uppercase
+Two = 2
+
+# * section beta *#
+# descD_D
+D_D = "D"
+
+# * section gamma *#
+
+# descE.
+E = "E"
+
+# * section beta *#
+
+# descF.
+# back to beta section.
+F = "F"
+
+# * *#
+# reset section
+G = "G"
+
+# this is a secret param
+# - invisible -#
+INVISIBLE = "hollowman"
+
+# hide the value, not the param
+# - hide -#
+PASSWORD = "1234"
+
+# it's readonly
+# - readonly -#
+READ_ONLY = "written in stone"
+
+# it's read-only and value is hidden, not the param
+# - readonly -#
+# - hide -#
+RUN_DIR = "can't read the stone"
+
+# invisible has full power
+# read-only is not necessary anyways
+# - readonly
+# - invisible -#
+INVISIBLE_READ_ONLY = "evaporated"
+
+# special param, by default config is read-only
+# but we want to test modification
+CONFIG_READONLY = False
+
+
+HUB_SSH_PORT = "123"

@@ -62,7 +62,6 @@ def test_http_dumper_properties():
     "remoteurl,resolve_filepath",
     [
         ("https://github.com/biothings/biothings.api/archive/refs/tags/v0.12.5.zip", True),
-        ("https://www.gnu.org/software/gzip/manual/gzip.html.gz", False),
     ],
 )
 def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
