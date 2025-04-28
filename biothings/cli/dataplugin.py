@@ -1,48 +1,40 @@
-import asyncio
-from typing import Optional
-import logging
+"""
+Module for creating the cli interface for the dataplugin interface
+"""
 
-import typer
+from typing import Optional
+import asyncio
+
 from typing_extensions import Annotated
+import typer
 
 from biothings.cli import operations
 
 
-logger = logging.getLogger("biothings-cli")
-
-
-short_help = (
-    "[green]Test an individual data plugin locally and make simple queries to inspect your parsed data objects.[/green]"
-)
-long_help = (
-    short_help
-    + "\n\n[magenta]   :sparkles: Go to your existing data plugin folder.[/magenta]"
-    + "\n[magenta]   :sparkles: Dumping, uploading and inspecting your data plugin.[/magenta]"
-    + "\n[magenta]   :sparkles: Serving your data as a web service for making simple queries[/magenta]"
-    + "\n\n[green]   :point_right: Always run this command inside of your data plugin folder.[/green]"
-    + "\n[green]   :point_right: Default traceback errors are kept minimal, but you can set [bold]BTCLI_RICH_TRACEBACK=1[/bold][/green]"
-    + "\n[green]      ENV variable to enable full and pretty-formatted tracebacks, [/green]"
-    + "\n[green]      or set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
-    + "\n[green]   :point_right: You can include a config.py at the working directly to override the default biothings.config settings.[/green]"
+SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
+FULL_HELP = (
+    SHORT_HELP
+    + "\n\n[magenta]   :sparkles: Run from an existing data plugin folder to evaluate a singular data plugin.[/magenta]"
+    + "\n[magenta]   :sparkles: Run from a parent folder containing multiple data plugins to operate like a hub.[/magenta]"
+    + "\n[green]   :point_right: Set [bold]BTCLI_RICH_TRACEBACK=1[/bold] ENV variable to enable full and pretty-formatted tracebacks, [/green]"
+    + "\n[green]   :point_right: Set [bold]BTCLI_DEBUG=1[/bold] to enable even more debug logs for debugging purpose.[/green]"
+    + "\n[green]   :point_right: Include a config.py at the working directory to override the default biothings.config settings.[/green]"
     + "\n   :rocket::boom::sparkling_heart:"
 )
 
 dataplugin_application = typer.Typer(
-    help=long_help,
-    short_help=short_help,
+    help=FULL_HELP,
+    short_help=SHORT_HELP,
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
 
 
-@dataplugin_application.command(
-    name="create",
-    help="Create a new data plugin from the template",
-)
+@dataplugin_application.command(name="create")
 def create_data_plugin(
     name: Annotated[
         str,
-        typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
+        typer.Option("--plugin-name", "-n", help="Provide a data source plugin name"),
     ] = "",
     multi_uploaders: Annotated[
         Optional[bool],
@@ -54,89 +46,95 @@ def create_data_plugin(
     ] = False,
 ):
     """
-    *create* command
-
-    creates a new data plugin from a pre-defined template
+    Create a new data plugin from a pre-defined template
     """
     operations.do_create(name, multi_uploaders, parallelizer)
 
 
-@dataplugin_application.command(
-    name="dump",
-    help="Download source data files to local",
-)
-def dump_data():
+@dataplugin_application.command(name="dump")
+def dump_source(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
+    show_dump: Annotated[
+        Optional[bool],
+        typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
+    ] = True,
+):
     """
-    *dump* command
-
-    downloads source data files to the local file system
+    Download the source data files to the local file system
     """
-    asyncio.run(operations.do_dump(plugin_name=None))
+    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump))
 
 
-@dataplugin_application.command(
-    name="upload",
-    help="Convert downloaded data from dump step into JSON documents and upload the to the source database",
-)
+@dataplugin_application.command(name="upload")
 def upload_source(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Data source plugin name")] = None,
     batch_limit: Annotated[
         Optional[int],
         typer.Option(
             "--batch-limit",
-            help="The maximum number of batches that should be uploaded. Default Batch size is 10000 docs",
+            help="The maximum number of documents per batch that should be uploaded",
         ),
-    ] = None,
+    ] = 10000,
+    parallel: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--parallel",
+            help="Used for uploaders that leverage the ParallelizedUploader source for the plugin",
+        ),
+    ] = False,
+    show_upload: Annotated[
+        Optional[bool],
+        typer.Option("--show-upload", help="Displays the uploader source result output after upload operation"),
+    ] = True,
 ):
     """
-    *upload* command
+    Parse the downloaded data files from the dump operation and upload to the source database
 
-    ***NOTE***
-    Only works correctly if the dump command has been run
-
-    converts the data from the dump operation into JSON documents. Then uploads to a local
-    source database. Default database is sqlite3, but mongodb is supported if configured and an
+    Default database is sqlite3, but mongodb is supported if configured and an
     instance is setup
+
+    [green]NOTE[/green]
+    Only works correctly if the dump command has been run
     """
-    asyncio.run(operations.do_upload(plugin_name=None))
+    upload_arguments = {"plugin_name": plugin_name, "batch_limit": batch_limit, "show_uploaded": show_upload}
+
+    if parallel:
+        asyncio.run(operations.do_parallel_upload(**upload_arguments))
+    else:
+        asyncio.run(operations.do_upload(**upload_arguments))
 
 
-@dataplugin_application.command(
-    "dump_and_upload",
-    help="Download data source to local folder then convert to Json document and upload to the source database",
-)
-def dump_and_upload():
+@dataplugin_application.command(name="dump_and_upload")
+def dump_and_upload(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Data source plugin name")] = None,
+):
     """
-    *dump_and_upload* command
-    performs the dump and then upload commands sequentially
+    Sequentially execute the dump and upload commands
+
+    Operation Order:
     1) downloads source data files to local file system
     2) converts them into JSON documents
     3) uploads those JSON documents to the source database.
     """
-    asyncio.run(operations.do_dump_and_upload(plugin_name=None))
+    asyncio.run(operations.do_dump_and_upload(plugin_name=plugin_name))
 
 
-@dataplugin_application.command(
-    name="list",
-    help="Listing dumped files or uploaded sources",
-)
+@dataplugin_application.command(name="list")
 def listing(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = True,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = True,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
 ):
     """
-    *list* command
-
-    lists dumped files and/or uploaded sources
+    List dumped files, uploaded sources, or internal hubdb contents
     """
-    asyncio.run(operations.do_list(plugin_name=None, dump=dump, upload=upload, hubdb=hubdb))
+    asyncio.run(operations.do_list(plugin_name=plugin_name, dump=dump, upload=upload, hubdb=hubdb))
 
 
-@dataplugin_application.command(
-    name="inspect",
-    help="Giving detailed information about the structure of documents coming from the parser",
-)
+@dataplugin_application.command(name="inspect")
 def inspect_source(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")
     ] = "",
@@ -183,17 +181,18 @@ def inspect_source(
     ] = None,
 ):
     """
-    *inspect* command
+    Derive detailed information about the document data structure from the parsed documents
 
-    gives detailed information about the structure of documents coming from the parser after the upload step
+    [green]NOTE[/green]
+    Only works correctly if the upload command has been run
     """
     asyncio.run(
         operations.do_inspect(
-            plugin_name=None,
+            plugin_name=plugin_name,
             sub_source_name=sub_source_name,
             mode=mode,
             limit=limit,
-            merge=False,
+            merge=merge,
             output=output,
         )
     )
@@ -201,6 +200,7 @@ def inspect_source(
 
 @dataplugin_application.command(name="serve")
 def serve(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     host: Annotated[
         Optional[str],
         typer.Option(
@@ -218,34 +218,38 @@ def serve(
     ] = 9999,
 ):
     """
-    *serve* command runs a simple API server for serving documents from the source database.
+    Run a simple API server for serving documents from the source database
 
-    For example, after run 'dump_and_upload', we have a source_name = "test" with a document structure
-    like this:
+    For example, we have a source_name = "test" with the following document structure:
+    doc = {
+        "_id": "123",
+        "key": {
+            "a": {"b": "1"},
+            "x": [
+                {"y": "3", "z": "4"},
+                "5"
+            ]
+        }
+    }
 
-    doc = {"_id": "123", "key": {"a":{"b": "1"},"x":[{"y": "3", "z": "4"}, "5"]}}.
+    An API server will run at http://host:port/<your source name>/ (e.g http://localhost:9999/test/)
 
-    An API server will run at http://host:port/<your source name>/, like http://localhost:9999/test/:
-
-        - You can see all available sources on the index page: http://localhost:9999/
-        - You can list all docs: http://localhost:9999/test/ (default is to return the first 10 docs)
-        - You can paginate doc list: http://localhost:9999/test/?start=10&limit=10
-        - You can retrieve a doc by id: http://localhost:9999/test/123
-        - You can filter out docs with one or multiple fielded terms:
+        - See all available sources on the index page: http://localhost:9999/
+        - List all docs: http://localhost:9999/test/ (default is to return the first 10 docs)
+        - Paginate doc list: http://localhost:9999/test/?start=10&limit=10
+        - Retrieve a doc by id: http://localhost:9999/test/123
+        - Filter out docs with one or multiple fielded terms:
             - http://localhost:9999/test/?q=key.a.b:1 (query by any field with dot notation like key.a.b=1)
             - http://localhost:9999/test/?q=key.a.b:1%20AND%20key.x.y=3 (find all docs that match two fields)
             - http://localhost:9999/test/?q=key.x.z:4*  (field value can contain wildcard * or ?)
             - http://localhost:9999/test/?q=key.x:5&start=10&limit=10 (pagination also works)
     """
-    asyncio.run(operations.do_serve(plugin_name=None, host=host, port=port))
+    asyncio.run(operations.do_serve(plugin_name=plugin_name, host=host, port=port))
 
 
-@dataplugin_application.command(
-    name="clean",
-    help="Delete all dumped files and drop uploaded sources tables",
-    no_args_is_help=True,
-)
+@dataplugin_application.command(name="clean", no_args_is_help=True)
 def clean_data(
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Delete all dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Drop uploaded sources tables")] = False,
     clean_all: Annotated[
@@ -257,23 +261,52 @@ def clean_data(
     ] = False,
 ):
     """
-    *clean* command
-
-    deletes all dumped files and/or drops uploaded sources tables
+    Delete all dumped files and/or drop uploaded sources tables
     """
-    asyncio.run(operations.do_clean(plugin_name=None, dump=dump, upload=upload, clean_all=clean_all))
+    asyncio.run(operations.do_clean(plugin_name=plugin_name, dump=dump, upload=upload, clean_all=clean_all))
 
 
-@dataplugin_application.command(
-    name="build",
-    help="Build a data plugin",
-)
-def build_plugin(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Plugin name for building")],
+@dataplugin_application.command(name="index")
+def index_plugin(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
 ):
     """
-    *build* command
+    [red][bold](experimental)[/bold][/red] Create an elaticsearch index from a data source database
 
-    generates a build image and elasticsearch index for a data plugin
+    Our `quick-index` function that provides a way for quickly creating an elasticsearch
+    index from a source backend
+
+    We currently only support converting between MongoDB -> Elasticsearch for indexing
+
+    [green]NOTE[/green]
+    Only works correctly if the upload command has been run
     """
-    asyncio.run(operations.do_build(plugin_name=plugin_name), debug=True)
+    asyncio.run(operations.do_index(plugin_name=plugin_name))
+
+
+@dataplugin_application.command(name="validate")
+def validate_manifest(
+    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
+    show_schema: Annotated[bool, typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
+) -> None:
+    """
+    [red][bold](experimental)[/bold][/red] Validate a provided manifest file via JSONSchema
+
+    Performs jsonschema validation against the manifest file.
+    Will not perform validation against the potential loading of modules
+    within the manifest
+
+    if the --show-schema argument is applied, then display the biothings
+    manifest schema
+
+    The schema is located within the biothings repository at the following
+    path relative to root:
+    <biothings/hub/dataplugin/loaders/schema/manifest.json>
+
+    For a reference about jsonschema itself, see the following:
+    https://json-schema.org/
+    """
+    asyncio.run(operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file))
+    if show_schema:
+        asyncio.run(operations.display_schema())

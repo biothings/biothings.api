@@ -2,12 +2,10 @@ import collections
 import copy
 import logging
 import json
-import operator
 import time
 import types
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 
-import sqlite3
 from sqlite3 import IntegrityError
 
 from pymongo import InsertOne, ReplaceOne, UpdateOne
@@ -29,7 +27,7 @@ class BaseStorage:
         self.temp_collection = db[dest_col_name]
         self.logger = logger
 
-    def process(self, iterable, *args, **kwargs):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int) -> int:
         """
         Process iterable to store data. Must return the number
         of inserted records (even 0 if none)
@@ -44,19 +42,23 @@ class BaseStorage:
         return doc
 
 
-class CheckSizeStorage(BaseStorage):
-    def check_doc_func(self, doc):
-        ok = check_document_size(doc)
-        # this is typically used to skip LFQSCWFLJHTTHZ-UHFFFAOYSA-N (Ethanol)
-        # because there are too many elements in "ndc" list
-        if not ok:
-            self.logger.warning("Skip document '%s' because too large" % doc.get("_id"))
-            return False
-        return ok
+class NoStorage(BaseStorage):
+    """
+    This a kind of a place-holder, this storage will just store nothing...
+    (but it will respect storage interface)
+    """
+
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
+        self.logger.info("NoStorage stores nothing, skip...")
+        return 0
+
+    def check_doc_fun(self, doc: dict) -> bool:
+        self.logger.info("NoStorage stores nothing, skip...")
+        return True
 
 
 class BasicStorage(BaseStorage):
-    def doc_iterator(self, doc_d, batch=True, batch_size=10000):
+    def doc_iterator(self, doc_d: List[Dict], batch: bool = True, batch_size: int = 10000):
         if isinstance(doc_d, (types.GeneratorType, list)) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
@@ -83,12 +85,12 @@ class BasicStorage(BaseStorage):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
 
-    def process(self, doc_d, batch_size, max_batch_num=None):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         total = 0
         batch_num = 0
-        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
+        for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             if max_batch_num and batch_num >= max_batch_num:
                 break
             batch_num += 1
@@ -97,6 +99,17 @@ class BasicStorage(BaseStorage):
         self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
 
         return total
+
+
+class CheckSizeStorage(BasicStorage):
+    def check_doc_func(self, doc) -> bool:
+        ok = check_document_size(doc)
+        # this is typically used to skip LFQSCWFLJHTTHZ-UHFFFAOYSA-N (Ethanol)
+        # because there are too many elements in "ndc" list
+        if not ok:
+            self.logger.warning("Skip document '%s' because too large", doc.get("_id"))
+            return False
+        return ok
 
 
 class MergerStorage(BasicStorage):
@@ -111,7 +124,7 @@ class MergerStorage(BasicStorage):
     merge_func = merge_struct
     process_count = 0
 
-    def process(self, doc_d, batch_size, max_batch_num=None):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.process_count += 1
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
@@ -119,13 +132,13 @@ class MergerStorage(BasicStorage):
         aslistofdict = None
         total = 0
         batch_num = 0
-        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=batch_size):
+        for doc_li in self.doc_iterator(iterable, batch=True, batch_size=batch_size):
             if max_batch_num and batch_num >= max_batch_num:
                 break
             batch_num += 1
             toinsert = len(doc_li)
             nbinsert = 0
-            self.logger.info("Inserting %s records ... " % toinsert)
+            self.logger.info("Inserting %s records ... ", toinsert)
             try:
                 bulk = []
                 for d in doc_li:
@@ -134,11 +147,11 @@ class MergerStorage(BasicStorage):
 
                 res = self.temp_collection.bulk_write(bulk, ordered=False)
                 nbinsert += res.inserted_count
-                self.logger.info("OK [%s]" % timesofar(tinner))
+                self.logger.info("OK [%s]", timesofar(tinner))
             except BulkWriteError as e:
                 inserted = e.details["nInserted"]
                 nbinsert += inserted
-                self.logger.debug("Fixing %d records " % len(e.details["writeErrors"]))
+                self.logger.debug("Fixing %d records ", len(e.details["writeErrors"]))
                 ids = [d["op"]["_id"] for d in e.details["writeErrors"]]
 
                 # build hash of existing docs
@@ -169,30 +182,25 @@ class MergerStorage(BasicStorage):
                     nbinsert += 1
 
                 self.temp_collection.bulk_write(bulk, ordered=False)
-                self.logger.info("OK [%s]" % timesofar(tinner))
+                self.logger.info("OK [%s]", timesofar(tinner))
             except Sqlite3BulkWriteError as sqlite3_bulk_error:
-                """
-                internal collection -> entries already in the sqlite3 database
-                external collection -> entries in the batch for the bulk_write
-
-                Conflict 2) id value in the external collection collides with a separate id in the
-                internal collection
-
-                Conflict 1) id value in the external collection collides with the id in the internal
-                collection
-
-                Handle the merge for conflict 2 before isolating conflict 1
-
-                We generate a default dict with a list as the container so that we can aggregate the
-                documents into batches based off their id as the key value. Any entries with values
-                greater than 2 have duplicates and need to be merged
-                """
+                # internal collection -> entries already in the sqlite3 database
+                # external collection -> entries in the batch for the bulk_write
+                #
+                # Conflict 2) id value in the external collection collides with a separate id in the
+                # internal collection
+                #
+                # Conflict 1) id value in the external collection collides with the id in the internal collection
+                #
+                # Handle the merge for conflict 2 before isolating conflict 1
+                #
+                # We generate a default dict with a list as the container so that we can aggregate the
+                # documents into batches based off their id as the key value. Any entries with values
+                # greater than 2 have duplicates and need to be merged
                 self.logger.exception(sqlite3_bulk_error)
                 self.logger.debug(
-                    (
-                        "Attempting to correct sqlite3 uniqueness constraint for the id column.\n" "Batch Size %s",
-                        len(bulk),
-                    )
+                    "Attempting to correct sqlite3 uniqueness constraint for the id column.\nBatch Size %s",
+                    len(bulk),
                 )
 
                 # external conflict management
@@ -233,7 +241,7 @@ class MergerStorage(BasicStorage):
                 batch_ids = [entry._doc["_id"] for entry in bulk]
                 internal_conflicts = self.temp_collection.id_search(batch_ids)
 
-                self.logger.debug("Discovered %s internal conflict entries", len(index_pointers))
+                self.logger.debug("Discovered %s internal conflict entries", len(internal_conflicts))
 
                 internal_removal_indicies = []
                 for conflict_result in internal_conflicts:
@@ -251,12 +259,11 @@ class MergerStorage(BasicStorage):
                     self.logger.debug("Popping %s index from bulk upload", remove_index - offset_index)
                     bulk.pop(remove_index - offset_index)
 
-                self.logger.info("Re-attempting bulk write. Inserting %s records ... " % len(bulk))
+                self.logger.info("Re-attempting bulk write. Inserting %s records ... ", len(bulk))
                 self.temp_collection.bulk_write(bulk, ordered=False)
-                self.logger.info("OK [%s]" % timesofar(tinner))
+                self.logger.info("OK [%s]", timesofar(tinner))
 
-        self.logger.info(f"Done[{timesofar(t0)}] with {total} docs")
-
+        self.logger.info("Done[%s] with %s docs", timesofar(t0), total)
         return total
 
 
@@ -286,7 +293,7 @@ class RootKeyMergerStorage(MergerStorage):
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
-    def process(self, iterable, batch_size, max_batch_num=None):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -300,11 +307,13 @@ class IgnoreDuplicatedStorage(BasicStorage):
                 bulk_set = [InsertOne(document) for document in self.unique_documents(doc_li)]
                 res = self.temp_collection.bulk_write(bulk_set, ordered=False)
                 total += res.inserted_count
-                self.logger.info("Inserted %s records [%s]" % (res.inserted_count, timesofar(tinner)))
+                self.logger.info("Inserted %s records [%s]", res.inserted_count, timesofar(tinner))
             except BulkWriteError as e:
                 self.logger.info(
-                    "Inserted %s records, ignoring %d [%s]"
-                    % (e.details["nInserted"], len(e.details["writeErrors"]), timesofar(tinner))
+                    "Inserted %s records, ignoring %d [%s]",
+                    e.details["nInserted"],
+                    len(e.details["writeErrors"]),
+                    timesofar(tinner),
                 )
             except IntegrityError as integrity_error:
                 self.logger.warning(f"Skipping duplicate record. Details: {integrity_error}")
@@ -312,11 +321,11 @@ class IgnoreDuplicatedStorage(BasicStorage):
                 self.logger.exception(gen_exp)
                 raise gen_exp
             tinner = time.time()
-        self.logger.info("Done[%s]" % timesofar(t0))
+        self.logger.info("Done[%s]", timesofar(t0))
 
         return total
 
-    def unique_documents(self, documents: Iterable[dict]) -> List[dict]:
+    def unique_documents(self, documents: Iterable[Dict]) -> List[Dict]:
         """
         Generates the set of id values from the provided batch of documents
         due to our documents being unhashable
@@ -328,7 +337,8 @@ class IgnoreDuplicatedStorage(BasicStorage):
         """
         unique_documents = list({document["_id"]: document for document in documents}.values())
         if len(unique_documents) < len(documents):
-            self.logger.debug("Filtered %s documents before upload", len(documents) - len(unique_documents))
+            length_diff = len(documents) - len(unique_documents)
+            self.logger.debug("Filtered %s documents before upload", length_diff)
         return unique_documents
 
 
@@ -338,7 +348,7 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     and is thus way faster...
     """
 
-    def process(self, doc_d, batch_size, max_batch_num=None):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -347,7 +357,7 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
         total = 0
         dups = 0
         batch_num = 0
-        for doc_li in self.doc_iterator(doc_d, batch=True, batch_size=1):
+        for doc_li in self.doc_iterator(iterable, batch=True, batch_size=1):
             if max_batch_num and batch_num >= max_batch_num:
                 break
             batch_num += 1
@@ -357,22 +367,23 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
                 total += 1
                 if (cnt + dups) % batch_size == 0:
                     # we insert one by one but display progress on a "batch_size" base
-                    self.logger.info("Inserted %s records, ignoring %s [%s]" % (cnt, dups, timesofar(tinner)))
+                    self.logger.info("Inserted %s records, ignoring %s [%s]", cnt, dups, timesofar(tinner))
                     cnt = 0
                     dups = 0
                     tinner = time.time()
             except DuplicateKeyError:
                 dups += 1
-                pass
-        self.logger.info("Done[%s]" % timesofar(t0))
+        self.logger.info("Done[%s]", timesofar(t0))
 
         return total
 
 
 class UpsertStorage(BasicStorage):
-    """Insert or update documents, based on _id"""
+    """
+    Insert or update documents, based on _id
+    """
 
-    def process(self, iterable, batch_size, max_batch_num=None):
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -389,36 +400,20 @@ class UpsertStorage(BasicStorage):
                 res = self.temp_collection.bulk_write(bulk, ordered=False)
                 nb = res.upserted_count + res.modified_count
                 total += nb
-                self.logger.info("Upserted %s records [%s]" % (nb, timesofar(tinner)))
-            except Exception:
-                raise
+                self.logger.info("Upserted %s records [%s]", nb, timesofar(tinner))
+            except Exception as gen_exc:
+                self.logger.exception(gen_exc)
+                raise gen_exc
             tinner = time.time()
-        self.logger.info("Done[%s]" % timesofar(t0))
+        self.logger.info("Done[%s]", timesofar(t0))
 
         return total
 
 
-class NoStorage:
-    """
-    This a kind of a place-holder, this storage will just store nothing...
-    (but it will respect storage interface)
-    """
-
-    def __init__(self, db_info, dest_col_name, logger):
-        db = get_src_db()
-        self.temp_collection = db[dest_col_name]
-        self.logger = logger
-
-    def process(self, iterable, *args, **kwargs):
-        self.logger.info("NoStorage stores nothing, skip...")
-        return 0
-
-
-def get_storage_class(ondups=None):
+def get_storage_class(ondups=None) -> str:
     if ondups and ondups != "error":
         if ondups == "merge":
             return "biothings.utils.storage.MergerStorage"
         elif ondups == "ignore":
             return "biothings.utils.storage.IgnoreDuplicatedStorage"
-    else:
-        return "biothings.utils.storage.BasicStorage"
+    return "biothings.utils.storage.BasicStorage"

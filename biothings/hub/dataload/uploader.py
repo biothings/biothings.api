@@ -701,14 +701,14 @@ class DummySourceUploader(BaseSourceUploader):
         # bypass checks about src_dump
         pass
 
-    async def update_data(self, batch_size, job_manager=None, release=None):
+    async def update_data(self, batch_size, job_manager=None, release=None, **kwargs):
         assert release is not None, "Dummy uploader requires 'release' argument to be specified"
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
         # so fill minimum information so register_status() can set the proper release
         self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
         # sanity check, dummy uploader, yes, but make sure data is there
-        assert self.collection.count() > 0, "No data found in collection '%s' !!!" % self.collection_name
+        assert self.collection.count() > 0, "No data found in collection '%s' " % self.collection_name
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
@@ -723,7 +723,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         """
         raise NotImplementedError("implement me in subclass")
 
-    async def update_data(self, batch_size, job_manager=None):
+    async def update_data(self, batch_size, job_manager=None, **kwargs):
         max_upload = self.__class__.MAX_PARALLEL_UPLOAD and asyncio.Semaphore(self.__class__.MAX_PARALLEL_UPLOAD)
         jobs = []
         job_params = self.jobs()
@@ -741,7 +741,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
         # subtmitted to job_manager causing a error due to that logger attribute)
         # in other words: once unprepared, self should never be changed until all
         # jobs are submitted
-        for bnum, args in enumerate(job_params):
+        for batch_number, args in enumerate(job_params):
             pinfo = self.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = "%s" % str(args)
@@ -763,28 +763,26 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 
             if max_upload:
                 await max_upload.acquire()
+
+            upload_worker_db = kwargs.get("db", None)
+            max_batch_num = kwargs.get("max_batch_num", None)
+
             job = await job_manager.defer_to_process(
                 pinfo,
                 partial(
-                    # pickable worker
-                    upload_worker,
-                    # worker name
-                    fullname,
-                    # storage class
-                    storage_class,
-                    # loading func
-                    load_data,
-                    # dest collection name
-                    temp_collection_name,
-                    # batch size
-                    batch_size,
-                    # batch num
-                    bnum,
-                    # and finally *args passed to loading func
-                    *args,
+                    upload_worker,  # pickable worker
+                    fullname,  # worker name
+                    storage_class,  # storage class
+                    load_data,  # loading function
+                    temp_collection_name,  # destination collection name
+                    batch_size,  # batch size
+                    batch_number,  # batch number
+                    *args,  # loading function arguments
+                    db=upload_worker_db,
+                    max_batch_num=max_batch_num,
                 ),
             )
-            job.add_done_callback(partial(batch_uploaded, name=fullname, batch_num=bnum))
+            job.add_done_callback(partial(batch_uploaded, name=fullname, batch_num=batch_number))
             jobs.append(job)
 
             # raise error as soon as we know
@@ -820,10 +818,6 @@ class UploaderManager(BaseSourceManager):
 
     SOURCE_CLASS = BaseSourceUploader
     # VALIDATIONS = getattr(config, "UPLOAD_VALIDATIONS", {})
-
-    def __init__(self, poll_schedule=None, *args, **kwargs):
-        super(UploaderManager, self).__init__(*args, **kwargs)
-        self.poll_schedule = poll_schedule
 
     def get_source_ids(self):
         """Return displayable list of registered source names (not private)"""
@@ -872,8 +866,18 @@ class UploaderManager(BaseSourceManager):
         else:
             return klass
 
-    def create_instance(self, klass):
-        inst = klass.create(db_conn_info=self.conn.address, validation_dir=self.get_validation_path(klass))
+    def create_instance(self, klass, database_address: str = None):
+        """
+        Create an uploader class instance with the provided uploaded class instance
+        and optional database address.
+
+        If database address is not provided then we attempt to load it from the UploaderManager
+        instance.
+        """
+        if database_address is None:
+            database_address = self.conn.address
+
+        inst = klass.create(db_conn_info=database_address, validation_dir=self.get_validation_path(klass))
         return inst
 
     def register_classes(self, klasses):
@@ -986,7 +990,7 @@ class UploaderManager(BaseSourceManager):
                 await inst.validate_src(*args, **kwargs)
 
     def poll(self, state, func):
-        super(UploaderManager, self).poll(state, func, col=get_src_dump())
+        super().poll(state, func, col=get_src_dump())
 
     def source_info(self, source=None):
         src_dump = get_src_dump()

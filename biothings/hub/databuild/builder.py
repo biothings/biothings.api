@@ -10,14 +10,18 @@ import time
 from datetime import datetime
 from functools import partial
 from pprint import pformat
-from typing import Union
+from typing import List, Union
 
-import aiocron
+try:
+    import aiocron
+except ImportError:
+    # Suppress import error when we just run CLI
+    pass
 
-import biothings.utils.mongo as mongo
 from biothings import config as btconfig
 from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.manager import BaseManager
+from biothings.utils import mongo
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import (
     dotdict,
@@ -37,13 +41,18 @@ from biothings.utils.hub_db import (
     get_src_db,
 )
 from biothings.utils.loggers import get_logger
+from biothings.utils.manager import JobManager
 from biothings.utils.mongo import doc_feeder, id_feeder
 
-from ..databuild.backend import LinkTargetDocMongoBackend, SourceDocMongoBackend, TargetDocMongoBackend
-from ..dataload.uploader import ResourceNotReady
-from .backend import create_backend
-from .buildconfig import AutoBuildConfig
-from .mapper import TransparentMapper
+from biothings.hub.databuild.backend import (
+    LinkTargetDocMongoBackend,
+    SourceDocMongoBackend,
+    TargetDocMongoBackend,
+    create_backend,
+)
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.hub.databuild.mapper import TransparentMapper
+from biothings.hub.dataload.uploader import ResourceNotReady
 
 logging = btconfig.logger
 
@@ -88,11 +97,11 @@ class DataBuilder:
         self.target_name = target_name
         self._partial_source_backend = None
         self._partial_target_backend = None
-        if type(source_backend) == partial:
+        if isinstance(source_backend, partial):
             self._partial_source_backend = source_backend
         else:
             self._state["source_backend"] = source_backend
-        if type(target_backend) == partial:
+        if isinstance(target_backend, partial):
             self._partial_target_backend = target_backend
         else:
             self._state["target_backend"] = target_backend
@@ -313,7 +322,7 @@ class DataBuilder:
         backend_url = self.target_backend.get_backend_url()
         build_info = {
             "_id": target_name,
-            # TODO: deprecate target_backend & target_name, use backed_url instead
+            # TODO: deprecate target_backend & target_name, use backend_url instead
             "target_backend": self.target_backend.name,
             "target_name": target_name,
             "backend_url": backend_url,
@@ -473,7 +482,7 @@ class DataBuilder:
         src_master = self.source_backend.master
         for collection in self.build_config["sources"]:
             meta = src_master.find_one({"_id": collection})
-            if "mapping" in meta and meta["mapping"]:
+            if isinstance(meta, dict) and meta.get("mapping", None) is not None:
                 mapping = merge_struct(mapping, meta["mapping"])
             else:
                 raise BuilderException('"%s" has no mapping data' % collection)
@@ -1092,7 +1101,7 @@ def set_pending_to_build(conf_name=None):
     if conf_name:
         qfilter = {"_id": conf_name}
     logging.info(
-        "Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configuraitons")
+        "Setting pending_to_build flag for configuration(s): %s" % (conf_name and conf_name or "all configurations")
     )
     src_build_config.update(qfilter, {"$addToSet": {"pending": "build"}})
 
@@ -1100,12 +1109,11 @@ def set_pending_to_build(conf_name=None):
 class BuilderManager(BaseManager):
     def __init__(
         self,
+        job_manager: JobManager,
+        poll_schedule=None,
         source_backend_factory=None,
         target_backend_factory=None,
         builder_class=None,
-        poll_schedule=None,
-        *args,
-        **kwargs,
     ):
         """
         BuilderManager deals with the different builders used to merge datasources.
@@ -1118,7 +1126,7 @@ class BuilderManager(BaseManager):
         same arguments as the base DataBuilder. It can also be a list of classes, in which
         case the default used one is the first, when it's necessary to define multiple builders.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(job_manager=job_manager, poll_schedule=poll_schedule)
         self.src_build_config = get_src_build_config()
         self.source_backend_factory = source_backend_factory
         self.target_backend_factory = target_backend_factory
@@ -1129,7 +1137,6 @@ class BuilderManager(BaseManager):
             self.arg_builder_classes = [builder_class]
         self.default_builder_class = self.arg_builder_classes[0] or DataBuilder
         self.builder_classes = {}
-        self.poll_schedule = poll_schedule
         self.setup_log()
 
     def clean_stale_status(self):
@@ -1188,7 +1195,7 @@ class BuilderManager(BaseManager):
         return builder_class
 
     def register_builder(self, build_name):
-        # will use partial to postponse object creations and their db connection
+        # will use partial to postpone object creations and their db connection
         # as we don't want to keep connection alive for undetermined amount of time
         # declare source backend
         def create(build_name):
@@ -1487,7 +1494,7 @@ class BuilderManager(BaseManager):
     def clean_temp_collections(self, build_name, date=None, prefix=""):
         """
         Delete all target collections created from builder named
-        "build_name" at given date (or any date is none given -- carefull...).
+        "build_name" at given date (or any date is none given -- careful ...).
         Date is a string (YYYYMMDD or regex)
         Common collection name prefix can also be specified if needed.
         """

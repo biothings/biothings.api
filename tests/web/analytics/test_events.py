@@ -140,7 +140,3 @@ def test_event_ga4_2():
     )
     print(event.to_GA4_payload("GA4_MEASUREMENT_ID"))
     print(event.to_GA4_payload("GA4_MEASUREMENT_ID", 2))
-
-
-if __name__ == "__main__":
-    test_event_2()

@@ -105,6 +105,8 @@ hub_requires = hubcore_requires + [
 
 # minimal requirements for to run biothings CLI
 cli_requires = [
+    "aiocron==1.8",  # setup scheduled jobs
+    "jsonschema>=2.6.0",
     "typer>=0.12.1",  # required for CLI, also install rich package with [all]
 ]
 

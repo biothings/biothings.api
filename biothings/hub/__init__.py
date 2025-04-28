@@ -325,7 +325,7 @@ class HubCommands(OrderedDict):
         super().__setitem__(k, v)
 
 
-class HubServer(object):
+class HubServer:
     DEFAULT_FEATURES = [
         "config",
         "job",
@@ -601,8 +601,6 @@ class HubServer(object):
         return args
 
     def configure_job_manager(self):
-        import asyncio
-
         loop = asyncio.get_event_loop()
         from biothings.utils.manager import JobManager
 

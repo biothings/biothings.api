@@ -122,12 +122,3 @@ async def test_send_GA4_request_max_retries():
 
             # Ensure the post method was called max_retries + 1 times
             assert len(responses._responses) == channel.max_retries + 1
-
-
-if __name__ == "__main__":
-    asyncio.run(test_send_Slack())
-    asyncio.run(test_send_GA())
-    asyncio.run(test_send_GA4())
-    asyncio.run(test_send_GA4_request_retries())
-    asyncio.run(test_send_GA4_request_max_retries())
-    print("Tests passed!")

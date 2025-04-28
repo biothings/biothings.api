@@ -637,7 +637,7 @@ def id_feeder(
                 logger.exception("Couldn't set final cache filename, building cache failed")
 
 
-def check_document_size(doc):
+def check_document_size(doc) -> True:
     """
     Return True if doc isn't too large for mongo DB
     """

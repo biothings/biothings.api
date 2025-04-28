@@ -7,11 +7,14 @@ GET /v1/metadata/fields
 """
 
 import sys
+
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
 
 class TestMetadata(BiothingsWebAppTest):
+
+    TEST_DATA_DIR_NAME = "data"
 
     @property
     def config(self):
@@ -31,6 +34,9 @@ class TestMetadata(BiothingsWebAppTest):
         """
         res = self.request("/v1/metadata").json()
         assert res["biothing_type"] == "gene"
+
+        res = self.request("/v1/metadata?dev").json()
+        assert res["_indices"] == ["bts_test"]
 
     def test_01_meta_dev(self):
         """GET /v1/metadata?dev
