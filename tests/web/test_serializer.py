@@ -39,7 +39,3 @@ def test_yaml_01():
 def test_url_01():
     url = serializer.URL("http://www.mygene.info/v1/gene/1017?fields=symbol&format=html")
     assert url.remove() == "http://www.mygene.info/v1/gene/1017?fields=symbol"
-
-
-if __name__ == "__main__":
-    print(test_url_01())

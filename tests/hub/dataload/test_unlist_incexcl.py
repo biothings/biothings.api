@@ -156,7 +156,3 @@ class TestUnlistIncExclFunction(unittest.TestCase):
         data = {"key": {"subkey1": ["subvalue1"], "subkey2": ["subvalue2"]}}
         expected = {"key": {"subkey1": "subvalue1", "subkey2": ["subvalue2"]}}
         self.assertEqual(unlist_incexcl(data, include_keys=["key.subkey1"], exclude_keys=["key.subkey2"]), expected)
-
-
-if __name__ == "__main__":
-    unittest.main()

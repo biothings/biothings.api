@@ -10,7 +10,7 @@ import subprocess
 import sys
 import textwrap
 import urllib.parse
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import jsonschema
 import yaml
@@ -131,7 +131,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         df = pathlib.Path(plugin["download"]["data_folder"])
         return pathlib.Path(df, "manifest.json").exists() or pathlib.Path(df, "manifest.yaml").exists()
 
-    def validate_manifest(self, manifest: dict):
+    def validate_manifest(self, manifest: Dict):
         """
         Validate a manifest instance using the biothings-manifest schema.
 
@@ -193,7 +193,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         else:
             self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
 
-    def get_code_for_mod_name(self, mod_name):
+    def get_code_for_mod_name(self, plugin_directory: Union[str, pathlib.Path], mod_name: str) -> Tuple[str, str]:
         """
         Returns string literal and name of function, given a path
 
@@ -206,32 +206,47 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 - name of the function
         """
         try:
-            mod, funcname = map(str.strip, mod_name.split(":"))
-        except ValueError as e:
+            module, funcname = map(str.strip, mod_name.split(":"))
+        except ValueError:
             raise LoaderException(
-                "'Wrong format for '%s', it must be defined following format 'module:func': %s" % (mod_name, e)
+                "Invalid format for module '%s', it must be use the following format 'module:func'", mod_name
             )
-        modpath = self.plugin_path_name + "." + mod
-        try:
-            pymod = importlib.import_module(modpath)
-            # self.logger.info("Imported custom module %s for plugin %s", modpath, self.plugin_path_name)
-        except (ImportError, TypeError):
-            # Some data plugins use BioThings generic parser, e.g. CHEBI plugin uses {"parser" : "hub.dataload.data_parsers:load_obo"}
+
+        plugin_directory = pathlib.Path(plugin_directory).resolve().absolute()
+        module_file = plugin_directory.joinpath(module).with_suffix(".py")
+
+        if module_file.exists():  # Plugin specific module
+            module_spec = importlib.util.spec_from_file_location(module, module_file)
+            plugin_module = importlib.util.module_from_spec(module_spec)
+            module_spec.loader.exec_module(plugin_module)
+            self.logger.debug("Imported custom module %s for plugin %s", plugin_module, self.plugin_path_name)
+        else:  # Generic biothings hub module
+            # Some data plugins use BioThings generic parser.
+            # >>> pending.api/plugins/doid/manifest.json {"parser": "hub.dataload.data_parsers:load_obo"}
+            # >>> pending.api/plugins/mondo/manifest.json {"parser": "hub.dataload.data_parsers:load_obo"}
+            # >>> pending.api/plugins/ncit/manifest.json {"parser": "hub.dataload.data_parsers:load_obo"}
+            # >>> pending.api/plugins/go/manifest.json {"parser": "hub.dataload.data_parsers:load_obo"}
+            # >>> pending.api/plugins/chebi/manifest.json {"parser": "hub.dataload.data_parsers:load_obo"}
             # In such cases, `self.plugin_path_name` is not part of the module path.
-            pymod = importlib.import_module(mod)
-            # self.logger.info("Imported generic module %s for plugin %s", mod, self.plugin_path_name)
-        # reload in case we need to refresh plugin's code
-        importlib.reload(pymod)
-        assert funcname in dir(pymod), "%s not found in module %s" % (funcname, pymod)
-        func = getattr(pymod, funcname)
-        # fetch source and indent to class method level in the template
-        strfunc = inspect.getsource(func)
+            plugin_module = importlib.import_module(module)
+            importlib.reload(plugin_module)
+            self.logger.debug("Imported generic module %s for plugin %s", plugin_module, self.plugin_path_name)
+
+        module_function = getattr(plugin_module, funcname, None)
+        if module_function is None:
+            missing_function_error = f"Unable to find function {funcname} in loaded module {plugin_module}"
+            raise LoaderException(missing_function_error)
+
+        strfunc = inspect.getsource(module_function)
+
         # always indent with spaces, normalize to avoid mixed indenting chars
         indentfunc = textwrap.indent(strfunc.replace("\t", "    "), prefix="    ")
 
         return indentfunc, funcname
 
-    def get_dumper_dynamic_class(self, dumper_section: dict, metadata: dict):
+    def get_dumper_dynamic_class(
+        self, plugin_directory: Union[str, pathlib.Path], dumper_section: Dict, metadata: Dict
+    ):
         if dumper_section.get("data_url"):
             if not isinstance(dumper_section["data_url"], list):
                 dumper_urls = [dumper_section["data_url"]]
@@ -271,7 +286,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 dumper_configuration["__metadata__"] = {}
 
             if dumper_section.get("release"):
-                indentfunc, func = self.get_code_for_mod_name(dumper_section["release"])
+                indentfunc, func = self.get_code_for_mod_name(plugin_directory, dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
                 dumper_configuration["SET_RELEASE_FUNC"] = (
                     """
@@ -323,7 +338,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         else:
             raise LoaderException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
 
-    def get_uploader_dynamic_class(self, uploader_section, metadata, sub_source_name=""):
+    def get_uploader_dynamic_class(
+        self, plugin_directory: Union[str, pathlib.Path], uploader_section, metadata, sub_source_name=""
+    ):
         if uploader_section.get("parser"):
             uploader_name = self.plugin_name.capitalize() + sub_source_name + "Uploader"
             confdict = {
@@ -335,7 +352,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 mod, func = uploader_section.get("parser").split(":")
                 # make sure the parser module is able to load
                 # otherwise, the error log should be shown in the UI
-                self.get_code_for_mod_name(uploader_section["parser"])
+                self.get_code_for_mod_name(plugin_directory, uploader_section["parser"])
                 confdict["PARSER_MOD"] = mod
                 confdict["PARSER_FUNC"] = func
                 if uploader_section.get("parser_kwargs"):
@@ -364,15 +381,19 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         except ImportError:
                             # When relative import fails, try to import it directly
                             import sys
-                            sys.path.insert(0, ".")
+                            import importlib
+                            sys.path.insert(0, \"{plugin_directory}\")
+                            import {mod}
+                            importlib.reload({mod})
                             from {mod} import {func} as parser_func
                     parser_kwargs = {parser_kwargs_serialized}
                     """
                     )
-            except ValueError:
-                raise LoaderException(
-                    "'parser' must be defined as 'module:parser_func' but got: '%s'" % uploader_section["parser"]
+            except ValueError as value_error:
+                loader_error_message = (
+                    f"`parser` must be defined as `module:parser_func` but got: `{uploader_section['parser']}`"
                 )
+                raise LoaderException(loader_error_message) from value_error
             try:
                 ondups = uploader_section.get("on_duplicates")
                 storage_class = storage.get_storage_class(ondups)
@@ -407,7 +428,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     confdict["__metadata__"] = {}
 
                 if uploader_section.get("parallelizer"):
-                    indentfunc, func = self.get_code_for_mod_name(uploader_section["parallelizer"])
+                    indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["parallelizer"])
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
@@ -427,7 +448,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     confdict["JOBS_FUNC"] = ""
 
                 if uploader_section.get("mapping"):
-                    indentfunc, func = self.get_code_for_mod_name(uploader_section["mapping"])
+                    indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
                     confdict["MAPPING_FUNC"] = (
                         """
@@ -466,12 +487,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         else:
             raise LoaderException("Invalid manifest, expecting 'parser' key in 'uploader' section")
 
-    def get_uploader_dynamic_classes(self, uploader_section, metadata, data_plugin_folder):
+    def get_uploader_dynamic_classes(self, plugin_directory: Union[str, pathlib.Path], uploader_section, metadata):
         uploader_classes = []
         for uploader_conf in uploader_section:
             sub_source_name = uploader_conf.get("name", "")
-            uploader_class = self.get_uploader_dynamic_class(uploader_conf, metadata, sub_source_name)
-            uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
+            uploader_class = self.get_uploader_dynamic_class(plugin_directory, uploader_conf, metadata, sub_source_name)
+            uploader_class.DATA_PLUGIN_FOLDER = plugin_directory
 
             # register class in module so it can be pickled easily
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
@@ -481,7 +502,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest: dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
+    def interpret_manifest(self, manifest: Dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
         """
         Handles the interpretation and loading of the manifest contents
         to determine how to build the dumper and uploader classes,
@@ -516,7 +537,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.logger.info("Installed requirement(s) %s", uninstalled_requirements)
 
         if manifest.get("dumper"):
-            assisted_dumper_class = self.get_dumper_dynamic_class(manifest["dumper"], manifest.get("__metadata__"))
+            assisted_dumper_class = self.get_dumper_dynamic_class(
+                data_plugin_folder, manifest["dumper"], manifest.get("__metadata__")
+            )
             assisted_dumper_class.DATA_PLUGIN_FOLDER = data_plugin_folder
             self.__class__.dumper_manager.register_classes([assisted_dumper_class])
             # register class in module so it can be pickled easily
@@ -526,7 +549,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
         if manifest.get("uploader"):
             assisted_uploader_class = self.get_uploader_dynamic_class(
-                manifest["uploader"], manifest.get("__metadata__")
+                data_plugin_folder, manifest["uploader"], manifest.get("__metadata__")
             )
             assisted_uploader_class.DATA_PLUGIN_FOLDER = data_plugin_folder
             self.__class__.uploader_manager.register_classes([assisted_uploader_class])
@@ -536,7 +559,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             ] = assisted_uploader_class
         if manifest.get("uploaders"):
             assisted_uploader_classes = self.get_uploader_dynamic_classes(
-                manifest["uploaders"], manifest.get("__metadata__"), data_plugin_folder
+                data_plugin_folder, manifest["uploaders"], manifest.get("__metadata__")
             )
             self.__class__.uploader_manager.register_classes(assisted_uploader_classes)
         if manifest.get("display_name"):

@@ -4,7 +4,7 @@ import logging
 import json
 import time
 import types
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 
 from sqlite3 import IntegrityError
 
@@ -27,7 +27,7 @@ class BaseStorage:
         self.temp_collection = db[dest_col_name]
         self.logger = logger
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int) -> int:
         """
         Process iterable to store data. Must return the number
         of inserted records (even 0 if none)
@@ -48,7 +48,7 @@ class NoStorage(BaseStorage):
     (but it will respect storage interface)
     """
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("NoStorage stores nothing, skip...")
         return 0
 
@@ -58,7 +58,7 @@ class NoStorage(BaseStorage):
 
 
 class BasicStorage(BaseStorage):
-    def doc_iterator(self, doc_d: list[dict], batch: bool = True, batch_size: int = 10000):
+    def doc_iterator(self, doc_d: List[Dict], batch: bool = True, batch_size: int = 10000):
         if isinstance(doc_d, (types.GeneratorType, list)) and batch:
             for doc_li in iter_n(doc_d, n=batch_size):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
@@ -85,7 +85,7 @@ class BasicStorage(BaseStorage):
                 doc_li = [d for d in doc_li if self.check_doc_func(d)]
                 yield doc_li
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         total = 0
@@ -124,7 +124,7 @@ class MergerStorage(BasicStorage):
     merge_func = merge_struct
     process_count = 0
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.process_count += 1
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
@@ -293,7 +293,7 @@ class RootKeyMergerStorage(MergerStorage):
 
 
 class IgnoreDuplicatedStorage(BasicStorage):
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -325,7 +325,7 @@ class IgnoreDuplicatedStorage(BasicStorage):
 
         return total
 
-    def unique_documents(self, documents: Iterable[dict]) -> List[dict]:
+    def unique_documents(self, documents: Iterable[Dict]) -> List[Dict]:
         """
         Generates the set of id values from the provided batch of documents
         due to our documents being unhashable
@@ -348,7 +348,7 @@ class NoBatchIgnoreDuplicatedStorage(BasicStorage):
     and is thus way faster...
     """
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()
@@ -383,7 +383,7 @@ class UpsertStorage(BasicStorage):
     Insert or update documents, based on _id
     """
 
-    def process(self, iterable: list[dict], batch_size: int, max_batch_num: int = None) -> int:
+    def process(self, iterable: List[Dict], batch_size: int, max_batch_num: int = None) -> int:
         self.logger.info("Uploading to the DB...")
         t0 = time.time()
         tinner = time.time()

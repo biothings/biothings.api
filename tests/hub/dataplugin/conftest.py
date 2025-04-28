@@ -61,7 +61,7 @@ def mock_data_hosting(temporary_mock_data):
                 self.server_close()
 
     server_address = ""
-    server_port = 5000
+    server_port = 4301
     server_coupling = (server_address, server_port)
 
     request_handler_callback = functools.partial(http.server.SimpleHTTPRequestHandler, directory=temporary_mock_data)
@@ -118,6 +118,6 @@ def plugin(temporary_data_storage, mock_data_hosting, request):
     # This is so when we attempt to import the modules via importlib
     # (version, parser, etc ...) we can properly find the modules we've moved
     # off the python system path
-    sys.path.append(str(mock_plugin_directory))
+    sys.path.insert(0, str(mock_plugin_directory))
     yield mock_plugin_directory
     sys.path.remove(str(mock_plugin_directory))

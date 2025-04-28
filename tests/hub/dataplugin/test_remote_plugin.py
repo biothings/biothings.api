@@ -71,7 +71,6 @@ def test_assistant_manager():
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail("WIP")
 async def test_remote_plugin_registration(tmp_path_factory: _pytest.tmpdir.TempPathFactory):
     """
     Tests the ability register a remote url using the internals of the biothings.api

@@ -18,7 +18,8 @@ class TestDataTransform(unittest.TestCase):
         A 'deep' merge is performed.
         """
         res = merge_struct(self.doc1, self.doc2)
-        self.assertEquals(res["_id"], "ALELTFCQZDXAMQ-UHFFFAOYSA-N")
+        self.assertEqual(res["_id"], "ALELTFCQZDXAMQ-UHFFFAOYSA-N")
+
         # res = unii.preferred_term = ['drugnameA', 'drugnameB']
         self.assertTrue(isinstance(res["unii"]["preferred_term"], list))
 
@@ -27,8 +28,9 @@ class TestDataTransform(unittest.TestCase):
         Test the merge_root_keys utility function
         """
         res = merge_root_keys(self.doc1, self.doc2, exclude=["_id"])
-        self.assertEquals(res["_id"], "ALELTFCQZDXAMQ-UHFFFAOYSA-N")
+        self.assertEqual(res["_id"], "ALELTFCQZDXAMQ-UHFFFAOYSA-N")
+
         # res = unii = [{'preferred_term': 'drugnameA'}, {'preferred_term': 'drugnameB'}]
         self.assertTrue(isinstance(res["unii"], list))
-        self.assertEquals(res["unii"][0]["preferred_term"], "drugnameA")
-        self.assertEquals(res["unii"][1]["preferred_term"], "drugnameB")
+        self.assertEqual(res["unii"][0]["preferred_term"], "drugnameA")
+        self.assertEqual(res["unii"][1]["preferred_term"], "drugnameB")

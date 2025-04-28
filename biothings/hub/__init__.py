@@ -601,8 +601,6 @@ class HubServer:
         return args
 
     def configure_job_manager(self):
-        import asyncio
-
         loop = asyncio.get_event_loop()
         from biothings.utils.manager import JobManager
 

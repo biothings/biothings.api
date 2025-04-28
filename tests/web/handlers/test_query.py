@@ -5,12 +5,18 @@ GET /query
 POST /query
 
 """
+
 import sys
+
+import pytest
+
 from biothings.tests.web import BiothingsWebAppTest
 from biothings.web.settings.configs import ConfigModule
 
 
 class TestQueryKeywords(BiothingsWebAppTest):
+
+    TEST_DATA_DIR_NAME = "data"
 
     @property
     def config(self):
@@ -148,7 +154,8 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=__all__&from=99").json()
-        assert len(res["hits"]) == 1
+        number_hits = len(res["hits"])
+        assert number_hits == 1
 
     def test_11_from_oob(self):
         """GET /v1/query?q=__all__&from=10001
@@ -588,11 +595,15 @@ class TestQueryKeywords(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=__all__&fetch_all").json()
-        assert len(res["hits"]) == 60
+        number_hits = len(res["hits"])
+        assert number_hits == 60
+
         scroll_id = res["_scroll_id"]
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
-        assert len(res["hits"]) == 40
+        number_hits = len(res["hits"])
+        assert number_hits == 40
+
         scroll_id = res["_scroll_id"]
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
@@ -871,7 +882,8 @@ class TestQueryString(BiothingsWebAppTest):
         }
         """
         res = self.request("/v1/query?q=gene&userquery=prefix").json()
-        assert len(res["hits"]) == 5
+        num_hits = len(res["hits"])
+        assert num_hits == 5
 
     def test_11_userquery_query_rawquery(self):
         """GET /v1/query?q=cdk2&userquery=prefix&rawquery
@@ -1094,7 +1106,10 @@ class TestQueryMatch(BiothingsWebAppTest):
         res = self.request("query", method="POST", json=payload, expect=200).json()
 
         assert isinstance(res, dict)
-        assert "msg" not in res
+
+        response_keys = set(res.keys())
+        assert "msg" not in response_keys
+
         assert len(res["hits"]) == res["max_total"]
 
     def test_25_analyzer(self):

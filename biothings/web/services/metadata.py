@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime
 from functools import reduce
 from operator import add
-from typing import Union
+from typing import Dict, Union
 import asyncio
 import logging
 
@@ -61,7 +61,7 @@ class BiothingsMetadata:
 
 
 class BiothingsESMetadata(BiothingsMetadata):
-    def __init__(self, indices: dict, client: Union[AsyncElasticsearch, Elasticsearch]):
+    def __init__(self, indices: Dict, client: Union[AsyncElasticsearch, Elasticsearch]):
         super().__init__()
 
         if not indices:
