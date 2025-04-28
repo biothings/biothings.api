@@ -591,7 +591,7 @@ class AdvancedPluginLoader(BasePluginLoader):
             try:
                 self.__class__.dumper_manager.register_source(modpath)
             except Exception as gen_exc:
-                self.logger.exeception(gen_exc)
+                self.logger.exception(gen_exc)
                 self.logger.error("Couldn't register dumper from module '%s': %s", (modpath, gen_exc))
                 self.invalidate_plugin("Unable to load dumper module for plugin: '%s'", df)
 
@@ -599,7 +599,7 @@ class AdvancedPluginLoader(BasePluginLoader):
             try:
                 self.__class__.uploader_manager.register_source(modpath)
             except Exception as gen_exc:
-                self.logger.exeception(gen_exc)
+                self.logger.exception(gen_exc)
                 self.logger.error("Couldn't register uploader from module '%s': %s", (modpath, gen_exc))
                 self.invalidate_plugin("Missing plugin folder '%s'", df)
         else:

@@ -49,17 +49,13 @@ def main():
     cli_rich_traceback_flag = os.environ.get("BTCLI_RICH_TRACEBACK", False)
 
     cli = setup_commandline_configuration(debug=cli_debug_flag, rich_traceback=cli_rich_traceback_flag)
-    logging_level = logging.INFO
+    logging_level = logging.WARNING
     if cli_debug_flag:
         logging_level = logging.DEBUG
     setup_logging_configuration(logging_level)
     setup_biothings_configuration()
 
     from biothings.cli.dataplugin import dataplugin_application
-    from biothings.cli.hub import hub_application
-    from biothings.cli.manifest import manifest_application
 
     cli.add_typer(dataplugin_application, name="dataplugin")
-    cli.add_typer(hub_application, name="dataplugin-hub")
-    cli.add_typer(manifest_application, name="manifest")
     return cli()
