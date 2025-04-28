@@ -8,8 +8,8 @@ job handling, and data manipulation should logically exist here
 """
 
 import asyncio
+import json
 import logging
-import math
 import os
 import pathlib
 import shutil
@@ -25,27 +25,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from biothings.cli.manager import CLIJobManager
 from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-from biothings.cli.structure import TEMPLATE_DIRECTORY
 
 
 logger = logging.getLogger(name="biothings-cli")
-
-
-def run_sync_or_async_job(job_manager: CLIJobManager, func: Callable, *args, **kwargs):
-    """
-    When func is defined as either normal or async function/method, we will call this function properly and return the results.
-    For an async function/method, we will use CLIJobManager to run it.
-    """
-    if asyncio.iscoroutinefunction(func):
-        kwargs["job_manager"] = job_manager
-        return job_manager.loop.run_until_complete(func(*args, **kwargs))
-
-    return func(*args, **kwargs)
 
 
 def get_plugin_name(plugin_name=None, with_working_dir=True):
@@ -144,19 +130,19 @@ def show_hubdb_content():
     )
 
 
-def process_inspect(source_name, mode, limit, merge, logger, do_validate, output=None):
+def process_inspect(source_name, mode, limit, merge) -> dict:
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
     from biothings.utils import hub_db
     from biothings.hub.datainspect.doc_inspect import (
-        inspect_docs,
-        get_converters,
-        merge_record,
+        clean_big_nums,
         compute_metadata,
-        stringify_inspect_doc,
-        flatten_and_validate,
+        get_converters,
+        inspect_docs,
+        merge_record,
         run_converters,
+        stringify_inspect_doc,
     )
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
@@ -182,6 +168,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     converters, mode = get_converters(mode)
     for m in mode:
         inspected.setdefault(m, {})
+
     cur = src_cols.find()
     res = inspect_docs(
         cur,
@@ -202,6 +189,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
         if m == "mapping":
             try:
                 inspected["mapping"] = es.generate_es_mapping(inspected["mapping"])
+
                 # metadata for mapping only once generated
                 inspected = compute_metadata(inspected, m)
             except es.MappingError as e:
@@ -212,23 +200,21 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
 
     res = stringify_inspect_doc(inspected)
     _map = {"results": res, "data_provider": repr(data_provider), "duration": timesofar(t0)}
-
-    # _map["started_at"] = started_at
-
-    def clean_big_nums(k, v):
-        # TODO: same with float/double? seems mongo handles more there ?
-        if isinstance(v, int) and v > 2**64:
-            return k, math.nan
-        else:
-            return k, v
-
     dict_traverse(_map, clean_big_nums)
-    mapping = _map["results"].get("mapping", {})
+    return _map
+
+
+def display_inspection_table(source_name: str, mode: str, inspection_mapping: dict, validate: bool = True):
+    from biothings.hub.datainspect.doc_inspect import flatten_and_validate
+
+    mapping = inspection_mapping["results"].get("mapping", {})
     type_and_stats = {
         source_name: {
-            _mode: flatten_and_validate(_map["results"].get(_mode, {}), do_validate) for _mode in ["type", "stats"]
+            _mode: flatten_and_validate(inspection_mapping["results"].get(_mode, {}), validate)
+            for _mode in ["type", "stats"]
         }
     }
+
     mapping_table = None
     if "mapping" in mode and mapping:
         if mapping.get("errors"):
@@ -242,6 +228,7 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
             )
             mapping_table.add_column(f"Sub source name: [bold]{source_name}[/bold]", justify="left", style="cyan")
             mapping_table.add_row(to_json(mapping, indent=True, sort_keys=True))
+
     report = []
     problem_summary = []
     if "stats" in mode:
@@ -315,19 +302,19 @@ def process_inspect(source_name, mode, limit, merge, logger, do_validate, output
     elif mapping_table:
         console.print(mapping_table)
 
-    if "mapping" in mode and mapping and output:
-        # TODO: the following block is commented out because we don't need to append the mapping info to the existing. Delete this block if we verify it's not needed.
-        # with open(output, "w+") as fp:
-        #     current_content = fp.read()
-        #     if current_content:
-        #         current_content = load_json(current_content)
-        #     else:
-        #         current_content = {}
-        #     current_content.update(mapping)
-        #     fp.write(to_json(current_content, indent=True, sort_keys=True))
-        with open(output, "w", encoding="utf-8") as fp:
-            fp.write(to_json(mapping, indent=True, sort_keys=True))
-            rprint(f"[green]Successfully wrote the mapping info to the JSON file: [bold]{output}[/bold][/green]")
+
+def write_mapping_to_file(output_file: str, mapping: Union[str, pathlib.Path]):
+    """
+    Takes the generated mapping data and writes it to a local file
+    """
+    if mapping is not None:
+        with open(output_file, "w", encoding="utf-8") as file_handle:
+            file_handle.write(to_json(mapping, indent=True, sort_keys=True))
+            rprint(
+                ("[green]Successfully wrote the mapping info to the JSON file: " f"[bold]{output_file}[/bold][/green]")
+            )
+    else:
+        rprint("[red]Mapping is empty nothing to write to JSON file[/red]")
 
 
 def get_manifest_content(working_dir: Union[str, pathlib.Path]) -> dict:
@@ -378,35 +365,37 @@ def show_uploaded_sources(working_dir, plugin_name):
     uploaders = get_uploaders(working_dir)
     src_db = hub_db.get_src_db()
     uploaded_sources, archived_sources, temp_sources = get_uploaded_collections(src_db, uploaders)
-    if not uploaded_sources:
-        console.print(
-            Panel(
-                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
-                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
-                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
-                + "Empty source!",
-                title="[bold]Upload[/bold]",
-                title_align="left",
-            )
+
+    try:
+        database_path = pathlib.Path(working_dir).resolve().absolute().joinpath(src_db.dbfile)
+    except TypeError:
+        database_path = str(src_db.db_conn)
+    if uploaded_sources:
+        upload_source_repr = "\n        ".join(uploaded_sources)
+        archive_source_repr = "\n        ".join(archived_sources)
+        temp_source_repr = "\n        ".join(temp_sources)
+
+        upload_message = (
+            f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+            f"[green]Database Path:[/green] [bold]{database_path}[/bold]\n"
+            f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+            "    -[green] Collections:[/green]"
+            f"[bold]\n        {upload_source_repr}[/bold]\n"
+            "    -[green] Archived collections:[/green]"
+            f"[bold]\n        {archive_source_repr}[/bold]\n"
+            "    -[green] Temporary collections:[/green]"
+            f"[bold]\n        {temp_source_repr}[/bold]\n"
         )
     else:
-        console.print(
-            Panel(
-                f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
-                + f"[green]DB path:[/green] [bold]{working_dir}/{src_db.dbfile}[/bold]\n"
-                + f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
-                + "    -[green] Collections:[/green] [bold]\n        "
-                + "\n        ".join(uploaded_sources)
-                + "[/bold] \n"
-                + "    -[green] Archived collections:[/green][bold]\n        "
-                + "\n        ".join(archived_sources)
-                + "[/bold] \n"
-                + "    -[green] Temporary collections:[/green][bold]\n        "
-                + "\n        ".join(temp_sources),
-                title="[bold]Upload[/bold]",
-                title_align="left",
-            )
+        upload_message = (
+            f"[green]Source:[/green] [bold]{plugin_name}[/bold]\n"
+            f"[green]Database Path:[/green] [bold]{database_path}[/bold]\n"
+            f"[green]- Database:[/green] [bold]{src_db.name}[/bold]\n"
+            "No sources found from uploaded collection"
         )
+
+    upload_panel = Panel(upload_message, title="[bold]Upload[/bold]", title_align="left")
+    console.print(upload_panel)
 
 
 def remove_files_in_folder(folder_path):
@@ -471,3 +460,45 @@ def clean_uploaded_sources(working_dir, plugin_name):
         for source in uploaded_sources:
             src_db[source].drop()
         rich.print("[green]All collections are dropped![/green]")
+
+
+def show_source_build(build_instance: "DataBuilder", build_configuration_name: str):
+    """
+    A helper function to show the build information for the plugin source
+    """
+    console = Console()
+
+    build_configuration = build_instance.build_config
+    build_console_message = (
+        f"[green1]Build Configuration Name: [/green1] [bold]{build_configuration_name}[/bold]\n"
+        f"[green1]Build Version: [/green1] [bold]{build_instance.get_build_version()}[/bold]\n"
+        f"[green1]Builder Class: [/green1] [bold]{build_configuration['builder_class']}[/bold]\n"
+        f"[green1]Source(s):[/green1] [bold]{build_configuration['sources']}[/bold]\n"
+        f"[green1]Document Type:[/green1] [bold]{build_configuration['doc_type']}[/bold]\n"
+    )
+
+    build_panel = Panel(build_console_message, title="[bold]Build[/bold]", title_align="left")
+    console.print(build_panel)
+
+    build_console_message = (
+        f"[green1]Build Backend Source: [/green1] [bold]{build_configuration_name}[/bold]\n"
+        f"[green1]Build Backend Target: [/green1] [bold]{build_configuration_name}[/bold]\n"
+    )
+
+    build_panel = Panel(build_console_message, title="[bold]Build Backend[/bold]", title_align="left")
+    console.print(build_panel)
+
+
+async def show_source_index(index_name: str, index_manager: "IndexManager", elasticsearch_mapping: dict):
+    """
+    A helper function to show the elasticsearch index for the plugin source
+    """
+    index_lookup = await index_manager.get_indexes_by_name(index_name)
+
+    console = Console()
+    index_console_message = (
+        f"[green1]Index Properties: [/green1] [bold]{json.dumps(index_lookup, indent=2, default=str)}[/bold]\n"
+        f"[green1]Elasticsearch Mapping: [/green1] [bold]{json.dumps(elasticsearch_mapping, indent=2)}[/bold]\n"
+    )
+    index_panel = Panel(index_console_message, title="[bold]Index[/bold]", title_align="left")
+    console.print(index_panel)

@@ -27,8 +27,8 @@ class BaseSourceManager(BaseManager):
     # define the class manager will look for. Set in a subclass
     SOURCE_CLASS = None
 
-    def __init__(self, job_manager: JobManager, *args, datasource_path: Union[str, Path] = None, **kwargs):
-        super().__init__(job_manager, *args, **kwargs)
+    def __init__(self, job_manager: JobManager, poll_schedule=None, datasource_path: Union[str, Path] = None):
+        super().__init__(job_manager, poll_schedule)
 
         if datasource_path is None:
             datasource_path = "dataload.sources"
@@ -37,7 +37,6 @@ class BaseSourceManager(BaseManager):
         self.default_src_path = datasource_path
 
         self.conn = get_src_conn()
-        self.poll_schedule = None
 
     def filter_class(self, klass):
         """
@@ -92,15 +91,16 @@ class BaseSourceManager(BaseManager):
         in which case it will try to find information from default path.
         https://peps.python.org/pep-0451/
         """
-        logger.info("Attempting to load module %s on path %s", src, self.default_src_path)
+        logger.info("Attempting to load module %s", src)
+
+        if src in sys.modules:
+            logger.warning("%s module discovered in sys.modules", src)
+
         if isinstance(src, str):
             try:
                 package_init_file = Path(self.default_src_path).joinpath("__init__.py")
                 module_specification = importlib.util.spec_from_file_location(name=src, location=str(package_init_file))
                 source_module = importlib.util.module_from_spec(module_specification)
-                if src in sys.modules:
-                    logger.warning("%s module discovered in sys.modules", src)
-                sys.modules[src] = source_module
                 module_specification.loader.exec_module(source_module)
                 logger.info("Successfully loaded module %s", source_module)
             except ImportError as import_err:

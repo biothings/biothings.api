@@ -13,7 +13,6 @@ from biothings.utils.validator import create_pydantic_model
 from biothings.hub.dataload.manager import BaseSourceManager
 
 
-
 class SourceManager(BaseSourceManager):
     """
     Helper class to get information about a datasource,
