@@ -23,7 +23,8 @@ authors = [
 requires-python = ">=3.8"
 description = "a toolkit for building high-performance data & knowledge APIs in biology"
 readme = "README.md"
-license = "Apache-2.0"
+# license = "Apache-2.0"               # when we drop Python 3.8 support, we can use this new format
+license = {text = "Apache-2.0"}        # this is an old format, but works for Python 3.8+
 keywords = [
     "biology",
     "medicine",
