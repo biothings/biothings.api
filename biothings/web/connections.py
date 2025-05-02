@@ -27,7 +27,8 @@ _should_log = run_once()
 
 def _log_pkg():
     es_ver = elasticsearch.__version__
-    es_dsl_ver = elasticsearch_dsl.__version__
+    es_dsl_ver = elasticsearch_dsl.__versionstr__
+
     logger.info("Elasticsearch Package Version: %s", ".".join(map(str, es_ver)))
     logger.info("Elasticsearch DSL Package Version: %s", ".".join(map(str, es_dsl_ver)))
 
