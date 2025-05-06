@@ -94,7 +94,7 @@ class ESIndex(BaseESIndex):
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
 
-            self.logger.warning("Discovered errors during the bulk index task. " "Defaulting to 0 indexed documents")
+            self.logger.warning("Discovered errors during the bulk index task. Defaulting to 0 indexed documents")
             return 0
 
     # NOTE
