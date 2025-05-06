@@ -97,7 +97,7 @@ class BaseSourceManager(BaseManager):
                         # (SyntaxError, ImportError) is not sufficient to catch
                         # all possible failures, for example a ValueError
                         # in module definition..
-                        logger.debug("Couldn't import %s: %s", modpath, e)
+                        logger.debug("Couldn't import %s: %s", modpath, gen_exc)
                         continue
             except TypeError as e:
                 logger.warning("Can't register source '%s', something's wrong with path: %s", source_module, e)
