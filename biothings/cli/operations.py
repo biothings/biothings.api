@@ -322,8 +322,8 @@ async def do_dump_and_upload(plugin_name: str) -> None:
     """
     Perform both dump and upload for the given plugin
     """
-    await do_dump(plugin_name, show_dumped=True)
-    await do_upload(plugin_name, show_uploaded=True)
+    await do_dump(plugin_name=plugin_name, show_dumped=True)
+    await do_upload(plugin_name=plugin_name, show_uploaded=True)
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
