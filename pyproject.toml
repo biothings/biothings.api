@@ -134,9 +134,10 @@ docker_ssh = [
 ]
 # extra requirements to develop biothings
 dev = [
-    "pytest-mock",
-    "pytest-asyncio",
     "aioresponses",
+    "mongomock",
+    "pytest-asyncio",
+    "pytest-mock",
 ]
 # extra requirements for building docs
 docs = ["sphinx>=5.3.0", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
