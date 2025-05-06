@@ -1,6 +1,160 @@
+[build-system]
+requires = ["setuptools>=67.4.0", "gitpython>=3.1.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."] # list of folders that the contains the packages. We need it to be at root due to flat-layout
+include = ["biothings*"]  # package names should match these glob patterns
+exclude = ["tests*"]  # exclude packages matching these glob patterns
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.tpl", "*.json", "*.html", "config.py.sample", ".git_info"]
+
+[tool.setuptools.dynamic]
+version = {attr = "biothings.__version__"}
+
+[project]
+name="biothings"
+dynamic = ["version"]    # version is dynamically generated from setup.py
+authors = [
+    {name = "The BioThings Team", email="dev@biothings.io"},
+]
+requires-python = ">=3.8"
+description = "a toolkit for building high-performance data & knowledge APIs in biology"
+readme = "README.md"
+# license = "Apache-2.0"               # when we drop Python 3.8 support, we can use this new format
+license = {text = "Apache-2.0"}        # this is an old format, but works for Python 3.8+
+keywords = [
+    "biology",
+    "medicine",
+    "annotation",
+    "data",
+    "knowledge",
+    "web",
+    "service",
+    "api",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Development Status :: 5 - Production/Stable",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Utilities",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "requests>=2.21.0",
+    'tornado==6.1.0; python_version < "3.7.0"',
+    'tornado==6.2.0; python_version == "3.7.0"',
+    'tornado==6.4.2; python_version >= "3.8.0"',
+    "gitpython>=3.1.0",
+    "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
+    "elasticsearch-dsl>=7, <8; python_version < '3.7.0'",
+    "elasticsearch[async]>=8, <9; python_version >= '3.7.0'",
+    "elasticsearch-dsl>=8, <9; python_version >= '3.7.0'",
+    'singledispatchmethod; python_version < "3.8.0"',
+    'dataclasses; python_version < "3.7.0"',
+    "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
+    "PyYAML>=5.1",
+    "orjson>=3.6.1",  # a faster json lib supports inf/nan and datetime, v3.6.1 is the last version supports Python 3.6
+]
+
+[project.optional-dependencies]
+# extra requirements for biothings.web
+web_extra = [
+    "msgpack>=0.6.1",  # support format=msgpack
+    "sentry-sdk>=1.5.3",  # new sentry package
+]
+# extra requirements for biothings.web to use AWS OpenSearch
+opensearch = [
+    "boto3",  # for AWS OpenSearch connection
+    "requests-aws4auth",  # for AWS OpenSearch connection
+]
+# minimal requirements for running biothings.hub, e.g. in CLI mode
+hubcore = [
+    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+]
+# extra requirements to run a full biothings.hub
+hub = [
+    "pymongo>=4.1.0,<5.0",
+    "beautifulsoup4",  # used in dumper.GoogleDriveDumper
+    "aiocron==1.8",  # setup scheduled jobs
+    # "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
+    "asyncssh>=2.19.0",  # needs libffi-dev installed (apt-get)
+    # "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    "psutil",
+    "jsonpointer",  # for utils.jsonpatch
+    "IPython",  # for interactive hub console
+    "multiprocessing_on_dill",  # can replace pickler in concurrent.futures
+    "dill",  # a pickle alternative with extra object type support
+    "prettytable",  # diff report renderer
+    "sockjs-tornado==1.0.7",  # websocket server for HubServer
+    "jsonschema>=2.6.0",
+    "pip",  # auto-install requirements from plugins
+    # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
+    # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
+    # "yapf",  # code reformatter, better results than autopep8
+    "black",  # code formatter
+    "boto3",  # for aws S3 access
+    "requests-aws4auth",  # aws s3 auth requests for autohub
+    'networkx>=2.1,<3.0; python_version >= "3.7.0"',  # datatransform
+    'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
+    "biothings_client>=0.2.6",  # datatransform (api client)
+    "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
+    "pytest",  # to run hub api pytests
+    "pydantic>=2.0",  # for source data validation
+]
+# minimal requirements for to run biothings CLI
+cli = [
+    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    "jsonschema>=2.6.0",
+    "typer>=0.12.1",  # required for CLI, also installs rich package
+]
+# if DockerContainerDumper is used, requires this Docker SDK for Python
+docker = [
+    "docker>=6.0.1",
+]
+# if DockerContainerDumper is used to connect to docker using ssh:// protocol, needs to install paramiko package
+docker_ssh = [
+    "docker[ssh]>=6.0.1",
+]
+# extra requirements to develop biothings
+dev = [
+    "pytest-mock",
+    "pytest-asyncio",
+    "aioresponses",
+]
+# extra requirements for building docs
+docs = ["sphinx>=5.3.0", "sphinx_rtd_theme>=2.0.0", "sphinx_reredirects>=0.1.3"]
+
+
+[project.urls]
+homepage = "https://biothings.io"
+source = "https://github.com/biothings/biothings.api"
+documentation = "https://docs.biothings.io"
+changelog = "https://github.com/biothings/biothings.api/blob/master/CHANGES.txt"
+issues = "https://github.com/biothings/biothings.api/issues"
+
+[project.scripts]
+biothings-cli = "biothings.cli:main"
+
 [tool.black]
 line-length = 120
-target-version = ['py36', 'py37', 'py38', 'py39', 'py310']
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313']
 extend-exclude = '''
 # A regex preceded with ^/ will apply only to files and directories
 # in the root of the project.

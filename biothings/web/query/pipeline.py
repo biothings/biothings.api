@@ -4,12 +4,12 @@ from collections import Counter
 from dataclasses import dataclass
 
 from elasticsearch.exceptions import (
-    ConnectionError,
-    RequestError,
-    NotFoundError,
-    ConflictError,
     AuthenticationException,
     AuthorizationException,
+    ConflictError,
+    ConnectionError,
+    NotFoundError,
+    RequestError,
     TransportError,
 )
 
@@ -78,7 +78,7 @@ def _simplify_ES_exception(exc, debug=False):
         root_cause = root_cause["root_cause"][0]["reason"]
         root_cause = root_cause.replace('"', "'").split("\n")
         for index, cause in enumerate(root_cause):
-            result["root_cuase_line_" + f"{index:02}"] = cause
+            result["root_cause_line_" + f"{index:02}"] = cause
     except IndexError:
         pass  # no root cause
     except Exception:
