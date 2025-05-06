@@ -8,7 +8,7 @@ import elasticsearch
 import pytest
 
 
-@pytest.mark.xfail("WIP: Have to figure out mongoDB / elasticsearch setup")
+@pytest.mark.xfail(reason="WIP: Have to figure out mongoDB / elasticsearch setup")
 def test_task_index(task_clients: Tuple[Callable, Callable]):
     from biothings.hub.dataindex.indexer_task import IndexingTask
 
@@ -20,7 +20,7 @@ def test_task_index(task_clients: Tuple[Callable, Callable]):
     task.index()
 
 
-@pytest.mark.xfail("WIP: Have to figure out mongoDB / elasticsearch setup")
+@pytest.mark.xfail(reason="WIP: Have to figure out mongoDB / elasticsearch setup")
 def test_task_resume(task_clients: Tuple[Callable, Callable]):
     from biothings.hub.dataindex.indexer_task import IndexingTask
 
@@ -38,7 +38,7 @@ def test_task_resume(task_clients: Tuple[Callable, Callable]):
     task.resume()
 
 
-@pytest.mark.xfail("WIP: Have to figure out mongoDB / elasticsearch setup")
+@pytest.mark.xfail(reason="WIP: Have to figure out mongoDB / elasticsearch setup")
 def test_elasticsearch_index():
     from biothings.hub.dataindex.indexer_task import ESIndex
 
