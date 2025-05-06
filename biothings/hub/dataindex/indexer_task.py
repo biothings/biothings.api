@@ -71,7 +71,7 @@ class ESIndex(BaseESIndex):
         id_set = {doc["_id"] for doc in res["hits"]["hits"]}
         return [_IDExists(_id, _id in id_set) for _id in ids]
 
-    def mindex(self, docs):
+    def mindex(self, docs) -> int:
         """Index and return the number of docs indexed."""
 
         def _action(doc):
@@ -93,6 +93,9 @@ class ESIndex(BaseESIndex):
                 reason = op_details.get("error", {}).get("reason")
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
+
+            self.logger.warning("Discovered errors during the bulk index task. " "Defaulting to 0 indexed documents")
+            return 0
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?
