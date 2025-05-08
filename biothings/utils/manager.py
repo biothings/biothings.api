@@ -20,10 +20,11 @@ except ImportError:
 
 try:
     import dill as pickle
-    import psutil
 except ImportError:
     # Suppress import error when we just run CLI
     pass
+
+import psutil
 
 import biothings.hub  # noqa
 from biothings import config
