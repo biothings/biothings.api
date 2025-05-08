@@ -2,7 +2,11 @@ import importlib
 import os
 from typing import Any, Dict, Iterable, List, Union
 
-from pydantic import ValidationError
+try:
+    from pydantic import ValidationError
+except ImportError:
+    # Suppress import error when we just run CLI
+    pass
 
 try:
     import black
