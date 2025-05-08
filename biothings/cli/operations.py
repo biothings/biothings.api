@@ -61,7 +61,6 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
-from biothings.cli.assistant import CLIAssistant
 from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.cli.utils import (
     clean_dumped_files,
@@ -75,7 +74,6 @@ from biothings.cli.utils import (
     show_uploaded_sources,
     write_mapping_to_file,
 )
-from biothings.hub.databuild.builder import BuilderException
 from biothings.utils.workers import upload_worker
 from biothings.cli.exceptions import MissingPluginName
 
@@ -169,12 +167,13 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
 
 
 @operation_mode
-async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssistant:
+async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> None:
     """
     Perform dump for the given plugin
     """
     from biothings import config
     from biothings.utils import hub_db
+    from biothings.cli.assistant import CLIAssistant
 
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
@@ -201,11 +200,10 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> CLIAssis
     if show_dumped:
         data_folder = dumper_instance.current_data_folder
         show_dumped_files(data_folder, assistant_instance.plugin_name)
-    return assistant_instance
 
 
 @operation_mode
-async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
+async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -216,6 +214,8 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
     >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
     >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
     """
+    from biothings.cli.assistant import CLIAssistant
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -250,11 +250,10 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
     if show_uploaded:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
-    return assistant_instance
 
 
 @operation_mode
-async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True):
+async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -267,6 +266,8 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, 
 
     This is a modified version of the ParallelUploader `update_data` source call
     """
+    from biothings.cli.assistant import CLIAssistant
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -314,7 +315,6 @@ async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, 
     if show_uploaded:
         logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
-    return assistant_instance
 
 
 @operation_mode
@@ -339,6 +339,8 @@ async def do_index(plugin_name: str = None):
     biothings/hub/__init__.py
     """
     from biothings import config
+    from biothings.cli.assistant import CLIAssistant
+    from biothings.hub.databuild.builder import BuilderException
 
     assistant_instance = CLIAssistant(plugin_name)
     assistant_instance.build_manager.configure()
@@ -403,10 +405,12 @@ async def do_index(plugin_name: str = None):
 
 
 @operation_mode
-async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> CLIAssistant:
+async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> None:
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
+    from biothings.cli.assistant import CLIAssistant
+
     assistant_instance = CLIAssistant(plugin_name)
     if dump:
         dumper_instance = assistant_instance.get_dumper_class()
@@ -440,6 +444,8 @@ async def do_inspect(
     """
     Perform inspection on a data plugin.
     """
+    from biothings.cli.assistant import CLIAssistant
+
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     if len(uploader_classes) > 1:
@@ -490,6 +496,7 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
+    from biothings.cli.assistant import CLIAssistant
     from biothings.cli.web_app import main
     from biothings.utils import hub_db
 
@@ -507,6 +514,8 @@ async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = F
     """
     Clean the dumped files, uploaded sources, or both.
     """
+    from biothings.cli.assistant import CLIAssistant
+
     if clean_all:
         dump = True
         upload = True
