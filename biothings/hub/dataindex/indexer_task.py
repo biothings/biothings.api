@@ -61,7 +61,6 @@ class ESIndex(BaseESIndex):
         """
         res = self.client.search(
             index=self.index_name,
-            doc_type=self.doc_type,
             body={"query": {"ids": {"values": ids}}},
             stored_fields=None,
             _source=None,
