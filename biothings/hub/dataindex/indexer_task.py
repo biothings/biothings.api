@@ -71,7 +71,7 @@ class ESIndex(BaseESIndex):
         id_set = {doc["_id"] for doc in res["hits"]["hits"]}
         return [_IDExists(_id, _id in id_set) for _id in ids]
 
-    def mindex(self, docs):
+    def mindex(self, docs) -> int:
         """Index and return the number of docs indexed."""
 
         def _action(doc):
@@ -93,6 +93,9 @@ class ESIndex(BaseESIndex):
                 reason = op_details.get("error", {}).get("reason")
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
+
+            self.logger.warning("Discovered errors during the bulk index task. Defaulting to 0 indexed documents")
+            return 0
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?
@@ -267,68 +270,3 @@ class IndexingTask:
             self.ids = missing_ids
             self.index()
         return len(self.ids)
-
-
-def test_00():  # ES
-    from pprint import pprint as print
-
-    index = ESIndex(Elasticsearch(), "mynews_202105261855_5ffxvchx")
-    print(index.doc_type)
-    print(
-        list(
-            index.mget(
-                [
-                    "0999b13cb8026aba",
-                    "1111647aaf9c70b4",
-                    "________________",
-                ]
-            )
-        )
-    )
-    # print(list(index.mexists([
-    #     "0999b13cb8026aba",
-    #     "1111647aaf9c70b4",
-    #     "________________"
-    # ])))
-
-
-def test_clients():
-    def _mongo():
-        client = MongoClient()
-        database = client["biothings_build"]
-        return database["mynews_202012280220_vsdevjdk"]
-
-    def _es():
-        client = Elasticsearch()
-        return ESIndex(client, "indexer-test")
-
-    return (_es, _mongo)
-
-
-def test0():
-    task = IndexingTask(
-        *test_clients(),
-        ("0999b13cb8026aba", "1111647aaf9c70b4", "1c9828073bad510c"),
-    )
-    task.index()
-
-
-def test1():
-    task = IndexingTask(
-        *test_clients(),
-        (
-            "0999b13cb8026aba",
-            "1111647aaf9c70b4",
-            "1c9828073bad510c",
-            "1f447d7fc6dcc2cf",
-            "27e81a308e4e04da",
-        ),
-    )
-    task.resume()
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level="DEBUG")
-    test_00()
-    # test0()
-    # test1()
