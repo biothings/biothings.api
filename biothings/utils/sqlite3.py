@@ -388,7 +388,7 @@ class Collection:
         logger.debug('SQLite query: "%s"', _query)
         results = (json_loads(doc[0]) for doc in conn.execute(_query))  # results is a generator
         if return_list:
-            results = List(results)
+            results = list(results)
         if return_total:
             # get total count without limit and offset
             total = conn.execute(query.replace("SELECT document FROM", "SELECT COUNT(*) FROM")).fetchone()[0]
@@ -501,7 +501,7 @@ class Collection:
             except sqlite3.IntegrityError as integrity_err:
                 logger.exception(integrity_err)
                 id_counter = collections.Counter([doc["_id"] for doc in rendered_documents])
-                discovered_non_unique_id = List(
+                discovered_non_unique_id = list(
                     filter(lambda id_frequency: id_frequency[1] > 1, id_counter.most_common(10))
                 )
                 if len(discovered_non_unique_id) > 0:

@@ -880,7 +880,8 @@ class HTTPDumper(BaseDumper):
 
 
 class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
-    """Given a list of URLs, check Last-Modified header to see
+    """
+    Given a list of URLs, check Last-Modified header to see
     whether the file should be downloaded. Sub-class should only have
     to declare SRC_URLS. Optionally, another field name can be used instead
     of Last-Modified, but date format must follow RFC 2616. If that header
@@ -897,11 +898,11 @@ class LastModifiedHTTPDumper(HTTPDumper, LastModifiedBaseDumper):
     # with a list of URLs only, without any information
     # about the local filename to store data in
 
-    def remote_is_better(self, remotefile, localfile):
+    def remote_is_better(self, remotefile, localfile) -> bool:
         res = self.client.head(remotefile, allow_redirects=True)
         if self.__class__.LAST_MODIFIED not in res.headers:
             self.logger.warning(
-                "Header '%s' doesn't exist, can determine if remote is better, assuming it is..."
+                "Header '%s' doesn't exist, defaulting to re-downloading the remote data ..."
                 % self.__class__.LAST_MODIFIED
             )
             return True

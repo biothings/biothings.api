@@ -123,7 +123,10 @@ def operation_mode(operation_method: Callable):
             logger.debug("Inferring multiple plugins from directory structure")
             mode = "HUB"
 
-        if mode == "HUB":
+        if mode == "SINGULAR":
+            if kwargs.get("plugin_name", None) is not None:
+                kwargs["plugin_name"] = None
+        elif mode == "HUB":
             if kwargs.get("plugin_name", None) is None:
                 raise MissingPluginName(working_directory)
 
@@ -183,7 +186,16 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> None:
 
     if dumper_instance.need_prepare():
         dumper_instance.prepare()
+
+    try:
         dumper_instance.set_release()
+    except AttributeError:
+        attribute_warning = (
+            "Unable to call `set_release` for dumper instance [%s]. "
+            "This is likely because the dumper instance does not support this method",
+            dumper_instance,
+        )
+        logger.warning(attribute_warning)
 
     dump_job = dumper_instance.dump(
         job_manager=assistant_instance.job_manager,
@@ -539,7 +551,6 @@ async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = F
         clean_uploaded_sources(assistant_instance.plugin_directory, assistant_instance.plugin_name)
 
 
-@operation_mode
 async def display_schema():
     """
     Loads the jsonschema definition file and displays it to the
@@ -572,24 +583,21 @@ async def display_schema():
 
 
 @operation_mode
-async def validate_manifest(plugin_name: str = None, manifest_file: Union[str, pathlib.Path] = None):
+async def validate_manifest(plugin_name: str = None):
     """
     Loads the manifest file and validates it against the schema file
     If an error exists it will display the error to the enduser
     """
     from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader
 
-    if plugin_name is None and manifest_file is None:
-        plugin_directory = pathlib.Path.cwd()
+    if plugin_name is None:
+        plugin_directory = pathlib.Path.cwd().resolve().absolute()
         plugin_name = plugin_directory.name
         manifest_file = plugin_directory.joinpath("manifest.json")
-    elif plugin_name is not None and manifest_file is None:
-        plugin_directory = pathlib.Path.cwd()
-        plugin_name = plugin_directory.name
+    else:
+        calling_directory = pathlib.Path.cwd().resolve().absolute()
+        plugin_directory = calling_directory.joinpath(plugin_name)
         manifest_file = plugin_directory.joinpath("manifest.json")
-    elif plugin_name is None and manifest_file is not None:
-        manifest_file = pathlib.Path(manifest_file).resolve().absolute()
-        plugin_name = manifest_file.parent.name
 
     manifest_loader = ManifestBasedPluginLoader(plugin_name=plugin_name)
     manifest_state = {"path": manifest_file, "valid": False, "repr": None, "error": None}
