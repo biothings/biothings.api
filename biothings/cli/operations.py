@@ -186,7 +186,16 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> None:
 
     if dumper_instance.need_prepare():
         dumper_instance.prepare()
+
+    try:
         dumper_instance.set_release()
+    except AttributeError:
+        attribute_warning = (
+            "Unable to call `set_release` for dumper instance [%s]. "
+            "This is likely because the dumper instance does not support this method",
+            dumper_instance,
+        )
+        logger.warning(attribute_warning)
 
     dump_job = dumper_instance.dump(
         job_manager=assistant_instance.job_manager,
