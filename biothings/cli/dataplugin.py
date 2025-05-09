@@ -287,7 +287,6 @@ def index_plugin(
 @dataplugin_application.command(name="validate")
 def validate_manifest(
     plugin_name: Annotated[str, typer.Option("--plugin-name", help="Data source plugin name")] = None,
-    manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
     show_schema: Annotated[bool, typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
 ) -> None:
     """
@@ -307,6 +306,6 @@ def validate_manifest(
     For a reference about jsonschema itself, see the following:
     https://json-schema.org/
     """
-    asyncio.run(operations.validate_manifest(plugin_name=plugin_name, manifest_file=manifest_file))
+    asyncio.run(operations.validate_manifest(plugin_name=plugin_name))
     if show_schema:
         asyncio.run(operations.display_schema())
