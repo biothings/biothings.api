@@ -286,7 +286,7 @@ def index_plugin(
 
 @dataplugin_application.command(name="validate")
 def validate_manifest(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    plugin_name: Annotated[str, typer.Option("--plugin-name", help="Data source plugin name")] = None,
     manifest_file: Annotated[str, typer.Option("--manifest-file", "-m", help="Data source manifest file")] = None,
     show_schema: Annotated[bool, typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
 ) -> None:
