@@ -167,7 +167,7 @@ def inspect_source(
         Optional[bool],
         typer.Option(
             "--merge",
-            "-m",
+            "-g",
             help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
         ),
     ] = False,
