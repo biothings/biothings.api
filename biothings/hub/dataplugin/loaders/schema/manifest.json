@@ -202,7 +202,7 @@
                         {
                             "input_types": [
                                 ["entrez", "pantherdb.GeneID"],
-                                ["hgnc", "pantherdb.HGNC"],
+                                ["hgnc", "pantherdb.HGNC"]
                             ],
                             "skip_on_failure": true
                         }
