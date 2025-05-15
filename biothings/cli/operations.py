@@ -267,7 +267,7 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
         uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
         uploader.clean_archived_collections()
 
-        document_count = uploader.db[uploader.temp_collection_name].count()
+        document_count = uploader.db[uploader.collection_name].count()
         uploader.register_status("success", count=document_count, err=None, tb=None)
 
     if show_uploaded:
@@ -419,6 +419,14 @@ async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
 
     if platform.system() == "Windows":
         logger.warning("The `biothings-cli dataplugin index` command isn't supported on windows")
+        raise typer.Exit(code=2)
+
+    if config.HUB_DB_BACKEND["module"] == "biothings.utils.sqlite3":
+        logger.warning(
+            "The `biothings-cli dataplugin index` command only supports MongoDB as the HUB_DB_BACKEND. "
+            "Please setup MongoDB locally and change the configuration to use the following to continue: \n%s",
+            json.dumps({"module": "biothings.utils.mongo", "uri": "mongodb://localhost:27017"}, indent=4),
+        )
         raise typer.Exit(code=2)
 
     logger.debug('Forcing the multiprocessing start method to "fork"')
