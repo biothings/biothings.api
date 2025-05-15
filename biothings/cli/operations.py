@@ -340,7 +340,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
 
 
 @operation_mode
-async def do_index(plugin_name: str = None):
+async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
     """
     Creats an elasticsearch data-index for the plugin
 
@@ -349,12 +349,65 @@ async def do_index(plugin_name: str = None):
 
     Modified version of the quick_index function call found here:
     biothings/hub/__init__.py
+
+
+    Control Flow:
+    This was originally a port of the quick-index function provided in the biothings-hub,
+    but we've added additional checks for increased user functionality
+
+    0) We create a build configuration. This constitutes a call to the hubdb.get_src_build_config
+    and then update/inserting it into our database.
+
+    For sqlite3, this table is located in the biothings_hubdb file under the src_build_config
+    table
+
+    For MongoDB
+    │ - Database: data_src_database     │
+    │     - Collections:                │
+    │         occurrences               │
+    │         druglabels                │
+    │         annotations               │
+
+    The record stored will look like the following:
+    tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration |
+    {
+        "_id": "tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration",
+        "name": "tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration",
+        "doc_type": "temporary",
+        "sources": ["tutorials"],
+        "root": [], "builder_class":
+        "biothings.hub.databuild.builder.LinkDataBuilder",
+        "num_shards": 1,
+        "num_replicas": 0
+    }
+
+    1) After creating our build configuration we have to verify that the provided source exists
+    in the source_backend master documents. For single source data plugins, this will likely match
+    the plugin_name and isn't an issue. But for multiple datasources in one plugin, we have to be
+    explicit about the source we want to index. So we verify that either the plugin_name or
+    subsource name is found in the source backend master documents before proceeding
+
+    2) We then attempt to load the elasticsearch mapping. There are a split of dataplugins
+    that provide the elasticsearch mapping and a split that do not. If a hardcoded mapping
+    is not provided, then we attempt to provide a mapping dynamically through our inspection
+    operation
     """
     from biothings import config
+    from biothings.utils.manager import JobManager
     from biothings.cli.assistant import CLIAssistant
     from biothings.hub.databuild.builder import BuilderException
 
-    assistant_instance = CLIAssistant(plugin_name)
+    index_job_manager = JobManager(
+        loop=asyncio.get_running_loop(),
+        process_queue=None,
+        thread_queue=None,
+        max_memory_usage=None,
+        num_workers=os.cpu_count(),
+        num_threads=16,
+        auto_recycle=True,
+    )
+
+    assistant_instance = CLIAssistant(plugin_name, job_manager=index_job_manager)
     assistant_instance.build_manager.configure()
 
     plugin_identifier = uuid.uuid4()
@@ -366,6 +419,9 @@ async def do_index(plugin_name: str = None):
 
     builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
     sources = [assistant_instance.plugin_name]
+    if sub_source_name is not None:
+        sources = [sub_source_name]
+
     document_type = "temporary"
     assistant_instance.build_manager.create_build_configuration(
         build_configuration_name,
@@ -375,6 +431,20 @@ async def do_index(plugin_name: str = None):
         params=build_config_params,
     )
     data_builder = assistant_instance.build_manager[build_configuration_name]
+
+    # validate available sources before continuing
+    data_builder = assistant_instance.build_manager[build_configuration_name]
+    master_documents = set(data_builder.source_backend.get_src_master_docs())
+
+    if len(set(sources) & master_documents) == 0:
+        logger.error(
+            "%s sources not found in the source master documents. "
+            "If multiple data sources exist for the plugin, `--sub-source-name` may be required. "
+            "Discovered sources from source backend master documents %s",
+            sources,
+            master_documents,
+        )
+        raise typer.Exit(code=1)
 
     elasticsearch_mapping = None
     try:
@@ -402,6 +472,7 @@ async def do_index(plugin_name: str = None):
     merge_job = assistant_instance.build_manager.merge(
         build_name=build_configuration_name,
         target_name=build_name,
+        sources=sources,
         force=True,
         steps=("merge", "metadata"),
     )

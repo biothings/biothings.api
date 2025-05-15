@@ -38,7 +38,7 @@ class CLIAssistant(BaseAssistant):
 
     plugin_type = "CLI"
 
-    def __init__(self, plugin_name: str = None):
+    def __init__(self, plugin_name: str = None, job_manager: "JobManager" = None):
         from biothings import config
 
         from biothings.hub.databuild.builder import BuilderManager
@@ -65,7 +65,10 @@ class CLIAssistant(BaseAssistant):
         url = f"local://{plugin_name}"
         super().__init__(url, plugin_name, src_folder)
 
-        self.job_manager = CLIJobManager(loop=asyncio.get_running_loop())
+        if job_manager is None:
+            job_manager = CLIJobManager(loop=asyncio.get_running_loop())
+        self.job_manager = job_manager
+
         self.dumper_manager = DumperManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.uploader_manager = UploaderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
