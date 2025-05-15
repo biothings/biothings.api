@@ -44,7 +44,6 @@ class ESIndex(BaseESIndex):
         response = self.client.mget(
             body={"ids": ids},
             index=self.index_name,
-            doc_type=self.doc_type,
         )
         for doc in response["docs"]:
             if doc.get("found"):
@@ -62,7 +61,6 @@ class ESIndex(BaseESIndex):
         """
         res = self.client.search(
             index=self.index_name,
-            doc_type=self.doc_type,
             body={"query": {"ids": {"values": ids}}},
             stored_fields=None,
             _source=None,
