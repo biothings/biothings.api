@@ -194,6 +194,19 @@
                     "examples": [
                         "parallelizer:parallel_jobs"
                     ]
+                },
+                "keylookup": {
+                    "type": "object",
+                    "description": "Reference to a DataTransform module to convert identifiers from one type to another. The first element in an input type is the node name that must match the graph. The second element is the field in dotstring notation which should describe where the identifier should be read from in a document.",
+                    "examples": [
+                        {
+                            "input_types": [
+                                ["entrez", "pantherdb.GeneID"],
+                                ["hgnc", "pantherdb.HGNC"],
+                            ],
+                            "skip_on_failure": true
+                        }
+                    ]
                 }
             },
             "required": [
