@@ -512,8 +512,8 @@ async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
 
         if not discovered_source_uploader:
             missing_source_uploader_message = (
-                f"Unable to find the source uploader corresponding to {sources[0]}. "
-                f"Discovered the following uploaders from plugin manager: {discovered_sources}"
+                f"Unable to find the source uploader corresponding to {sources[0]}.\n"
+                f"\t>>> Discovered the following uploaders from plugin manager: {valid_sources}"
             )
             raise UnknownUploaderSource(missing_source_uploader_message) from build_exc
 
