@@ -167,7 +167,7 @@ def inspect_source(
         Optional[bool],
         typer.Option(
             "--merge",
-            "-m",
+            "-g",
             help="""Merge scalar into list when both exist (eg. {"val":..} and [{"val":...}])""",
         ),
     ] = False,
@@ -268,7 +268,10 @@ def clean_data(
 
 @dataplugin_application.command(name="index")
 def index_plugin(
-    plugin_name: Annotated[str, typer.Option("--plugin", help="Data source plugin name")] = None,
+    plugin_name: Annotated[str, typer.Option("--plugin-name", "-n", help="Provide a data source plugin name")] = None,
+    sub_source_name: Annotated[
+        Optional[str], typer.Option("--sub-source-name", "-s", help="Provide a data sub-source plugin name")
+    ] = None,
 ):
     """
     [red][bold](experimental)[/bold][/red] Create an elaticsearch index from a data source database
@@ -281,7 +284,7 @@ def index_plugin(
     [green]NOTE[/green]
     Only works correctly if the upload command has been run
     """
-    asyncio.run(operations.do_index(plugin_name=plugin_name))
+    asyncio.run(operations.do_index(plugin_name=plugin_name, sub_source_name=sub_source_name))
 
 
 @dataplugin_application.command(name="validate")

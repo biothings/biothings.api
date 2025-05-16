@@ -16,6 +16,10 @@ Grouped into the following categories
 > async def do_parallel_upload
 > async def do_dump_and_upload
 > async def do_list
+
+--------------------------------------------------------------------------------
+### data build / index ###
+--------------------------------------------------------------------------------
 > async def do_index
 
 ------------------------------------------------------------------------------------
@@ -47,8 +51,11 @@ import asyncio
 import functools
 import json
 import logging
+import multiprocessing
 import os
+import platform
 import pathlib
+import random
 import shutil
 import sys
 import uuid
@@ -75,7 +82,7 @@ from biothings.cli.utils import (
     write_mapping_to_file,
 )
 from biothings.utils.workers import upload_worker
-from biothings.cli.exceptions import MissingPluginName
+from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -232,6 +239,7 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
         uploader = uploader_class.create(db_conn_info="")
+        uploader.register_status("uploading")
         uploader.make_temp_collection()
         uploader.prepare_src_dump()
         uploader.prepare()
@@ -259,8 +267,11 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
         uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
         uploader.clean_archived_collections()
 
+        document_count = uploader.db[uploader.collection_name].count()
+        uploader.register_status("success", count=document_count, err=None, tb=None)
+
     if show_uploaded:
-        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
+        logger.info("[green]Success![/green] :rocket:", extra={"markup": True, "notify": True})
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
 
 
@@ -340,7 +351,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
 
 
 @operation_mode
-async def do_index(plugin_name: str = None):
+async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
     """
     Creats an elasticsearch data-index for the plugin
 
@@ -349,13 +360,107 @@ async def do_index(plugin_name: str = None):
 
     Modified version of the quick_index function call found here:
     biothings/hub/__init__.py
+
+
+    Control Flow:
+    This was originally a port of the quick-index function provided in the biothings-hub,
+    but we've added additional checks for increased user functionality
+
+    0) We create a build configuration. This constitutes a call to the hubdb.get_src_build_config
+    and then update/inserting it into our database.
+
+    For sqlite3, this table is located in the biothings_hubdb file under the src_build_config
+    table
+
+    For MongoDB
+    │ - Database: data_src_database     │
+    │     - Collections:                │
+    │         occurrences               │
+    │         druglabels                │
+    │         annotations               │
+
+    The record stored will look like the following:
+    tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration |
+    {
+        "_id": "tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration",
+        "name": "tutorials-9bb210ef-8f96-4dc2-9e1c-f42e53ea23b9-configuration",
+        "doc_type": "temporary",
+        "sources": ["tutorials"],
+        "root": [], "builder_class":
+        "biothings.hub.databuild.builder.LinkDataBuilder",
+        "num_shards": 1,
+        "num_replicas": 0
+    }
+
+    1) After creating our build configuration we have to verify that the provided source exists
+    in the source_backend master documents. For single source data plugins, this will likely match
+    the plugin_name and isn't an issue. But for multiple datasources in one plugin, we have to be
+    explicit about the source we want to index. So we verify that either the plugin_name or
+    subsource name is found in the source backend master documents before proceeding
+
+    2) We then attempt to load the elasticsearch mapping. There are a split of dataplugins
+    that provide the elasticsearch mapping and a split that do not. If a hardcoded mapping
+    is not provided, then we attempt to provide a mapping dynamically through our inspection
+    operation
+
+    3) We then create a build through the merge operation. Due to limitations and the fact that the
+    command-line we meant to examine a singular source at a time, it's limited to a LinkDataBuilder
+    as we aren't merging multiple data sources together and have a singular datasource in the build
+
+    4) Lastly is actually creating the new elasticsearch index from the build. This does require
+    elasticsearch to be running at the specified address in the settings.py file or configuration.
+    The default location is localhost:9200. If successful a couple frames detailing the build and
+    index information will be displayed to the enduser
     """
     from biothings import config
+    from biothings.utils.manager import JobManager
     from biothings.cli.assistant import CLIAssistant
     from biothings.hub.databuild.builder import BuilderException
 
-    assistant_instance = CLIAssistant(plugin_name)
+    if platform.system() == "Windows":
+        logger.warning("The `biothings-cli dataplugin index` command isn't supported on windows")
+        raise typer.Exit(code=2)
+
+    if config.HUB_DB_BACKEND["module"] == "biothings.utils.sqlite3":
+        logger.warning(
+            "The `biothings-cli dataplugin index` command only supports MongoDB as the HUB_DB_BACKEND. "
+            "Please setup MongoDB locally and change the configuration to use the following to continue: \n%s",
+            json.dumps({"module": "biothings.utils.mongo", "uri": "mongodb://localhost:27017"}, indent=4),
+        )
+        raise typer.Exit(code=2)
+
+    logger.debug('Forcing the multiprocessing start method to "fork"')
+    multiprocessing.set_start_method("fork")
+
+    index_job_manager = JobManager(
+        loop=asyncio.get_running_loop(),
+        process_queue=None,
+        thread_queue=None,
+        max_memory_usage=None,
+        num_workers=os.cpu_count(),
+        num_threads=16,
+        auto_recycle=True,
+    )
+
+    assistant_instance = CLIAssistant(plugin_name, job_manager=index_job_manager)
     assistant_instance.build_manager.configure()
+    uploader_manager = assistant_instance.uploader_manager
+
+    valid_sources = [uploader.name for uploader in uploader_manager[assistant_instance.plugin_name]]
+    if len(valid_sources) > 1 and sub_source_name is None or sub_source_name not in valid_sources:
+        logger.error(
+            (
+                "Multiple uploaders exist for %s data-plugin, so --sub-source-name (-s) "
+                "must be provided to specify which source you want to index.\n"
+                "\t>>> Supported values for --sub-source-name: %s\n"
+                "\t>>> Example: `biothings-cli dataplugin index --plugin-name %s --sub-source-name %s"
+            ),
+            assistant_instance.plugin_name,
+            valid_sources,
+            assistant_instance.plugin_name,
+            random.choice(valid_sources),
+        )
+        raise typer.Exit(code=2)
 
     plugin_identifier = uuid.uuid4()
     build_configuration_name = f"{assistant_instance.plugin_name}-{plugin_identifier}-configuration"
@@ -366,6 +471,9 @@ async def do_index(plugin_name: str = None):
 
     builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
     sources = [assistant_instance.plugin_name]
+    if sub_source_name is not None:
+        sources = [sub_source_name]
+
     document_type = "temporary"
     assistant_instance.build_manager.create_build_configuration(
         build_configuration_name,
@@ -374,12 +482,13 @@ async def do_index(plugin_name: str = None):
         builder_class=builder_class,
         params=build_config_params,
     )
-    data_builder = assistant_instance.build_manager[build_configuration_name]
 
+    # validate available sources before continuing
+    data_builder = assistant_instance.build_manager[build_configuration_name]
     elasticsearch_mapping = None
     try:
         elasticsearch_mapping = data_builder.get_mapping(sources)
-    except BuilderException:
+    except BuilderException as build_exc:
         logger.info("No registered mapping found. Auto-generating mapping for source(s) %s", sources)
         generated_mapping = process_inspect(
             source_name=sources[0],
@@ -389,19 +498,30 @@ async def do_index(plugin_name: str = None):
         )
         elasticsearch_mapping = generated_mapping["results"]["mapping"]
 
-        uploader_manager = assistant_instance.uploader_manager
-        uploader_class = uploader_manager.register[assistant_instance.plugin_name][0]
-        plugin_uploader = uploader_class(db_conn_info="")
-        plugin_uploader.prepare()
-        plugin_uploader.update_master()
-        master_document = plugin_uploader.generate_doc_src_master()
-        master_document["mapping"] = elasticsearch_mapping
-        plugin_uploader.save_doc_src_master(master_document)
+        discovered_source_uploader = False
+        for uploader_class in uploader_manager[assistant_instance.plugin_name]:
+            if uploader_class.name == sources[0]:
+                plugin_uploader = uploader_class(db_conn_info="")
+                plugin_uploader.prepare()
+                plugin_uploader.update_master()
+                master_document = plugin_uploader.generate_doc_src_master()
+                master_document["mapping"] = elasticsearch_mapping
+                plugin_uploader.save_doc_src_master(master_document)
+                discovered_source_uploader = True
+                break
+
+        if not discovered_source_uploader:
+            missing_source_uploader_message = (
+                f"Unable to find the source uploader corresponding to {sources[0]}.\n"
+                f"\t>>> Discovered the following uploaders from plugin manager: {valid_sources}"
+            )
+            raise UnknownUploaderSource(missing_source_uploader_message) from build_exc
 
     # create a temporary build
     merge_job = assistant_instance.build_manager.merge(
         build_name=build_configuration_name,
         target_name=build_name,
+        sources=sources,
         force=True,
         steps=("merge", "metadata"),
     )
@@ -460,25 +580,30 @@ async def do_inspect(
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
-    if len(uploader_classes) > 1:
-        if not sub_source_name:
-            logger.error(
-                (
-                    'This is a multiple uploaders data plugin, so "--sub-source-name" must be provided! '
-                    'Accepted values of "--sub-source-name" are: %s'
-                ),
-                ", ".join(uploader.name for uploader in uploader_classes),
-            )
-            raise typer.Exit(code=1)
-        logger.info(
-            'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
+
+    valid_sources = [uploader.name for uploader in uploader_classes]
+    if len(valid_sources) > 1 and sub_source_name is None or sub_source_name not in valid_sources:
+        logger.error(
+            (
+                "Multiple uploaders exist for %s data-plugin, so --sub-source-name (-s) "
+                "must be provided to specify which source you want to inspect.\n"
+                "\t>>> Supported values for --sub-source-name: %s\n"
+                "\t>>> Example: `biothings-cli dataplugin inspect --plugin-name %s --sub-source-name %s"
+            ),
             assistant_instance.plugin_name,
-            sub_source_name,
-            mode,
-            limit,
+            valid_sources,
+            assistant_instance.plugin_name,
+            random.choice(valid_sources),
         )
-    else:
-        logger.info('Inspecting data plugin "%s" (mode="%s", limit=%s)', assistant_instance.plugin_name, mode, limit)
+        raise typer.Exit(code=2)
+
+    logger.info(
+        'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
+        assistant_instance.plugin_name,
+        sub_source_name,
+        mode,
+        limit,
+    )
 
     table_space = [item.name for item in uploader_classes]
     if sub_source_name and sub_source_name not in table_space:

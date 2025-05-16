@@ -16,7 +16,6 @@ Supported plugin locations
 import asyncio
 import copy
 import logging
-import os
 import pathlib
 import sys
 
@@ -25,7 +24,8 @@ import typer
 
 from biothings.utils.common import get_plugin_name_from_local_manifest
 from biothings.hub.dataplugin.assistant import BaseAssistant
-from biothings.utils.manager import JobManager
+
+from biothings.cli.manager import CLIJobManager
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -38,7 +38,7 @@ class CLIAssistant(BaseAssistant):
 
     plugin_type = "CLI"
 
-    def __init__(self, plugin_name: str = None):
+    def __init__(self, plugin_name: str = None, job_manager: "JobManager" = None):
         from biothings import config
 
         from biothings.hub.databuild.builder import BuilderManager
@@ -65,15 +65,10 @@ class CLIAssistant(BaseAssistant):
         url = f"local://{plugin_name}"
         super().__init__(url, plugin_name, src_folder)
 
-        self.job_manager = JobManager(
-            loop=asyncio.get_running_loop(),
-            process_queue=None,
-            thread_queue=None,
-            max_memory_usage=None,
-            num_workers=os.cpu_count(),
-            num_threads=16,
-            auto_recycle=True,
-        )
+        if job_manager is None:
+            job_manager = CLIJobManager(loop=asyncio.get_running_loop())
+        self.job_manager = job_manager
+
         self.dumper_manager = DumperManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.uploader_manager = UploaderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
