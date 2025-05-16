@@ -20,7 +20,7 @@ FULL_HELP = (
     + "\n[green]   :point_right: Include a config.py at the working directory to override the default biothings.config settings.[/green]"
     + "\n   :rocket::boom::sparkling_heart:"
 )
-PLUGIN_NAME_HELP = "Provide a data source plugin name, use the current directory if not provided"
+PLUGIN_NAME_HELP = "Provide a data plugin name, use the current directory if not provided"
 
 dataplugin_application = typer.Typer(
     help=FULL_HELP,
@@ -34,8 +34,8 @@ dataplugin_application = typer.Typer(
 def create_data_plugin(
     name: Annotated[
         str,
-        typer.Option("--plugin-name", "-n", help="Provide a data source plugin name"),
-    ] = "",
+        typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
+    ],
     multi_uploaders: Annotated[
         Optional[bool],
         typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
@@ -53,7 +53,7 @@ def create_data_plugin(
 
 @dataplugin_application.command(name="dump")
 def dump_source(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     show_dump: Annotated[
         Optional[bool],
         typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
@@ -67,7 +67,7 @@ def dump_source(
 
 @dataplugin_application.command(name="upload")
 def upload_source(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     batch_limit: Annotated[
         Optional[int],
         typer.Option(
@@ -106,7 +106,7 @@ def upload_source(
 
 @dataplugin_application.command(name="dump_and_upload")
 def dump_and_upload(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
 ):
     """
     Sequentially execute the dump and upload commands
@@ -121,7 +121,7 @@ def dump_and_upload(
 
 @dataplugin_application.command(name="list")
 def listing(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Listing dumped files")] = True,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Listing uploaded sources")] = True,
     hubdb: Annotated[Optional[bool], typer.Option("--hubdb", help="Listing internal hubdb content")] = False,
@@ -134,7 +134,7 @@ def listing(
 
 @dataplugin_application.command(name="inspect")
 def inspect_source(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")
     ] = "",
@@ -200,7 +200,7 @@ def inspect_source(
 
 @dataplugin_application.command(name="serve")
 def serve(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     host: Annotated[
         Optional[str],
         typer.Option(
@@ -249,7 +249,7 @@ def serve(
 
 @dataplugin_application.command(name="clean", no_args_is_help=True)
 def clean_data(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     dump: Annotated[Optional[bool], typer.Option("--dump", help="Delete all dumped files")] = False,
     upload: Annotated[Optional[bool], typer.Option("--upload", help="Drop uploaded sources tables")] = False,
     clean_all: Annotated[
@@ -268,7 +268,7 @@ def clean_data(
 
 @dataplugin_application.command(name="index")
 def index_plugin(
-    plugin_name: Annotated[Optional[str], typer.Option("--plugin-name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Provide a data sub-source plugin name")
     ] = None,
@@ -289,8 +289,8 @@ def index_plugin(
 
 @dataplugin_application.command(name="validate")
 def validate_manifest(
-    plugin_name: Annotated[str, typer.Option("--plugin-name", help=PLUGIN_NAME_HELP)] = None,
-    show_schema: Annotated[bool, typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
+    plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    show_schema: Annotated[Optional[bool], typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
 ) -> None:
     """
     [red][bold](experimental)[/bold][/red] Validate a provided manifest file via JSONSchema
