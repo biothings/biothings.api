@@ -117,7 +117,9 @@ class BaseDiffer(object):
             # merge extra at root level
             # (to keep building data...) and update the last one
             # (it's been properly created before when init=True)
-            build["jobs"] and build["jobs"][-1].update(job_info)
+            # build["jobs"] and build["jobs"][-1].update(job_info)    # replaced by the following, pending deletion
+            if build["jobs"]:
+                build["jobs"][-1].update(job_info)
 
             def merge_info(target, d):
                 if "__REPLACE__" in d.keys():
@@ -125,9 +127,11 @@ class BaseDiffer(object):
                     target = d
                 else:
                     for k, v in d.items():
-                        if type(v) == dict:
+                        # if type(v) == dict:
+                        if isinstance(v, dict):
                             # only merge if both are dict (otherwise replace/set with d)
-                            if k in target and type(target[k]) == dict:
+                            # if k in target and type(target[k]) == dict:
+                            if k in target and isinstance(target[k], dict):
                                 target[k] = merge_info(target[k], v)
                             else:
                                 v.pop("__REPLACE__", None)
@@ -1214,13 +1218,15 @@ class DifferManager(BaseManager):
                     # look for which root keys were added in new collection
                     for _id in data["add"]:
                         # selfcontained = dict for whole doc (see TODO above)
-                        if type(_id) == dict:
+                        # if type(_id) == dict:
+                        if isinstance(_id, dict):
                             _id = _id["_id"]
                         doc = new_col.get_from_id(_id)
                         rkeys = sorted(doc.keys())
                         adds["ids"].append([_id, rkeys])
                 else:
-                    if data["add"] and type(data["add"][0]) == dict:
+                    # if data["add"] and type(data["add"][0]) == dict:
+                    if data["add"] and isinstance(data["add"][0], dict):
                         adds["ids"].extend([d["_id"] for d in data["add"]])
                     else:
                         adds["ids"].extend(data["add"])
