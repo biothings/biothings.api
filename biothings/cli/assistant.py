@@ -18,14 +18,14 @@ import copy
 import logging
 import pathlib
 import sys
+from typing import Optional
 
 import rich
 import typer
 
-from biothings.utils.common import get_plugin_name_from_local_manifest
-from biothings.hub.dataplugin.assistant import BaseAssistant
-
 from biothings.cli.manager import CLIJobManager
+from biothings.hub.dataplugin.assistant import BaseAssistant
+from biothings.utils.common import get_plugin_name_from_local_manifest
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -38,9 +38,8 @@ class CLIAssistant(BaseAssistant):
 
     plugin_type = "CLI"
 
-    def __init__(self, plugin_name: str = None, job_manager: "JobManager" = None):
+    def __init__(self, plugin_name: Optional[str] = None, job_manager: "JobManager" = None):
         from biothings import config
-
         from biothings.hub.databuild.builder import BuilderManager
         from biothings.hub.dataindex.indexer import IndexManager
         from biothings.hub.dataload.dumper import DumperManager

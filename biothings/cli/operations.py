@@ -46,19 +46,18 @@ Grouped into the following categories
 ------------------------------------------------------------------------------------
 """
 
-from typing import Callable, Union
 import asyncio
 import functools
-import json
 import logging
 import multiprocessing
 import os
-import platform
 import pathlib
+import platform
 import random
 import shutil
 import sys
 import uuid
+from typing import Callable, Optional, Union
 
 import jsonschema
 import rich
@@ -68,6 +67,7 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
+from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
 from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.cli.utils import (
     clean_dumped_files,
@@ -81,8 +81,8 @@ from biothings.cli.utils import (
     show_uploaded_sources,
     write_mapping_to_file,
 )
+from biothings.utils.serializer import JSONDecodeError, load_json, to_json
 from biothings.utils.workers import upload_worker
-from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -143,18 +143,20 @@ def operation_mode(operation_method: Callable):
     return determine_operation_mode
 
 
-@operation_mode
-def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = False):
+# do not apply operation_mode decorator since this operation means to create a new plugin
+# regardless what the current working directory has
+# @operation_mode
+def do_create(plugin_name: str, multi_uploaders: bool = False, parallelizer: bool = False):
     """
     Create a new data plugin from the template
     """
     working_directory = pathlib.Path().cwd()
-    new_plugin_directory = working_directory.joinpath(name)
+    new_plugin_directory = working_directory.joinpath(plugin_name)
     if new_plugin_directory.is_dir():
         logger.error(
             (
                 "Data plugin with the same name is already exists. "
-                "Please remove {new_plugin_directory) before proceeding"
+                f"Please remove {new_plugin_directory} before proceeding"
             )
         )
         sys.exit(1)
@@ -165,7 +167,7 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
     loader = tornado.template.Loader(new_plugin_directory)
     manifest_template = loader.load("manifest.yaml.tpl")
     populated_manifest = manifest_template.generate(multi_uploaders=multi_uploaders, parallelizer=parallelizer).decode()
-    manifest_file_path = os.path.join(working_directory, name, "manifest.yaml")
+    manifest_file_path = os.path.join(working_directory, plugin_name, "manifest.yaml")
     with open(manifest_file_path, "w", encoding="utf-8") as fh:
         fh.write(populated_manifest)
 
@@ -177,13 +179,13 @@ def do_create(name: str, multi_uploaders: bool = False, parallelizer: bool = Fal
 
 
 @operation_mode
-async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> None:
+async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True) -> None:
     """
     Perform dump for the given plugin
     """
     from biothings import config
-    from biothings.utils import hub_db
     from biothings.cli.assistant import CLIAssistant
+    from biothings.utils import hub_db
 
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
@@ -222,7 +224,7 @@ async def do_dump(plugin_name: str = None, show_dumped: bool = True) -> None:
 
 
 @operation_mode
-async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
+async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -276,7 +278,7 @@ async def do_upload(plugin_name: str = None, batch_limit: int = 10000, show_uplo
 
 
 @operation_mode
-async def do_parallel_upload(plugin_name: str = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
+async def do_parallel_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -351,7 +353,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
 
 
 @operation_mode
-async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
+async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[str] = None) -> None:
     """
     Creats an elasticsearch data-index for the plugin
 
@@ -413,9 +415,9 @@ async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
     index information will be displayed to the enduser
     """
     from biothings import config
-    from biothings.utils.manager import JobManager
     from biothings.cli.assistant import CLIAssistant
     from biothings.hub.databuild.builder import BuilderException
+    from biothings.utils.manager import JobManager
 
     if platform.system() == "Windows":
         logger.warning("The `biothings-cli dataplugin index` command isn't supported on windows")
@@ -425,7 +427,7 @@ async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
         logger.warning(
             "The `biothings-cli dataplugin index` command only supports MongoDB as the HUB_DB_BACKEND. "
             "Please setup MongoDB locally and change the configuration to use the following to continue: \n%s",
-            json.dumps({"module": "biothings.utils.mongo", "uri": "mongodb://localhost:27017"}, indent=4),
+            to_json({"module": "biothings.utils.mongo", "uri": "mongodb://localhost:27017"}, indent=True),
         )
         raise typer.Exit(code=2)
 
@@ -537,7 +539,7 @@ async def do_index(plugin_name: str, sub_source_name: str = None) -> None:
 
 
 @operation_mode
-async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> None:
+async def do_list(plugin_name: Optional[str] = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> None:
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
@@ -561,17 +563,16 @@ async def do_list(plugin_name: str = None, dump: bool = True, upload: bool = Tru
 
     if hubdb:
         show_hubdb_content()
-    return assistant_instance
 
 
 @operation_mode
 async def do_inspect(
-    plugin_name: str = None,
-    sub_source_name: str = None,
+    plugin_name: Optional[str] = None,
+    sub_source_name: Optional[str] = None,
     mode: str = "type,stats",
-    limit: int = None,
+    limit: Optional[int] = None,
     merge: bool = False,
-    output: Union[str, pathlib.Path] = None,
+    output: Optional[Union[str, pathlib.Path]] = None,
 ):
     """
     Perform inspection on a data plugin.
@@ -629,7 +630,7 @@ async def do_inspect(
 
 
 @operation_mode
-async def do_serve(plugin_name: str = None, host: str = "localhost", port: int = 9999):
+async def do_serve(plugin_name: Optional[str] = None, host: str = "localhost", port: int = 9999):
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
@@ -647,7 +648,7 @@ async def do_serve(plugin_name: str = None, host: str = "localhost", port: int =
 
 
 @operation_mode
-async def do_clean(plugin_name: str = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
+async def do_clean(plugin_name: Optional[str] = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
     """
     Clean the dumped files, uploaded sources, or both.
     """
@@ -689,10 +690,10 @@ async def display_schema():
     try:
         schema_validator.check_schema(manifest_schema)
         valid_schema = True
-    except jsonschema.exceptions.SchemaError as schema_error:
+    except jsonschema.SchemaError as schema_error:
         logger.exception(schema_error)
 
-    schema_repr = json.dumps(manifest_schema, indent=2)
+    schema_repr = to_json(manifest_schema, indent=True)
 
     console = Console()
     panel = Panel(
@@ -708,7 +709,7 @@ async def display_schema():
 
 
 @operation_mode
-async def validate_manifest(plugin_name: str = None):
+async def validate_manifest(plugin_name: Optional[str] = None):
     """
     Loads the manifest file and validates it against the schema file
     If an error exists it will display the error to the enduser
@@ -729,12 +730,13 @@ async def validate_manifest(plugin_name: str = None):
 
     try:
         with open(manifest_file, "r", encoding="utf-8") as manifest_handle:
-            manifest = json.load(manifest_handle)
-    except json.JSONDecodeError as decode_error:
+            manifest = load_json(manifest_handle.read())
+    except JSONDecodeError as decode_error:
         logger.exception(decode_error)
         manifest_state["error"] = f"{manifest_file} is not valid JSON"
+        return
 
-    manifest_state["repr"] = json.dumps(manifest, indent=2)
+    manifest_state["repr"] = to_json(manifest, indent=True)
 
     try:
         manifest_loader.validate_manifest(manifest)

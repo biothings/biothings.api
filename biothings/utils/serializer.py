@@ -84,3 +84,7 @@ class URL(UserString):
         urlparsed = urlparsed._replace(query=qs)
         url = urlunparse(urlparsed)
         return unquote_plus(url)
+
+
+# keep it here to be used by other modules
+JSONDecodeError = orjson.JSONDecodeError    # orjson.JSONDecodeError is also a sublcass of json.JSONDecodeError
