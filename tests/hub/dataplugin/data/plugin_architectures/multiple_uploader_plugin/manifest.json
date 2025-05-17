@@ -8,13 +8,13 @@
     "uploaders": [
         {
             "name" : "filepath",
-            "parser": "parser:path_loader",
+            "parser": "data_parser:path_loader",
             "on_duplicates": "error",
             "mapping": "mapping:path_mapping"
         },
         {
             "name" : "filesize",
-            "parser": "parser:size_loader",
+            "parser": "data_parser:size_loader",
             "on_duplicates": "error",
             "mapping": "mapping:size_mapping"
         }
