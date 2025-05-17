@@ -1,14 +1,14 @@
-from pathlib import Path
-from typing import Union
 import abc
 import os
 import urllib.parse
+from pathlib import Path
+from typing import Optional, Union
 
 import requests
 
 from biothings import config as btconfig
+from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
-from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader, AdvancedPluginLoader
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
     get_plugin_name_from_remote_manifest,
@@ -35,7 +35,7 @@ class BaseAssistant(abc.ABC):
         "advanced": AdvancedPluginLoader,
     }
 
-    def __init__(self, url: str, plugin_name: str = None, src_folder: Union[str, Path] = None):
+    def __init__(self, url: str, plugin_name: Optional[str] = None, src_folder: Optional[Union[str, Path]] = None):
         self.url = url
 
         self._plugin_name = plugin_name
@@ -100,7 +100,7 @@ class BaseAssistant(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def plugin_name(self):
+    def plugin_name(self) -> str:
         """
         Return plugin name, parsed from self.url and set self._src_folder as
         path to folder containing dataplugin source code

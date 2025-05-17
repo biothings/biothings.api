@@ -37,11 +37,11 @@ def create_data_plugin(
         typer.Option("--name", "-n", help="Provide a data plugin name", prompt="What's your data plugin name?"),
     ],
     multi_uploaders: Annotated[
-        Optional[bool],
+        bool,
         typer.Option("--multi-uploaders", help="If provided, the data plugin includes multiple uploaders"),
     ] = False,
     parallelizer: Annotated[
-        Optional[bool],
+        bool,
         typer.Option("--parallelizer", help="If provided, the data plugin's upload step will run in parallel"),
     ] = False,
 ):

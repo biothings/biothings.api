@@ -3,19 +3,20 @@ import random
 import time
 from datetime import datetime
 from functools import partial
+from typing import List, Optional, Union
 
 import biothings.utils.es as es
 from biothings import config
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
 from biothings.hub.datainspect.doc_inspect import (
-    inspect_docs,
-    get_converters,
-    merge_record,
     compute_metadata,
-    stringify_inspect_doc,
     flatten_and_validate,
+    get_converters,
+    inspect_docs,
+    merge_record,
     run_converters,
+    stringify_inspect_doc,
 )
 from biothings.hub.manager import BaseManager
 from biothings.utils.common import timesofar
@@ -106,10 +107,10 @@ class InspectorManager(BaseManager):
     def inspect(
         self,
         data_provider,
-        mode: str = "type",
+        mode: Union[str, List[str]] = "type",
         batch_size: int = 10000,
-        limit: int = None,
-        sample: float = None,
+        limit: Optional[int] = None,
+        sample: Optional[float] = None,
         **kwargs,
     ):
         """
@@ -221,7 +222,7 @@ class InspectorManager(BaseManager):
                 doccnt = 0
                 jobs = []
                 # normalize mode param and prepare global results
-                if isinstance(mode, str) == str:
+                if isinstance(mode, str):
                     mode = [mode]
 
                 converters, mode = get_converters(mode)
