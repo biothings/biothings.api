@@ -16,20 +16,14 @@ import jsonschema
 import yaml
 
 from biothings import config as btconfig
+from biothings.hub.dataload.dumper import DockerContainerDumper, LastModifiedFTPDumper, LastModifiedHTTPDumper
+from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
+from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
+from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
 from biothings.utils import storage
 from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
-from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
-from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
-from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
-from biothings.hub.dataload.dumper import (
-    AssistedDumper,
-    DockerContainerDumper,
-    LastModifiedFTPDumper,
-    LastModifiedHTTPDumper,
-)
-from biothings.hub.dataload.uploader import AssistedUploader
 
 
 class LoaderException(Exception):
