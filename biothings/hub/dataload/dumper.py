@@ -316,7 +316,7 @@ class BaseDumper:
         Placeholder to add a custom process once the whole resource
         has been dumped. Optional.
         """
-        pass
+        self.post_dump_sanity_check()
 
     def setup_log(self):
         log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload") if btconfig.LOG_FOLDER else None
