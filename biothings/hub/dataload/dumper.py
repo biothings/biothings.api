@@ -33,10 +33,10 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
-from biothings.hub.manager import ResourceError
-from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.dataload.manager import BaseSourceManager
-from biothings.utils.common import rmdashfr, timesofar, untarall
+from biothings.hub.dataload.uploader import set_pending_to_upload
+from biothings.hub.manager import ResourceError
+from biothings.utils.common import open_anyfile, rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 from biothings.utils.parsers import docker_source_info_parser
@@ -76,6 +76,8 @@ class BaseDumper:
 
     DISABLED = False  # True to disable this dumper class
 
+    to_check = []  # list of files to check after dump
+
     def __init__(self, src_name=None, src_root_folder=None, log_folder=None, archive=None):
         # unpickable attrs, grouped
         self.init_state()
@@ -84,8 +86,12 @@ class BaseDumper:
         self.log_folder = log_folder or btconfig.LOG_FOLDER
         self.archive = archive or self.ARCHIVE
         self.to_dump = []
-        self.to_delete: List[Union[str, bytes, os.PathLike]] = []
-        """Populate with list of relative path of files to delete"""
+        self.to_delete: List[Union[str, bytes, os.PathLike]] = (
+            []
+        )  # populate with list of relative path of files to delete
+        self.to_check: List[Tuple[Union[str, bytes, os.PathLike], int]] = (
+            self.__class__.to_check
+        )  # populate with list of relative path of files and minnumber of filelines to check
         self.release = None
         self.t0 = time.time()
         self.logfile = None
@@ -238,6 +244,72 @@ class BaseDumper:
                     f"{rel_file_name} ({delete_path}) is not " "a regular file or directory, cannot delete"
                 )
         self.to_delete = []  # reset the list in case
+
+    def post_dump_sanity_check(self):
+        """
+        Checks the state of the
+        resource after it has been dumped. Optional.
+        """
+        base_dir: str = os.path.realpath(self.new_data_folder)
+        self.logger.debug("Only check files under %s", base_dir)
+        # assume this path is good
+        for rel_file in self.to_check:
+            rel_file_name = rel_file[0]  # relative path
+            check_number = rel_file[1]  # number of lines or number files in directory
+            check_path = os.path.realpath(os.path.join(base_dir, rel_file_name))
+            self.logger.debug("%s is %s", rel_file_name, check_path)
+            common_path = os.path.commonpath((base_dir, check_path))
+            self.logger.debug("Calculated common prefix path: %s", common_path)
+            if common_path != base_dir:
+                raise RuntimeError("Attempting to check something outside the download " "directory")
+            try:
+                s = os.stat(check_path)
+                self.logger.debug("stat(%s): %s", check_path, s)
+            except FileNotFoundError:
+                self.logger.warning("Cannot check %s (%s), does not exist", rel_file_name, check_path)
+                continue
+            if stat.S_ISREG(s.st_mode):
+                self.logger.info("Checking regular file %s (%s)", rel_file_name, check_path)
+                with open_anyfile(check_path) as f:
+                    lines = sum(1 for _ in f)
+                    self.logger.debug(
+                        "File %s has %d lines. Checking minimum requirement of %d lines",
+                        rel_file_name,
+                        lines,
+                        check_number,
+                    )
+                    if lines < check_number:
+                        self.logger.error(
+                            "File %s has less than %d lines",
+                            rel_file_name,
+                            check_number,
+                        )
+                        raise RuntimeError(f"File {rel_file_name} has less than {check_number} lines")
+            elif stat.S_ISDIR(s.st_mode):
+                self.logger.info("Checking directory %s (%s)", rel_file_name, check_path)
+                try:
+                    dir_files = os.listdir(check_path)
+                    dir_length = len(dir_files)
+                    self.logger.debug(
+                        "Directory %s has %d files. Checking minimum requirement of %d files",
+                        rel_file_name,
+                        dir_length,
+                        check_number,
+                    )
+                    if dir_length < check_number:
+                        self.logger.error(
+                            "Directory %s has less than %d files",
+                            rel_file_name,
+                            check_number,
+                        )
+                        raise RuntimeError(f"Directory {rel_file_name} has less than {check_number} files")
+                except Exception as e:
+                    self.logger.exception("Failed to check directory")
+                    raise e
+            else:
+                raise RuntimeError(
+                    f"{rel_file_name} ({check_path}) is not " "a regular file or directory, cannot check"
+                )
 
     def post_dump(self, *args, **kwargs):
         """
