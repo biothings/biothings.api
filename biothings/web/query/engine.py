@@ -11,7 +11,7 @@ Example:
 
 >>> from biothings.web.query import ESQueryBackend
 >>> from elasticsearch import Elasticsearch
->>> from elasticsearch_dsl import Search
+>>> from elasticsearch.dsl import Search
 
 >>> backend = ESQueryBackend(Elasticsearch())
 >>> backend.execute(Search().query("match", _id="1017"))
@@ -24,7 +24,7 @@ dict_keys(['taxid', 'symbol', 'name', ... ])
 import asyncio
 
 from elasticsearch import NotFoundError, RequestError
-from elasticsearch_dsl import MultiSearch, Search
+from elasticsearch.dsl import MultiSearch, Search
 
 from biothings.web.query.builder import ESScrollID
 

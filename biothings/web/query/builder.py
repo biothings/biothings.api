@@ -38,8 +38,8 @@ import os
 import re
 from typing import Iterable, List, Set, Tuple, Union
 
-from elasticsearch_dsl import MultiSearch, Q, Search
-from elasticsearch_dsl.exceptions import IllegalOperation
+from elasticsearch.dsl import MultiSearch, Q, Search
+from elasticsearch.dsl.exceptions import IllegalOperation
 import orjson
 
 from biothings.utils.common import dotdict
