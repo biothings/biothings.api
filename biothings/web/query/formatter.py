@@ -243,41 +243,44 @@ class ESResultFormatter(ResultFormatter):
             return response_
 
         if isinstance(response, dict):
-            response = self._Hits(response)
-            response.collapse("hits")
-            response.exclude(("_shards", "_node", "timed_out"))
-            response.wrap("hits", self._Doc)
+            if "hits" in response:
+                response = self._Hits(response)
+                response.collapse("hits")
+                response.exclude(("_shards", "_node", "timed_out"))
+                response.wrap("hits", self._Doc)
 
-            for hit in response["hits"]:
-                hit.collapse("_source")
-                # 'sort' is introduced when sorting
-                hit.exclude(("_index", "_type", "sort"))
-                self._transform_hit(hit, options)
+                for hit in response["hits"]:
+                    hit.collapse("_source")
+                    # 'sort' is introduced when sorting
+                    hit.exclude(("_index", "_type", "sort"))
+                    self._transform_hit(hit, options)
 
-            if options.get("native", True):
-                response["hits"] = [
-                    hit.data for hit in response["hits"] if not (hit.__doc__ or "").startswith("__exclude__")
-                ]
-                response = response.data
+                if options.get("native", True):
+                    response["hits"] = [
+                        hit.data for hit in response["hits"] if not (hit.__doc__ or "").startswith("__exclude__")
+                    ]
+                    response = response.data
 
-            if "aggregations" in response:
-                self.transform_aggs(response["aggregations"])
-                response["facets"] = response.pop("aggregations")
-                hits = response.pop("hits")  # move key order
-                if hits:  # hide "hits" field when size=0
-                    response["hits"] = hits
+                if "aggregations" in response:
+                    self.transform_aggs(response["aggregations"])
+                    response["facets"] = response.pop("aggregations")
+                    hits = response.pop("hits")  # move key order
+                    if hits:  # hide "hits" field when size=0
+                        response["hits"] = hits
 
-            elif options.get("one"):
-                # prefer one-level presentation
-                # or structures as simple as possible
-                if len(response["hits"]) == 1:
-                    response = response["hits"][0]
-                elif len(response["hits"]) == 0:
-                    response = None
-                else:  # show a list of docs
-                    response = response["hits"]
+                elif options.get("one"):
+                    # prefer one-level presentation
+                    # or structures as simple as possible
+                    if len(response["hits"]) == 1:
+                        response = response["hits"][0]
+                    elif len(response["hits"]) == 0:
+                        response = None
+                    else:  # show a list of docs
+                        response = response["hits"]
 
-            return response
+                return response
+            elif "error" in response and "status" in response:
+                return {"error": {"status_code": response["status"]}}
 
         raise TypeError(f"Invalid response type of {type(response)}.")
 
