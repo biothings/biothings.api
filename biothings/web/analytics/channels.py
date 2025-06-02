@@ -6,6 +6,7 @@ import orjson
 import ssl
 
 from biothings.web.analytics.events import Event, Message
+from aiohttp import ClientConnectionError
 
 
 class Channel:
@@ -87,17 +88,26 @@ class GA4Channel(Channel):
         retries = 0
         base_delay = 1  # Base delay in seconds
         while retries <= self.max_retries:
-            async with session.post(url, data=data) as response:
-                if response.status >= 500:  # HTTP 5xx
-                    logging.warning(
-                        "GA4Channel: Received HTTP %d. Retrying (%d/%d)..."
-                        % (response.status, retries + 1, self.max_retries)
-                    )
-                    delay = base_delay * (2 ** (retries - 1))  # Exponential backoff (1s, 2s, 4s, 8s, etc.)
-                    await asyncio.sleep(delay)  # Add a delay before retrying
-                    retries += 1
+            try:
+                async with session.post(url, data=data) as response:
+                    if response.status >= 500:  # HTTP 5xx
+                        logging.warning(
+                            "GA4Channel: Received HTTP %d. Retrying (%d/%d)...",
+                            response.status, retries + 1, self.max_retries
+                        )
+                        delay = base_delay * (2 ** retries)  # Exponential backoff (1s, 2s, 4s, 8s, etc.)
+                        await asyncio.sleep(delay)  # Add a delay before retrying
+                        retries += 1
+                    else:
+                        return  # Return if successful or not 502
+            except ClientConnectionError as e:
+                if "SSL shutdown timed out" in str(e):
+                    logging.debug("GA4Channel: Ignored SSL shutdown timeout.")
+                    return
                 else:
-                    return  # Return if successful or not 502
+                    logging.warning("GA4Channel: Connection error: %s", e)
+                    retries += 1
+                    await asyncio.sleep(base_delay)
 
         # If max retries reached without success, raise an exception
         logging.error("GA4Channel: Maximum retries reached. Unable to complete request.")
