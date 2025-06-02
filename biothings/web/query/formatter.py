@@ -280,6 +280,11 @@ class ESResultFormatter(ResultFormatter):
 
                 return response
             elif "error" in response and "status" in response:
+                logger.warning(
+                    "Received error response with status code %s. Full response: %s",
+                    response["status"],
+                    response
+                )
                 return {"error": {"status_code": response["status"]}}
 
         raise TypeError(f"Invalid response type of {type(response)}.")
