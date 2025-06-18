@@ -62,7 +62,7 @@ def dump_source(
     """
     Download the source data files to the local file system
     """
-    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump), debug=True)
+    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump))
 
 
 @dataplugin_application.command(name="upload")
