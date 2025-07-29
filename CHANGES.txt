@@ -1,33 +1,33 @@
-v1.0.0 (2025/07/17)
+v1.0.0 (2025/07/29)
     Highlights:
         - Support sqlite3 for the MergerStorage backend, e.g. used in CLI ([#348](https://github.com/biothings/biothings.api/pull/348))
         - Support data validation after upload ([#348](https://github.com/biothings/biothings.api/pull/348))
-        - Consolidate "dataplugin" and "dataplugin_hub" CLI commands ([#391](https://github.com/biothings/biothings.api/pull/391))
+        - Consolidated "dataplugin" and "dataplugin_hub" CLI commands ([#391](https://github.com/biothings/biothings.api/pull/391))
     biothings.hub improvements:
-        - Fix unlist util ([#352](https://github.com/biothings/biothings.api/pull/352))
-        - Add MAX_PARALLEL_UPLOAD option in ParallelizedSourceUploader class to limit maximum parallel upload workers
-        - Add new method validate_snapshots to SnapshotManager ([#355](https://github.com/biothings/biothings.api/pull/355))
-        - Add PostgreSQL as a supported backend ([#359](https://github.com/biothings/biothings.api/pull/359))
-        - Add DISABLED option in the BaseDumper class to allow disabling a plugin ([#396](https://github.com/biothings/biothings.api/pull/396))
-        - Add Pydantic based validation during the post_upload step ([#382](https://github.com/biothings/biothings.api/pull/382))
+        - Fixed utils.dataload.unlist helper function for handling nested lists or dictionaries ([#352](https://github.com/biothings/biothings.api/pull/352))
+        - Added MAX_PARALLEL_UPLOAD option in ParallelizedSourceUploader class to limit maximum parallel upload workers
+        - Added new SnapshotManager.validate_snapshots method  ([#355](https://github.com/biothings/biothings.api/pull/355))
+        - Added PostgreSQL as a supported backend ([#359](https://github.com/biothings/biothings.api/pull/359))
+        - Added DISABLED option in the BaseDumper class to allow disabling a plugin ([#396](https://github.com/biothings/biothings.api/pull/396))
+        - Support Pydantic based validation during the post_upload step ([#382](https://github.com/biothings/biothings.api/pull/382))
         - Improve error logging when handling ElasticSearch BulkIndexError Exception ([#380](https://github.com/biothings/biothings.api/pull/380))
-        - Add validation for the dataplugin manifest files ([#371](https://github.com/biothings/biothings.api/pull/371))
-        - Update WgetDumper class to use subprocess instead of deprecated os.system
+        - Added validation schemas for the dataplugin manifest files ([#371](https://github.com/biothings/biothings.api/pull/371))
+        - Updated WgetDumper class to use subprocess instead of deprecated os.system
     biothings.web improvements:
-        - Fix key error in JMESPath exclude_empty ([#372](https://github.com/biothings/biothings.api/pull/372))
-        - Fix queries when "Content-Type" header exists but request body is empty ([#376](https://github.com/biothings/biothings.api/issues/376))
-        - Remove deprecated doc_type from ESIndex class ([#402](https://github.com/biothings/biothings.api/pull/402))
-        - Fix a bug when calling /metadata, it overrides MetadataSourceHandler.biothing_type ([#393](https://github.com/biothings/biothings.api/issues/393))
-        - Suppress the logs from the "elastic_transport.transport" logger ([#363](https://github.com/biothings/biothings.api/issues/363))
+        - Fixed the KeyError issue in JMESPath when jmespath_exclude_empty=true ([#372](https://github.com/biothings/biothings.api/pull/372))
+        - Fixed queries when "Content-Type" header exists but request body is empty ([#376](https://github.com/biothings/biothings.api/issues/376))
+        - Removed deprecated doc_type from ESIndex class ([#402](https://github.com/biothings/biothings.api/pull/402))
+        - Fixed a bug when calling /metadata, it overrides MetadataSourceHandler.biothing_type ([#393](https://github.com/biothings/biothings.api/issues/393))
+        - Suppressed the logs from the "elastic_transport.transport" logger ([#363](https://github.com/biothings/biothings.api/issues/363))
     biothings.cli improvements:
-        - Add "index" subcommand to "dataplugin" command ([#373](https://github.com/biothings/biothings.api/pull/373))
-        - Add "validate" subcommand to "dataplugin" command ([#371](https://github.com/biothings/biothings.api/pull/371))
-        - Consolidate "dataplugin" and "dataplugin_hub" commands into a single dataplugin commmand ([#391](https://github.com/biothings/biothings.api/pull/391))
+        - Added experimental "index" subcommand to "dataplugin" command ([#373](https://github.com/biothings/biothings.api/pull/373))
+        - Added experimental "validate" subcommand to "dataplugin" command ([#371](https://github.com/biothings/biothings.api/pull/371))
+        - Consolidated "dataplugin" and "dataplugin_hub" commands into a single "dataplugin" commmand ([#391](https://github.com/biothings/biothings.api/pull/391))
     Misc improvements:
-        - Upgrade ElasticSearch to 8.17.0 ([#356](https://github.com/biothings/biothings.api/pull/356))
+        - Upgraded ElasticSearch to 8.17.0 ([#356](https://github.com/biothings/biothings.api/pull/356))
         - Support Python 3.13 ([#356](https://github.com/biothings/biothings.api/pull/356))
-        - Overhaul biothings test infrastructure and discovery ([#397](https://github.com/biothings/biothings.api/pull/397))
-        - Improve biothings pytest architecture ([#350](https://github.com/biothings/biothings.api/pull/350))
+        - Overhauled biothings test infrastructure and discovery ([#397](https://github.com/biothings/biothings.api/pull/397))
+        - Improved biothings pytest architecture ([#350](https://github.com/biothings/biothings.api/pull/350))
 
 v0.12.5 (2024/07/21)
     Highlights:
