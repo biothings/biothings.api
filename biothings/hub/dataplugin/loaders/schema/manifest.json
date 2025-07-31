@@ -124,7 +124,7 @@
                 },
                 "uncompress": {
                     "type": "boolean",
-                    "description": "If true, then decompress the downloaded data source. Supports the following compression types: ]zip, gz, bz2, xz]"
+                    "description": "If true, then decompress the downloaded data source. Supports the following compression types: [zip, gz, bz2, xz]. Default is false"
                 },
                 "schedule": {
                     "type": "string",
@@ -146,8 +146,7 @@
                 }
             },
             "required": [
-                "data_url",
-                "uncompress"
+                "data_url"
             ],
             "additionalProperties": false
         },
@@ -210,8 +209,7 @@
                 }
             },
             "required": [
-                "parser",
-                "on_duplicates"
+                "parser"
             ],
             "additionalProperties": false
         },

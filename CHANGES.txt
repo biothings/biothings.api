@@ -1,3 +1,58 @@
+v1.0.0 (2025/07/29)
+    Highlights:
+        - Support sqlite3 for the MergerStorage backend, e.g. used in CLI ([#348](https://github.com/biothings/biothings.api/pull/348))
+        - Support data validation after upload ([#348](https://github.com/biothings/biothings.api/pull/348))
+        - Consolidated "dataplugin" and "dataplugin_hub" CLI commands ([#391](https://github.com/biothings/biothings.api/pull/391))
+    biothings.hub improvements:
+        - Fixed utils.dataload.unlist helper function for handling nested lists or dictionaries ([#352](https://github.com/biothings/biothings.api/pull/352))
+        - Added MAX_PARALLEL_UPLOAD option in ParallelizedSourceUploader class to limit maximum parallel upload workers
+        - Added new SnapshotManager.validate_snapshots method  ([#355](https://github.com/biothings/biothings.api/pull/355))
+        - Added PostgreSQL as a supported backend ([#359](https://github.com/biothings/biothings.api/pull/359))
+        - Added DISABLED option in the BaseDumper class to allow disabling a plugin ([#396](https://github.com/biothings/biothings.api/pull/396))
+        - Support Pydantic based validation during the post_upload step ([#382](https://github.com/biothings/biothings.api/pull/382))
+        - Improve error logging when handling ElasticSearch BulkIndexError Exception ([#380](https://github.com/biothings/biothings.api/pull/380))
+        - Added validation schemas for the dataplugin manifest files ([#371](https://github.com/biothings/biothings.api/pull/371))
+        - Updated WgetDumper class to use subprocess instead of deprecated os.system
+    biothings.web improvements:
+        - Fixed the KeyError issue in JMESPath when jmespath_exclude_empty=true ([#372](https://github.com/biothings/biothings.api/pull/372))
+        - Fixed queries when "Content-Type" header exists but request body is empty ([#376](https://github.com/biothings/biothings.api/issues/376))
+        - Removed deprecated doc_type from ESIndex class ([#402](https://github.com/biothings/biothings.api/pull/402))
+        - Fixed a bug when calling /metadata, it overrides MetadataSourceHandler.biothing_type ([#393](https://github.com/biothings/biothings.api/issues/393))
+        - Suppressed the logs from the "elastic_transport.transport" logger ([#363](https://github.com/biothings/biothings.api/issues/363))
+    biothings.cli improvements:
+        - Added experimental "index" subcommand to "dataplugin" command ([#373](https://github.com/biothings/biothings.api/pull/373))
+        - Added experimental "validate" subcommand to "dataplugin" command ([#371](https://github.com/biothings/biothings.api/pull/371))
+        - Consolidated "dataplugin" and "dataplugin_hub" commands into a single "dataplugin" commmand ([#391](https://github.com/biothings/biothings.api/pull/391))
+    Misc improvements:
+        - Upgraded ElasticSearch to 8.17.0 ([#356](https://github.com/biothings/biothings.api/pull/356))
+        - Support Python 3.13 ([#356](https://github.com/biothings/biothings.api/pull/356))
+        - Overhauled biothings test infrastructure and discovery ([#397](https://github.com/biothings/biothings.api/pull/397))
+        - Improved biothings pytest architecture ([#350](https://github.com/biothings/biothings.api/pull/350))
+
+v0.12.5 (2024/07/21)
+    Highlights:
+        - Added options for Docker dumper (named) volumes
+        - Allow running web API tests directly in the hub settings
+        - Added advanced plugin support for Biothings CLI
+        - Support Python 3.12 and dropped Python 3.7 support
+    biothings.web improvements:
+        - Moved jmespath after other transformations (#323 #324 #325)
+        - Added metadata validation in our query builder
+        - Fixed the async HTTP client issues when sending GA4 notifications
+    biothings.hub improvements:
+        - Allow setting a custom config file to run test API in the hub
+        - Replaced deprecated imp module with importlib in plugin assistant
+        - Updated pymongo version to prevent log leaking
+    biothings.cli improvements:
+        - Added MongoDB backend support in Biothings CLI
+    biothings.utils improvements:
+        - Added proper handling for duplicate ID's in IgnoreDuplicateStorage
+        - Added more performant bulk document write for sqlite3 backend
+    Misc improvements:
+        - Upgraded Tornado to 6.4.1
+        - Corrected keyword argument for compability with elasticsearch 8.x client
+        - Fixed error handling for compability with elasticsearch 8.x client
+
 v0.12.4 (2024/04/02)
     Highlights:
         - New and updated tutorials and documentation

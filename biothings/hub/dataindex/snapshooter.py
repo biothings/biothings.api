@@ -99,12 +99,10 @@ class _UserString(UserString):
         return f"{type(self).__name__}({self.data})"
 
 
-class TemplateStr(_UserString):
-    ...
+class TemplateStr(_UserString): ...
 
 
-class RenderedStr(_UserString):
-    ...
+class RenderedStr(_UserString): ...
 
 
 class RepositoryConfig(UserDict):
@@ -162,12 +160,10 @@ class _SnapshotResult(UserDict):
         return f"{type(self).__name__}({str(self.data)})"
 
 
-class CumulativeResult(_SnapshotResult):
-    ...
+class CumulativeResult(_SnapshotResult): ...
 
 
-class StepResult(_SnapshotResult):
-    ...
+class StepResult(_SnapshotResult): ...
 
 
 class SnapshotEnv:

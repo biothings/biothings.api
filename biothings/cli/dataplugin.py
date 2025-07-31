@@ -290,7 +290,9 @@ def index_plugin(
 @dataplugin_application.command(name="validate")
 def validate_manifest(
     plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
-    show_schema: Annotated[Optional[bool], typer.Option("--show-schema", help="Display biothings manifest schema")] = None,
+    show_schema: Annotated[
+        Optional[bool], typer.Option("--show-schema", help="Display biothings manifest schema")
+    ] = None,
 ) -> None:
     """
     [red][bold](experimental)[/bold][/red] Validate a provided manifest file via JSONSchema

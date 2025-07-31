@@ -278,7 +278,9 @@ async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000,
 
 
 @operation_mode
-async def do_parallel_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
+async def do_parallel_upload(
+    plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True
+) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -539,7 +541,9 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
 
 
 @operation_mode
-async def do_list(plugin_name: Optional[str] = None, dump: bool = True, upload: bool = True, hubdb: bool = False) -> None:
+async def do_list(
+    plugin_name: Optional[str] = None, dump: bool = True, upload: bool = True, hubdb: bool = False
+) -> None:
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
@@ -648,7 +652,9 @@ async def do_serve(plugin_name: Optional[str] = None, host: str = "localhost", p
 
 
 @operation_mode
-async def do_clean(plugin_name: Optional[str] = None, dump: bool = False, upload: bool = False, clean_all: bool = False):
+async def do_clean(
+    plugin_name: Optional[str] = None, dump: bool = False, upload: bool = False, clean_all: bool = False
+):
     """
     Clean the dumped files, uploaded sources, or both.
     """
