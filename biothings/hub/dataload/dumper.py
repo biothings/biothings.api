@@ -874,7 +874,7 @@ class HTTPDumper(BaseDumper):
     """
 
     VERIFY_CERT: bool = True
-    IGNORE_HTTP_CODE: List[str] = []  # list of HTTP code to ignore in case on non-200 response
+    IGNORE_HTTP_CODE: List[int] = []  # list of HTTP code to ignore in case on non-200 response
     RESOLVE_FILENAME: bool = False  # global trigger to get filenames from headers
 
     def prepare_client(self) -> None:
