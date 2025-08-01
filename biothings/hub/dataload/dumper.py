@@ -873,9 +873,9 @@ class HTTPDumper(BaseDumper):
     Dumper using HTTP protocol and "requests" library
     """
 
-    VERIFY_CERT = True
-    IGNORE_HTTP_CODE = []  # list of HTTP code to ignore in case on non-200 response
-    RESOLVE_FILENAME = False  # global trigger to get filenames from headers
+    VERIFY_CERT: bool = True
+    IGNORE_HTTP_CODE: list[str] = []  # list of HTTP code to ignore in case on non-200 response
+    RESOLVE_FILENAME: bool = False  # global trigger to get filenames from headers
 
     def prepare_client(self) -> None:
         self.client = requests.Session()
