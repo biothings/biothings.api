@@ -86,11 +86,15 @@ class ESResultFormatter(ResultFormatter):
             super().__init__(*args, **kwargs)
             # make sure the document is coming from
             # elasticsearch at initialization time
-            assert "hits" in self.data
-            assert "total" in self.data["hits"]
-            assert "hits" in self.data["hits"]
+            if "hits" not in self.data:
+                raise ValueError("Response missing 'hits' field")
+            if "total" not in self.data["hits"]:
+                raise ValueError("Response missing 'hits.total' field")
+            if "hits" not in self.data["hits"]:
+                raise ValueError("Response missing 'hits.hits' field")
             for hit in self.data["hits"]["hits"]:
-                assert "_source" in hit
+                if "_source" not in hit:
+                    raise ValueError("Hit missing '_source' field")
 
     class _Doc(Doc):
         pass
