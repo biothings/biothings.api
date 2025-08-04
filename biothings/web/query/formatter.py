@@ -84,6 +84,11 @@ class ESResultFormatter(ResultFormatter):
     class _Hits(Hits):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            # Check if this is an error response from Elasticsearch
+            if "error" in self.data:
+                logger.error("ES returned error response: %s", self.data)
+                raise ValueError("Invalid response format")
+
             # make sure the document is coming from
             # elasticsearch at initialization time
             if "hits" not in self.data:

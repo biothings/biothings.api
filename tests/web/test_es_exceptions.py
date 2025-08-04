@@ -160,10 +160,10 @@ async def test_authorization_exception():
 
 
 @pytest.mark.asyncio
-async def test_generic_exception():
+async def test_index_not_found_exception():
     @capturesESExceptions
     async def func():
-        exc = Exception(message="test_generic_exception", meta={}, body={})
+        exc = Exception(message="test_index_not_found_exception", meta={}, body={})
         exc.status_code = 500
         exc.info = {"error": {"type": "index_not_found_exception", "reason": "test_reason"}}
         raise exc
@@ -174,6 +174,20 @@ async def test_generic_exception():
     assert exc_info.value.summary == "TypeError"
     assert exc_info.value.details == "Exception() takes no keyword arguments"
 
+@pytest.mark.asyncio
+async def test_es_rejected_execution_exception():
+    @capturesESExceptions
+    async def func():
+        exc = TransportError("test_es_rejected_execution_exception")
+        exc.status_code = 503
+        exc.info = {"error": {"type": "es_rejected_execution_exception", "reason": "rejected execution of TimedRunnable..."}}
+        raise exc
+
+    with pytest.raises(QueryPipelineException) as exc_info:
+        await func()
+    assert exc_info.value.code == 503
+    assert exc_info.value.summary == "Service Unavailable"
+    assert exc_info.value.details == "Elasticsearch cluster overloaded"
 
 @pytest.mark.asyncio
 async def test_search_phase_execution_exception_rejected_execution():

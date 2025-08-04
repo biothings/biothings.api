@@ -147,6 +147,10 @@ def capturesESExceptions(func):
                 elif error_type == "index_not_found_exception":
                     raise QueryPipelineException(500, error_type)
 
+                elif error_type == "es_rejected_execution_exception":
+                    # ES cluster is overloaded, all thread pools at capacity
+                    raise QueryPipelineException(503, "Service Unavailable", "Elasticsearch cluster overloaded")
+
                 else:  # unexpected
                     raise
 
