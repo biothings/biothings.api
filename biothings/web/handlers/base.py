@@ -18,7 +18,6 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
-
 import logging
 
 import orjson
@@ -94,11 +93,24 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         )
         # standardized request arguments
         self.args = self._parse_args(reqargs)
-        self.format = self.args.format
+
+        # Handle cases where args is a plain dict (e.g., when name is missing or None)
+        if hasattr(self.args, 'format'):
+            self.format = self.args.format
+        else:
+            # Use the default format when args doesn't have format attribute
+            self.format = "json"
 
     def _parse_json(self):
         if not self.request.body:
-            return {}
+            raise HTTPError(
+                400,
+                reason=(
+                    "Empty body is not a valid JSON. "
+                    "Remove the content-type header, or "
+                    "provide an empty object in the body."
+                ),
+            )
         try:
             return orjson.loads(self.request.body)
         except orjson.JSONDecodeError:
@@ -114,11 +126,32 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         if not self.name:  # feature disabled
             return {}  # default value
 
+        # Handle handlers that don't define a unique name attribute
+        if self.name == "__base__" and self.__class__ != BaseAPIHandler:
+            logger.warning(
+                f"Handler {self.__class__.__name__} inherits from BaseAPIHandler but doesn't define "
+                f"a unique 'name' attribute. This may cause parameter validation conflicts. "
+                f"Please add: name = 'your_handler_name' to the class definition for consistent behavior."
+            )
+            # For handlers with missing names, return empty args to avoid conflicts
+            # This mimics the behavior when name is None
+            return {}
+        else:
+            actual_name = self.name
+
         optionsets = self.biothings.optionsets
-        optionset = optionsets.get(self.name)
+        optionset = optionsets.get(actual_name)
+
+        # Initialize args variable for the finally block
+        args = None
 
         try:  # uses biothings.web.options to standardize args
-            args = optionset.parse(self.request.method, reqargs)
+            if optionset:
+                args = optionset.parse(self.request.method, reqargs)
+            else:
+                # If no optionset found, return empty args (same as when name is None)
+                args = {}
+                return args
 
         except OptionError as err:
             args = err  # for logging in "finally" clause
