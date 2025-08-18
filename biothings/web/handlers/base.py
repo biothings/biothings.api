@@ -103,14 +103,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
     def _parse_json(self):
         if not self.request.body:
-            raise HTTPError(
-                400,
-                reason=(
-                    "Empty body is not a valid JSON. "
-                    "Remove the content-type header, or "
-                    "provide an empty object in the body."
-                ),
-            )
+            return {}
         try:
             return orjson.loads(self.request.body)
         except orjson.JSONDecodeError:
@@ -126,32 +119,37 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         if not self.name:  # feature disabled
             return {}  # default value
 
-        # Handle handlers that don't define a unique name attribute
+        # Check if handler defines kwargs but not a unique name - this is an error
         if self.name == "__base__" and self.__class__ != BaseAPIHandler:
-            logger.warning(
-                f"Handler {self.__class__.__name__} inherits from BaseAPIHandler but doesn't define "
-                f"a unique 'name' attribute. This may cause parameter validation conflicts. "
-                f"Please add: name = 'your_handler_name' to the class definition for consistent behavior."
+            # Check if this handler defines its own kwargs (not inherited from BaseAPIHandler)
+            handler_has_kwargs = (
+                hasattr(self.__class__, 'kwargs') and
+                self.__class__.kwargs is not BaseAPIHandler.kwargs
             )
-            # For handlers with missing names, return empty args to avoid conflicts
-            # This mimics the behavior when name is None
-            return {}
-        else:
-            actual_name = self.name
+
+            if handler_has_kwargs:
+                # Handler defines kwargs but uses default name - this will cause conflicts
+                raise HTTPError(
+                    500,
+                    reason=(
+                        f"Handler {self.__class__.__name__} defines 'kwargs' but doesn't define "
+                        f"a unique 'name' attribute. This causes parameter validation conflicts. "
+                        f"Please add: name = 'your_handler_name' to the class definition."
+                    )
+                )
+            else:
+                # Handler doesn't define kwargs and doesn't define name - this is ok
+                # Return empty args to disable parameter validation
+                return {}
 
         optionsets = self.biothings.optionsets
-        optionset = optionsets.get(actual_name)
+        optionset = optionsets.get(self.name)
 
         # Initialize args variable for the finally block
         args = None
 
         try:  # uses biothings.web.options to standardize args
-            if optionset:
-                args = optionset.parse(self.request.method, reqargs)
-            else:
-                # If no optionset found, return empty args (same as when name is None)
-                args = {}
-                return args
+            args = optionset.parse(self.request.method, reqargs)
 
         except OptionError as err:
             args = err  # for logging in "finally" clause
