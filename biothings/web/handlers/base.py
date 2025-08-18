@@ -145,9 +145,6 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         optionsets = self.biothings.optionsets
         optionset = optionsets.get(self.name)
 
-        # Initialize args variable for the finally block
-        args = None
-
         try:  # uses biothings.web.options to standardize args
             args = optionset.parse(self.request.method, reqargs)
 
