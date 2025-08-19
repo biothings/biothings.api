@@ -129,13 +129,10 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
 
             if handler_has_kwargs:
                 # Handler defines kwargs but uses default name - this will cause conflicts
-                raise HTTPError(
-                    500,
-                    reason=(
-                        f"Handler {self.__class__.__name__} defines 'kwargs' but doesn't define "
-                        f"a unique 'name' attribute. This causes parameter validation conflicts. "
-                        f"Please add: name = 'your_handler_name' to the class definition."
-                    )
+                raise ValueError(
+                    f"Handler {self.__class__.__name__} defines 'kwargs' but doesn't define "
+                    f"a unique 'name' attribute. This causes parameter validation conflicts. "
+                    f"Please add: name = 'your_handler_name' to the class definition."
                 )
             else:
                 # Handler doesn't define kwargs and doesn't define name - this is ok
