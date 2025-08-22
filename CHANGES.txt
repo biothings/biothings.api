@@ -1,3 +1,7 @@
+v1.0.1 (2025/08/21)
+    Bugfixes:
+        - Fixed parameter validation conflict by requiring handler classes with `kwargs` to define a unique `name` attribute. ([#412](https://github.com/biothings/biothings.api/pull/412))
+        - Fix missing dependencies for building sphinx docs
 v1.0.0 (2025/07/29)
     Highlights:
         - Support sqlite3 for the MergerStorage backend, e.g. used in CLI ([#348](https://github.com/biothings/biothings.api/pull/348))
