@@ -84,13 +84,26 @@ class ESResultFormatter(ResultFormatter):
     class _Hits(Hits):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            # Check if this is an error response from Elasticsearch
+            if "error" in self.data:
+                logger.error("ES returned error response: %s", self.data)
+                raise ValueError("Invalid response format")
+
             # make sure the document is coming from
             # elasticsearch at initialization time
-            assert "hits" in self.data
-            assert "total" in self.data["hits"]
-            assert "hits" in self.data["hits"]
+            if "hits" not in self.data:
+                logger.error("ES response missing 'hits' field. Response data: %s", self.data)
+                raise ValueError("Response missing 'hits' field")
+            if "total" not in self.data["hits"]:
+                logger.error("ES response missing 'hits.total' field. Response data: %s", self.data)
+                raise ValueError("Response missing 'hits.total' field")
+            if "hits" not in self.data["hits"]:
+                logger.error("ES response missing 'hits.hits' field. Response data: %s", self.data)
+                raise ValueError("Response missing 'hits.hits' field")
             for hit in self.data["hits"]["hits"]:
-                assert "_source" in hit
+                if "_source" not in hit:
+                    logger.error("ES hit missing '_source' field. Hit data: %s", hit)
+                    raise ValueError("Hit missing '_source' field")
 
     class _Doc(Doc):
         pass
