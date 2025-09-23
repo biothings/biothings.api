@@ -67,8 +67,8 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
-from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
 from biothings.cli.structure import TEMPLATE_DIRECTORY
+from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
 from biothings.cli.utils import (
     clean_dumped_files,
     clean_uploaded_sources,
