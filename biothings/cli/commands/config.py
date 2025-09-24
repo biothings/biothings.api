@@ -104,7 +104,7 @@ logger = logging.getLogger(name="biothings-cli")
 @config_application.command(name="display")
 def display_default_configuration():
     """
-    Download the source data files to the local file system
+    Displays the default configuration stored for the biothings-cli
     """
     default_configuration = default_biothings_configuration()
     console = Console()
@@ -119,9 +119,6 @@ def display_default_configuration():
 
 @config_application.command(name="create")
 def create_local_configuration(
-    """
-    Creates a local configuration file (named config.py) in the current working directory
-    """
     db_backend: Annotated[
         bool,
         typer.Option("--override-backend", help="If provided, will prompt for overriding the HUB_DB_BACKEND value"),
@@ -131,11 +128,14 @@ def create_local_configuration(
         typer.Option("--override-index", help="If provided, will prompt for overriding the INDEX_CONFIG value"),
     ] = False,
 ):
+    """
+    Creates a local configuration file (named config.py) in the current working directory
+    """
     configuration = default_biothings_configuration()
 
     class BackendType(str, enum.Enum):
-        sqlite3 = "sqlite3"
-        mongodb = "mongodb"
+        SQLITE3 = "sqlite3"
+        MONGODB = "mongodb"
 
     if db_backend:
         db_type = typer.prompt(
