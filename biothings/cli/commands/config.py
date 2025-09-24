@@ -63,6 +63,8 @@ import logging
 import os
 import pathlib
 import sys
+import types
+from typing import Union
 
 from rich import box
 from rich.console import Console
@@ -269,40 +271,66 @@ def default_biothings_configuration() -> dict:
     return configuration
 
 
-def default_configuration_module():
+
+def load_local_configuration() -> types.ModuleType:
     """
-    Setup a config module necessary to launch the CLI
+    Attempts to load a local configuration file first before
+    falling back to a default configuration
+    """
+    current_directory = pathlib.Path.cwd()
+    config_module_file = current_directory.joinpath("config.py")
+    if config_module_file.exists():
+        spec = importlib.util.spec_from_file_location("config", location=str(config_module_file))
+        config_module = importlib.util.module_from_spec(spec)
+        sys.modules["config"] = config_module
+        sys.modules["biothings.config"] = config_module
+
+        try:
+            backend = getattr(config_module, "HUB_DB_BACKEND")
+            setattr(config_module, "hub_db", importlib.import_module(backend["module"]))
+        except ImportError as import_err:
+            logging.exception(import_err)
+            raise import_err
+
+        spec.loader.exec_module(config_module)
+
+        for attr in dir(config_module):
+            value = getattr(config_module, attr)
+            if isinstance(value, ConfigurationError):
+                raise ConfigurationError(f"{attr}: {value}")
+
+        return config_module
+    return None
+
+
+def load_default_configuration():
+    """
+    Loads the default configuration into a DummyConfig
+    """
+    configuration_instance = DummyConfig("config")
+    default_configuration_values = default_biothings_configuration()
+    for configuration_key, configuration_value in default_configuration_values.items():
+        setattr(configuration_instance, configuration_key, configuration_value)
+
+    sys.modules["config"] = configuration_instance
+    sys.modules["biothings.config"] = configuration_instance
+
+    return configuration_instance
+
+def load_configuration() -> Union[types.ModuleType, DummyConfig]:
+    """
+    Setup a config module necessary to launch the biothings-cli.
+
+    Attempts to load a local file named config.py in the current working directory,
+    otherwise loads a default configuration through a DummyConfig instance
 
     Depending on the backend hub database, the order of configuration
     matters. If we attempt to load a module that checks for the configuration
     we'll have to ensure that the configuration is properly configured prior
     to loading the module
     """
-    configuration_instance = DummyConfig("config")
-
-    try:
-        config_mod = importlib.import_module("config")
-        for attr in dir(config_mod):
-            value = getattr(config_mod, attr)
-            if isinstance(value, ConfigurationError):
-                raise ConfigurationError(f"{attr}: {value}")
-            setattr(configuration_instance, attr, value)
-    except ModuleNotFoundError:
-        logging.debug(ModuleNotFoundError)
+    configuration = load_local_configuration()
+    if configuration is None:
         logging.debug("Unable to find `config` module. Using the default configuration")
-    finally:
-        sys.modules["config"] = configuration_instance
-        sys.modules["biothings.config"] = configuration_instance
-
-    default_configuration_values = default_biothings_configuration()
-    for configuration_key, configuration_value in default_configuration_values.items():
-        setattr(configuration_instance, configuration_key, configuration_value)
-
-    try:
-        backend = getattr(configuration_instance, "HUB_DB_BACKEND")
-        setattr(configuration_instance, "hub_db", importlib.import_module(backend["module"]))
-    except ImportError as import_err:
-        logging.exception(import_err)
-        raise import_err
-
-    return configuration_instance
+        configuration = load_default_configuration()
+    return configuration

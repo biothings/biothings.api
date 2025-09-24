@@ -12,7 +12,7 @@ import typer
 from rich.logging import RichHandler
 
 from biothings.cli.commands.admin import build_admin_application
-from biothings.cli.commands.config import config_application, default_configuration_module
+from biothings.cli.commands.config import config_application, load_configuration
 from biothings.cli.commands.dataplugin import dataplugin_application
 
 
@@ -59,7 +59,7 @@ def main():
     if cli_debug_flag:
         logging_level = logging.DEBUG
     setup_logging_configuration(logging_level)
-    default_configuration_module()
+    load_configuration()
 
     admin_application.add_typer(dataplugin_application, name="dataplugin")
     admin_application.add_typer(config_application, name="config")
