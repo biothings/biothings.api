@@ -119,6 +119,9 @@ def display_default_configuration():
 
 @config_application.command(name="create")
 def create_local_configuration(
+    """
+    Creates a local configuration file (named config.py) in the current working directory
+    """
     db_backend: Annotated[
         bool,
         typer.Option("--override-backend", help="If provided, will prompt for overriding the HUB_DB_BACKEND value"),
