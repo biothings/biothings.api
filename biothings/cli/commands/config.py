@@ -285,14 +285,14 @@ def load_local_configuration() -> types.ModuleType:
         sys.modules["config"] = config_module
         sys.modules["biothings.config"] = config_module
 
+        spec.loader.exec_module(config_module)
+
         try:
             backend = getattr(config_module, "HUB_DB_BACKEND")
             setattr(config_module, "hub_db", importlib.import_module(backend["module"]))
         except ImportError as import_err:
             logging.exception(import_err)
             raise import_err
-
-        spec.loader.exec_module(config_module)
 
         for attr in dir(config_module):
             value = getattr(config_module, attr)
@@ -307,15 +307,22 @@ def load_default_configuration():
     """
     Loads the default configuration into a DummyConfig
     """
-    configuration_instance = DummyConfig("config")
+    config_module = DummyConfig("config")
     default_configuration_values = default_biothings_configuration()
     for configuration_key, configuration_value in default_configuration_values.items():
-        setattr(configuration_instance, configuration_key, configuration_value)
+        setattr(config_module, configuration_key, configuration_value)
 
-    sys.modules["config"] = configuration_instance
-    sys.modules["biothings.config"] = configuration_instance
+    try:
+        backend = getattr(config_module, "HUB_DB_BACKEND")
+        setattr(config_module, "hub_db", importlib.import_module(backend["module"]))
+    except ImportError as import_err:
+        logging.exception(import_err)
+        raise import_err
 
-    return configuration_instance
+    sys.modules["config"] = config_module
+    sys.modules["biothings.config"] = config_module
+
+    return config_module
 
 def load_configuration() -> Union[types.ModuleType, DummyConfig]:
     """
