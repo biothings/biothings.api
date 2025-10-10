@@ -22,11 +22,14 @@ dict_keys(['taxid', 'symbol', 'name', ... ])
 """
 
 import asyncio
+import logging
 
 from elasticsearch import NotFoundError, RequestError
 from elasticsearch.dsl import MultiSearch, Search
 
 from biothings.web.query.builder import ESScrollID
+
+logger = logging.getLogger(__name__)
 
 
 class ResultInterrupt(Exception):
@@ -139,6 +142,13 @@ class AsyncESQueryBackend(ESQueryBackend):
                     raise RawResultInterrupt(res)
 
                 if not res["hits"]["hits"]:
+                    scroll_id = str(query.data) if query.data else "None"
+                    try:
+                        await self.client.clear_scroll(scroll_id=query.data)
+                        logger.info("Scroll context cleared: %s", scroll_id)
+                    except Exception as e:
+                        logger.warning("Failed to clear scroll context (ID: %s): %s", scroll_id, str(e))
+                    # Always raise this exception regardless of whether clear_scroll succeeds
                     raise EndScrollInterrupt()
 
                 return res
