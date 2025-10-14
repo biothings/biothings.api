@@ -1,3 +1,4 @@
+import json
 import logging
 from collections import namedtuple
 from enum import Enum
@@ -92,8 +93,12 @@ class ESIndex(BaseESIndex):
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
 
-            self.logger.warning("Discovered errors during the bulk index task. Defaulting to 0 indexed documents")
-            return 0
+            serialized_errors = json.dumps(errors, indent=2, default=str)
+            message = (
+                f"Bulk indexing failed for index '{self.index_name}'. "
+                f"Elasticsearch responded with errors:\n{serialized_errors}"
+            )
+            raise helpers.BulkIndexError(message, errors) from e
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?
