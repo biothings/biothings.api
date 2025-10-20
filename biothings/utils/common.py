@@ -160,7 +160,7 @@ def safewfile(filename, prompt=True, default="C", mode="w"):
 
 def anyfile(infile, mode="r"):
     """
-    return a file handler with the support for gzip/zip comppressed files.
+    return a file handler with the support for gzip/zip compressed files.
     if infile is a two value tuple, then first one is the compressed file;
     the second one is the actual filename in the compressed file.
     e.g., ('a.zip', 'aa.txt')
@@ -171,6 +171,17 @@ def anyfile(infile, mode="r"):
     else:
         rawfile = os.path.splitext(infile)[0]
     filetype = os.path.splitext(infile)[1].lower()
+
+    # check for tarball before other formats
+    root = os.path.splitext(infile)[0]
+    secondary_filetype = os.path.splitext(root)[1].lower()
+
+    # this is to match both plain ".tar" or compressed tarballs like ".tar.gz" and ".tar.xz"
+    if filetype == ".tar" or secondary_filetype == ".tar":
+        import tarfile
+        tar_file = tarfile.open(infile, mode)
+        return io.TextIOWrapper(tar_file.extractfile(rawfile))
+
     if filetype == ".gz":
         # import gzip
         in_f = io.TextIOWrapper(gzip.GzipFile(infile, mode))
