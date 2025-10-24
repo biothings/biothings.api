@@ -21,6 +21,7 @@ import pickle
 import random
 import string
 import sys
+import tarfile
 import time
 import types
 import urllib.parse
@@ -172,15 +173,23 @@ def anyfile(infile, mode="r"):
         rawfile = os.path.splitext(infile)[0]
     filetype = os.path.splitext(infile)[1].lower()
 
-    # check for tarball before other formats
-    root = os.path.splitext(infile)[0]
-    secondary_filetype = os.path.splitext(root)[1].lower()
 
-    # this is to match both plain ".tar" or compressed tarballs like ".tar.gz" and ".tar.xz"
-    if filetype == ".tar" or secondary_filetype == ".tar":
-        import tarfile
+    # use tarfile built-in method to check for tar file before anything else
+    if tarfile.is_tarfile(infile):
         tar_file = tarfile.open(infile, mode)
-        return io.TextIOWrapper(tar_file.extractfile(rawfile))
+        try:
+            extracted = tar_file.extractfile(rawfile)
+        except KeyError:
+            # provided rawfile does not appear in the tarball
+            tar_file.close()
+            raise Exception("target member does not contain the provided tar file.")
+
+        # extracted member is not a regular file or link
+        if extracted is None:
+            tar_file.close()
+            raise Exception("invalid target file: must be a regular file or a link")
+
+        return io.TextIOWrapper(extracted)
 
     if filetype == ".gz":
         # import gzip
