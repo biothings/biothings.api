@@ -146,8 +146,8 @@ class AsyncESQueryBackend(ESQueryBackend):
                     try:
                         await self.client.clear_scroll(scroll_id=query.data)
                         logger.info("Scroll context cleared: %s", scroll_id)
-                    except Exception as e:
-                        logger.warning("Failed to clear scroll context (ID: %s): %s", scroll_id, str(e))
+                    except NotFoundError as e:
+                        logger.warning("Scroll context not found (ID: %s): %s", scroll_id, str(e))
                     # Always raise this exception regardless of whether clear_scroll succeeds
                     raise EndScrollInterrupt()
 
