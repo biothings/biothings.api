@@ -123,7 +123,7 @@ def do_create(plugin_name: str, multi_uploaders: bool = False, parallelizer: boo
 
 @cli_system_path
 @operation_mode
-async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True) -> None:
+async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True, mark_success: bool = False) -> None:
     """
     Perform dump for the given plugin
     """
@@ -150,11 +150,15 @@ async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True) -
         )
         logger.warning(attribute_warning)
 
-    dump_job = dumper_instance.dump(
-        job_manager=assistant_instance.job_manager,
-        force=False,
-    )
-    await asyncio.gather(dump_job)
+    if mark_success:
+        logger.warning("Marking dump as successful without running the dumper")
+        dumper_instance.mark_success(dry_run=True)
+    else:
+        dump_job = dumper_instance.dump(
+            job_manager=assistant_instance.job_manager,
+            force=False,
+        )
+        await asyncio.gather(dump_job)
 
     dp = hub_db.get_data_plugin()
     dp.remove({"_id": assistant_instance.plugin_name})
