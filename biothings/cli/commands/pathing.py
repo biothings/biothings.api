@@ -87,7 +87,7 @@ def display_system_paths() -> None:
 
     hub_parser_paths = find_hub_parsers()
     for index, parser_path in enumerate(hub_parser_paths):
-        parser_table.add_row(str(index), str(parser_path), str(str(parser_path) in system_paths))
+        parser_table.add_row(str(index), str(parser_path), str(str(parser_path.parent) in system_paths))
 
     console = Console()
     console.print(path_table)
@@ -103,6 +103,9 @@ def update_system_paths() -> None:
     discovery_path.mkdir(parents=True, exist_ok=True)
 
     hub_parser_paths = find_hub_parsers()
+
+    # The actual path that needs to be added is the parent of the hub directory
+    hub_parser_paths = [path.parent for path in hub_parser_paths]
 
     path_file = discovery_path.joinpath(".biothings_cli.pth")
     with open(path_file, "w", encoding="utf-8") as path_handle:
