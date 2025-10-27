@@ -268,6 +268,13 @@ def default_biothings_configuration() -> dict:
         "HUB_MAX_WORKERS": os.cpu_count(),
         "MAX_QUEUED_JOBS": 1000
     }
+
+    # specific attributes to the biothings-cli application
+    cli_configuration = {
+        "BIOTHINGS_CLI_PATH": ".biothings_hub/path",
+    }
+    configuration.update(cli_configuration)
+
     return configuration
 
 
