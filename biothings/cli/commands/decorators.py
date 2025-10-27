@@ -20,7 +20,7 @@ from biothings.cli.exceptions import MissingPluginName
 logger = logging.getLogger(name="biothings-cli")
 
 
-def operation_mode(operation_method: Callable):
+def operation_mode(operation: Callable):
     """
     Based off the directory structure for where the biothings-cli
     was invoked we set the "mode" to one of two states:
@@ -47,64 +47,90 @@ def operation_mode(operation_method: Callable):
     the mode is hub
     """
 
-    @functools.wraps(operation_method)
-    async def determine_operation_mode(*args, **kwargs):
-        working_directory = pathlib.Path.cwd()
-        working_directory_files = {file.name for file in working_directory.iterdir()}
+    @functools.wraps(operation)
+    def determine_operation_mode(*args, **kwargs):
 
-        mode = None
-        if "manifest.json" in working_directory_files or "manifest.yaml" in working_directory_files:
-            logger.debug("Inferring singular manifest plugin from directory structure")
-            mode = "SINGULAR"
-        elif "__init__.py" in working_directory_files:
-            logger.debug("Inferring singular advanced plugin from directory structure")
-            mode = "SINGULAR"
+        def determine_hub_mode():
+            working_directory = pathlib.Path.cwd()
+            working_directory_files = {file.name for file in working_directory.iterdir()}
+
+            mode = None
+            if "manifest.json" in working_directory_files or "manifest.yaml" in working_directory_files:
+                logger.debug("Inferring singular manifest plugin from directory structure")
+                mode = "SINGULAR"
+            elif "__init__.py" in working_directory_files:
+                logger.debug("Inferring singular advanced plugin from directory structure")
+                mode = "SINGULAR"
+            else:
+                logger.debug("Inferring multiple plugins from directory structure")
+                mode = "HUB"
+
+            if mode == "SINGULAR":
+                if kwargs.get("plugin_name", None) is not None:
+                    kwargs["plugin_name"] = None
+            elif mode == "HUB":
+                if kwargs.get("plugin_name", None) is None:
+                    raise MissingPluginName(working_directory)
+
+        @functools.wraps(operation)
+        def handle_function(*args, **kwargs):
+            operation_result = operation(*args, **kwargs)
+            return operation_result
+
+        @functools.wraps(operation)
+        async def handle_corountine(*args, **kwargs):
+            operation_result = await operation(*args, **kwargs)
+            return operation_result
+
+        determine_hub_mode()
+
+        if inspect.iscoroutinefunction(operation):
+            return handle_corountine(*args, **kwargs)
         else:
-            logger.debug("Inferring multiple plugins from directory structure")
-            mode = "HUB"
-
-        if mode == "SINGULAR":
-            if kwargs.get("plugin_name", None) is not None:
-                kwargs["plugin_name"] = None
-        elif mode == "HUB":
-            if kwargs.get("plugin_name", None) is None:
-                raise MissingPluginName(working_directory)
-
-        if inspect.iscoroutinefunction(operation_method):
-            operation_result = await operation_method(*args, **kwargs)
-        else:
-            operation_result = operation_method(*args, **kwargs)
-        return operation_result
+            return handle_function(*args, **kwargs)
 
     return determine_operation_mode
 
 
-def cli_system_path(func: Callable):  # pylint: disable=unused-argument
+def cli_system_path(operation: Callable):  # pylint: disable=unused-argument
     """
     Used for ensuring that if we've appended files to biothings-cli
     path file (stored under config.BIOTHINGS_CLI_PATH), then we need to update
     the system path so we can discover the modules at runtime
     """
 
-    @functools.wraps(func)
-    async def update_system_path(*args, **kwargs):
-        from biothings import config
+    @functools.wraps(operation)
+    def update_system_path(*args, **kwargs):
 
-        discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
-        path_file = discovery_path.joinpath(".biothings_cli.pth")
+        def update_system_path_from_file():
+            from biothings import config
 
-        if path_file.exists():
-            with open(path_file, "r", encoding="utf-8") as handle:
-                path_entries = handle.readlines()
-                path_entries = [entry.strip("\n") for entry in path_entries]
-                sys.path.extend(path_entries)
-                for path in path_entries:
-                    logger.debug("Adding %s to system path", path)
+            discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
+            path_file = discovery_path.joinpath(".biothings_cli.pth")
 
-        if inspect.iscoroutinefunction(func):
-            func_result = await func(*args, **kwargs)
+            if path_file.exists():
+                with open(path_file, "r", encoding="utf-8") as handle:
+                    path_entries = handle.readlines()
+                    path_entries = [entry.strip("\n") for entry in path_entries]
+                    sys.path.extend(path_entries)
+                    for path in path_entries:
+                        logger.debug("Adding %s to system path", path)
+
+        @functools.wraps(operation)
+        def handle_function(*args, **kwargs):
+            operation_result = operation(*args, **kwargs)
+            return operation_result
+
+        @functools.wraps(operation)
+        async def handle_corountine(*args, **kwargs):
+            operation_result = await operation(*args, **kwargs)
+            return operation_result
+
+        update_system_path_from_file()
+
+        if inspect.iscoroutinefunction(operation):
+            return handle_corountine(*args, **kwargs)
         else:
-            func_result = func(*args, **kwargs)
-        return func_result
+            return handle_function(*args, **kwargs)
 
     return update_system_path
