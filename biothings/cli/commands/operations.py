@@ -47,7 +47,6 @@ Grouped into the following categories
 """
 
 import asyncio
-import functools
 import logging
 import multiprocessing
 import os
@@ -57,7 +56,7 @@ import random
 import shutil
 import sys
 import uuid
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 
 import jsonschema
 import rich
@@ -67,8 +66,9 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
+from biothings.cli.commands.decorators import cli_system_path, operation_mode
 from biothings.cli.structure import TEMPLATE_DIRECTORY
-from biothings.cli.exceptions import MissingPluginName, UnknownUploaderSource
+from biothings.cli.exceptions import UnknownUploaderSource
 from biothings.cli.utils import (
     clean_dumped_files,
     clean_uploaded_sources,
@@ -87,65 +87,8 @@ from biothings.utils.workers import upload_worker
 logger = logging.getLogger(name="biothings-cli")
 
 
-def operation_mode(operation_method: Callable):
-    """
-    Based off the directory structure for where the biothings-cli
-    was invoked we set the "mode" to one of two states:
-
-    0) singular
-    The current working directory contains a singular data-plugin
-
-    In this case we don't require a plugin_name argument to be passed
-    at the command-line
-
-    1) hub
-    The current working directory contains N directories operating as a
-    "hub" or collection of data-plugins under one umbrella
-
-    In this case we do require a plugin_name argument to be passed
-    at the command-line. Otherwise we have no idea which data-plugin to
-    refer to
-
-    We attempt to load the plugin from this working directory. If we sucessfully load
-    either a manifest or advanced plugin, then we can safely say this is a singular
-    dataplugin
-
-    If we cannot load either a manifest or advanced plugin then we default assume that
-    the mode is hub
-    """
-
-    @functools.wraps(operation_method)
-    def determine_operation_mode(*args, **kwargs):
-        working_directory = pathlib.Path.cwd()
-        working_directory_files = {file.name for file in working_directory.iterdir()}
-
-        mode = None
-        if "manifest.json" in working_directory_files or "manifest.yaml" in working_directory_files:
-            logger.debug("Inferring singular manifest plugin from directory structure")
-            mode = "SINGULAR"
-        elif "__init__.py" in working_directory_files:
-            logger.debug("Inferring singular advanced plugin from directory structure")
-            mode = "SINGULAR"
-        else:
-            logger.debug("Inferring multiple plugins from directory structure")
-            mode = "HUB"
-
-        if mode == "SINGULAR":
-            if kwargs.get("plugin_name", None) is not None:
-                kwargs["plugin_name"] = None
-        elif mode == "HUB":
-            if kwargs.get("plugin_name", None) is None:
-                raise MissingPluginName(working_directory)
-
-        operation_result = operation_method(*args, **kwargs)
-        return operation_result
-
-    return determine_operation_mode
-
-
 # do not apply operation_mode decorator since this operation means to create a new plugin
 # regardless what the current working directory has
-# @operation_mode
 def do_create(plugin_name: str, multi_uploaders: bool = False, parallelizer: bool = False):
     """
     Create a new data plugin from the template
@@ -178,6 +121,7 @@ def do_create(plugin_name: str, multi_uploaders: bool = False, parallelizer: boo
     logger.info("Successfully created data plugin template at: %s\n", new_plugin_directory)
 
 
+@cli_system_path
 @operation_mode
 async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True) -> None:
     """
@@ -223,6 +167,7 @@ async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True) -
         show_dumped_files(data_folder, assistant_instance.plugin_name)
 
 
+@cli_system_path
 @operation_mode
 async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
     """
@@ -277,6 +222,7 @@ async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000,
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
 
 
+@cli_system_path
 @operation_mode
 async def do_parallel_upload(
     plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True
@@ -344,6 +290,7 @@ async def do_parallel_upload(
         show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
 
 
+@cli_system_path
 @operation_mode
 async def do_dump_and_upload(plugin_name: str) -> None:
     """
@@ -354,6 +301,7 @@ async def do_dump_and_upload(plugin_name: str) -> None:
     logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
 
 
+@cli_system_path
 @operation_mode
 async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[str] = None) -> None:
     """
@@ -540,6 +488,7 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
     await show_source_index(index_name, assistant_instance.index_manager, elasticsearch_mapping)
 
 
+@cli_system_path
 @operation_mode
 async def do_list(
     plugin_name: Optional[str] = None, dump: bool = True, upload: bool = True, hubdb: bool = False
@@ -569,6 +518,7 @@ async def do_list(
         show_hubdb_content()
 
 
+@cli_system_path
 @operation_mode
 async def do_inspect(
     plugin_name: Optional[str] = None,
@@ -633,6 +583,7 @@ async def do_inspect(
                 write_mapping_to_file(sub_output, inspection_mapping)
 
 
+@cli_system_path
 @operation_mode
 async def do_serve(plugin_name: Optional[str] = None, host: str = "localhost", port: int = 9999):
     """
@@ -651,6 +602,7 @@ async def do_serve(plugin_name: Optional[str] = None, host: str = "localhost", p
     await main(host=host, port=port, db=src_db, table_space=table_space)
 
 
+@cli_system_path
 @operation_mode
 async def do_clean(
     plugin_name: Optional[str] = None, dump: bool = False, upload: bool = False, clean_all: bool = False
@@ -714,6 +666,7 @@ async def display_schema():
     console.print(panel)
 
 
+@cli_system_path
 @operation_mode
 async def validate_manifest(plugin_name: Optional[str] = None):
     """
