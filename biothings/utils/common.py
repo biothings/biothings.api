@@ -21,7 +21,6 @@ import pickle
 import random
 import string
 import sys
-import tarfile
 import time
 import types
 import urllib.parse
@@ -161,7 +160,7 @@ def safewfile(filename, prompt=True, default="C", mode="w"):
 
 def anyfile(infile, mode="r"):
     """
-    return a file handler with the support for gzip/zip compressed files.
+    return a file handler with the support for gzip/zip comppressed files.
     if infile is a two value tuple, then first one is the compressed file;
     the second one is the actual filename in the compressed file.
     e.g., ('a.zip', 'aa.txt')
@@ -172,25 +171,6 @@ def anyfile(infile, mode="r"):
     else:
         rawfile = os.path.splitext(infile)[0]
     filetype = os.path.splitext(infile)[1].lower()
-
-
-    # use tarfile built-in method to check for tar file before anything else
-    if tarfile.is_tarfile(infile):
-        tar_file = tarfile.open(infile, mode)
-        try:
-            extracted = tar_file.extractfile(rawfile)
-        except KeyError:
-            # provided rawfile does not appear in the tarball
-            tar_file.close()
-            raise Exception("target member does not contain the provided tar file.")
-
-        # extracted member is not a regular file or link
-        if extracted is None:
-            tar_file.close()
-            raise Exception("invalid target file: must be a regular file or a link")
-
-        return io.TextIOWrapper(extracted)
-
     if filetype == ".gz":
         # import gzip
         in_f = io.TextIOWrapper(gzip.GzipFile(infile, mode))
