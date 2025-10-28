@@ -142,8 +142,8 @@ class AsyncESQueryBackend(ESQueryBackend):
                     raise RawResultInterrupt(res)
 
                 if not res["hits"]["hits"]:
+                    scroll_id=query.data
                     try:
-                        scroll_id=query.data
                         await self.client.clear_scroll(scroll_id=scroll_id)
                         logger.info("Scroll context cleared: %s", scroll_id)
                     except NotFoundError as e:
