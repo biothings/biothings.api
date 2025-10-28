@@ -1,4 +1,3 @@
-import json
 import logging
 from collections import namedtuple
 from enum import Enum
@@ -10,6 +9,7 @@ from pymongo import MongoClient
 
 from biothings.utils.es import ESIndex as BaseESIndex
 from biothings.utils.loggers import get_logger
+from biothings.utils.serializer import to_json
 
 try:
     from biothings.utils.mongo import doc_feeder
@@ -93,7 +93,7 @@ class ESIndex(BaseESIndex):
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
 
-            serialized_errors = json.dumps(errors, indent=2, default=str)
+            serialized_errors = to_json(errors, indent=True)
             message = (
                 f"Bulk indexing failed for index '{self.index_name}'. "
                 f"Elasticsearch responded with errors:\n{serialized_errors}"
