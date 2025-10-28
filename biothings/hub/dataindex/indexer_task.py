@@ -9,6 +9,7 @@ from pymongo import MongoClient
 
 from biothings.utils.es import ESIndex as BaseESIndex
 from biothings.utils.loggers import get_logger
+from biothings.utils.serializer import to_json
 
 try:
     from biothings.utils.mongo import doc_feeder
@@ -92,8 +93,12 @@ class ESIndex(BaseESIndex):
                 self.logger.error(error)
                 self.logger.error("Document ID %s failed: %s", document_id, reason)
 
-            self.logger.warning("Discovered errors during the bulk index task. Defaulting to 0 indexed documents")
-            return 0
+            serialized_errors = to_json(errors, indent=True)
+            message = (
+                f"Bulk indexing failed for index '{self.index_name}'. "
+                f"Elasticsearch responded with errors:\n{serialized_errors}"
+            )
+            raise helpers.BulkIndexError(message, errors) from e
 
     # NOTE
     # Why doesn't "mget", "mexists", "mindex" belong to the base class?
