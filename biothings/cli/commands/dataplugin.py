@@ -8,7 +8,7 @@ from typing import Optional
 import typer
 from typing_extensions import Annotated
 
-from biothings.cli import operations
+from biothings.cli.commands import operations
 
 SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
 FULL_HELP = (
