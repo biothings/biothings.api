@@ -10,6 +10,7 @@ from biothings import config
 from biothings.hub import INSPECTOR_CATEGORY
 from biothings.hub.databuild.backend import create_backend
 from biothings.hub.datainspect.doc_inspect import (
+    clean_big_nums,
     compute_metadata,
     flatten_and_validate,
     get_converters,
