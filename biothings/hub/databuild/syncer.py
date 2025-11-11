@@ -619,13 +619,13 @@ def sync_es_jsondiff_worker(
         # (not allowed within an ES document (_source))
         [d.pop("_timestamp", None) for d in docs]
         try:
-            res["added"] += indexer.index_bulk(docs, batch_size, action="create")[0]
+            res["added"] += indexer.index_bulk(docs, batch_size, op_type="create")[0]
         except BulkIndexError:
             for doc in docs:
                 _id = doc.pop("_id")
                 try:
                     # force action=create to spot docs already added
-                    indexer.index(doc, _id, action="create")
+                    indexer.index(doc, _id, op_type="create")
                     res["added"] += 1
                 except ConflictError:
                     # already added
