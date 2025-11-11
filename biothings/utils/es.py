@@ -64,7 +64,7 @@ def verify_ids(
 
 
 def get_es(es_host, timeout=120, max_retries=3, retry_on_timeout=False):
-    es = Elasticsearch(es_host, timeout=timeout, max_retries=max_retries, retry_on_timeout=retry_on_timeout)
+    es = Elasticsearch(es_host, request_timeout=timeout, max_retries=max_retries, retry_on_timeout=retry_on_timeout)
     return es
 
 
