@@ -1,18 +1,20 @@
+from unittest.mock import Mock
+
 import pytest
 
 from biothings.web.query.pipeline import (
-    capturesESExceptions,
-    RawQueryInterrupt,
-    QueryPipelineInterrupt,
-    EndScrollInterrupt,
-    RawResultInterrupt,
-    QueryPipelineException,
-    RequestError,
-    NotFoundError,
-    ConflictError,
     AuthenticationException,
     AuthorizationException,
+    ConflictError,
+    EndScrollInterrupt,
+    NotFoundError,
+    QueryPipelineException,
+    QueryPipelineInterrupt,
+    RawQueryInterrupt,
+    RawResultInterrupt,
+    RequestError,
     TransportError,
+    capturesESExceptions,
 )
 
 
@@ -25,7 +27,7 @@ async def test_raw_query_interrupt():
     with pytest.raises(QueryPipelineInterrupt) as exc_info:
         await func()
     assert exc_info.value.code == 200
-    assert exc_info.value.summary == None
+    assert exc_info.value.summary is None
     assert exc_info.value.details == {"error": "test_error"}
 
 
@@ -38,7 +40,7 @@ async def test_end_scroll_interrupt():
     with pytest.raises(QueryPipelineInterrupt) as exc_info:
         await func()
     assert exc_info.value.code == 200
-    assert exc_info.value.summary == None
+    assert exc_info.value.summary is None
     assert exc_info.value.details == {"success": False, "error": "No more results to return."}
 
 
@@ -51,7 +53,7 @@ async def test_raw_result_interrupt():
     with pytest.raises(QueryPipelineInterrupt) as exc_info:
         await func()
     assert exc_info.value.code == 200
-    assert exc_info.value.summary == None
+    assert exc_info.value.summary is None
     assert exc_info.value.details == "test_body"
 
 
@@ -65,7 +67,7 @@ async def test_assertion_error():
         await func()
     assert exc_info.value.code == 500
     assert exc_info.value.summary == "test_assertion_error"
-    assert exc_info.value.details == None
+    assert exc_info.value.details is None
 
 
 @pytest.mark.asyncio
@@ -96,9 +98,12 @@ async def test_connection_error():
 
 @pytest.mark.asyncio
 async def test_request_error():
+    _meta = Mock()
+    _meta.status = 400
+
     @capturesESExceptions
     async def func():
-        raise RequestError(message="test_request_error", meta={}, body={})
+        raise RequestError(message="test_request_error", meta=_meta, body={})
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -108,9 +113,12 @@ async def test_request_error():
 
 @pytest.mark.asyncio
 async def test_not_found_error():
+    _meta = Mock()
+    _meta.status = 404
+
     @capturesESExceptions
     async def func():
-        raise NotFoundError(message="test_not_found_error", meta={}, body={})
+        raise NotFoundError(message="test_not_found_error", meta=_meta, body={})
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -122,9 +130,12 @@ async def test_not_found_error():
 
 @pytest.mark.asyncio
 async def test_conflict_error():
+    _meta = Mock()
+    _meta.status = 409
+
     @capturesESExceptions
     async def func():
-        raise ConflictError(message="test_conflict_error", meta={}, body={})
+        raise ConflictError(message="test_conflict_error", meta=_meta, body={})
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -135,9 +146,12 @@ async def test_conflict_error():
 
 @pytest.mark.asyncio
 async def test_authentication_exception():
+    _meta = Mock()
+    _meta.status = 403
+
     @capturesESExceptions
     async def func():
-        raise AuthenticationException(message="test_authentication_exception", meta={}, body={})
+        raise AuthenticationException(message="test_authentication_exception", meta=_meta, body={})
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -148,9 +162,12 @@ async def test_authentication_exception():
 
 @pytest.mark.asyncio
 async def test_authorization_exception():
+    _meta = Mock()
+    _meta.status = 403
+
     @capturesESExceptions
     async def func():
-        raise AuthorizationException(message="test_authorization_exception", meta={}, body={})
+        raise AuthorizationException(message="test_authorization_exception", meta=_meta, body={})
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -204,7 +221,7 @@ async def test_search_phase_execution_exception_rejected_execution():
         await func()
     assert exc_info.value.code == 503
     assert exc_info.value.summary == ""
-    assert exc_info.value.details == None
+    assert exc_info.value.details is None
 
 
 @pytest.mark.asyncio
@@ -251,4 +268,4 @@ async def test_too_many_requests_error():
 
     assert exc_info.value.code == 503
     assert exc_info.value.summary == ""
-    assert exc_info.value.details == None
+    assert exc_info.value.details is None

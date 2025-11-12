@@ -79,7 +79,7 @@ def _simplify_ES_exception(exc, debug=False):
         root_cause = root_cause.replace('"', "'").split("\n")
         for index, cause in enumerate(root_cause):
             result["root_cause_line_" + f"{index:02}"] = cause
-    except IndexError:
+    except (IndexError, KeyError):
         pass  # no root cause
     except Exception:
         logger.exception(
