@@ -106,7 +106,7 @@ def cli_system_path(operation: Callable):  # pylint: disable=unused-argument
             from biothings import config
 
             discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
-            path_file = discovery_path.joinpath(".biothings_cli.pth")
+            path_file = discovery_path.joinpath("biothings_cli.pth")
 
             if path_file.exists():
                 with open(path_file, "r", encoding="utf-8") as handle:

@@ -348,13 +348,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             # ----------------------------------------
             #  self.target_backend.target_name,
             # ----------------------------------------
-            self.target_backend.target_esidxer._doc_type,
+            # self.target_backend.target_esidxer._doc_type,  # remove the use of doc_type here, remove this line if confirmed
         )
         # new: index's data we will reach once updated (just informative)
         new = (
             self.target_backend.target_esidxer.es_host,
             meta["new"]["backend"],
-            self.target_backend.target_esidxer._doc_type,
+            # self.target_backend.target_esidxer._doc_type,   # remove the use of doc_type here, remove this line if confirmed
         )
         await self.syncer_func(old_db_col_names=old, new_db_col_names=new, diff_folder=self.data_folder)
         # return current number of docs in index (even if diff update)

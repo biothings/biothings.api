@@ -101,7 +101,7 @@ _config_for_app()
 #     _config.HUB_DB_BACKEND = {
 #         "module": "biothings.utils.sqlite3",
 #         "sqlite_db_folder": "."}
-#     _config.DATA_HUB_DB_DATABASE = ".hubdb"
+#     _config.DATA_HUB_DB_DATABASE = "biothings_hubdb"
 #     _config_for_app(_config)
 
 

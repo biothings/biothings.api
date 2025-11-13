@@ -13,8 +13,8 @@ def test_es_1():
 
 def test_es_2():  # see if the client is reused
     client1 = connections.es.get_client("http://localhost:9200")
-    client2 = connections.es.get_client("http://localhost:9200", timeout=20)
-    client3 = connections.es.get_client("http://localhost:9200", timeout=20)
+    client2 = connections.es.get_client("http://localhost:9200", request_timeout=20)
+    client3 = connections.es.get_client("http://localhost:9200", request_timeout=20)
     print(id(client1))
     print(id(client2))
     print(id(client3))

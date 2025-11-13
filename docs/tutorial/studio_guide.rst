@@ -298,7 +298,7 @@ A manifest file is defined like this:
 	    "__metadata__" : { # optional
 	        "url" : "<datasource website/url>",
 	        "license_url" : "<url>",
-	        "licence" : "<license name>",
+	        "license" : "<license name>",
             "author" : {
                 "name" : "<author name>",
                 "url" : "<link to github's author for instance>"
@@ -327,7 +327,7 @@ or with multiple uploader
 		"__metadata__" : { # optional
 	        "url" : "<datasource website/url>",
 	        "license_url" : "<url>",
-	        "licence" : "<license name>",
+	        "license" : "<license name>",
             "author" : {
                 "name" : "<author name>",
                 "url" : "<link to github's author for instance>"
