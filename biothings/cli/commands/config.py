@@ -271,7 +271,7 @@ def default_biothings_configuration() -> dict:
 
     # specific attributes to the biothings-cli application
     cli_configuration = {
-        "BIOTHINGS_CLI_PATH": ".biothings_hub/path",
+        "BIOTHINGS_CLI_PATH": "biothings_hub/path",
     }
     configuration.update(cli_configuration)
 
