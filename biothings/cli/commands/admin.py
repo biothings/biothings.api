@@ -9,6 +9,7 @@ Configuration settings for the biothings-cli tool
 import sys
 
 import typer
+import typer.rich_utils
 
 
 def build_admin_application(debug: bool, rich_traceback: bool) -> typer.Typer:
