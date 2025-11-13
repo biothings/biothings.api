@@ -13,7 +13,9 @@ from rich.table import Table
 from biothings.cli.commands.decorators import cli_system_path, operation_mode
 
 
-SHORT_HELP = "[green]CLI tool for viewing the python system path and adding external directories to the system path[/green]"
+SHORT_HELP = (
+    "[green]CLI tool for viewing the python system path and adding external directories to the system path[/green]"
+)
 FULL_HELP = (
     SHORT_HELP
     + "\n\n[magenta] :sparkles: Run from an existing data plugin folder to evaluate a singular data plugin.[/magenta]"
@@ -41,9 +43,9 @@ def view_system_path() -> None:
 def add_parser_to_system_path() -> None:
     """
     Add discovered hub directory paths to the python system path for aiding in testing various data plugins
-    Creates the file "bt_custom.pth", in the same file extension used by the `site` module
-    provided by python. It will create this file in the biothings_hub, and if found when running any
-    command, it will add the files to the system path
+    Creates the file "bt_custom.pth" (uses .pth extension to mimic the `site` module internal to
+    python). It creates this file in the .biothings_hub/path directory. If found while running a
+    command, then the paths in the file with be added the system path prior to executing the command
     """
     update_system_paths()
     display_system_paths()
@@ -52,7 +54,7 @@ def add_parser_to_system_path() -> None:
 @path_application.command(name="remove")
 def remove_parser_from_system_path() -> None:
     """
-    Remove the hub parsers discovered from the python system path
+    Remove the hub directories discovered from the python system path
     Simply removes the bt_custom.pth file from the biothings-cli directory
     """
     remove_system_paths()
