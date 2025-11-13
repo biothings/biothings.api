@@ -18,7 +18,6 @@ biothings.web.handlers.BaseAPIHandler
     - default common http headers (CORS and Cache Control)
 
 """
-
 import logging
 
 import orjson
@@ -94,7 +93,13 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         )
         # standardized request arguments
         self.args = self._parse_args(reqargs)
-        self.format = self.args.format
+
+        # Handle cases where args is a plain dict (e.g., when name is missing or None)
+        if hasattr(self.args, 'format'):
+            self.format = self.args.format
+        else:
+            # Use the default format when args doesn't have format attribute
+            self.format = "json"
 
     def _parse_json(self):
         if not self.request.body:
@@ -113,6 +118,26 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
     def _parse_args(self, reqargs):
         if not self.name:  # feature disabled
             return {}  # default value
+
+        # Check if handler defines kwargs but not a unique name - this is an error
+        if self.name == "__base__" and self.__class__ != BaseAPIHandler:
+            # Check if this handler defines its own kwargs (not inherited from BaseAPIHandler)
+            handler_has_kwargs = (
+                hasattr(self.__class__, 'kwargs') and
+                self.__class__.kwargs is not BaseAPIHandler.kwargs
+            )
+
+            if handler_has_kwargs:
+                # Handler defines kwargs but uses default name - this will cause conflicts
+                raise ValueError(
+                    f"Handler {self.__class__.__name__} defines 'kwargs' but doesn't define "
+                    f"a unique 'name' attribute. This causes parameter validation conflicts. "
+                    f"Please add: name = 'your_handler_name' to the class definition."
+                )
+            else:
+                # Handler doesn't define kwargs and doesn't define name - this is ok
+                # Return empty args to disable parameter validation
+                return {}
 
         optionsets = self.biothings.optionsets
         optionset = optionsets.get(self.name)

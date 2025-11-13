@@ -169,7 +169,7 @@ class AssistantManager(BaseSourceManager):
         else:
             raise AssistantException("Unknown data plugin type '%s'" % ptype)
 
-    def load(self, autodiscover=True):
+    def load(self, autodiscover: bool = True):
         """
         Load plugins registered in internal Hub database and generate/register
         dumpers & uploaders accordingly.
@@ -350,8 +350,6 @@ class AssistantManager(BaseSourceManager):
             return res
         else:
             ufile = os.path.join(folder, "upload.py")
-            # switched to use black from yapf
-            # strmap, _ = yapf_api.FormatCode(pprint.pformat(mapping))
             strmap = black.format_str(pprint.pformat(mapping), mode=black.Mode())
             with open(ufile, "a") as fout:
                 fout.write(

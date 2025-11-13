@@ -90,7 +90,7 @@ ANNOTATION_DEFAULT_SCOPES = ["_id", "symbol"]
 
 S3_SNAPSHOT_BUCKET = ""
 S3_REGION = ""
-DATA_HUB_DB_DATABASE = ".hubdb"
+DATA_HUB_DB_DATABASE = "biothings_hubdb"
 APITEST_PATH = str(Path(__file__).parent.absolute().resolve())
 
 # descONE

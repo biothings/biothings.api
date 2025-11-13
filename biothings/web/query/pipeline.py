@@ -4,12 +4,12 @@ from collections import Counter
 from dataclasses import dataclass
 
 from elasticsearch.exceptions import (
-    ConnectionError,
-    RequestError,
-    NotFoundError,
-    ConflictError,
     AuthenticationException,
     AuthorizationException,
+    ConflictError,
+    ConnectionError,
+    NotFoundError,
+    RequestError,
     TransportError,
 )
 
@@ -78,8 +78,8 @@ def _simplify_ES_exception(exc, debug=False):
         root_cause = root_cause["root_cause"][0]["reason"]
         root_cause = root_cause.replace('"', "'").split("\n")
         for index, cause in enumerate(root_cause):
-            result["root_cuase_line_" + f"{index:02}"] = cause
-    except IndexError:
+            result["root_cause_line_" + f"{index:02}"] = cause
+    except (IndexError, KeyError):
         pass  # no root cause
     except Exception:
         logger.exception(
@@ -146,6 +146,10 @@ def capturesESExceptions(func):
 
                 elif error_type == "index_not_found_exception":
                     raise QueryPipelineException(500, error_type)
+
+                elif error_type == "es_rejected_execution_exception":
+                    # ES cluster is overloaded, all thread pools at capacity
+                    raise QueryPipelineException(503, "Service Unavailable", "Elasticsearch cluster overloaded")
 
                 else:  # unexpected
                     raise

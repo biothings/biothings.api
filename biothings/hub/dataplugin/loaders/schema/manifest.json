@@ -124,7 +124,7 @@
                 },
                 "uncompress": {
                     "type": "boolean",
-                    "description": "If true, then decompress the downloaded data source. Supports the following compression types: ]zip, gz, bz2, xz]"
+                    "description": "If true, then decompress the downloaded data source. Supports the following compression types: [zip, gz, bz2, xz]. Default is false"
                 },
                 "schedule": {
                     "type": "string",
@@ -146,8 +146,7 @@
                 }
             },
             "required": [
-                "data_url",
-                "uncompress"
+                "data_url"
             ],
             "additionalProperties": false
         },
@@ -194,11 +193,23 @@
                     "examples": [
                         "parallelizer:parallel_jobs"
                     ]
+                },
+                "keylookup": {
+                    "type": "object",
+                    "description": "Reference to a DataTransform module to convert identifiers from one type to another. The first element in an input type is the node name that must match the graph. The second element is the field in dotstring notation which should describe where the identifier should be read from in a document.",
+                    "examples": [
+                        {
+                            "input_types": [
+                                ["entrez", "pantherdb.GeneID"],
+                                ["hgnc", "pantherdb.HGNC"]
+                            ],
+                            "skip_on_failure": true
+                        }
+                    ]
                 }
             },
             "required": [
-                "parser",
-                "on_duplicates"
+                "parser"
             ],
             "additionalProperties": false
         },

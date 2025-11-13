@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pprint import pformat
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 import bson
 
@@ -449,10 +449,10 @@ def run_converters(_map, converters, logger=logging):
 
 def inspect_docs(
     docs,
-    mode="type",
+    mode: Union[str, List[str]] = "type",
     clean=True,
     merge=False,
-    logger=logging,
+    logger: logging.Logger = logging,
     pre_mapping=False,
     limit=None,
     sample=None,

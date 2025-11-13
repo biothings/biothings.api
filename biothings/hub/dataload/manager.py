@@ -55,15 +55,19 @@ class BaseSourceManager(BaseManager):
         """
         raise NotImplementedError("implement me in sub-class")
 
-    def find_classes(self, src_module: types.ModuleType, fail_on_notfound: bool = True):
+    def find_module_classes(self, source_module: types.ModuleType, fail_on_notfound: bool = True):
         """
         Given a python module, return a list of classes in this module, matching
         SOURCE_CLASS (must inherit from)
+
+        Control Flow:
+        1) First attempt to find classes explicitly defined within the plugin package
+        2) If not found, then attempt to search within the package module directly
         """
         # try to find a uploader class in the module
         klasses = []
-        for attr in dir(src_module):
-            src_attribute = getattr(src_module, attr)
+        for attr in dir(source_module):
+            src_attribute = getattr(source_module, attr)
             # not interested in classes coming from biothings.hub.*, these would typically come
             # from "from biothings.hub.... import aclass" statements and would be incorrectly registered
             # we only look for classes defined straight from the actual module
@@ -77,10 +81,31 @@ class BaseSourceManager(BaseManager):
                     continue
                 logger.debug("Found a class based on %s: '%s'", self.__class__.SOURCE_CLASS.__name__, klass)
                 klasses.append(klass)
+
+        if not klasses:
+            try:
+                src_m_path = source_module.__path__[0]
+                for d in os.listdir(src_m_path):
+                    if d.endswith("__pycache__"):
+                        continue
+                    modpath = os.path.join(source_module.__name__, d).replace(".py", "").replace(os.path.sep, ".")
+                    try:
+                        m = importlib.import_module(modpath)
+                        klasses.extend(self.find_module_classes(m, fail_on_notfound))
+                    except Exception as gen_exc:
+                        logger.exception(gen_exc)
+                        # (SyntaxError, ImportError) is not sufficient to catch
+                        # all possible failures, for example a ValueError
+                        # in module definition..
+                        logger.debug("Couldn't import %s: %s", modpath, gen_exc)
+                        continue
+            except TypeError as e:
+                logger.warning("Can't register source '%s', something's wrong with path: %s", source_module, e)
+
         if not klasses:
             if fail_on_notfound:
                 raise UnknownResource(
-                    f"Can't find a class based on {self.__class__.SOURCE_CLASS} in module '{src_module}'"
+                    f"Can't find a class based on {self.__class__.SOURCE_CLASS} in module '{source_module}'"
                 )
         return klasses
 
@@ -98,21 +123,23 @@ class BaseSourceManager(BaseManager):
 
         if isinstance(src, str):
             try:
-                package_init_file = Path(self.default_src_path).joinpath("__init__.py")
-                module_specification = importlib.util.spec_from_file_location(name=src, location=str(package_init_file))
-                source_module = importlib.util.module_from_spec(module_specification)
-                module_specification.loader.exec_module(source_module)
-                logger.info("Successfully loaded module %s", source_module)
-            except ImportError as import_err:
-                logger.exception(import_err)
-                search_err_message = f"Unable to import module '{src}' from '{self.default_src_path}'"
-                logger.error(search_err_message)
-                raise UnknownResource(search_err_message) from import_err
-            except Exception as gen_exc:
-                logger.exception(gen_exc)
-                search_err_message = f"Unable to import module '{src}' from '{self.default_src_path}'"
-                logger.error(search_err_message)
-                raise UnknownResource(search_err_message) from gen_exc
+                source_module = importlib.import_module(src)
+                source_module = importlib.reload(source_module)
+            except ImportError:
+                logger.debug("Can't import module %s, attempting %s.%s", src, self.default_src_path, src)
+                try:
+                    source_module = importlib.import_module(f"{self.default_src_path}.{src}")
+                    source_module = importlib.reload(source_module)
+                except ImportError as inner_import_err:
+                    import_err_msg = f"Can't import module '{self.default_src_path}.{src}'"
+                    logger.exception(inner_import_err)
+                    logger.error(import_err_msg)
+                    raise UnknownResource(import_err_msg) from inner_import_err
+                except Exception as gen_exc:
+                    logger.exception(gen_exc)
+                    search_err_message = f"Unable to import module '{self.default_src_path}.{src}'"
+                    logger.error(search_err_message)
+                    raise UnknownResource(search_err_message) from gen_exc
 
         elif isinstance(src, dict):
             # source has several other sub sources
@@ -126,29 +153,8 @@ class BaseSourceManager(BaseManager):
         elif isinstance(src, type.ModuleType):
             source_module = src
 
-        # first try to find classes defined in the plugin package explicitly
-        klasses = self.find_classes(source_module, fail_on_notfound)
-        # then if none found, try to search within the package's modules
-        if not klasses:
-            try:
-                src_m_path = source_module.__path__[0]
-                for d in os.listdir(src_m_path):
-                    if d.endswith("__pycache__"):
-                        continue
-                    modpath = os.path.join(source_module.__name__, d).replace(".py", "").replace(os.path.sep, ".")
-                    try:
-                        m = importlib.import_module(modpath)
-                        klasses.extend(self.find_classes(m, fail_on_notfound))
-                    except Exception as e:
-                        # (SyntaxError, ImportError) is not sufficient to catch
-                        # all possible failures, for example a ValueError
-                        # in module definition..
-                        logger.debug("Couldn't import %s: %s", modpath, e)
-                        continue
-            except TypeError as e:
-                logger.warning("Can't register source '%s', something's wrong with path: %s", source_module, e)
+        klasses = self.find_module_classes(source_module, fail_on_notfound)
         logger.debug("Found classes to register: %s", repr(klasses))
-
         self.register_classes(klasses)
 
     def register_sources(self, sources: list):
@@ -159,8 +165,7 @@ class BaseSourceManager(BaseManager):
         self.register.clear()
         for src in sources:
             try:
-                # batch registration, we'll silently ignore not-found sources
-                self.register_source(src, fail_on_notfound=False)
+                self.register_source(src, fail_on_notfound=True)
             except (UnknownResource, ResourceError) as register_error:
                 logger.exception(register_error)
                 logger.error(traceback.format_exc())

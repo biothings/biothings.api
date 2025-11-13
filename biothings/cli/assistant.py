@@ -16,16 +16,16 @@ Supported plugin locations
 import asyncio
 import copy
 import logging
-import os
 import pathlib
 import sys
+from typing import Optional
 
 import rich
 import typer
 
-from biothings.utils.common import get_plugin_name_from_local_manifest
+from biothings.cli.manager import CLIJobManager
 from biothings.hub.dataplugin.assistant import BaseAssistant
-from biothings.utils.manager import JobManager
+from biothings.utils.common import get_plugin_name_from_local_manifest
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -38,9 +38,8 @@ class CLIAssistant(BaseAssistant):
 
     plugin_type = "CLI"
 
-    def __init__(self, plugin_name: str = None):
+    def __init__(self, plugin_name: Optional[str] = None, job_manager: CLIJobManager = None):
         from biothings import config
-
         from biothings.hub.databuild.builder import BuilderManager
         from biothings.hub.dataindex.indexer import IndexManager
         from biothings.hub.dataload.dumper import DumperManager
@@ -65,15 +64,10 @@ class CLIAssistant(BaseAssistant):
         url = f"local://{plugin_name}"
         super().__init__(url, plugin_name, src_folder)
 
-        self.job_manager = JobManager(
-            loop=asyncio.get_running_loop(),
-            process_queue=None,
-            thread_queue=None,
-            max_memory_usage=None,
-            num_workers=os.cpu_count(),
-            num_threads=16,
-            auto_recycle=True,
-        )
+        if job_manager is None:
+            job_manager = CLIJobManager(loop=asyncio.get_running_loop())
+        self.job_manager = job_manager
+
         self.dumper_manager = DumperManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.uploader_manager = UploaderManager(job_manager=self.job_manager, datasource_path=self.data_directory)
         self.data_plugin_manager = DataPluginManager(job_manager=self.job_manager, datasource_path=self.data_directory)
@@ -99,7 +93,7 @@ class CLIAssistant(BaseAssistant):
                 loader = loader_class(self.plugin_name)
                 if loader.can_load_plugin():
                     self._loader = loader
-                    self.logger.debug(
+                    logger.debug(
                         'For plugin "%s", selecting loader class "%s"',
                         self.plugin_name,
                         self._loader.__class__.__name__,
@@ -109,7 +103,7 @@ class CLIAssistant(BaseAssistant):
         return self._loader
 
     @property
-    def plugin_name(self):
+    def plugin_name(self) -> str:
         """
         Attempts to determine the plugin_name if it hasn't been assigned yet
         The actual property for storing the plugin_name is via `_plugin_name`.
@@ -123,7 +117,7 @@ class CLIAssistant(BaseAssistant):
                 if self._plugin_name is None:
                     self._plugin_name = self.plugin_directory.name
             except Exception as gen_exc:
-                self.logger.exception(gen_exc)
+                logger.exception(gen_exc)
                 raise gen_exc
         return self._plugin_name
 
@@ -141,11 +135,12 @@ class CLIAssistant(BaseAssistant):
         from biothings import config
         from biothings.utils.hub_db import get_data_plugin
 
+        _src_folder = self._src_folder.as_posix() if isinstance(self._src_folder, pathlib.Path) else self._src_folder
         assistant_debug_info = (
             f"[green]Assistant Plugin Name:[/green][bold] "
             f"[lightsalmon1]{self.plugin_name}[/lightsalmon1]\n"
             f"[green]Assistant Plugin Path:[/green][bold] "
-            f"[lightsalmon1]{self._src_folder.as_posix()}[/lightsalmon1]\n"
+            f"[lightsalmon1]{_src_folder}[/lightsalmon1]\n"
             f"[green]Data Plugin Folder:[/green][bold] "
             f"[lightsalmon1]{config.DATA_PLUGIN_FOLDER}[/lightsalmon1]"
         )

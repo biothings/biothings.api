@@ -2,6 +2,7 @@
 Tests for the various dumper classes
 """
 
+import pathlib
 import tempfile
 
 import pytest
@@ -61,7 +62,11 @@ def test_http_dumper_properties():
 @pytest.mark.parametrize(
     "remoteurl,resolve_filepath",
     [
-        ("https://github.com/biothings/biothings.api/archive/refs/tags/v0.12.5.zip", True),
+        # this URL contains a "content-disposition" header with a filename as "biothings.api-0.12.5.zip"
+        # if resolve_filepath is True, the dumper should resolve the filename from this header
+        ("https://codeload.github.com/biothings/biothings.api/zip/refs/tags/v0.12.5", True),
+        # this URL does not contain a "content-disposition" header, and resolve_filepath is False
+        ("https://biothings.io/static/img/transition.svg", False),
     ],
 )
 def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
@@ -71,9 +76,19 @@ def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
     with tempfile.NamedTemporaryFile() as temp_local_file:
         dumper_instance = HTTPDumper()
         HTTPDumper.RESOLVE_FILENAME = resolve_filepath
-        assert dumper_instance.remote_is_better(remoteurl, temp_local_file)
+        assert dumper_instance.remote_is_better(remoteurl, temp_local_file.name)
         download_headers = {}
         response = dumper_instance.download(
             remoteurl=remoteurl, localfile=temp_local_file.name, headers=download_headers
         )
         assert isinstance(response, requests.models.Response)
+        if resolve_filepath:
+            assert response.headers.get("content-disposition")
+            assert response.headers["content-disposition"].endswith("biothings.api-0.12.5.zip")
+            local_file = pathlib.Path(pathlib.Path(temp_local_file.name).parent, "biothings.api-0.12.5.zip")
+            assert local_file.exists()
+            assert local_file.stat().st_size > 0
+        else:
+            local_file = pathlib.Path(pathlib.Path(temp_local_file.name))
+            assert local_file.exists()
+            assert local_file.stat().st_size > 0

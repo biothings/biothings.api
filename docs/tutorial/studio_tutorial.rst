@@ -820,7 +820,7 @@ A ``tutorials`` folder can be found and contains the exported code:
   -rw-rw-r-- 1 biothings biothings  1190 Jan 22 19:32 parser.py
   -rw-rw-r-- 1 biothings biothings  2334 Jan 22 19:32 upload.py
 
-Some files were copied from data plugin repository (``LICENCE``, ``README`` and ``parser.py``), the others are the exported ones:  ``dump.py`` for the dumper, ``upload.py``
+Some files were copied from data plugin repository (``LICENSE``, ``README`` and ``parser.py``), the others are the exported ones:  ``dump.py`` for the dumper, ``upload.py``
 for the uploader and the mappings, and ``__init__.py`` so the **Hub** can find these components upon start. We'll go in further details later, specially when we'll add more
 uploaders.
 

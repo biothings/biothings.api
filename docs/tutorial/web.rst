@@ -295,7 +295,7 @@ with a few rules to increase result relevancy. Additionally add to the ``pipelin
 .. code-block:: python
 
     from biothings.web.query import ESQueryBuilder 
-    from elasticsearch_dsl import Search
+    from elasticsearch.dsl import Search
 
     class MyQueryBuilder(ESQueryBuilder):
 

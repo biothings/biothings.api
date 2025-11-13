@@ -52,7 +52,7 @@ class SourceManager(BaseSourceManager):
     def find_sources(self, paths):
         sources = []
 
-        if not type(paths) == list:
+        if not isinstance(paths, list):
             paths = [paths]
 
         def eval_one_source(one_path):
@@ -83,14 +83,14 @@ class SourceManager(BaseSourceManager):
                     sources.append(srcmod_str)
 
         for path in paths:
-            if type(path) == str:
+            if isinstance(path, str):
                 eval_one_source(path)
             elif isinstance(path, types.ModuleType):
                 eval_one_root(path)
 
         # clean with only those which can be imported
         sources = set(sources)
-        for s in [s for s in sources]:
+        for s in list(sources):
             try:
                 importlib.import_module(s)
             except Exception as e:
@@ -228,7 +228,7 @@ class SourceManager(BaseSourceManager):
             ids.add(id)
         else:
             # either no id passed, or doesn't exist
-            if id and not len(ids):
+            if id and len(ids) == 0:
                 raise ValueError("Source %s doesn't exist" % repr(id))
             ids = set(dm.register)
             ids.update(um.register)

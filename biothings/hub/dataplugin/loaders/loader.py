@@ -16,19 +16,14 @@ import jsonschema
 import yaml
 
 from biothings import config as btconfig
+from biothings.hub.dataload.dumper import DockerContainerDumper, LastModifiedFTPDumper, LastModifiedHTTPDumper
+from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
+from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
+from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
 from biothings.utils import storage
 from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
-from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
-from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
-from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
-from biothings.hub.dataload.dumper import (
-    DockerContainerDumper,
-    LastModifiedFTPDumper,
-    LastModifiedHTTPDumper,
-)
-from biothings.hub.dataload.uploader import AssistedUploader
 
 
 class LoaderException(Exception):
@@ -607,22 +602,22 @@ class AdvancedPluginLoader(BasePluginLoader):
             if os.path.exists(reqfile):
                 self.logger.info("Installing requirements from %s for plugin '%s'" % (reqfile, self.plugin_name))
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", reqfile])
-            # submit to managers to register datasources
 
+            # submit to managers to register datasources
             self.logger.info("Registering '%s' to dump manager", modpath)
             try:
-                self.__class__.dumper_manager.register_source(modpath)
+                self.dumper_manager.register_source(modpath)
             except Exception as gen_exc:
                 self.logger.exception(gen_exc)
-                self.logger.error("Couldn't register dumper from module '%s': %s", (modpath, gen_exc))
-                self.invalidate_plugin("Unable to load dumper module for plugin: '%s'", df)
+                self.logger.error("Couldn't register dumper from module '%s': %s", modpath, gen_exc)
+                self.invalidate_plugin(f"Unable to load dumper module for plugin: '{df}'")
 
             self.logger.info("Registering '%s' to upload manager(s)", modpath)
             try:
-                self.__class__.uploader_manager.register_source(modpath)
+                self.uploader_manager.register_source(modpath)
             except Exception as gen_exc:
                 self.logger.exception(gen_exc)
-                self.logger.error("Couldn't register uploader from module '%s': %s", (modpath, gen_exc))
-                self.invalidate_plugin("Missing plugin folder '%s'", df)
+                self.logger.error("Couldn't register uploader from module '%s': %s", modpath, gen_exc)
+                self.invalidate_plugin(f"Unable to load uploader module for plugin: '{df}'")
         else:
             self.invalidate_plugin("Missing plugin folder '%s'", df)

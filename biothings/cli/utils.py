@@ -7,7 +7,6 @@ perform a task. Usually anything releated to plugin metadata,
 job handling, and data manipulation should logically exist here
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -15,7 +14,7 @@ import pathlib
 import shutil
 import time
 from pprint import pformat
-from typing import Callable, Union, List
+from typing import List, Union
 
 import rich
 import typer
@@ -29,7 +28,6 @@ from biothings.utils import es
 from biothings.utils.common import timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.serializer import load_json, to_json
-
 
 logger = logging.getLogger(name="biothings-cli")
 
@@ -134,7 +132,6 @@ def process_inspect(source_name, mode, limit, merge) -> dict:
     """
     Perform inspect for the given source. It's used in do_inspect function below
     """
-    from biothings.utils import hub_db
     from biothings.hub.datainspect.doc_inspect import (
         clean_big_nums,
         compute_metadata,
@@ -144,6 +141,7 @@ def process_inspect(source_name, mode, limit, merge) -> dict:
         run_converters,
         stringify_inspect_doc,
     )
+    from biothings.utils import hub_db
 
     VALID_INSPECT_MODES = ["jsonschema", "type", "mapping", "stats"]
     mode = mode.split(",")
@@ -303,7 +301,7 @@ def display_inspection_table(source_name: str, mode: str, inspection_mapping: di
         console.print(mapping_table)
 
 
-def write_mapping_to_file(output_file: str, mapping: Union[str, pathlib.Path]):
+def write_mapping_to_file(output_file: Union[str, pathlib.Path], mapping: dict) -> None:
     """
     Takes the generated mapping data and writes it to a local file
     """
@@ -358,7 +356,6 @@ def show_uploaded_sources(working_dir, plugin_name):
     """
     A helper function to show the uploaded sources from given plugin.
     """
-    from biothings import config
     from biothings.utils import hub_db
 
     console = Console()
@@ -437,7 +434,6 @@ def clean_uploaded_sources(working_dir, plugin_name):
     """
     Remove all uploaded sources by a data plugin in the working directory.
     """
-    from biothings import config
     from biothings.utils import hub_db
 
     uploaders = get_uploaders(working_dir)
