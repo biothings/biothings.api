@@ -145,6 +145,8 @@ class ESIndexer:
         check_index=True,
         **kwargs,
     ):
+        # some old caller may still pass doc_type, we will ignore it here since it's no longer used.
+        kwargs.pop("doc_type", None)
         self.es_host = es_host
         self._es = get_es(es_host, **kwargs)
         self._host_major_ver = int(self._es.info()["version"]["number"].split(".")[0])
@@ -351,14 +353,16 @@ class ESIndexer:
         actions = (_get_bulk(doc) for doc in partial_docs)
         return helpers.bulk(self._es, actions, chunk_size=step, **kwargs)
 
-    def get_mapping(self):
+    def get_mapping(self, with_doc_type=False):
         """return the current index mapping"""
         if self._host_major_ver >= 7:
             m = self._es.indices.get_mapping(index=self._index)
-            # use "_doc" as a fake doc_type for now, pending to remove it entirely
-            # after verifying downstream caller can handle it
-            m = {"_doc": m[self._index]["mappings"]}
-            return m
+            if with_doc_type:
+                # use "_doc" as a fake doc_type to make it compatible with old behavior
+                # in case some caller expects a doc_type level key
+                return {"_doc": m[self._index]["mappings"]}
+            else:
+                return m[self._index]["mappings"]
         else:
             raise RuntimeError(
                 f"Server Elasticsearch version is {self._host_major_ver} "
@@ -386,7 +390,7 @@ class ESIndexer:
     def get_mapping_meta(self):
         """return the current _meta field."""
         m = self.get_mapping()
-        return {"_meta": m["_doc"]["_meta"]}
+        return {"_meta": m["_meta"]}
 
     def update_mapping_meta(self, meta):
         allowed_keys = {"_meta", "_timestamp"}

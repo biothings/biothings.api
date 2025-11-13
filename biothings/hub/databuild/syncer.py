@@ -202,7 +202,7 @@ class BaseSyncer(object):
             if diff_mapping_file:
                 # old_db_col_names is actually the index name in that case
                 index_name = old_db_col_names[1]
-                doc_type = self._meta["build_config"]["doc_type"]
+                # doc_type = self._meta["build_config"]["doc_type"]     # remove doc_type, delete the line above after confirmed
                 indexer = create_backend(old_db_col_names).target_esidxer
                 pinfo["step"] = "mapping"
                 pinfo["description"] = diff_mapping_file
@@ -212,7 +212,8 @@ class BaseSyncer(object):
                     ops = loadobj(diffm)
                     mapping = indexer.get_mapping()
                     # we should have the same doc type declared in the mapping
-                    mapping[doc_type]["properties"] = jsonpatch.apply_patch(mapping[doc_type]["properties"], ops)
+                    # mapping[doc_type]["properties"] = jsonpatch.apply_patch(mapping[doc_type]["properties"], ops)
+                    mapping["properties"] = jsonpatch.apply_patch(mapping["properties"], ops)   # remove doc_type, delete the line above after confirmed
                     res = indexer.update_mapping(mapping)
                     return res
 
@@ -311,7 +312,7 @@ class BaseSyncer(object):
         if "meta" in steps and self.target_backend_type == "es":
             # old_db_col_names is actually the index name in that case
             index_name = old_db_col_names[1]
-            doc_type = self._meta["build_config"]["doc_type"]
+            # doc_type = self._meta["build_config"]["doc_type"]     # remove doc_type, delete this line after confirmed
             indexer = create_backend(old_db_col_names).target_esidxer
             new_meta = self._meta["_meta"]
             pinfo["step"] = "metadata"

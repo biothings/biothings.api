@@ -216,7 +216,7 @@ class DocMongoBackend(DocBackendBase):
         """
         total_cnt = 0
         for i in range(0, len(ids), step):
-            _ids = ids[i : i + step]
+            _ids = ids[i:i + step]
             _cnt = self.target_collection.count_documents({"_id": {"$in": _ids}})
             total_cnt += _cnt
         return total_cnt
@@ -230,7 +230,7 @@ class DocMongoBackend(DocBackendBase):
     def remove_from_ids(self, ids, step=10000):
         deleted = 0
         for i in range(0, len(ids), step):
-            res = self.target_collection.delete_many({"_id": {"$in": ids[i : i + step]}})
+            res = self.target_collection.delete_many({"_id": {"$in": ids[i:i + step]}})
             deleted += res.deleted_count
         return deleted
 
@@ -244,7 +244,7 @@ class DocESBackend(DocBackendBase):
 
     def __init__(self, esidxer=None):
         """esidxer is an instance of utils.es.ESIndexer class."""
-        if type(esidxer) == partial:
+        if isinstance(esidxer, partial):
             self._target_esidxer_provider = esidxer
             self._target_esidxer = None
         else:
@@ -253,7 +253,7 @@ class DocESBackend(DocBackendBase):
 
     @property
     def target_esidxer(self):
-        if not self._target_esidxer:
+        if not self._target_esidxer and self._target_esidxer_provider:
             self._target_esidxer = self._target_esidxer_provider()
         return self._target_esidxer
 
@@ -339,14 +339,15 @@ class DocESBackend(DocBackendBase):
     def create_from_options(cls, options):
         """Function that recreates itself from a DocBackendOptions class.  Probably a needless
         rewrite of __init__..."""
-        if not options.es_index or not options.es_host or not options.es_doc_type:
+        if not options.es_index or not options.es_host:
             raise Exception(
-                "Cannot create backend class from options, ensure that es_index, es_host, and es_doc_type are set"
+                "Cannot create backend class from options, ensure that es_index, es_host are set"
             )
-        return cls(ESIndexer(index=options.es_index, doc_type=options.es_doc_type, es_host=options.es_host))
+        return cls(ESIndexer(index=options.es_index, es_host=options.es_host))
 
 
 class DocBackendOptions(object):
+    # Deprecated, not used anywhere
     def __init__(
         self, cls, es_index=None, es_host=None, es_doc_type=None, mongo_target_db=None, mongo_target_collection=None
     ):
