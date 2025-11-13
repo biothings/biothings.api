@@ -20,11 +20,11 @@ dynamic = ["version"]    # version is dynamically generated from setup.py
 authors = [
     {name = "The BioThings Team", email="dev@biothings.io"},
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 description = "a toolkit for building high-performance data & knowledge APIs in biology"
 readme = "README.md"
-# license = "Apache-2.0"               # when we drop Python 3.8 support, we can use this new format
-license = {text = "Apache-2.0"}        # this is an old format, but works for Python 3.8+
+license = "Apache-2.0"                   # this new format works for Python 3.9+
+# license = {text = "Apache-2.0"}        # this is an old format, but works for Python 3.8+
 keywords = [
     "biology",
     "medicine",
@@ -38,12 +38,12 @@ keywords = [
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Development Status :: 5 - Production/Stable",
     "Operating System :: OS Independent",
     "Operating System :: POSIX",
@@ -60,7 +60,8 @@ dependencies = [
     "requests>=2.21.0",
     'tornado==6.1.0; python_version < "3.7.0"',
     'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.2; python_version >= "3.8.0"',
+    'tornado==6.4.2; python_version == "3.8.0"',
+    'tornado==6.5.2; python_version >= "3.9.0"',
     "gitpython>=3.1.0",
     "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
     "elasticsearch[async]>=8, <9; python_version >= '3.7.0'",
