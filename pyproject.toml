@@ -122,7 +122,7 @@ cli = [
     "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
     "psutil",
     "jsonschema>=2.6.0",
-    "typer>=0.12.1",  # required for CLI, also installs rich package
+    "typer>=0.17.0",  # required for CLI, also installs rich package
 ]
 # if DockerContainerDumper is used, requires this Docker SDK for Python
 docker = [
