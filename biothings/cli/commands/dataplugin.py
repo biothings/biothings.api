@@ -54,6 +54,10 @@ def create_data_plugin(
 @dataplugin_application.command(name="dump")
 def dump_source(
     plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    mark_success: Annotated[
+        Optional[bool],
+        typer.Option("--mark-sucess", "-m", help="Mark dump as success without attempting to actually dump the files"),
+    ] = False,
     show_dump: Annotated[
         Optional[bool],
         typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
@@ -62,7 +66,7 @@ def dump_source(
     """
     Download the source data files to the local file system
     """
-    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump))
+    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump, mark_success=mark_success))
 
 
 @dataplugin_application.command(name="upload")
