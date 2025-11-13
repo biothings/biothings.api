@@ -14,6 +14,7 @@ from rich.logging import RichHandler
 from biothings.cli.commands.admin import build_admin_application
 from biothings.cli.commands.config import config_application, load_configuration
 from biothings.cli.commands.dataplugin import dataplugin_application
+from biothings.cli.commands.pathing import path_application
 
 
 def setup_logging_configuration(logging_level: Literal[10, 20, 30, 40, 50]) -> None:
@@ -63,4 +64,5 @@ def main():
 
     admin_application.add_typer(dataplugin_application, name="dataplugin")
     admin_application.add_typer(config_application, name="config")
+    admin_application.add_typer(path_application, name="path")
     return admin_application()
