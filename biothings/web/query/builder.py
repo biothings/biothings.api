@@ -124,7 +124,7 @@ class QStringParser:
                                 "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
                             },
                             "download_date": "2023-06-02T01:24:14.106000",
-                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
                             "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
                             "stats": {
                                 "doid": 11314
@@ -159,7 +159,7 @@ class QStringParser:
                                 "url": "https://github.com/ericz1803/doid/tree/37c9bda7ba0e0569dad3181842ebc14d3af6c6a9/"
                             },
                             "download_date": "2023-06-02T01:24:14.106000",
-                            "licence": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
+                            "license": "Creative Commons \nPublic Domain Dedication CC0 \n1.0 Universal license",
                             "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
                             "stats": {
                                 "doid": 11314

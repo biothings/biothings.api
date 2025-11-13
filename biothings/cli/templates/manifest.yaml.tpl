@@ -4,7 +4,7 @@ display_name: # Optional. This will be displayed as friendly name on the Biothin
 biothing_type: # Optional. Can be used to provide the default value to some hub functions (e.g. in quick_index as the default doc_type value.
 __metadata__: # Optional.
   license_url: https://example.com/  # Optional. Put your license url here
-  licence: ABCXYZ # Optional. Your license name
+  license: ABCXYZ # Optional. Your license name
   url: https://example.com/  # Your site url
   description: # Optional. More description for this data plugin
 requires:  # Optional. Listing all extra packages if need
