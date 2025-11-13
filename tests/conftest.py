@@ -13,8 +13,8 @@ import sys
 import types
 from pathlib import Path
 
-import pytest
 import _pytest
+import pytest
 
 from biothings.utils.loggers import setup_default_log
 
@@ -90,7 +90,7 @@ def pytest_sessionstart(session: _pytest.main.Session):
         },
         "HUB_ENV": "",
         "ACTIVE_DATASOURCES": [],
-        "DATA_HUB_DB_DATABASE": ".hubdb",
+        "DATA_HUB_DB_DATABASE": "biothings_hubdb",
         "DATA_PLUGIN_FOLDER": "/tmp/testhub/plugins",
         "DATA_ARCHIVE_ROOT": "/tmp/testhub/datasources",
         "DIFF_PATH": "/tmp/testhub/datasources/diff",

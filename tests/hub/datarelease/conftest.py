@@ -1,11 +1,10 @@
-from pathlib import Path
 import copy
 import logging
 import sys
+from pathlib import Path
 
 import pytest
 from pytest_mock import MockerFixture
-
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 def releasenote_configuration(root_configuration: "TestConfig"):
     releasenote_configuration = {
         "HUB_DB_BACKEND": {"module": "biothings.utils.sqlite3", "sqlite_db_folder": "./dummy_db"},
-        "DATA_HUB_DB_DATABASE": "mock_releasenote.hubdb",
+        "DATA_HUB_DB_DATABASE": "mock_releasenote_hubdb",
     }
     root_configuration.override(releasenote_configuration)
 
@@ -278,10 +277,7 @@ def mock_get_source_fullname(mocker: MockerFixture):
 def release_note_source(
     mock_get_source_fullname, cold_src_build_doc, hot_src_build_doc, old_cold_src_build_docs, old_hot_src_build_docs
 ):
-    from biothings.hub.datarelease.releasenote import (
-        ReleaseNoteSource,
-        ReleaseNoteSrcBuildReader,
-    )
+    from biothings.hub.datarelease.releasenote import ReleaseNoteSource, ReleaseNoteSrcBuildReader
 
     old_src_build_reader = ReleaseNoteSrcBuildReader(old_hot_src_build_docs)
     old_src_build_reader.attach_cold_src_build_reader(ReleaseNoteSrcBuildReader(old_cold_src_build_docs))

@@ -111,7 +111,7 @@
             "version": "68"
           },
           "clingen": {
-            "licence": "CC0 1.0 Universal",
+            "license": "CC0 1.0 Universal",
             "code": {
               "file": "src/hub/dataload/sources/clingen/upload.py",
               "repo": "https://github.com/biothings/mygene.info.git",
@@ -446,7 +446,7 @@
             "version": "20191218"
           },
           "pantherdb": {
-            "licence": "GNU General Public License Version 2",
+            "license": "GNU General Public License Version 2",
             "code": {
               "folder": "src/plugins/pantherdb",
               "repo": "https://github.com/biothings/mygene.info.git",
