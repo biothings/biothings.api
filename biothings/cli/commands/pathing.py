@@ -37,7 +37,7 @@ def view_system_path() -> None:
     display_system_paths()
 
 
-@path_application.command(name="add-hub-parsers")
+@path_application.command(name="add")
 def add_parser_to_system_path() -> None:
     """
     Add discovered file parsers paths to the python system path for aiding in testing various data plugins
@@ -50,7 +50,7 @@ def add_parser_to_system_path() -> None:
     display_system_paths()
 
 
-@path_application.command(name="remove-hub-parsers")
+@path_application.command(name="remove")
 def remove_parser_from_system_path() -> None:
     """
     Remove the hub parsers discovered from the python system path
