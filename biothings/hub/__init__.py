@@ -534,6 +534,14 @@ class HubServer:
     def configure_ioloop(self):
         import tornado.platform.asyncio
 
+        # In Python 3.14, get_event_loop raises a RuntimeError if there is no current event loop.
+        # Eventually this probably should not be needed when tornado handles this internally.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
         tornado.platform.asyncio.AsyncIOMainLoop().install()
 
     def before_start(self):
