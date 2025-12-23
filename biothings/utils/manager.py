@@ -3,8 +3,10 @@ import concurrent.futures
 import copy
 import datetime
 import glob
+import multiprocessing
 import os
 import re
+import sys
 import threading
 import time
 import types
@@ -166,6 +168,15 @@ class JobManager:
     HEADERLINE = "{pid:^10}|{source:^35}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
     DATALINE = HEADERLINE.replace("^", "<")
 
+    def _get_process_executor(self):
+        kwargs = {}
+        if sys.version_info >= (3, 7):
+            try:
+                kwargs["mp_context"] = multiprocessing.get_context("fork")
+            except ValueError:
+                pass
+        return concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers, **kwargs)
+
     def __init__(
         self,
         loop,
@@ -185,7 +196,7 @@ class JobManager:
             logger.debug("Adjusting number of worker to 1")
             self.num_workers = 1
         self.num_threads = num_threads or self.num_workers
-        self.process_queue = process_queue or concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+        self.process_queue = process_queue or self._get_process_executor()
         # notes on fixing BPE (BrokenProcessPool Exception):
         # whenever a process exits unexpectedly, BPE is raised, and while that
         # all the processes in the pool gets a SIGTERM from the management
@@ -255,7 +266,7 @@ class JobManager:
                 if recycling:
                     # now replace
                     logger.info("Replacing process queue with new one")
-                    self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+                    self.process_queue = self._get_process_executor()
                 else:
                     self.process_queue = None
             except Exception as e:
@@ -469,7 +480,7 @@ class JobManager:
                 # we don't need to care about the remaining tasks because
                 # they'd all be SIGTERM'd anyways. But ...
                 logger.warning("Broken Process Pool: %s, restarting.", e)
-                self.process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
+                self.process_queue = self._get_process_executor()
                 for stale_id in self._process_job_ids:
                     self.jobs.pop(stale_id, None)  # in the rare case that
                     # somehow they de-sync
