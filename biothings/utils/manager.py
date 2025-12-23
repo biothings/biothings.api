@@ -171,6 +171,14 @@ class JobManager:
     def _get_process_executor(self):
         kwargs = {}
         if sys.version_info >= (3, 7):
+            # since Python 3.14, multiprocessing uses `forkserver` as the default, instead of 'fork'
+            # on POSIX systems. This breaks our current biothings JobManager when creating dynamic
+            # classes in worker processes (e.g. AssistedDumper_<src_name> class), as the 'forkserver'
+            # context does not inherit resources from the parent process.
+            # This is a quick fix to force using 'fork' context for ProcessPoolExecutor in 3.14,
+            # consistent with previous Python versions.
+            # REF: https://docs.python.org/3.14/library/multiprocessing.html#contexts-and-start-methods
+            # TODO: we should consider refactoring the code to be compatible with 'forkserver' context in the future.
             try:
                 kwargs["mp_context"] = multiprocessing.get_context("fork")
             except ValueError:
