@@ -30,23 +30,22 @@ options: dotdict, optional query options.
 
 """
 
-from collections import UserString, namedtuple
-from copy import deepcopy
-from random import randrange
 import logging
 import os
 import re
+from collections import UserString, namedtuple
+from copy import deepcopy
+from random import randrange
 from typing import Iterable, List, Set, Tuple, Union
 
+import orjson
 from elasticsearch.dsl import MultiSearch, Q, Search
 from elasticsearch.dsl.exceptions import IllegalOperation
-import orjson
 
 from biothings.utils.common import dotdict
 from biothings.web.query.formatter import ESResultFormatter
 from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
-
 
 logger = logging.getLogger(__name__)
 
@@ -722,6 +721,7 @@ class ESQueryBuilder:
 
         # add aggregations
         facet_size = options.facet_size or 10
+        missing_aggs_added = set()
         for agg in options.aggs or []:
             term, bucket = agg, search.aggs
             while term:
@@ -729,6 +729,13 @@ class ESQueryBuilder:
                     _term, term = term[:-1].split("(", 1)
                 else:
                     _term, term = term, ""
+
+                # Add a real "missing" aggregation for the top-level facet field.
+                # NOTE: ES terms agg's `doc_count_error_upper_bound` is NOT a missing-doc count.
+                if bucket is search.aggs and _term not in missing_aggs_added:
+                    search.aggs.bucket(f"{_term}__missing", "missing", field=_term)
+                    missing_aggs_added.add(_term)
+
                 bucket = bucket.bucket(_term, "terms", field=_term, size=facet_size)
 
         # add es params

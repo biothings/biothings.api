@@ -8,14 +8,13 @@ one or more individual queries.
 
 """
 
+import logging
 from collections import UserDict, defaultdict
 
 from elastic_transport import ObjectApiResponse
 
-from biothings.utils.common import dotdict, traverse, list_trim
+from biothings.utils.common import dotdict, list_trim, traverse
 from biothings.utils.jmespath import options as jmp_options
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -274,8 +273,33 @@ class ESResultFormatter(ResultFormatter):
                 response = response.data
 
             if "aggregations" in response:
+                # The query builder may add sibling "missing" aggregations named:
+                #   <facet_field>__missing
+                # Extract them before calling `transform_aggs`, which expects terms aggs.
+                missing_suffix = "__missing"
+                missing_doc_counts = {}
+                for agg_name in list(response["aggregations"].keys()):
+                    if not agg_name.endswith(missing_suffix):
+                        continue
+                    agg_val = response["aggregations"].get(agg_name)
+                    if isinstance(agg_val, dict) and "doc_count" in agg_val:
+                        facet_name = agg_name[: -len(missing_suffix)]
+                        missing_doc_counts[facet_name] = agg_val.get("doc_count", 0)
+                        response["aggregations"].pop(agg_name, None)
+
                 self.transform_aggs(response["aggregations"])
                 response["facets"] = response.pop("aggregations")
+
+                # Attach true missing/existing totals per facet.
+                # Keep existing `facets[facet].missing` unchanged for backward compatibility.
+                base_total = response.get("total")
+                if isinstance(response.get("facets"), dict) and missing_doc_counts:
+                    for facet_name, facet_obj in response["facets"].items():
+                        if facet_name in missing_doc_counts:
+                            facet_obj["missing_doc_count"] = missing_doc_counts[facet_name]
+                            if isinstance(base_total, int):
+                                facet_obj["exists_doc_count"] = base_total - missing_doc_counts[facet_name]
+
                 hits = response.pop("hits")  # move key order
                 if hits:  # hide "hits" field when size=0
                     response["hits"] = hits
@@ -508,7 +532,7 @@ class ESResultFormatter(ResultFormatter):
 
             facets.<term>._type
             facets.<term>.total
-            facets.<term>.missing
+            facets.<term>.missing  (ES doc_count_error_upper_bound; not "docs missing the field")
             facets.<term>.other
             facets.<term>.terms.count
             facets.<term>.terms.term
