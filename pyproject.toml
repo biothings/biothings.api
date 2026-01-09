@@ -71,6 +71,7 @@ dependencies = [
     "PyYAML>=5.1",
     'orjson>=3.10.16; python_version < "3.14.0"',  # a faster json lib supports inf/nan and datetime, v3.10.16 is the first version requires Python 3.9+
     'orjson==3.11.4; python_version >= "3.14.0"',  # orjson 3.11.5 cannot be built on Python 3.14t for now
+    'zstandard>=0.21.0; python_version<"3.14"', # we need zst library before 3.14
 ]
 
 [project.optional-dependencies]
