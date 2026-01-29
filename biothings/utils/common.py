@@ -180,7 +180,7 @@ def anyfile(infile, mode="r"):
         lower_version_zst = True
 
     # tarfile handling. works for zst in Python >= 3.14
-    if tarfile.is_tarfile(infile) or lower_version_zst:
+    if lower_version_zst or tarfile.is_tarfile(infile):
         if lower_version_zst:
             f = open(infile, "rb")
             dctx = zstd.ZstdDecompressor()
