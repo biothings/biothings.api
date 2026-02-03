@@ -271,6 +271,8 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 dumper_class = self.dumper_registry.get(scheme)
                 dumper_configuration["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
 
+            dumper_configuration["PLUGIN_MODULE"] = dumper_configuration["BASE_CLASSES"].split(".")[0]
+
             if not dumper_class:
                 raise LoaderException("No dumper class registered to handle scheme '%s'", scheme)
 
@@ -438,7 +440,16 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                         )
                     )
                 else:
-                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+                    # use specified custom class
+                    klass = uploader_section.get("class")
+                    if klass:
+                        get_class_from_classpath(klass)
+                        confdict["BASE_CLASSES"] = klass
+                    else:
+                        confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+
+                    confdict["PLUGIN_MODULE"] = confdict["BASE_CLASSES"].split(".")[0]
+
                     confdict["JOBS_FUNC"] = ""
 
                 if uploader_section.get("mapping"):

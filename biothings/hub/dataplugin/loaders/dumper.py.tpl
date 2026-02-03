@@ -6,6 +6,7 @@ from config import DATA_ARCHIVE_ROOT
 
 from biothings.utils.common import uncompressall
 
+import $PLUGIN_MODULE
 
 import biothings.hub.dataload.dumper
 
