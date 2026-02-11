@@ -105,7 +105,7 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         if not self.request.body:
             return {}
         try:
-            return orjson.loads(self.request.body)
+            return serializer.load_json(self.request.body)
         except orjson.JSONDecodeError:
             raise HTTPError(400, reason="Invalid JSON body.")
 
