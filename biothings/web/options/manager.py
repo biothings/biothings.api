@@ -10,7 +10,6 @@ from pprint import pformat
 from types import MappingProxyType
 
 import jmespath
-import orjson
 from biothings.utils import serializer
 
 try:
@@ -252,7 +251,7 @@ class FormArgCvter(Converter):
         if self.jsoninput:
             try:  # attempt to load as json first
                 _value = serializer.load_json(value)
-            except orjson.JSONDecodeError as exc:
+            except serializer.JSONDecodeError as exc:
                 logging.debug(repr(exc))
             else:  # no more conversions
                 if isinstance(_value, to_type):
