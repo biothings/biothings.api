@@ -20,6 +20,15 @@ except ImportError:
 
 from biothings import config as btconfig
 from biothings.hub import BUILDER_CATEGORY, UPLOADER_CATEGORY
+from biothings.hub.databuild.backend import (
+    LinkTargetDocMongoBackend,
+    SourceDocMongoBackend,
+    TargetDocMongoBackend,
+    create_backend,
+)
+from biothings.hub.databuild.buildconfig import AutoBuildConfig
+from biothings.hub.databuild.mapper import TransparentMapper
+from biothings.hub.dataload.uploader import ResourceNotReady
 from biothings.hub.manager import BaseManager
 from biothings.utils import mongo
 from biothings.utils.backend import DocMongoBackend
@@ -36,23 +45,13 @@ from biothings.utils.hub_db import (
     get_source_fullname,
     get_src_build,
     get_src_build_config,
+    get_src_db,
     get_src_dump,
     get_src_master,
-    get_src_db,
 )
 from biothings.utils.loggers import get_logger
 from biothings.utils.manager import JobManager
 from biothings.utils.mongo import doc_feeder, id_feeder
-
-from biothings.hub.databuild.backend import (
-    LinkTargetDocMongoBackend,
-    SourceDocMongoBackend,
-    TargetDocMongoBackend,
-    create_backend,
-)
-from biothings.hub.databuild.buildconfig import AutoBuildConfig
-from biothings.hub.databuild.mapper import TransparentMapper
-from biothings.hub.dataload.uploader import ResourceNotReady
 
 logging = btconfig.logger
 
@@ -1618,7 +1617,6 @@ class BuilderManager(BaseManager):
         only_archived=True will return archived merges only
         status: will return only successful/failed builds. Can be "success" or "failed"
         """
-        res = {}
         q = self.get_query_for_list_merge(only_archived=only_archived, status=status)
         if id is not None:
             q = {"_id": id}
@@ -1640,6 +1638,12 @@ class BuilderManager(BaseManager):
             b["status"] = "unknown"
             if jobs:
                 b["status"] = jobs[-1]["status"]
+            stored_total = b.get("_meta", {}).get("stats", {}).get("total")
+            if stored_total is not None:
+                b["count"] = stored_total
+                continue
+
+            # Fallback for older build docs missing _meta.stats.total.
             try:
                 backend = create_backend(b["backend_url"])
                 b["count"] = backend.count()
