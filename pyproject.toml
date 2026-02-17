@@ -86,11 +86,11 @@ opensearch = [
 ]
 # minimal requirements for running biothings.hub, e.g. in CLI mode
 hubcore = [
-    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    "pymongo>=4.13.0,<5.0",  # AsyncMongoClient stable since 4.13.0
 ]
 # extra requirements to run a full biothings.hub
 hub = [
-    "pymongo>=4.1.0,<5.0",
+    "pymongo>=4.13.0,<5.0",
     "beautifulsoup4",  # used in dumper.GoogleDriveDumper
     "aiocron==1.8",  # setup scheduled jobs
     # "aiohttp==3.8.4",  # elasticsearch requires aiohttp>=3,<4
@@ -120,7 +120,7 @@ hub = [
 ]
 # minimal requirements for to run biothings CLI
 cli = [
-    "pymongo>=4.1.0,<5.0",  # support MongoDB 5.0 since v3.12.0
+    "pymongo>=4.13.0,<5.0",  # AsyncMongoClient stable since 4.13.0
     "psutil",
     "jsonschema>=2.6.0",
     "typer>=0.17.0",  # required for CLI, also installs rich package

@@ -701,6 +701,7 @@ class HubServer:
 
     def configure_snapshot_manager(self):
         assert "index" in self.features, "'snapshot' feature requires 'index'"
+        from biothings.hub.dataindex.mongo_build_cleanup import MongoBuildCleanupManager
         from biothings.hub.dataindex.snapshooter import SnapshotManager
 
         args = self.mixargs("snapshot")
@@ -713,6 +714,7 @@ class HubServer:
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
         snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
+        self.managers["mongo_build_cleanup_manager"] = MongoBuildCleanupManager(job_manager=self.managers["job_manager"])
 
     def configure_auto_snapshot_cleaner_manager(self):
         assert "snapshot" in self.features, "'auto_snapshot_cleaner' feature requires 'snapshot'"
@@ -1148,6 +1150,9 @@ class HubServer:
             self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
             self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
             self.commands["validate_snapshots"] = self.managers["snapshot_manager"].validate_snapshots
+        if self.managers.get("mongo_build_cleanup_manager"):
+            self.commands["list_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].list_mongo_builds
+            self.commands["delete_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].delete_mongo_builds
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
@@ -1514,6 +1519,12 @@ class HubServer:
             )
         if "validate_snapshots" in cmdnames:
             self.api_endpoints["validate_snapshots"] = EndpointDefinition(name="validate_snapshots", method="post")
+        if "list_mongo_builds" in cmdnames:
+            self.api_endpoints["list_mongo_builds"] = EndpointDefinition(name="list_mongo_builds", method="get")
+        if "delete_mongo_builds" in cmdnames:
+            self.api_endpoints["delete_mongo_builds"] = EndpointDefinition(
+                name="delete_mongo_builds", method="put", force_bodyargs=True
+            )
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(name="sync", method="post", force_bodyargs=True)
         if "whatsnew" in cmdnames:
