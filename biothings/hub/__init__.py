@@ -1520,9 +1520,9 @@ class HubServer:
         if "validate_snapshots" in cmdnames:
             self.api_endpoints["validate_snapshots"] = EndpointDefinition(name="validate_snapshots", method="post")
         if "list_mongo_builds" in cmdnames:
-            self.api_endpoints["list_mongo_builds"] = EndpointDefinition(name="list_mongo_builds", method="get")
+            self.api_endpoints["mongo_builds"] = EndpointDefinition(name="list_mongo_builds", method="get")
         if "delete_mongo_builds" in cmdnames:
-            self.api_endpoints["delete_mongo_builds"] = EndpointDefinition(
+            self.api_endpoints["mongo_builds/delete"] = EndpointDefinition(
                 name="delete_mongo_builds", method="put", force_bodyargs=True
             )
         if "sync" in cmdnames:
