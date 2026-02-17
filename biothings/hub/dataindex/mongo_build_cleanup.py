@@ -46,7 +46,7 @@ class MongoBuildCleaner:
             result = await src_build.delete_many({"_id": {"$in": build_ids}})
             return {"deleted_count": result.deleted_count}
         finally:
-            conn.close()
+            await conn.close()
 
     def done(self, future):
         try:
