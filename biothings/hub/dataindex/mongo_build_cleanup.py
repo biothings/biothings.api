@@ -1,5 +1,6 @@
 from functools import partial
 
+from biothings import config as btconfig
 from biothings.hub.manager import BaseManager
 from biothings.utils.hub_db import get_src_build
 from config import logger as logging
@@ -36,22 +37,59 @@ class MongoBuildCleaner:
 
     async def delete_builds(self, build_ids):
         if not build_ids:
-            return {"deleted_count": 0}
+            return {
+                "deleted_count": 0,
+                "target_collections_deleted_count": 0,
+                "target_collections_deleted": [],
+            }
 
         from biothings.utils import mongo
 
         conn = mongo.get_hub_db_async_conn()
         try:
             src_build = mongo.get_src_build_async(conn)
+
+            build_docs = []
+            async for doc in src_build.find({"_id": {"$in": build_ids}}, {"_id": 1, "target_name": 1}):
+                build_docs.append(doc)
+
+            target_collection_candidates = set()
+            for doc in build_docs:
+                build_id = doc["_id"]
+                target_name = doc.get("target_name")
+                target_collection_candidates.add(build_id)
+                if target_name and target_name != build_id:
+                    target_collection_candidates.add(target_name)
+
+            target_collections_deleted = []
+            if target_collection_candidates:
+                target_db = conn[btconfig.DATA_TARGET_DATABASE]
+                existing_collections = await target_db.list_collection_names(
+                    filter={"name": {"$in": list(target_collection_candidates)}}
+                )
+
+                for collection_name in existing_collections:
+                    await target_db[collection_name].drop()
+                    target_collections_deleted.append(collection_name)
+
             result = await src_build.delete_many({"_id": {"$in": build_ids}})
-            return {"deleted_count": result.deleted_count}
+            return {
+                "deleted_count": result.deleted_count,
+                "target_collections_deleted_count": len(target_collections_deleted),
+                "target_collections_deleted": sorted(target_collections_deleted),
+            }
         finally:
             await conn.close()
 
     def done(self, future):
         try:
             result = future.result()
-            logging.info("Deleted %d MongoDB builds", result.get("deleted_count", 0), extra={"notify": True})
+            logging.info(
+                "Deleted %d MongoDB builds and dropped %d target collections",
+                result.get("deleted_count", 0),
+                result.get("target_collections_deleted_count", 0),
+                extra={"notify": True},
+            )
         except Exception as exc:
             logging.exception("Failed to delete MongoDB builds: %s", exc, extra={"notify": True})
 
