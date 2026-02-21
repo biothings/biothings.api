@@ -28,7 +28,7 @@ def orjson_default(o):
     raise TypeError(f"Type {type(o)} not serializable")
 
 
-def to_json(data, indent=False, sort_keys=False):
+def to_json(data, indent=False, sort_keys=False, return_bytes=False):
     # default option:
     #    OPT_NON_STR_KEYS: non string dictionary key, e.g. integer
     #    OPT_NAIVE_UTC: use UTC as the timezone when it's missing
@@ -37,7 +37,14 @@ def to_json(data, indent=False, sort_keys=False):
         option |= orjson.OPT_INDENT_2
     if sort_keys:
         option |= orjson.OPT_SORT_KEYS
-    return orjson.dumps(data, default=orjson_default, option=option).decode()
+
+    byte_dump = orjson.dumps(data, default=orjson_default, option=option)
+    if return_bytes:
+        return byte_dump
+
+    return byte_dump.decode()
+
+    # return orjson.dumps(data, default=orjson_default, option=option).decode()
 
 
 def to_json_file(data, fobj, indent=False, sort_keys=False):
