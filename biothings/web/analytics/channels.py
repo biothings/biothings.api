@@ -2,9 +2,9 @@ import aiohttp
 import asyncio
 import certifi
 import logging
-import orjson
 import ssl
 
+from biothings.utils import serializer
 from biothings.web.analytics.events import Event, Message
 
 
@@ -81,7 +81,7 @@ class GA4Channel(Channel):
                     "user_id": str(event._cid(1)),
                     "events": events[i : i + 25],
                 }
-                await self.send_request(session, self.url, orjson.dumps(data))
+                await self.send_request(session, self.url, serializer.to_json(data, return_bytes=True))
 
     async def send_request(self, session, url, data):
         retries = 0

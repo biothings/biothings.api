@@ -3,7 +3,7 @@ import pathlib
 from typing import Callable, Generator, Iterable, Optional
 from urllib.parse import parse_qsl, urlparse
 
-import orjson
+from biothings.utils import serializer
 
 
 def ndjson_parser(
@@ -31,7 +31,7 @@ def ndjson_parser(
             for filename in work_dir.glob(pattern):
                 with open(filename, "rb") as f:
                     for line in f:
-                        doc = orjson.loads(line)
+                        doc = serializer.load_json(line)
                         yield doc
 
     return ndjson_parser_func
@@ -60,7 +60,7 @@ def json_array_parser(
         for pattern in patterns:
             for filename in work_dir.glob(pattern):
                 with open(filename, "r") as f:
-                    data = orjson.loads(f.read())
+                    data = serializer.load_json(f.read())
                     try:
                         iterator = iter(data)
                     except TypeError:

@@ -1,4 +1,4 @@
-import orjson
+from biothings.utils import serializer
 
 
 def make_object(attr, value):
@@ -21,10 +21,9 @@ def make_object(attr, value):
     # s += "}" * (len(attr_list))
     # return json.loads(s)
 
-    # New implementation using orjson module
-    s += orjson.dumps(value).decode("utf-8")  # decoding is necessary because orjson dumps into bytes
+    s += serializer.to_json(value)
     s += "}" * (len(attr_list))
-    return orjson.loads(s)
+    return serializer.load_json(s)
 
 
 def merge_object(obj1, obj2):

@@ -20,7 +20,6 @@ biothings.web.handlers.BaseAPIHandler
 """
 import logging
 
-import orjson
 import yaml
 from tornado.web import HTTPError, RequestHandler
 
@@ -105,8 +104,8 @@ class BaseAPIHandler(BaseHandler, AnalyticsMixin):
         if not self.request.body:
             return {}
         try:
-            return orjson.loads(self.request.body)
-        except orjson.JSONDecodeError:
+            return serializer.load_json(self.request.body)
+        except serializer.JSONDecodeError:
             raise HTTPError(400, reason="Invalid JSON body.")
 
     def _parse_yaml(self):

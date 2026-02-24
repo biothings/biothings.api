@@ -40,8 +40,8 @@ from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch.dsl import MultiSearch, Q, Search
 from elasticsearch.dsl.exceptions import IllegalOperation
-import orjson
 
+from biothings.utils import serializer
 from biothings.utils.common import dotdict
 from biothings.web.query.formatter import ESResultFormatter
 from biothings.web.services.metadata import BiothingsMetadata
@@ -430,9 +430,9 @@ class ESUserQuery:
                             ## alternative implementation  # noqa: E266
                             # self._queries[os.path.basename(dirpath)] = text_file.read()
                             ##
-                            self._queries[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                            self._queries[os.path.basename(dirpath)] = serializer.load_json(text_file.read())
                         elif "filter" in filename:
-                            self._filters[os.path.basename(dirpath)] = orjson.loads(text_file.read())
+                            self._filters[os.path.basename(dirpath)] = serializer.load_json(text_file.read())
         except Exception:
             self.logger.exception("Error loading user queries.")
 

@@ -1,9 +1,10 @@
 import aiohttp
 import asyncio
-import orjson
 import pytest
 
 from aioresponses import aioresponses
+
+from biothings.utils import serializer
 from biothings.web.analytics.channels import SlackChannel, GA4Channel, GAChannel
 from biothings.web.analytics.events import GAEvent, Message
 from unittest.mock import patch
@@ -91,7 +92,8 @@ async def test_send_GA4():
 async def test_send_GA4_request_retries():
     channel = GA4Channel("G-XXXXXX", "SECRET")
     url = channel.url
-    data = orjson.dumps({"test": "data"})
+    # data = orjson.dumps({"test": "data"})
+    data = serializer.to_json({"test": "data"}, return_bytes=True)
 
     async with aiohttp.ClientSession() as session:
         with aioresponses() as responses:
@@ -109,7 +111,7 @@ async def test_send_GA4_request_retries():
 async def test_send_GA4_request_max_retries():
     channel = GA4Channel("G-XXXXXX", "SECRET")
     url = channel.url
-    data = orjson.dumps({"test": "data"})
+    data = serializer.to_json({"test": "data"}, return_bytes=True)
 
     async with aiohttp.ClientSession() as session:
         with aioresponses() as responses:
