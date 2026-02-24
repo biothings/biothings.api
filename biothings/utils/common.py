@@ -173,12 +173,31 @@ def anyfile(infile, mode="r"):
         rawfile = os.path.splitext(infile)[0]
     filetype = os.path.splitext(infile)[1].lower()
 
+    # check if lower version zst handling is needed
+    lower_version_zst = False
+    if sys.version_info < (3, 14) and filetype == ".zst":
+        import zstandard as zstd
+        lower_version_zst = True
 
-    # use tarfile built-in method to check for tar file before anything else
-    if tarfile.is_tarfile(infile):
-        tar_file = tarfile.open(infile, mode)
+    # tarfile handling. works for zst in Python >= 3.14
+    if lower_version_zst or tarfile.is_tarfile(infile):
+        if lower_version_zst:
+            f = open(infile, "rb")
+            dctx = zstd.ZstdDecompressor()
+            reader = dctx.stream_reader(f)
+            tar_file = tarfile.open(fileobj=reader, mode="r|")  # streaming mode
+        else:
+            tar_file = tarfile.open(infile, mode)
+
+        extracted = None
         try:
-            extracted = tar_file.extractfile(rawfile)
+            if lower_version_zst:
+                for member in tar_file:
+                    if member.name == rawfile:
+                        extracted = tar_file.extractfile(member)
+                        break
+            else:
+                extracted = tar_file.extractfile(rawfile)
         except KeyError:
             # provided rawfile does not appear in the tarball
             tar_file.close()
@@ -188,6 +207,9 @@ def anyfile(infile, mode="r"):
         if extracted is None:
             tar_file.close()
             raise Exception("invalid target file: must be a regular file or a link")
+
+        if lower_version_zst:
+            return extracted
 
         return io.TextIOWrapper(extracted)
 
