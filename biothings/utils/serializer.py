@@ -44,8 +44,6 @@ def to_json(data, indent=False, sort_keys=False, return_bytes=False):
 
     return byte_dump.decode()
 
-    # return orjson.dumps(data, default=orjson_default, option=option).decode()
-
 
 def to_json_file(data, fobj, indent=False, sort_keys=False):
     json_str = to_json(data, indent=indent, sort_keys=sort_keys)
