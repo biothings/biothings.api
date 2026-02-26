@@ -10,11 +10,12 @@ from typing import Iterable, Optional
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
-from biothings.hub.manager import ResourceNotFound
 from biothings.hub.dataload.manager import BaseSourceManager
+from biothings.hub.manager import ResourceNotFound
 from biothings.utils.common import get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
+from biothings.utils.mongo_async import get_async_src_conn, get_async_src_dump, get_async_src_master
 from biothings.utils.storage import (
     BasicStorage,
     IgnoreDuplicatedStorage,
@@ -143,6 +144,23 @@ class BaseSourceUploader:
         # flag ready
         self.prepared = True
 
+    async def prepare_async(self, state={}):  # noqa: B006
+        """Async version of prepare(). Uses AsyncMongoClient for non-blocking I/O."""
+        if self.prepared:
+            return
+        if state:
+            for k in self._state:
+                self._state[k] = state[k]
+            return
+        self._state["conn"] = get_async_src_conn()
+        self._state["db"] = self._state["conn"][self.__class__.__database__]
+        self._state["collection"] = self._state["db"][self.collection_name]
+        self._state["src_dump"] = await self.prepare_src_dump_async()
+        self._state["src_master"] = get_async_src_master()
+        self._state["logger"], self.logfile = self.setup_log()
+        self.data_folder = self.src_doc.get("download", {}).get("data_folder") or self.src_doc.get("data_folder")
+        self.prepared = True
+
     def unprepare(self):
         """
         reset anything that's not pickable (so self can be pickled)
@@ -264,6 +282,19 @@ class BaseSourceUploader:
             self.logger.info("Cleaning old archive/temp collection '%s'" % colname)
             self.db[colname].drop()
 
+    async def clean_archived_collections_async(self):
+        """Async version of clean_archived_collections."""
+        prefix = "%s_archive_" % self.name
+        all_cols = await self.db.collection_names()
+        cols = [c for c in all_cols if c.startswith(prefix)]
+        tmp_prefix = "%s_temp_" % self.name
+        tmp_cols = [c for c in all_cols if c.startswith(tmp_prefix)]
+        cols = sorted(cols, reverse=True)
+        to_drop = cols[self.keep_archive :] + tmp_cols  # noqa: E203
+        for colname in to_drop:
+            self.logger.info("Cleaning old archive/temp collection '%s'" % colname)
+            await self.db[colname].drop()
+
     def switch_collection(self):
         """
         after a successful loading, rename temp_collection to regular collection name,
@@ -281,6 +312,23 @@ class BaseSourceUploader:
             self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
             self.db[self.temp_collection_name].rename(self.collection_name)
         elif self.temp_collection_name and self.db[self.collection_name].count() == 0:
+            raise ResourceError("No data parsed into temp collection")
+        else:
+            raise ResourceError("No temp collection to switch to")
+
+    async def switch_collection_async(self):
+        """Async version of switch_collection."""
+        if self.temp_collection_name and await self.db[self.temp_collection_name].count() > 0:
+            col_names = await self.db.collection_names()
+            if self.collection_name in col_names:
+                new_name = "_".join([self.collection_name, "archive", get_timestamp(), get_random_string()])
+                self.logger.info(
+                    "Renaming collection '%s' to '%s' for archiving purpose." % (self.collection_name, new_name)
+                )
+                await self.collection.rename(new_name, dropTarget=True)
+            self.logger.info("Renaming collection '%s' to '%s'", self.temp_collection_name, self.collection_name)
+            await self.db[self.temp_collection_name].rename(self.collection_name)
+        elif self.temp_collection_name and await self.db[self.collection_name].count() == 0:
             raise ResourceError("No data parsed into temp collection")
         else:
             raise ResourceError("No temp collection to switch to")
@@ -321,7 +369,7 @@ class BaseSourceUploader:
         await job
         if got_error:
             raise got_error
-        self.switch_collection()
+        await self.switch_collection_async()
 
     def generate_doc_src_master(self):
         _doc = {
@@ -359,9 +407,26 @@ class BaseSourceUploader:
                 "new": new.get("src_meta"),
             }
 
+    async def get_current_and_new_master_async(self):
+        """Async version of get_current_and_new_master."""
+        new = self.generate_doc_src_master() or {}
+        dkey = {"_id": new["_id"]}
+        current = await self.src_master.find_one(dkey) or {}
+        if current.get("src_meta") != new.get("src_meta"):
+            return {
+                "kclass": f"{self.__class__.__module__}.{self.__class__.__name__}",
+                "current": current.get("src_meta"),
+                "new": new.get("src_meta"),
+            }
+
     def update_master(self):
         _doc = self.generate_doc_src_master()
         self.save_doc_src_master(_doc)
+
+    async def update_master_async(self):
+        """Async version of update_master."""
+        _doc = self.generate_doc_src_master()
+        await self.save_doc_src_master_async(_doc)
 
     def save_doc_src_master(self, _doc):
         dkey = {"_id": _doc["_id"]}
@@ -370,6 +435,15 @@ class BaseSourceUploader:
             self.src_master.update(dkey, {"$set": _doc})
         else:
             self.src_master.insert_one(_doc)
+
+    async def save_doc_src_master_async(self, _doc):
+        """Async version of save_doc_src_master."""
+        dkey = {"_id": _doc["_id"]}
+        prev = await self.src_master.find_one(dkey)
+        if prev:
+            await self.src_master.update(dkey, {"$set": _doc})
+        else:
+            await self.src_master.insert_one(_doc)
 
     def register_status(self, status, subkey="upload", **extra):
         """
@@ -425,6 +499,46 @@ class BaseSourceUploader:
                 upd["%s.last_success" % job_key] = (src_doc["upload"]["jobs"].get(self.name) or {}).get("started_at")
             self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
 
+    async def register_status_async(self, status, subkey="upload", **extra):
+        """Async version of register_status."""
+        upload_info = {"status": status}
+        upload_info.update(extra)
+        job_key = "%s.jobs.%s" % (subkey, self.name)
+
+        if status.endswith("ing"):
+            upload_info["step"] = self.name
+            upload_info["temp_collection"] = self.temp_collection_name
+            upload_info["pid"] = os.getpid()
+            upload_info["logfile"] = self.logfile
+            upload_info["started_at"] = datetime.datetime.now().astimezone()
+
+            last_upload_info = self.src_doc.get(subkey, {}).get("jobs", {}).setdefault(self.name, {})
+            last_success = last_upload_info.get("last_success")
+            last_status = last_upload_info.get("status")
+            if not last_success and last_status == "success":
+                last_success = last_upload_info.get("started_at")
+            if last_success:
+                upload_info["last_success"] = last_success
+
+            await self.src_dump.update_one({"_id": self.main_source}, {"$set": {job_key: upload_info}})
+        else:
+            src_doc = await self.src_dump.find_one({"_id": self.main_source}) or {}
+            release = src_doc.get("download", {}).get("release") or src_doc.get("release")
+            data_folder = src_doc.get("download", {}).get("data_folder") or src_doc.get("data_folder")
+            upd = {}
+            for k, v in upload_info.items():
+                upd["%s.%s" % (job_key, k)] = v
+            t1 = round(time.time() - self.t0, 0)
+            upd["%s.status" % job_key] = status
+            upd["%s.time" % job_key] = timesofar(self.t0)
+            upd["%s.time_in_s" % job_key] = t1
+            upd["%s.step" % job_key] = self.name
+            upd["%s.release" % job_key] = release
+            upd["%s.data_folder" % job_key] = data_folder
+            if status == "success":
+                upd["%s.last_success" % job_key] = (src_doc["upload"]["jobs"].get(self.name) or {}).get("started_at")
+            await self.src_dump.update_one({"_id": self.main_source}, {"$set": upd})
+
     async def load(
         self,
         steps=("data", "post", "master", "clean"),
@@ -458,18 +572,18 @@ class BaseSourceUploader:
             if not self.temp_collection_name:
                 self.make_temp_collection()
             if self.db[self.temp_collection_name]:
-                self.db[self.temp_collection_name].drop()  # drop all existing records just in case.
+                await self.db[self.temp_collection_name].drop()  # drop all existing records just in case.
             # sanity check before running
             self.check_ready(force)
             self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
-            self.register_status("uploading")
+            await self.register_status_async("uploading")
             if update_data:
                 # unsync to make it pickable
                 state = self.unprepare()
                 cnt = await self.update_data(batch_size, job_manager, **kwargs)
-                self.prepare(state)
+                await self.prepare_async(state)
             if update_master:
-                self.update_master()
+                await self.update_master_async()
             if post_update_data:
                 got_error = False
                 self.unprepare()
@@ -490,17 +604,17 @@ class BaseSourceUploader:
                 if got_error:
                     raise got_error
             # take the total from update call or directly from collection
-            cnt = cnt or self.db[self.collection_name].count()
+            cnt = cnt or await self.db[self.collection_name].count()
             if clean_archives:
-                self.clean_archived_collections()
-            self.register_status("success", count=cnt, err=None, tb=None)
+                await self.clean_archived_collections_async()
+            await self.register_status_async("success", count=cnt, err=None, tb=None)
             self.logger.info("success %s" % strargs, extra={"notify": True})
         except Exception as e:
             self.logger.exception("failed %s: %s" % (strargs, e), extra={"notify": True})
             import traceback
 
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", err=str(e), tb=traceback.format_exc())
+            await self.register_status_async("failed", err=str(e), tb=traceback.format_exc())
             raise
 
     def prepare_src_dump(self):
@@ -508,6 +622,12 @@ class BaseSourceUploader:
         Return src_dump collection"""
         src_dump = get_src_dump()
         self.src_doc = src_dump.find_one({"_id": self.main_source}) or {}
+        return src_dump
+
+    async def prepare_src_dump_async(self):
+        """Async version of prepare_src_dump. Uses async mongo client."""
+        src_dump = get_async_src_dump()
+        self.src_doc = await src_dump.find_one({"_id": self.main_source}) or {}
         return src_dump
 
     def setup_log(self):
@@ -596,13 +716,13 @@ class BaseSourceUploader:
 
         try:
             assert job_manager, "Job manager is required for validation"
-            self.prepare()
+            await self.prepare_async()
             pinfo = self.get_pinfo()
             pinfo["step"] = "validate_src"
             got_error = False
 
             extra = {"model_file": "/hub" + model_path.split("/hub", 1)[1]}
-            self.register_status("validating", subkey="validate", **extra)
+            await self.register_status_async("validating", subkey="validate", **extra)
             self.unprepare()
             job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
 
@@ -619,13 +739,13 @@ class BaseSourceUploader:
             if got_error:
                 raise got_error
 
-            self.register_status("success", subkey="validate", err=None, tb=None, **extra)
+            await self.register_status_async("success", subkey="validate", err=None, tb=None, **extra)
         except Exception as e:
             self.logger.exception("failed validation: %s" % e, extra={"notify": True})
             import traceback
 
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", subkey="validate", err=str(e), tb=traceback.format_exc(), **extra)
+            await self.register_status_async("failed", subkey="validate", err=str(e), tb=traceback.format_exc(), **extra)
             raise
 
 
@@ -672,6 +792,15 @@ class DummySourceUploader(BaseSourceUploader):
             self.src_doc = src_dump.find_one({"_id": self.main_source})
         return src_dump
 
+    async def prepare_src_dump_async(self):
+        """Async version of prepare_src_dump for DummySourceUploader."""
+        src_dump = get_async_src_dump()
+        self.src_doc = await src_dump.find_one({"_id": self.main_source})
+        if not self.src_doc:
+            await src_dump.save({"_id": self.main_source})
+            self.src_doc = await src_dump.find_one({"_id": self.main_source})
+        return src_dump
+
     def check_ready(self, force=False):
         # bypass checks about src_dump
         pass
@@ -681,9 +810,9 @@ class DummySourceUploader(BaseSourceUploader):
         self.logger.info("Dummy uploader, nothing to upload")
         # dummy uploaders have no dumper associated b/c it's collection-only resource,
         # so fill minimum information so register_status() can set the proper release
-        self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
+        await self.src_dump.update_one({"_id": self.main_source}, {"$set": {"download.release": release}})
         # sanity check, dummy uploader, yes, but make sure data is there
-        assert self.collection.count() > 0, "No data found in collection '%s' " % self.collection_name
+        assert await self.collection.count() > 0, "No data found in collection '%s' " % self.collection_name
 
 
 class ParallelizedSourceUploader(BaseSourceUploader):
@@ -768,8 +897,8 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             await asyncio.gather(*jobs)
             if got_error:
                 raise got_error
-            self.switch_collection()
-            self.clean_archived_collections()
+            await self.switch_collection_async()
+            await self.clean_archived_collections_async()
 
 
 class NoDataSourceUploader(BaseSourceUploader):
@@ -944,11 +1073,11 @@ class UploaderManager(BaseSourceManager):
     async def create_and_update_master(self, klass, dry=False):
         compare_data = None
         inst = self.create_instance(klass)
-        inst.prepare()
+        await inst.prepare_async()
         if dry:
-            compare_data = inst.get_current_and_new_master()
+            compare_data = await inst.get_current_and_new_master_async()
         else:
-            inst.update_master()
+            await inst.update_master_async()
         inst.unprepare()
         return compare_data
 
