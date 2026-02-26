@@ -27,7 +27,7 @@ class DefaultHandler(RequestHandler):
             #     "status": "ok"
             # }, iso_dates=True)
             serializer.to_json({
-                {"result": result, "status": "ok"},
+                "result": result, "status": "ok"
             })
         )
 
