@@ -10,7 +10,7 @@ class MongoBuildCleaner:
     def __init__(self, job_manager):
         self.job_manager = job_manager
 
-    def list_builds(self, build_config=None, build_name=None):
+    def list_builds(self, build_config=None, build_name=None, year=None):
         collection = get_src_build()
 
         filters = {}
@@ -18,6 +18,14 @@ class MongoBuildCleaner:
             filters["build_config._id"] = build_config
         if build_name:
             filters["_id"] = build_name
+        if year:
+            from datetime import datetime
+
+            year = int(year)
+            filters["started_at"] = {
+                "$gte": datetime(year, 1, 1),
+                "$lt": datetime(year + 1, 1, 1),
+            }
 
         projection = {
             "_id": 1,
@@ -81,6 +89,51 @@ class MongoBuildCleaner:
         finally:
             await conn.close()
 
+    async def validate_builds(self):
+        """Validate that target collections exist for each build record.
+
+        Checks every build in src_build to see if its target collection still
+        exists in the target database.  Build records whose target collections
+        have been removed are deleted, keeping the database in sync with the
+        actual data.
+
+        Returns a dict with ``builds_removed`` (count) and ``builds_removed_names``.
+        """
+        from biothings.utils import mongo
+
+        logging.info("Starting validation of MongoDB builds...")
+        conn = mongo.get_hub_db_async_conn()
+        try:
+            src_build = mongo.get_src_build_async(conn)
+            target_db = conn[btconfig.DATA_TARGET_DATABASE]
+
+            existing_collections = set(await target_db.list_collection_names())
+
+            orphaned_ids = []
+            async for doc in src_build.find({}, {"_id": 1, "target_name": 1}):
+                build_id = doc["_id"]
+                target_name = doc.get("target_name") or build_id
+                if target_name not in existing_collections:
+                    orphaned_ids.append(build_id)
+
+            if orphaned_ids:
+                result = await src_build.delete_many({"_id": {"$in": orphaned_ids}})
+                deleted_count = result.deleted_count
+            else:
+                deleted_count = 0
+
+            logging.info(
+                "Build validation complete: removed %d orphaned build record(s)",
+                deleted_count,
+                extra={"notify": True},
+            )
+            return {
+                "builds_removed": deleted_count,
+                "builds_removed_names": sorted(orphaned_ids),
+            }
+        finally:
+            await conn.close()
+
     def done(self, future):
         try:
             result = future.result()
@@ -93,14 +146,25 @@ class MongoBuildCleaner:
         except Exception as exc:
             logging.exception("Failed to delete MongoDB builds: %s", exc, extra={"notify": True})
 
+    def validate_done(self, future):
+        try:
+            result = future.result()
+            logging.info(
+                "Build validation complete: removed %d orphaned build record(s)",
+                result.get("builds_removed", 0),
+                extra={"notify": True},
+            )
+        except Exception as exc:
+            logging.exception("Failed to validate MongoDB builds: %s", exc, extra={"notify": True})
+
 
 class MongoBuildCleanupManager(BaseManager):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cleaner = MongoBuildCleaner(self.job_manager)
 
-    def list_mongo_builds(self, build_config=None, build_name=None):
-        return self.cleaner.list_builds(build_config=build_config, build_name=build_name)
+    def list_mongo_builds(self, build_config=None, build_name=None, year=None):
+        return self.cleaner.list_builds(build_config=build_config, build_name=build_name, year=year)
 
     def delete_mongo_builds(self, build_ids):
         try:
@@ -108,5 +172,14 @@ class MongoBuildCleanupManager(BaseManager):
             job.add_done_callback(self.cleaner.done)
         except Exception as ex:
             logging.exception("Error while submitting MongoDB build deletion job: %s", ex, extra={"notify": True})
+            raise
+        return job
+
+    def validate_mongo_builds(self):
+        try:
+            job = self.job_manager.submit(partial(self.cleaner.validate_builds))
+            job.add_done_callback(self.cleaner.validate_done)
+        except Exception as ex:
+            logging.exception("Error while submitting MongoDB build validation job: %s", ex, extra={"notify": True})
             raise
         return job

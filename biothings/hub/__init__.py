@@ -1153,6 +1153,7 @@ class HubServer:
         if self.managers.get("mongo_build_cleanup_manager"):
             self.commands["list_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].list_mongo_builds
             self.commands["delete_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].delete_mongo_builds
+            self.commands["validate_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].validate_mongo_builds
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
@@ -1524,6 +1525,10 @@ class HubServer:
         if "delete_mongo_builds" in cmdnames:
             self.api_endpoints["mongo_builds/delete"] = EndpointDefinition(
                 name="delete_mongo_builds", method="put", force_bodyargs=True
+            )
+        if "validate_mongo_builds" in cmdnames:
+            self.api_endpoints["mongo_builds/validate"] = EndpointDefinition(
+                name="validate_mongo_builds", method="post"
             )
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(name="sync", method="post", force_bodyargs=True)
