@@ -282,20 +282,61 @@ class ChangeWatcher(object):
         "hub_config": "config",
     }
 
+    # Maximum number of events to coalesce per publish cycle. When the hub is
+    # under heavy load (large builds, many workers) the event queue can fill
+    # much faster than individual broadcasts can be sent, starving the Tornado
+    # IOLoop and preventing HTTP responses and WebSocket heartbeats from being
+    # processed.  Draining in batches and deduplicating keeps the loop healthy.
+    PUBLISH_BATCH_SIZE = 250
+
     @classmethod
     def publish(cls):
         cls.do_publish = True
 
         async def do():
             while cls.do_publish:
+                # Block until at least one event is available.
                 evt = await cls.event_queue.get()
-                for listener in cls.listeners:
+                batch = [evt]
+
+                # Drain any additional queued events up to the batch limit so
+                # we can combine duplicate events and reduce broadcasts.
+                while len(batch) < cls.PUBLISH_BATCH_SIZE:
                     try:
-                        listener.read(evt)
-                    except Exception as e:
-                        # pass
-                        # TODO: the log line below was commented out, uncomment it to see it causes any issue
-                        logging.error("Can't publish %s to %s: %s", evt, listener, e)
+                        batch.append(cls.event_queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+
+                # Deduplicate: keep only the *latest* event per (obj, _id) pair.
+                # During a build the same source/build document is updated many
+                # times in rapid succession — only the final state matters for
+                # the UI. Log events (no "_id") are always forwarded.
+                seen = {}
+                unique_events = []
+                for event in batch:
+                    obj = event.get("obj")
+                    _id = event.get("_id")
+                    if obj and _id:
+                        key = (obj, _id)
+                        if key in seen:
+                            # Replace the earlier event with this newer one.
+                            unique_events[seen[key]] = event
+                        else:
+                            seen[key] = len(unique_events)
+                            unique_events.append(event)
+                    else:
+                        unique_events.append(event)
+
+                for event in unique_events:
+                    for listener in cls.listeners:
+                        try:
+                            listener.read(event)
+                        except Exception as e:
+                            logging.error("Can't publish %s to %s: %s", event, listener, e)
+
+                # Yield control back to the IOLoop so HTTP handlers and
+                # WebSocket heartbeats can be processed between batches.
+                await asyncio.sleep(0)
 
         return asyncio.ensure_future(do())
 

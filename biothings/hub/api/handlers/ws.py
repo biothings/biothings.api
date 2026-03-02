@@ -3,6 +3,7 @@ import json
 import logging
 
 import sockjs.tornado
+from tornado.websocket import WebSocketClosedError
 
 from biothings.utils.hub_db import ChangeListener
 
@@ -34,7 +35,12 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         super(WebSocketConnection, self).__init__(session)
 
     def publish(self, message):
-        self.broadcast(self.__class__.clients, message)
+        try:
+            self.broadcast(self.__class__.clients, message)
+        except WebSocketClosedError:
+            # Client disconnected; remove it from the set so future
+            # broadcasts no longer target a dead connection.
+            self.__class__.clients.discard(self)
 
     def on_open(self, info):
         # Send that someone joined
@@ -62,12 +68,15 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
             err.add_note(err_note)
             err_to_raise = err
         if err_to_raise:
-            self.send({"error": err_note})
+            try:
+                self.send({"error": err_note})
+            except WebSocketClosedError:
+                self.__class__.clients.discard(self)
             raise err_to_raise
 
     def on_close(self):
         # Remove client from the clients list and broadcast leave message
-        self.__class__.clients.remove(self)
+        self.__class__.clients.discard(self)
         self.broadcast(self.__class__.clients, "Someone left.")
 
 
