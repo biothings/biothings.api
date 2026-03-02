@@ -8,9 +8,8 @@ from datetime import datetime
 from functools import partial
 
 import boto3
-from config import logger as logging
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import TransportError, NotFoundError
+from elasticsearch.exceptions import NotFoundError, TransportError
 
 from biothings import config as btconfig
 from biothings.hub import SNAPSHOOTER_CATEGORY
@@ -22,6 +21,7 @@ from biothings.utils.exceptions import RepositoryVerificationFailed
 from biothings.utils.hub import template_out
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
+from config import logger as logging
 
 from . import snapshot_cleanup as cleaner, snapshot_registrar as registrar
 from .snapshot_repo import Repository
