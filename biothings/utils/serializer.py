@@ -1,14 +1,28 @@
 import datetime
+import sys
 from collections import OrderedDict, UserDict, UserList, UserString
 from typing import Any, Union
 from urllib.parse import parse_qs, unquote_plus, urlencode, urlparse, urlunparse
 
-import msgspec
-import orjson
 import yaml
 
+# Determine if we should use msgspec (free-threaded build)
+# or orjson (standard build)
+_USE_MSGSPEC = (
+    sys.version_info >= (3, 14)
+    and hasattr(sys, "_is_gil_enabled")
+    and not sys._is_gil_enabled()
+)
 
-def load_json(json_str: Union[bytes, str]) -> Any:
+# Only import orjson if not using msgspec (orjson re-enables GIL)
+if not _USE_MSGSPEC:
+    import orjson
+else:
+    orjson = None
+    import msgspec
+
+
+def load_json_orjson(json_str: Union[bytes, str]) -> Any:
     """Load a JSON string or bytes using orjson"""
     return orjson.loads(json_str)
 
@@ -42,7 +56,7 @@ def msgspec_default(o):
     raise TypeError(f"Type {type(o)} not serializable")
 
 
-def to_json(data, indent=False, sort_keys=False, return_bytes=False):
+def to_json_orjson(data, indent=False, sort_keys=False, return_bytes=False):
     # default option:
     #    OPT_NON_STR_KEYS: non string dictionary key, e.g. integer
     #    OPT_NAIVE_UTC: use UTC as the timezone when it's missing
@@ -67,6 +81,7 @@ def load_json_msgspec(json_str: Union[bytes, str]) -> Any:
 def to_json_msgspec(data, indent=False, sort_keys=False, return_bytes=False):
     """
     Serialize JSON using msgspec with behavior matching `to_json`.
+
     Args:
         data: Object to serialize
         indent: If True, format with 2-space indentation
@@ -95,16 +110,26 @@ def to_json_file_msgspec(data, fobj, indent=False, sort_keys=False):
     fobj.write(json_str)
 
 
-def to_json_file(data, fobj, indent=False, sort_keys=False):
-    json_str = to_json(data, indent=indent, sort_keys=sort_keys)
+def to_json_file_orjson(data, fobj, indent=False, sort_keys=False):
+    json_str = to_json_orjson(data, indent=indent, sort_keys=sort_keys)
     fobj.write(json_str)
 
 
-# define aliases close to json.loads and json.dumps for convenience
+# Unified API - dispatch to either orjson or msgspec
+if _USE_MSGSPEC:
+    # Free-threaded: use msgspec
+    load_json = load_json_msgspec
+    to_json = to_json_msgspec
+    to_json_file = to_json_file_msgspec
+else:
+    # Standard build: use orjson
+    load_json = load_json_orjson
+    to_json = to_json_orjson
+    to_json_file = to_json_file_orjson
+
+# Aliases for convenience (follow json module naming convention)
 json_loads = load_json
 json_dumps = to_json
-json_loads_msgspec = load_json_msgspec
-json_dumps_msgspec = to_json_msgspec
 
 
 def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False):
@@ -144,4 +169,7 @@ class URL(UserString):
 
 
 # keep it here to be used by other modules
-JSONDecodeError = orjson.JSONDecodeError    # orjson.JSONDecodeError is also a sublcass of json.JSONDecodeError
+if _USE_MSGSPEC:
+    JSONDecodeError = msgspec.DecodeError
+else:
+    JSONDecodeError = orjson.JSONDecodeError
