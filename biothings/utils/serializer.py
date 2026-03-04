@@ -3,6 +3,7 @@ from collections import OrderedDict, UserDict, UserList, UserString
 from typing import Any, Union
 from urllib.parse import parse_qs, unquote_plus, urlencode, urlparse, urlunparse
 
+import msgspec
 import orjson
 import yaml
 
@@ -27,6 +28,19 @@ def orjson_default(o):
         return o.data  # o.data is the actual dictionary of list to store the data
     raise TypeError(f"Type {type(o)} not serializable")
 
+def msgspec_default(o):
+    """
+    The default function passed to msgspec to serialize non-serializable objects.
+    Handles UserDict, UserList, datetime objects, and other special types.
+
+    Always treats naive datetime objects as UTC (OPT_NAIVE_UTC behavior),
+    matching orjson's default behavior.
+    """
+    if isinstance(o, (UserDict, UserList)):
+        return o.data  # o.data is the actual dictionary or list to store the data
+
+    raise TypeError(f"Type {type(o)} not serializable")
+
 
 def to_json(data, indent=False, sort_keys=False, return_bytes=False):
     # default option:
@@ -45,6 +59,42 @@ def to_json(data, indent=False, sort_keys=False, return_bytes=False):
     return byte_dump.decode()
 
 
+def load_json_msgspec(json_str: Union[bytes, str]) -> Any:
+    """Load a JSON string or bytes using msgspec"""
+    return msgspec.json.decode(json_str)
+
+
+def to_json_msgspec(data, indent=False, sort_keys=False, return_bytes=False):
+    """
+    Serialize JSON using msgspec with behavior matching `to_json`.
+    Args:
+        data: Object to serialize
+        indent: If True, format with 2-space indentation
+        sort_keys: If True, sort dictionary keys deterministically
+        return_bytes: If True, return bytes; otherwise return string
+
+    Returns:
+        JSON string or bytes
+    """
+    encode_kwargs = {"enc_hook": msgspec_default}
+    if sort_keys:
+        encode_kwargs["order"] = "sorted"
+
+    byte_dump = msgspec.json.encode(data, **encode_kwargs)
+
+    if indent:
+        byte_dump = msgspec.json.format(byte_dump, indent=2)
+
+    if return_bytes:
+        return byte_dump
+    return byte_dump.decode()
+
+
+def to_json_file_msgspec(data, fobj, indent=False, sort_keys=False):
+    json_str = to_json_msgspec(data, indent=indent, sort_keys=sort_keys)
+    fobj.write(json_str)
+
+
 def to_json_file(data, fobj, indent=False, sort_keys=False):
     json_str = to_json(data, indent=indent, sort_keys=sort_keys)
     fobj.write(json_str)
@@ -53,6 +103,8 @@ def to_json_file(data, fobj, indent=False, sort_keys=False):
 # define aliases close to json.loads and json.dumps for convenience
 json_loads = load_json
 json_dumps = to_json
+json_loads_msgspec = load_json_msgspec
+json_dumps_msgspec = to_json_msgspec
 
 
 def to_yaml(data, stream=None, Dumper=yaml.SafeDumper, default_flow_style=False):
