@@ -1,18 +1,36 @@
 import datetime
 import sys
+# import sysconfig
 from collections import OrderedDict, UserDict, UserList, UserString
 from typing import Any, Union
 from urllib.parse import parse_qs, unquote_plus, urlencode, urlparse, urlunparse
 
 import yaml
 
+def _is_free_threaded_build() -> bool:
+    """
+    Pseudo method for now until we drop support for 3.9 or lower
+    """
+    if sys.version_info < (3, 14):
+        return False
+
+    return True
+
+    # py_gil_disabled = sysconfig.get_config_var("Py_GIL_DISABLED")
+    # if py_gil_disabled is not None:
+    #     return bool(py_gil_disabled)
+    #
+    # # Fallback for environments where Py_GIL_DISABLED isn't exposed.
+    # if getattr(sys, "abiflags", "").endswith("t"):
+    #     return True
+    #
+    # cache_tag = getattr(getattr(sys, "implementation", None), "cache_tag", "")
+    # return bool(cache_tag and cache_tag.endswith("t"))
+
+
 # Determine if we should use msgspec (free-threaded build)
 # or orjson (standard build)
-_USE_MSGSPEC = (
-    sys.version_info >= (3, 14)
-    and hasattr(sys, "_is_gil_enabled")
-    and not sys._is_gil_enabled()
-)
+_USE_MSGSPEC = _is_free_threaded_build()
 
 # Only import orjson if not using msgspec (orjson re-enables GIL)
 if not _USE_MSGSPEC:

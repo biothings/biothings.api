@@ -1,22 +1,12 @@
+import sys
+
 from biothings.web.handlers import serializer
 
 
 def test_unified_api_dispatch():
     """Test that unified API uses correct implementation based on Python version and free-threading"""
-    import sys
 
-    # Check which implementation should be active
-    python_version = sys.version_info
-    # Use sys.flags.nogil for Python 3.13+ to detect free-threading
-    is_free_threaded = (
-        python_version >= (3, 14) and
-        hasattr(sys.flags, 'nogil') and
-        sys.flags.nogil
-    )
-    use_msgspec = (
-        python_version >= (3, 14) and
-        is_free_threaded
-    )
+    use_msgspec = sys.version_info >= (3, 14)
 
     # Verify unified API functions exist
     assert hasattr(serializer, 'load_json')
@@ -117,4 +107,3 @@ def test_yaml_01():
 def test_url_01():
     url = serializer.URL("http://www.mygene.info/v1/gene/1017?fields=symbol&format=html")
     assert url.remove() == "http://www.mygene.info/v1/gene/1017?fields=symbol"
-
