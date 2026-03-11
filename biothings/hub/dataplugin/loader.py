@@ -1,33 +1,27 @@
 import abc
-import importlib
 import inspect
+import importlib
 import json
 import os
-import pathlib
-import re
 import shlex
 import subprocess
 import sys
 import textwrap
-import urllib.parse
-from typing import Dict, Tuple, Union
+from pathlib import Path
 
 import jsonschema
 import yaml
 
 from biothings import config as btconfig
-from biothings.hub.dataload.dumper import DockerContainerDumper, LastModifiedFTPDumper, LastModifiedHTTPDumper
-from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
-from biothings.hub.dataplugin.loaders.schema.exceptions import determine_validation_error_category
-from biothings.hub.dataplugin.templates import generate_assisted_dumper_class, generate_assisted_uploader_class
+from biothings.hub.dataplugin.exceptions import LoaderException
+from biothings.hub.dataplugin.schema import load_manifest_schema
+from biothings.hub.dataplugin.schema.exceptions import determine_validation_error_category
+from biothings.hub.dataplugin.templates import generate_assisted_uploader_class
+from biothings.hub.dataplugin.metatypes import manifest_dumper_factory, load_manifest_defined_function
+
 from biothings.utils import storage
-from biothings.utils.common import get_class_from_classpath
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
-
-
-class LoaderException(Exception):
-    pass
 
 
 class BasePluginLoader(abc.ABC):
@@ -86,46 +80,12 @@ class BasePluginLoader(abc.ABC):
 class ManifestBasedPluginLoader(BasePluginLoader):
     loader_type = "manifest"
 
-    # should match a _dict_for_***
-    dumper_registry = {
-        "http": LastModifiedHTTPDumper,
-        "https": LastModifiedHTTPDumper,
-        "ftp": LastModifiedFTPDumper,
-        "docker": DockerContainerDumper,
-    }
-
-    def _dict_for_base(self, data_url):
-        if isinstance(data_url, str):
-            data_url = [data_url]
-        return {
-            "SRC_NAME": self.plugin_name,
-            "SRC_ROOT_FOLDER": os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.plugin_path_name),
-            "SRC_FOLDER_NAME": self.plugin_path_name,
-            "SRC_URLS": data_url,
-        }
-
-    def _dict_for_http(self, data_url):
-        return self._dict_for_base(data_url)
-
-    def _dict_for_https(self, data_url):
-        d = self._dict_for_http(data_url)
-        # not secure, but we want to make sure things will work as much as possible...
-        d["VERIFY_CERT"] = False
-        return d
-
-    def _dict_for_ftp(self, data_url):
-        return self._dict_for_base(data_url)
-
-    def _dict_for_docker(self, data_url):
-        d = self._dict_for_base(data_url)
-        return d
-
     def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
-        df = pathlib.Path(plugin["download"]["data_folder"])
-        return pathlib.Path(df, "manifest.json").exists() or pathlib.Path(df, "manifest.yaml").exists()
+        df = Path(plugin["download"]["data_folder"])
+        return Path(df, "manifest.json").exists() or Path(df, "manifest.yaml").exists()
 
-    def validate_manifest(self, manifest: Dict):
+    def validate_manifest(self, manifest: dict):
         """
         Validate a manifest instance using the biothings-manifest schema.
 
@@ -153,28 +113,32 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()
-        data_folder = pathlib.Path(plugin["download"]["data_folder"])
+        data_folder = Path(plugin["download"]["data_folder"])
         self.plugin_path_name = data_folder.name
         if data_folder.exists():
-            mf = pathlib.Path(data_folder, "manifest.json")
-            mf_yaml = pathlib.Path(data_folder, "manifest.yaml")
+            manifest_json = Path(data_folder, "manifest.json")
+            manifest_yaml = Path(data_folder, "manifest.yaml")
             manifest = None
-            if mf.exists():
-                self.logger.debug(f"Loading manifest: {mf}")
-                with open(mf, "r", encoding="utf-8") as manifest_handle:
-                    manifest = json.load(manifest_handle)
-            elif mf_yaml.exists():
-                self.logger.debug(f"Loading manifest: {mf_yaml}")
-                with open(mf_yaml, "r", encoding="utf-8") as manifest_handle:
-                    manifest = yaml.safe_load(manifest_handle)
-            else:
-                self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
-                self.invalidate_plugin("No manifest found")
+            try:
+                if manifest_json.exists():
+                    self.logger.debug(f"Loading manifest: {manifest_json}")
+                    with open(manifest_json, "r", encoding="utf-8") as manifest_handle:
+                        manifest = json.load(manifest_handle)
+                elif manifest_yaml.exists():
+                    self.logger.debug(f"Loading manifest: {manifest_yaml}")
+                    with open(manifest_yaml, "r", encoding="utf-8") as manifest_handle:
+                        manifest = yaml.safe_load(manifest_handle)
+                else:
+                    self.logger.error("No manifest found for plugin: %s" % plugin["plugin"]["url"])
+                    self.invalidate_plugin("No manifest found")
+            except Exception:
+                self.invalidate_plugin("Improperly formatted manifest file")
 
             try:
                 self.validate_manifest(manifest)
             except jsonschema.exceptions.ValidationError as validation_error:
                 self.logger.exception(validation_error)
+
                 raise LoaderException from validation_error
             except Exception as gen_exc:
                 self.logger.error("Unable to validate the manifest")
@@ -183,11 +147,11 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             try:
                 self.interpret_manifest(manifest, data_folder.as_posix())
             except Exception as gen_exc:
-                self.invalidate_plugin("Error loading manifest: %s" % str(gen_exc))
+                self.invalidate_plugin(f"Error loading manifest: {gen_exc}")
         else:
-            self.invalidate_plugin("Missing plugin folder '%s'" % data_folder)
+            self.invalidate_plugin(f"Missing plugin folder [{data_folder}]")
 
-    def get_code_for_mod_name(self, plugin_directory: Union[str, pathlib.Path], mod_name: str) -> Tuple[str, str]:
+    def get_code_for_mod_name(self, plugin_directory: Union[str, Path], mod_name: str) -> Tuple[str, str]:
         """
         Returns string literal and name of function, given a path
 
@@ -206,7 +170,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 "Invalid format for module '%s', it must be use the following format 'module:func'", mod_name
             )
 
-        plugin_directory = pathlib.Path(plugin_directory).resolve().absolute()
+        plugin_directory = Path(plugin_directory).resolve().absolute()
         module_file = plugin_directory.joinpath(module).with_suffix(".py")
 
         if module_file.exists():  # Plugin specific module
@@ -238,103 +202,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
 
         return indentfunc, funcname
 
-    def get_dumper_dynamic_class(
-        self, plugin_directory: Union[str, pathlib.Path], dumper_section: Dict, metadata: Dict
-    ):
-        if dumper_section.get("data_url"):
-            if not isinstance(dumper_section["data_url"], list):
-                dumper_urls = [dumper_section["data_url"]]
-            else:
-                dumper_urls = dumper_section["data_url"]
-
-            schemes = {urllib.parse.urlsplit(durl).scheme for durl in dumper_urls}
-
-            # https = http regarding dumper generation
-            if len({sch.replace("https", "http") for sch in schemes}) > 1:
-                raise LoaderException(
-                    "Manifest specifies URLs of different types (%s), " % schemes + "expecting only one"
-                )
-            scheme = schemes.pop()
-            if "docker" in scheme:
-                scheme = "docker"
-
-            klass = dumper_section.get("class")
-            dumper_configuration = getattr(self, "_dict_for_%s" % scheme)(dumper_urls)
-
-            # Add disabled flag to dumper configuration with default value False
-            dumper_configuration["DISABLED"] = dumper_section.get("disabled", False)
-
-            if klass:
-                dumper_class = get_class_from_classpath(klass)
-                dumper_configuration["BASE_CLASSES"] = klass
-            else:
-                dumper_class = self.dumper_registry.get(scheme)
-                dumper_configuration["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
-
-            if not dumper_class:
-                raise LoaderException("No dumper class registered to handle scheme '%s'", scheme)
-
-            if metadata:
-                dumper_configuration["__metadata__"] = metadata
-            else:
-                dumper_configuration["__metadata__"] = {}
-
-            if dumper_section.get("release"):
-                indentfunc, func = self.get_code_for_mod_name(plugin_directory, dumper_section["release"])
-                assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                dumper_configuration["SET_RELEASE_FUNC"] = (
-                    """
-%s
-
-    def set_release(self):
-        self.release = self.%s()
-"""
-                    % (
-                        indentfunc,
-                        func,
-                    )
-                )
-
-            else:
-                dumper_configuration["SET_RELEASE_FUNC"] = ""
-
-            pnregex = r"^[A-z_][\w\d]+$"
-            assert re.compile(pnregex).match(
-                self.plugin_name
-            ), "Incorrect plugin name '%s' (doesn't match regex '%s'" % (self.plugin_name, pnregex)
-            dumper_name = f"{self.plugin_name.capitalize()}Dumper"
-            "%s"
-            try:
-                dumper_configuration["DUMPER_NAME"] = dumper_name
-                dumper_configuration["SRC_NAME"] = self.plugin_name
-                if dumper_section.get("schedule"):
-                    schedule = """'%s'""" % dumper_section["schedule"]
-                else:
-                    schedule = "None"
-                dumper_configuration["SCHEDULE"] = schedule
-                dumper_configuration["UNCOMPRESS"] = dumper_section.get("uncompress", False)
-
-                if hasattr(btconfig, "DUMPER_TEMPLATE"):
-                    tpl_file = btconfig.DUMPER_TEMPLATE
-                else:
-                    # default: assuming in ..../biothings/hub/dataplugin/
-                    curmodpath = os.path.realpath(__file__)
-                    if scheme == "docker":
-                        tpl_file = os.path.join(os.path.dirname(curmodpath), "docker_dumper.py.tpl")
-                    else:
-                        tpl_file = os.path.join(os.path.dirname(curmodpath), "dumper.py.tpl")
-                assisted_dumper_class = generate_assisted_dumper_class(tpl_file, dumper_configuration)
-                return assisted_dumper_class
-
-            except Exception:
-                self.logger.exception("Can't generate dumper code for '%s'" % self.plugin_name)
-                raise
-        else:
-            raise LoaderException("Invalid manifest, expecting 'data_url' key in 'dumper' section")
-
-    def get_uploader_dynamic_class(
-        self, plugin_directory: Union[str, pathlib.Path], uploader_section, metadata, sub_source_name=""
-    ):
+    def get_uploader_dynamic_class(self, plugin_directory: str | Path, uploader_section, metadata, sub_source_name=""):
         if uploader_section.get("parser"):
             uploader_name = self.plugin_name.capitalize() + sub_source_name + "Uploader"
             confdict = {
@@ -352,20 +220,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("parser_kwargs"):
                     parser_kwargs_serialized = repr(uploader_section["parser_kwargs"])
 
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f"""
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f"""
                         # Setup parser to parser factory
                         from {mod} import {func} as parser_func
 
                         parser_kwargs = {parser_kwargs_serialized}
-                    """
-                    )
+                    """)
                 else:
                     # create empty parser_kwargs to pass to parser_func
                     parser_kwargs_serialized = repr({})
 
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f"""
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f"""
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_path_name}.{mod} import {func} as parser_func
@@ -381,8 +246,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                             importlib.reload({mod})
                             from {mod} import {func} as parser_func
                     parser_kwargs = {parser_kwargs_serialized}
-                    """
-                    )
+                    """)
             except ValueError as value_error:
                 loader_error_message = (
                     f"`parser` must be defined as `module:parser_func` but got: `{uploader_section['parser']}`"
@@ -426,16 +290,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict["JOBS_FUNC"] = (
-                        """
+                    confdict["JOBS_FUNC"] = """
 %s
     def jobs(self):
         return self.%s()
-"""
-                        % (
-                            indentfunc,
-                            func,
-                        )
+""" % (
+                        indentfunc,
+                        func,
                     )
                 else:
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
@@ -444,19 +305,16 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict["MAPPING_FUNC"] = (
-                        """
+                    confdict["MAPPING_FUNC"] = """
     @classmethod
 %s
 
     @classmethod
     def get_mapping(cls):
         return cls.%s()
-"""
-                        % (
-                            indentfunc,
-                            func,
-                        )
+""" % (
+                        indentfunc,
+                        func,
                     )
                 else:
                     confdict["MAPPING_FUNC"] = ""
@@ -481,7 +339,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         else:
             raise LoaderException("Invalid manifest, expecting 'parser' key in 'uploader' section")
 
-    def get_uploader_dynamic_classes(self, plugin_directory: Union[str, pathlib.Path], uploader_section, metadata):
+    def get_uploader_dynamic_classes(self, plugin_directory: str | Path, uploader_section, metadata):
         uploader_classes = []
         for uploader_conf in uploader_section:
             sub_source_name = uploader_conf.get("name", "")
@@ -496,14 +354,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             uploader_classes.append(uploader_class)
         return uploader_classes
 
-    def interpret_manifest(self, manifest: Dict, data_plugin_folder: Union[str, pathlib.Path]) -> None:
+    def interpret_manifest(self, manifest: dict, data_plugin_folder: Path | str) -> None:
         """
         Handles the interpretation and loading of the manifest contents
         to determine how to build the dumper and uploader classes,
         installation of the plugin requirements, and assigning of the plugin
         metadata
         """
-
         # start with requirements before importing anything
         if manifest.get("requires"):
             requirements = manifest["requires"]
@@ -531,8 +388,14 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 self.logger.info("Installed requirement(s) %s", uninstalled_requirements)
 
         if manifest.get("dumper"):
-            assisted_dumper_class = self.get_dumper_dynamic_class(
-                data_plugin_folder, manifest["dumper"], manifest.get("__metadata__")
+            source_root_directory = (
+                Path(btconfig.DATA_ARCHIVE_ROOT).resolve().absolute().joinpath(self.plugin_path_name)
+            )
+            assisted_dumper_class = manifest_dumper_factory(
+                plugin_name=self.plugin_name,
+                plugin_directory=data_plugin_folder,
+                source_root_directory=source_root_directory,
+                manifest_mapping=manifest,
             )
             assisted_dumper_class.DATA_PLUGIN_FOLDER = data_plugin_folder
             self.__class__.dumper_manager.register_classes([assisted_dumper_class])
@@ -551,11 +414,13 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             sys.modules["biothings.hub.dataplugin.assistant"].__dict__[
                 "AssistedUploader_%s" % self.plugin_name
             ] = assisted_uploader_class
+
         if manifest.get("uploaders"):
             assisted_uploader_classes = self.get_uploader_dynamic_classes(
                 data_plugin_folder, manifest["uploaders"], manifest.get("__metadata__")
             )
             self.__class__.uploader_manager.register_classes(assisted_uploader_classes)
+
         if manifest.get("display_name"):
             dp = get_data_plugin()
             dp.update(
@@ -583,7 +448,7 @@ class AdvancedPluginLoader(BasePluginLoader):
 
     def can_load_plugin(self) -> bool:
         plugin = self.get_plugin_obj()
-        df = pathlib.Path(plugin["download"]["data_folder"])
+        df = Path(plugin["download"]["data_folder"])
         if df.exists():
             data_folder_files = {file.name for file in df.iterdir()}
             return "__init__.py" in data_folder_files

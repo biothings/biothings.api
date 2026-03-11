@@ -7,7 +7,7 @@ from typing import Optional, Union
 import requests
 
 from biothings import config as btconfig
-from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
+from biothings.hub.dataplugin.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
 from biothings.utils.common import (
     get_plugin_name_from_local_manifest,
@@ -16,10 +16,6 @@ from biothings.utils.common import (
 )
 from biothings.utils.hub_db import get_data_plugin
 from biothings.utils.loggers import get_logger
-
-
-class AssistantException(Exception):
-    pass
 
 
 class BaseAssistant(abc.ABC):

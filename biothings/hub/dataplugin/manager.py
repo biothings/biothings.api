@@ -5,7 +5,6 @@ import sys
 import textwrap
 import shutil
 
-
 try:
     import black
 
@@ -22,7 +21,8 @@ from biothings import config as btconfig
 from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.hub.dataload import dumper
 from biothings.hub.dataload.manager import BaseSourceManager
-from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant, AssistantException
+from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant
+from biothings.hub.dataplugin.exceptions import AssistantException
 
 
 class DataPluginManager(dumper.DumperManager):
@@ -352,13 +352,10 @@ class AssistantManager(BaseSourceManager):
             ufile = os.path.join(folder, "upload.py")
             strmap = black.format_str(pprint.pformat(mapping), mode=black.Mode())
             with open(ufile, "a") as fout:
-                fout.write(
-                    """
+                fout.write("""
     @classmethod
     def get_mapping(klass):
-        return %s\n"""
-                    % textwrap.indent((strmap), prefix="    " * 2)
-                )
+        return %s\n""" % textwrap.indent((strmap), prefix="    " * 2))
 
         res["mapping"]["file"] = ufile
         res["mapping"]["status"] = "ok"
