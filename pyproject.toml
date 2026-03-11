@@ -214,9 +214,6 @@ testpaths = [
     "tests"
 ]
 
-# Environment
-env = []
-
 markers = [
     "ReleaseNoteSrcBuildReaderAdapter",
     "ReleaseNoteSrcBuildReader",
