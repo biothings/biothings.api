@@ -1,13 +1,13 @@
-import aiohttp
 import asyncio
-import pytest
+from unittest.mock import patch
 
+import aiohttp
+import pytest
 from aioresponses import aioresponses
 
 from biothings.utils import serializer
-from biothings.web.analytics.channels import SlackChannel, GA4Channel, GAChannel
+from biothings.web.analytics.channels import GA4Channel, SlackChannel
 from biothings.web.analytics.events import GAEvent, Message
-from unittest.mock import patch
 
 
 @pytest.mark.asyncio
@@ -30,34 +30,6 @@ async def test_send_Slack():
         with aioresponses() as responses:
             responses.post(url, status=200)
             await channel.send(message)
-
-
-@pytest.mark.asyncio
-async def test_send_GA():
-    event = GAEvent(
-        {
-            "__request__": {
-                "user_agent": "Opera/9.60 (Windows NT 6.0; U; en) Presto/2.1.1",
-                "referer": None,
-                "user_ip": "127.0.0.1",
-                "host": "example.org",
-                "path": "/",
-            },
-            "category": "test",
-            "action": "play",
-            "label": "sample.mp4",
-            "value": 60,
-        }
-    )
-    channel = GAChannel("G-XXXXXX", 2)
-    assert await channel.handles(event)
-
-    with aioresponses() as responses:
-        # Mock the URL to return a 200 OK response
-        responses.post(channel.url, status=200)
-
-        # If the function completes without raising an exception, the test will pass
-        await channel.send(event)
 
 
 @pytest.mark.asyncio
