@@ -560,7 +560,6 @@ class JobManager:
                 logger.debug("Pushing job[%s] to process queue [%s]", job_id, callback.func.__name__)
 
                 process_result = self.process_queue.submit(job_pool_operation, **process_job_info)
-                # process_result = job_pool_operation(**process_job_info)
 
                 # process could generate other parallelized jobs and return a Future/Task
                 if isinstance(process_result, asyncio.Task):
@@ -577,9 +576,7 @@ class JobManager:
                 self._process_job_ids.discard(job_id)
                 logger.debug("Removing job[%s] from tracking: %s", job_id, removed_job)
 
-        breakpoint()
-        process_task = await _internal_process_runner(func, job_id, pinfo)
-        # process_task = asyncio.create_task(_internal_process_runner(func, job_id, pinfo))
+        process_task = asyncio.create_task(_internal_process_runner(func, job_id, pinfo))
         return process_task
 
     async def defer_to_thread(self, pinfo=None, func: Callable = None, *args) -> asyncio.Task:
