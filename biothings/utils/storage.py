@@ -408,12 +408,3 @@ class UpsertStorage(BasicStorage):
         self.logger.info("Done[%s]", timesofar(t0))
 
         return total
-
-
-def get_storage_class(ondups=None) -> str:
-    if ondups and ondups != "error":
-        if ondups == "merge":
-            return "biothings.utils.storage.MergerStorage"
-        elif ondups == "ignore":
-            return "biothings.utils.storage.IgnoreDuplicatedStorage"
-    return "biothings.utils.storage.BasicStorage"
