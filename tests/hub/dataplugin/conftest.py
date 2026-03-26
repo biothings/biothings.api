@@ -1,6 +1,9 @@
 """
-Fixtures for mocking different types of plugin types
+Fixtures for mocking different types of plugin types,
+along with miscellaneous infrastructure
 """
+
+import asyncio
 
 from pathlib import Path
 import functools
@@ -15,20 +18,19 @@ import threading
 
 import pytest
 
-
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
 def temporary_mock_data(tmp_path_factory):
     """
-    Generates a subset of random binary files for populating the mock data hosting
+    Generates binary files for populating the mock data hosting
     """
     set_file_size_bytes = [1024, 2048, 4096, 8192]
 
     temp_directory_name = "submarine"
     temp_directory = tmp_path_factory.mktemp(temp_directory_name)
-    num_data_files = random.randint(3, 7)
+    num_data_files = 15
 
     for file_index, file_size_bytes in enumerate(random.choices(set_file_size_bytes, k=num_data_files)):
         random_binary_filename = f"dleaf{file_index}"

@@ -12,12 +12,11 @@ import pytest
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
 from biothings.hub.dataload.uploader import UploaderManager
-from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
+from biothings.hub.dataplugin.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.assistant import LocalAssistant
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
 from biothings.utils.workers import upload_worker
-
 
 logger = logging.getLogger(__name__)
 

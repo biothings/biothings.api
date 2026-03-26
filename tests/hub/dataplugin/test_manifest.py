@@ -19,7 +19,6 @@ from biothings.hub.dataplugin.loaders.schema.exceptions import (
     ManifestIncorrectEnumException,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -24,7 +24,6 @@ from biothings.utils import hub_db
 from biothings.utils.common import get_loop
 from biothings.utils.manager import JobManager
 
-
 logger = logging.getLogger(__name__)
 
 
