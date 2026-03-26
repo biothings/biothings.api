@@ -150,7 +150,7 @@ class BaseSourceManager(BaseManager):
             for subsrc in sub_srcs:
                 self.register_source(subsrc, fail_on_notfound)
             return
-        elif isinstance(src, type.ModuleType):
+        elif isinstance(src, types.ModuleType):
             source_module = src
 
         klasses = self.find_module_classes(source_module, fail_on_notfound)
