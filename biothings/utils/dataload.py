@@ -9,6 +9,7 @@ import csv
 # from __future__ import unicode_literals
 import itertools
 import json
+import math
 import os
 import os.path
 from collections import Counter, OrderedDict
@@ -21,9 +22,21 @@ from .dotstring import key_value, set_key_value
 csv.field_size_limit(10000000)  # default is 131072, too small for some big files
 
 
+def _is_nan(val):
+    """Detect NaN-like values (float NaN, pandas.NA, pandas.NaT)"""
+    try:
+        if isinstance(val, float) and math.isnan(val):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return val.__class__.__name__ in ("NAType", "NaTType")
+
+
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
-    Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries
+    Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries.
+
+    NaN-like values (float NaN, pandas.NA, pandas.NaT) are always removed regardless of the vals list.
 
     Args:
         d (dict): a dictionary
@@ -45,11 +58,11 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
     # set default supported vals for empty values
     vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
     for key, val in list(d.items()):
-        if val in vals:
+        if _is_nan(val) or val in vals:
             del d[key]
         elif isinstance(val, list):
             if remove_invalid_list:
-                val = [v for v in val if v not in vals]
+                val = [v for v in val if not _is_nan(v) and v not in vals]
                 for item in val:
                     if isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
@@ -59,14 +72,17 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 else:
                     d[key] = val
             else:
+                new_val = []
                 for item in val:
-                    if item in vals:
-                        val.remove(item)
+                    if _is_nan(item) or item in vals:
+                        continue
                     elif isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
-                # if len(val) == 0:
-                if not val:
+                    new_val.append(item)
+                if not new_val:
                     del d[key]
+                else:
+                    d[key] = new_val
         elif isinstance(val, dict):
             dict_sweep(val, vals, remove_invalid_list=remove_invalid_list)
             # if len(val) == 0:
