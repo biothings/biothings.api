@@ -21,22 +21,46 @@ from .dotstring import key_value, set_key_value
 
 csv.field_size_limit(10000000)  # default is 131072, too small for some big files
 
+def _val_to_delete(val, vals):
+    """Return True if val is considered as a value to delete, False otherwise.
 
-def _is_nan(val):
-    """Detect NaN-like values (float NaN, pandas.NA, pandas.NaT)"""
+    NaN-like values (float NaN, pandas.NA, pandas.NaT) are only removed when
+    explicitly included in the vals list.
+    """
     try:
+        # float('nan') != float('nan') by IEEE 754, so `val in vals` always
+        # returns False for NaN floats.  Handle it with math.isnan instead.
         if isinstance(val, float) and math.isnan(val):
-            return True
+            return any(isinstance(v, float) and math.isnan(v) for v in vals)
+        to_delete = val in vals
     except (TypeError, ValueError):
-        pass
-    return val.__class__.__name__ in ("NAType", "NaTType")
+        # pandas.NA raises TypeError on comparison; pandas.NaT may raise
+        # ValueError.  Catch both so either type is handled.
+        try:
+            val_is_nan = val.__module__ == "pandas" and val.__class__.__name__ in ("NAType", "NaTType")
+        except AttributeError:
+            return False
+        # Only remove if the caller explicitly put a pandas NA/NaT in vals.
+        nan_in_vals = False
+        for v in vals:
+            try:
+                if v.__module__ == "pandas" and v.__class__.__name__ in ("NAType", "NaTType"):
+                    nan_in_vals = True
+                    break
+            except AttributeError:
+                # Regular values (str, int, …) don't have __module__.
+                continue
+        to_delete = val_is_nan and nan_in_vals
+
+    return to_delete
 
 
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
     Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries.
 
-    NaN-like values (float NaN, pandas.NA, pandas.NaT) are always removed regardless of the vals list.
+    NaN-like values (float NaN, pandas.NA, pandas.NaT) are only removed when
+    explicitly included in the ``vals`` list.
 
     Args:
         d (dict): a dictionary
@@ -58,11 +82,11 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
     # set default supported vals for empty values
     vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
     for key, val in list(d.items()):
-        if _is_nan(val) or val in vals:
+        if _val_to_delete(val, vals):
             del d[key]
         elif isinstance(val, list):
             if remove_invalid_list:
-                val = [v for v in val if not _is_nan(v) and v not in vals]
+                val = [v for v in val if not _val_to_delete(v, vals)]
                 for item in val:
                     if isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
@@ -74,7 +98,7 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
             else:
                 new_val = []
                 for item in val:
-                    if _is_nan(item) or item in vals:
+                    if _val_to_delete(item, vals):
                         continue
                     elif isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
