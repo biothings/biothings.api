@@ -60,6 +60,14 @@ from biothings.hub.dataindex.indexer_task import dispatch
 class IndexerException(Exception): ...
 
 
+INDEX_MODES = {
+    "index": "Create a new index and fail if it already exists.",
+    "resume": "Use an existing index and add missing documents.",
+    "purge": "Delete an existing index before creating it.",
+    "merge": "Merge source documents into an existing index.",
+}
+
+
 class ProcessInfo:
     def __init__(self, indexer, concurrency):
         self.indexer = indexer
@@ -801,8 +809,13 @@ class IndexManager(BaseManager):
         """Show index manager config with enhanced index information."""
         # http://localhost:7080/index_manager
 
-        async def _enhance(conf):
+        def _with_supported_modes(conf):
             conf = copy.deepcopy(conf)
+            conf["index_modes"] = copy.deepcopy(INDEX_MODES)
+            return conf
+
+        async def _enhance(conf):
+            conf = _with_supported_modes(conf)
 
             for name, env in self.register.items():
                 async with AsyncElasticsearch(**env["args"]) as client:
@@ -827,7 +840,7 @@ class IndexManager(BaseManager):
             job.add_done_callback(self.logger.debug)
             return job
 
-        return self._config
+        return _with_supported_modes(self._config)
 
     def get_indexes_by_name(self, index_name=None, env_name=None, limit=10):
         """Accept an index_name and return a list of indexes get from all elasticsearch environments
