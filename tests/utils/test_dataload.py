@@ -14,12 +14,15 @@ from biothings.utils.dataload import _val_to_delete, dict_sweep
 
 # ---------------------------------------------------------------------------
 # Fake pandas-like NA / NaT types for testing without importing pandas.
-# __module__ is set to "pandas" so that _val_to_delete's module check works.
+# __module__ mirrors real pandas internals closely enough to exercise fallback
+# detection without importing pandas.
 # ---------------------------------------------------------------------------
+
 
 class NAType:
     """Mimics pandas.NA (pandas.core.arrays.masked.NAType)."""
-    __module__ = "pandas"
+
+    __module__ = "pandas._libs.missing"
 
     def __bool__(self):
         raise TypeError("boolean value of NA is ambiguous")
@@ -36,7 +39,8 @@ class NAType:
 
 class NaTType:
     """Mimics pandas.NaT (pandas._libs.tslibs.nattype.NaTType)."""
-    __module__ = "pandas"
+
+    __module__ = "pandas._libs.tslibs.nattype"
 
     def __bool__(self):
         raise TypeError("boolean value of NaT is ambiguous")
@@ -58,9 +62,20 @@ _DEFAULT_VALS = [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
 _VALS_WITH_NAN = _DEFAULT_VALS + [float("nan"), _NA, _NaT]
 
 
+@pytest.fixture(scope="module")
+def pandas():
+    return pytest.importorskip("pandas")
+
+
+@pytest.fixture(scope="module")
+def numpy():
+    return pytest.importorskip("numpy")
+
+
 # ---------------------------------------------------------------------------
 # _val_to_delete helper tests
 # ---------------------------------------------------------------------------
+
 
 class TestValToDelete:
     # -- default vals (no NaN entries) -----------------------------------
@@ -72,6 +87,9 @@ class TestValToDelete:
     def test_regular_values_not_deleted(self):
         for val in [0, 1, -1, "hello", None, [], {}, 0.0, 1.5, True, False]:
             assert _val_to_delete(val, _DEFAULT_VALS) is False, f"should keep {val!r}"
+
+    def test_string_vals_matched(self):
+        assert _val_to_delete("NA", "NA") is True
 
     def test_float_nan_not_deleted_by_default(self):
         """float NaN is kept when vals does not contain a NaN float."""
@@ -96,10 +114,18 @@ class TestValToDelete:
     def test_nat_deleted_when_in_vals(self):
         assert _val_to_delete(_NaT, _VALS_WITH_NAN) is True
 
+    def test_na_and_nat_are_not_interchangeable(self):
+        assert _val_to_delete(_NA, _DEFAULT_VALS + [_NaT]) is False
+        assert _val_to_delete(_NaT, _DEFAULT_VALS + [_NA]) is False
+
+    def test_regular_match_after_na_like_value(self):
+        assert _val_to_delete("", [_NA, ""]) is True
+
 
 # ---------------------------------------------------------------------------
 # dict_sweep — default vals (NaN kept)
 # ---------------------------------------------------------------------------
+
 
 class TestDictSweepDefaultKeepsNan:
     def test_float_nan_kept(self):
@@ -135,6 +161,7 @@ class TestDictSweepDefaultKeepsNan:
 # dict_sweep — opt-in NaN removal (NaN in vals)
 # ---------------------------------------------------------------------------
 
+
 class TestDictSweepOptInNanRemoval:
     def test_float_nan_removed(self):
         d = {"a": 1, "b": float("nan")}
@@ -160,6 +187,7 @@ class TestDictSweepOptInNanRemoval:
 # ---------------------------------------------------------------------------
 # dict_sweep — NaN inside lists (opt-in)
 # ---------------------------------------------------------------------------
+
 
 class TestDictSweepNanInList:
     def test_nan_removed_from_list(self):
@@ -192,10 +220,21 @@ class TestDictSweepNanInList:
         result = dict_sweep(d, vals=_VALS_WITH_NAN, remove_invalid_list=True)
         assert "a" not in result
 
+    def test_all_invalid_list_preserves_false_mode_behavior(self):
+        d = {"gene": [None, None], "site": ["Intron", None], "snp_build": 136}
+        result = dict_sweep(d, vals=[None], remove_invalid_list=False)
+        assert result == {"gene": [None], "site": ["Intron"], "snp_build": 136}
+
+    def test_all_invalid_list_removed_with_remove_invalid_list(self):
+        d = {"gene": [None, None], "site": ["Intron", None], "snp_build": 136}
+        result = dict_sweep(d, vals=[None], remove_invalid_list=True)
+        assert result == {"site": ["Intron"], "snp_build": 136}
+
 
 # ---------------------------------------------------------------------------
 # dict_sweep — NaN in nested dicts (opt-in)
 # ---------------------------------------------------------------------------
+
 
 class TestDictSweepNanNested:
     def test_nan_in_nested_dict(self):
@@ -223,6 +262,7 @@ class TestDictSweepNanNested:
 # dict_sweep — default vals behaviour unchanged
 # ---------------------------------------------------------------------------
 
+
 class TestDictSweepDefaultBehavior:
     def test_normal_values_kept(self):
         d = {"a": 1, "b": "hello", "c": [1, 2], "d": {"nested": True}}
@@ -234,38 +274,51 @@ class TestDictSweepDefaultBehavior:
         result = dict_sweep(d, vals=_VALS_WITH_NAN)
         assert result == {"d": "keep"}
 
+    def test_string_vals_supported(self):
+        d = {"a": "NA", "b": "keep", "c": ["NA", "keep"]}
+        result = dict_sweep(d, vals="NA")
+        assert result == {"b": "keep", "c": ["keep"]}
+
 
 # ---------------------------------------------------------------------------
-# Tests using real pandas and numpy types
+# Tests using real pandas and numpy types, when the optional deps are installed.
 # ---------------------------------------------------------------------------
-
-pandas = pytest.importorskip("pandas")
-numpy = pytest.importorskip("numpy")
 
 
 class TestValToDeleteRealTypes:
-    def test_numpy_nan_not_deleted_by_default(self):
+    def test_numpy_nan_not_deleted_by_default(self, numpy):
         assert _val_to_delete(numpy.nan, _DEFAULT_VALS) is False
 
-    def test_pandas_na_not_deleted_by_default(self):
+    def test_pandas_na_not_deleted_by_default(self, pandas):
         assert _val_to_delete(pandas.NA, _DEFAULT_VALS) is False
 
-    def test_pandas_nat_not_deleted_by_default(self):
+    def test_pandas_nat_not_deleted_by_default(self, pandas):
         assert _val_to_delete(pandas.NaT, _DEFAULT_VALS) is False
 
-    def test_numpy_nan_deleted_when_in_vals(self):
+    def test_numpy_nan_deleted_when_in_vals(self, numpy):
         vals_with_nan = _DEFAULT_VALS + [float("nan")]
         assert _val_to_delete(numpy.nan, vals_with_nan) is True
 
-    def test_pandas_na_deleted_when_in_vals(self):
+    def test_pandas_na_deleted_when_in_vals(self, pandas):
         vals_with_na = _DEFAULT_VALS + [pandas.NA]
         assert _val_to_delete(pandas.NA, vals_with_na) is True
 
-    def test_pandas_nat_deleted_when_in_vals(self):
+    def test_pandas_nat_deleted_when_in_vals(self, pandas):
         vals_with_nat = _DEFAULT_VALS + [pandas.NaT]
         assert _val_to_delete(pandas.NaT, vals_with_nat) is True
 
-    def test_numpy_float64_nan_deleted_when_in_vals(self):
+    def test_pandas_na_and_nat_are_not_interchangeable(self, pandas):
+        assert _val_to_delete(pandas.NA, _DEFAULT_VALS + [pandas.NaT]) is False
+        assert _val_to_delete(pandas.NaT, _DEFAULT_VALS + [pandas.NA]) is False
+
+    def test_regular_match_after_pandas_na(self, pandas):
+        assert _val_to_delete("", [pandas.NA, ""]) is True
+
+    def test_numpy_float32_nan_deleted_when_in_vals(self, numpy):
+        vals_with_nan = _DEFAULT_VALS + [float("nan")]
+        assert _val_to_delete(numpy.float32("nan"), vals_with_nan) is True
+
+    def test_numpy_float64_nan_deleted_when_in_vals(self, numpy):
         vals_with_nan = _DEFAULT_VALS + [float("nan")]
         assert _val_to_delete(numpy.float64("nan"), vals_with_nan) is True
 
@@ -276,52 +329,52 @@ class TestDictSweepRealPandas:
     def _vals_with(self, *extras):
         return _DEFAULT_VALS + list(extras)
 
-    def test_pandas_na_top_level(self):
+    def test_pandas_na_top_level(self, pandas):
         d = {"a": 1, "b": pandas.NA}
         result = dict_sweep(d, vals=self._vals_with(pandas.NA))
         assert result == {"a": 1}
 
-    def test_pandas_nat_top_level(self):
+    def test_pandas_nat_top_level(self, pandas):
         d = {"a": 1, "b": pandas.NaT}
         result = dict_sweep(d, vals=self._vals_with(pandas.NaT))
         assert result == {"a": 1}
 
-    def test_numpy_nan_top_level(self):
+    def test_numpy_nan_top_level(self, numpy):
         d = {"a": 1, "b": numpy.nan}
         result = dict_sweep(d, vals=self._vals_with(float("nan")))
         assert result == {"a": 1}
 
-    def test_pandas_na_in_list(self):
+    def test_pandas_na_in_list(self, pandas):
         d = {"a": [1, pandas.NA, 2]}
         result = dict_sweep(d, vals=self._vals_with(pandas.NA))
         assert result == {"a": [1, 2]}
 
-    def test_pandas_nat_in_list(self):
+    def test_pandas_nat_in_list(self, pandas):
         d = {"a": [1, pandas.NaT, 2]}
         result = dict_sweep(d, vals=self._vals_with(pandas.NaT))
         assert result == {"a": [1, 2]}
 
-    def test_numpy_nan_in_list(self):
+    def test_numpy_nan_in_list(self, numpy):
         d = {"a": [1, numpy.nan, 2]}
         result = dict_sweep(d, vals=self._vals_with(float("nan")))
         assert result == {"a": [1, 2]}
 
-    def test_pandas_na_in_nested_dict(self):
+    def test_pandas_na_in_nested_dict(self, pandas):
         d = {"a": {"b": pandas.NA, "c": 1}}
         result = dict_sweep(d, vals=self._vals_with(pandas.NA))
         assert result == {"a": {"c": 1}}
 
-    def test_pandas_na_in_list_with_remove_invalid_list(self):
+    def test_pandas_na_in_list_with_remove_invalid_list(self, pandas):
         d = {"a": [pandas.NA, pandas.NaT, "valid"]}
         result = dict_sweep(d, vals=self._vals_with(pandas.NA, pandas.NaT), remove_invalid_list=True)
         assert result == {"a": ["valid"]}
 
-    def test_all_real_nan_types_removed(self):
+    def test_all_real_nan_types_removed(self, pandas, numpy):
         d = {"a": numpy.nan, "b": pandas.NA, "c": pandas.NaT, "d": "keep"}
         result = dict_sweep(d, vals=self._vals_with(float("nan"), pandas.NA, pandas.NaT))
         assert result == {"d": "keep"}
 
-    def test_real_nan_kept_by_default(self):
+    def test_real_nan_kept_by_default(self, pandas, numpy):
         """Without opting in, real NaN types are preserved."""
         d = {"a": numpy.nan, "b": pandas.NA, "c": pandas.NaT, "d": "keep"}
         result = dict_sweep(d)
