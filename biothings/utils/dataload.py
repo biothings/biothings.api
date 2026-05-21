@@ -9,6 +9,7 @@ import csv
 # from __future__ import unicode_literals
 import itertools
 import json
+import math
 import os
 import os.path
 from collections import Counter, OrderedDict
@@ -21,9 +22,57 @@ from .dotstring import key_value, set_key_value
 csv.field_size_limit(10000000)  # default is 131072, too small for some big files
 
 
+def _missing_value_kind(val):
+    """Return a stable kind for NaN-like values without importing optional deps."""
+    val_cls = val.__class__
+    cls_module = getattr(val_cls, "__module__", "")
+    cls_name = getattr(val_cls, "__name__", "")
+
+    if (cls_module == "pandas" or cls_module.startswith("pandas.")) and cls_name in ("NAType", "NaTType"):
+        return cls_name
+
+    try:
+        if math.isnan(val):
+            return "NaN"
+    except (TypeError, ValueError):
+        pass
+
+    return None
+
+
+def _val_to_delete(val, vals):
+    """Return True if val is considered as a value to delete, False otherwise.
+
+    NaN-like values (float NaN, pandas.NA, pandas.NaT) are only removed when
+    explicitly included in the vals list.
+    """
+    if is_str(vals):
+        vals = [vals]
+
+    val_missing_kind = _missing_value_kind(val)
+
+    for candidate in vals:
+        candidate_missing_kind = _missing_value_kind(candidate)
+        if val_missing_kind or candidate_missing_kind:
+            if val_missing_kind == candidate_missing_kind:
+                return True
+            continue
+
+        try:
+            if val == candidate:
+                return True
+        except (TypeError, ValueError):
+            continue
+
+    return False
+
+
 def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
-    Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries
+    Remove keys whose values are ".", "-", "", "NA", "none", " "; and remove empty dictionaries.
+
+    NaN-like values (float NaN, pandas.NA, pandas.NaT) are only removed when
+    explicitly included in the ``vals`` list.
 
     Args:
         d (dict): a dictionary
@@ -45,11 +94,11 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
     # set default supported vals for empty values
     vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
     for key, val in list(d.items()):
-        if val in vals:
+        if _val_to_delete(val, vals):
             del d[key]
         elif isinstance(val, list):
             if remove_invalid_list:
-                val = [v for v in val if v not in vals]
+                val = [v for v in val if not _val_to_delete(v, vals)]
                 for item in val:
                     if isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
@@ -59,12 +108,14 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 else:
                     d[key] = val
             else:
-                for item in val:
-                    if item in vals:
-                        val.remove(item)
+                i = 0
+                while i < len(val):
+                    item = val[i]
+                    if _val_to_delete(item, vals):
+                        del val[i]
                     elif isinstance(item, dict):
                         dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
-                # if len(val) == 0:
+                    i += 1
                 if not val:
                     del d[key]
         elif isinstance(val, dict):
