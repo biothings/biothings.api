@@ -1,8 +1,9 @@
-import aiohttp
 import asyncio
-import certifi
 import logging
 import ssl
+
+import aiohttp
+import certifi
 
 from biothings.utils import serializer
 from biothings.web.analytics.events import Event, Message
@@ -31,30 +32,6 @@ class SlackChannel(Channel):
     async def send_request(self, session, url, event):
         ssl_context = ssl.create_default_context(cafile=certifi.where())
         async with session.post(url, json=event.to_slack_payload(), ssl=ssl_context) as _:  # for Windows compatibility
-            pass
-
-
-class GAChannel(Channel):
-    def __init__(self, tracking_id, uid_version=1):
-        self.tracking_id = tracking_id
-        self.uid_version = uid_version
-        self.url = "http://www.google-analytics.com/batch"
-
-    async def handles(self, event):
-        return isinstance(event, Event)
-
-    async def send(self, event):
-        events = event.to_GA_payload(self.tracking_id, self.uid_version)
-        async with aiohttp.ClientSession() as session:
-            # The pagination of 20 is defined according to the context of the current application
-            # Usually, each client request is going to make just 1 request to the GA API.
-            # However, it's possible to collect data to GA in other parts of the application.
-            for i in range(0, len(events), 20):
-                data = "\n".join(events[i : i + 20])
-                await self.send_request(session, self.url, data)
-
-    async def send_request(self, session, url, data):
-        async with session.post(url, data=data) as _:
             pass
 
 
@@ -101,4 +78,7 @@ class GA4Channel(Channel):
 
         # If max retries reached without success, raise an exception
         logging.error("GA4Channel: Maximum retries reached. Unable to complete request.")
+        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
+        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
+        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
         raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")

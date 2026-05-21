@@ -1,8 +1,9 @@
 import asyncio
-
 from collections import defaultdict
+
 from tornado.web import RequestHandler
-from biothings.web.analytics.channels import GA4Channel, GAChannel, SlackChannel
+
+from biothings.web.analytics.channels import GA4Channel, SlackChannel
 
 
 class Notifier:
@@ -11,13 +12,6 @@ class Notifier:
 
         if hasattr(settings, "SLACK_WEBHOOKS"):
             self.channels.append(SlackChannel(getattr(settings, "SLACK_WEBHOOKS")))
-        if getattr(settings, "GA_ACCOUNT", None):
-            self.channels.append(
-                GAChannel(
-                    getattr(settings, "GA_ACCOUNT"),
-                    getattr(settings, "GA_UID_GENERATOR_VERSION", 1),
-                )
-            )
         if getattr(settings, "GA4_MEASUREMENT_ID", None):
             self.channels.append(
                 GA4Channel(
@@ -52,4 +46,7 @@ class AnalyticsMixin(RequestHandler):
             notifier = self.biothings.notifier
             asyncio.run_coroutine_threadsafe(notifier.broadcast(self.event), asyncio.get_event_loop())
         else:  # need to initialize a notifier
+            raise NotImplementedError()
+            raise NotImplementedError()
+            raise NotImplementedError()
             raise NotImplementedError()
