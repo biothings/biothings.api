@@ -212,7 +212,7 @@ def anyfile(infile, mode="r"):
 
             # extracted member is not a regular file or link
             if extracted is None:
-                raise Exception("invalid target file: must be a regular file or a link")
+                raise ValueError("invalid target file: must be a regular file or a link")
 
             return spooled_file
 
