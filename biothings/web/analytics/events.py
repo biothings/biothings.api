@@ -69,7 +69,7 @@ class Event(UserDict):
     def _cid(self, version):
         if version == 1:
             return self._cid_v1()
-        elif version == 2:
+        if version == 2:
             return self._cid_v2()
 
         raise ValueError("CID Version.")

@@ -10,8 +10,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from biothings.cli.commands.decorators import cli_system_path, operation_mode
-
+from biothings.cli.commands.decorators import cli_system_path, get_biothings_config, operation_mode
 
 SHORT_HELP = (
     "[green]CLI tool for viewing the python system path and adding external directories to the system path[/green]"
@@ -96,8 +95,7 @@ def display_system_paths() -> None:
 @cli_system_path
 @operation_mode
 def update_system_paths() -> None:
-    from biothings import config
-
+    config = get_biothings_config()
     discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
     discovery_path.mkdir(parents=True, exist_ok=True)
 
@@ -116,8 +114,7 @@ def update_system_paths() -> None:
 @cli_system_path
 @operation_mode
 def remove_system_paths() -> None:
-    from biothings import config
-
+    config = get_biothings_config()
     discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
     path_file = discovery_path.joinpath("biothings_cli.pth")
     path_file.unlink(missing_ok=True)

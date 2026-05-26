@@ -79,6 +79,3 @@ class GA4Channel(Channel):
         # If max retries reached without success, raise an exception
         logging.error("GA4Channel: Maximum retries reached. Unable to complete request.")
         raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
-        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
-        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
-        raise Exception("GA4Channel: Maximum retries reached. Unable to complete request.")
