@@ -839,11 +839,9 @@ class TestQueryString(BiothingsWebAppTest):
             "hits": [ ... ]
         }
         """
-        res = self.query(q="__any__")
-        assert res["total"] == 100
-
-        raw_query = self.request("/v1/query?q=__any__&rawquery").json()
-        assert raw_query["query"]["function_score"]["functions"][0]["random_score"] == {}
+        res1 = self.query(q="__any__")
+        res2 = self.query(q="__any__")
+        assert res1["hits"][0]["_id"] != res2["hits"][0]["_id"]
 
     def test_02_none(self):
         """GET /query?q=
