@@ -149,7 +149,9 @@ def capturesESExceptions(func):
 
                 elif error_type == "es_rejected_execution_exception":
                     # ES cluster is overloaded, all thread pools at capacity
-                    raise QueryPipelineException(503, "Service Unavailable", "Elasticsearch cluster overloaded")
+                    raise QueryPipelineException(
+                        503, "Service Unavailable", "Elasticsearch cluster overloaded"
+                    ) from exc
 
                 else:  # unexpected
                     raise

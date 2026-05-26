@@ -36,6 +36,11 @@ from shlex import shlex
 import requests
 import yaml
 
+try:
+    import zstandard as zstd
+except ImportError:
+    zstd = None
+
 # from json serial, catching special type
 # import _sre     # TODO: unused import;remove it once confirmed
 
@@ -176,7 +181,8 @@ def anyfile(infile, mode="r"):
     # check if lower version zst handling is needed
     lower_version_zst = False
     if sys.version_info < (3, 14) and filetype == ".zst":
-        import zstandard as zstd
+        if zstd is None:
+            raise ImportError("zstandard is required to open .zst files on Python versions below 3.14")
         lower_version_zst = True
 
     # tarfile handling. works for zst in Python >= 3.14

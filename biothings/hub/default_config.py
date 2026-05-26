@@ -87,8 +87,11 @@ from biothings.utils.configuration import (
     ConfigurationDefault,
     ConfigurationError,
     ConfigurationValue,
-    set_default_folder,  # pylint: disable=unused-import      # noqa
+    set_default_folder,
 )
+
+# ConfigurationValue evaluates these symbols dynamically from this module's namespace.
+_CONFIGURATION_EVAL_SYMBOLS = (logging, set_default_folder)
 
 # * 1. General *#
 # Hub name/icon url/version, for display purpose

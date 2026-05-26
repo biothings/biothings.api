@@ -47,6 +47,3 @@ class AnalyticsMixin(RequestHandler):
             asyncio.run_coroutine_threadsafe(notifier.broadcast(self.event), asyncio.get_event_loop())
         else:  # need to initialize a notifier
             raise NotImplementedError()
-            raise NotImplementedError()
-            raise NotImplementedError()
-            raise NotImplementedError()
