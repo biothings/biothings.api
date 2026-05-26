@@ -284,15 +284,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(plugin_directory, dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                dumper_configuration["SET_RELEASE_FUNC"] = """
-%s
+                dumper_configuration["SET_RELEASE_FUNC"] = f"""
+{indentfunc}
 
     def set_release(self):
-        self.release = self.%s()
-""" % (
-                    indentfunc,
-                    func,
-                )
+        self.release = self.{func}()
+"""
 
             else:
                 dumper_configuration["SET_RELEASE_FUNC"] = ""
@@ -421,14 +418,11 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict["JOBS_FUNC"] = """
-%s
+                    confdict["JOBS_FUNC"] = f"""
+{indentfunc}
     def jobs(self):
-        return self.%s()
-""" % (
-                        indentfunc,
-                        func,
-                    )
+        return self.{func}()
+"""
                 else:
                     # use specified custom class
                     klass = uploader_section.get("class")
@@ -445,17 +439,14 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict["MAPPING_FUNC"] = """
+                    confdict["MAPPING_FUNC"] = f"""
     @classmethod
-%s
+{indentfunc}
 
     @classmethod
     def get_mapping(cls):
-        return cls.%s()
-""" % (
-                        indentfunc,
-                        func,
-                    )
+        return cls.{func}()
+"""
                 else:
                     confdict["MAPPING_FUNC"] = ""
 
