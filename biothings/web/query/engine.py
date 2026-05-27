@@ -11,7 +11,7 @@ Example:
 
 >>> from biothings.web.query import ESQueryBackend
 >>> from elasticsearch import Elasticsearch
->>> from elasticsearch_dsl import Search
+>>> from elasticsearch.dsl import Search
 
 >>> backend = ESQueryBackend(Elasticsearch())
 >>> backend.execute(Search().query("match", _id="1017"))
@@ -22,11 +22,14 @@ dict_keys(['taxid', 'symbol', 'name', ... ])
 """
 
 import asyncio
+import logging
 
 from elasticsearch import NotFoundError, RequestError
-from elasticsearch_dsl import MultiSearch, Search
+from elasticsearch.dsl import MultiSearch, Search
 
 from biothings.web.query.builder import ESScrollID
+
+logger = logging.getLogger(__name__)
 
 
 class ResultInterrupt(Exception):
@@ -139,6 +142,13 @@ class AsyncESQueryBackend(ESQueryBackend):
                     raise RawResultInterrupt(res)
 
                 if not res["hits"]["hits"]:
+                    scroll_id=query.data
+                    try:
+                        await self.client.clear_scroll(scroll_id=scroll_id)
+                        logger.info("Scroll context cleared: %s", scroll_id)
+                    except NotFoundError as e:
+                        logger.warning("Scroll context not found (ID: %s): %s", scroll_id, str(e))
+                    # Always raise this exception regardless of whether clear_scroll succeeds
                     raise EndScrollInterrupt()
 
                 return res

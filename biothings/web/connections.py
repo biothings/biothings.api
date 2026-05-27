@@ -5,7 +5,6 @@ import pickle
 from functools import partial
 
 import elasticsearch
-import elasticsearch_dsl
 import requests
 from tornado.ioloop import IOLoop
 
@@ -27,7 +26,10 @@ _should_log = run_once()
 
 def _log_pkg():
     es_ver = elasticsearch.__version__
-    es_dsl_ver = elasticsearch_dsl.__versionstr__
+
+    # since v8.18.0, the DSL is released as part of the main elasticsearch package.
+    # dsl version is therefore aligned with base es version
+    es_dsl_ver = es_ver
 
     logger.info("Elasticsearch Package Version: %s", ".".join(map(str, es_ver)))
     logger.info("Elasticsearch DSL Package Version: %s", ".".join(map(str, es_dsl_ver)))

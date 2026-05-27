@@ -6,10 +6,10 @@ import logging
 # see https://github.com/biothings/biothings.api/commit/59c0d78f758018b0d87836657a2b5d1a700503a1
 # import pandas.io.json as pdjson
 # replace pandas json encoder with orjson:
-import orjson
 from tornado.web import RequestHandler
 
 from biothings import config
+from biothings.utils import serializer
 
 
 class DefaultHandler(RequestHandler):
@@ -26,10 +26,9 @@ class DefaultHandler(RequestHandler):
             #     "result": result,
             #     "status": "ok"
             # }, iso_dates=True)
-            orjson.dumps(
-                {"result": result, "status": "ok"},
-                option=orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC,
-            ).decode()
+            serializer.to_json({
+                "result": result, "status": "ok"
+            })
         )
 
     def write_error(self, status_code, **kwargs):

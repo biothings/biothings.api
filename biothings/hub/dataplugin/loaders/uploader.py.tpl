@@ -5,6 +5,7 @@ biothings.config_for_app(config)
 
 import biothings.hub.dataload.uploader
 
+import $PLUGIN_MODULE
 
 $PARSER_FACTORY_CODE
 

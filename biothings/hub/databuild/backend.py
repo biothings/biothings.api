@@ -315,7 +315,6 @@ def create_backend(db_col_names, name_only=False, follow_ref=False, **kwargs):
         is_mongo = False
         idxr = ESIndexer(
             index=db_col_names[1],
-            doc_type=db_col_names[2],
             es_host=db_col_names[0],
             **kwargs,
         )

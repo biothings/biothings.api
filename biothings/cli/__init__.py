@@ -2,34 +2,41 @@
 Entrypoint for the biothings-cli tool
 """
 
+from typing import Literal
 import importlib.util
 import logging
 import os
 import sys
 
+import typer
+from rich.logging import RichHandler
 
-from biothings.cli.settings import (
-    setup_biothings_configuration,
-    setup_commandline_configuration,
-    setup_logging_configuration,
-)
+from biothings.cli.commands.admin import build_admin_application
+from biothings.cli.commands.config import config_application, load_configuration
+from biothings.cli.commands.dataplugin import dataplugin_application
+from biothings.cli.commands.pathing import path_application
 
 
-def check_module_import_status(module: str) -> bool:
+def setup_logging_configuration(logging_level: Literal[10, 20, 30, 40, 50]) -> None:
     """
-    Verify that we can import a module prior to proceeding with creating our commandline
-    tooling that depends on those modules
+    Configures the logging based off our environment configuration
     """
-    module_specification = importlib.util.find_spec(module)
-    status = module_specification is not None
-    return status
+    rich_handler = RichHandler(
+        level=logging_level,
+        markup=True,
+        rich_tracebacks=False,  # typer creates it already
+        show_path=False,
+        tracebacks_suppress=[typer],
+    )
+    logging.basicConfig(level=logging_level, format="%(message)s", datefmt="[%X]", handlers=[rich_handler])
 
 
 def main():
     """
-    The entrypoint for running the BioThings CLI to test your local data plugin
+    The entrypoint for running the BioThings CLI
     """
-    typer_status = check_module_import_status("typer")
+    module_specification = importlib.util.find_spec("typer")
+    typer_status = module_specification is not None
     if not typer_status:
         logging.error(
             (
@@ -48,14 +55,14 @@ def main():
     cli_debug_flag = os.environ.get("BTCLI_DEBUG", False)
     cli_rich_traceback_flag = os.environ.get("BTCLI_RICH_TRACEBACK", False)
 
-    cli = setup_commandline_configuration(debug=cli_debug_flag, rich_traceback=cli_rich_traceback_flag)
+    admin_application = build_admin_application(debug=cli_debug_flag, rich_traceback=cli_rich_traceback_flag)
     logging_level = logging.WARNING
     if cli_debug_flag:
         logging_level = logging.DEBUG
     setup_logging_configuration(logging_level)
-    setup_biothings_configuration()
+    load_configuration()
 
-    from biothings.cli.dataplugin import dataplugin_application
-
-    cli.add_typer(dataplugin_application, name="dataplugin")
-    return cli()
+    admin_application.add_typer(dataplugin_application, name="dataplugin")
+    admin_application.add_typer(config_application, name="config")
+    admin_application.add_typer(path_application, name="path")
+    return admin_application()

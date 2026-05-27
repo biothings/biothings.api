@@ -1,15 +1,10 @@
 import hashlib
-
-# import smtplib
 import uuid
 from collections import UserDict
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from pprint import pformat
 from random import randint
 from typing import Union
-from urllib.parse import urlencode
 
 
 class Event(UserDict):
@@ -74,40 +69,10 @@ class Event(UserDict):
     def _cid(self, version):
         if version == 1:
             return self._cid_v1()
-        elif version == 2:
+        if version == 2:
             return self._cid_v2()
 
-        # this is a required GA field
         raise ValueError("CID Version.")
-
-    def to_GA_payload(self, tracking_id, cid_version=1):
-        # by default implements
-        # a GA PageView hit-type
-
-        # In the future, consider adding additional
-        # keys as cutomized dimensions or metrics.
-
-        payload = {
-            "v": 1,  # protocol version
-            "t": "pageview",
-            "tid": tracking_id,
-            "cid": self._cid(cid_version),
-            "uip": self.user_ip,
-            "dh": self.host,
-            "dp": self.path,
-        }
-
-        # add document referer
-        if isinstance(self.referer, str):
-            if len(self.referer) <= 2048:  # GA Limit
-                payload["dr"] = self.referer
-
-        # add user_agent
-        if self.user_agent:
-            payload["ua"] = self.user_agent
-
-        # this also escapes payload vals
-        return [urlencode(payload)]
 
     def to_GA4_payload(self, measurement_id, cid_version=1):
         # Document about page_view event: https://support.google.com/analytics/answer/9964640#pageviews&zippy=%2Cin-this-article
@@ -153,32 +118,6 @@ class GAEvent(Event):
     #   "label": "sample.mpg",
     #   "value": "60"
     # }
-
-    def to_GA_payload(self, tracking_id, cid_version=1):
-        payloads = super().to_GA_payload(tracking_id, cid_version)
-        if self.get("category") and self.get("action"):
-            payloads.append(
-                urlencode(
-                    _clean(
-                        {
-                            "v": 1,  # protocol version
-                            "t": "event",
-                            "tid": tracking_id,
-                            "cid": self._cid(cid_version),
-                            "ec": self["category"],
-                            "ea": self["action"],
-                            "el": self.get("label", ""),
-                            "ev": self.get("value", ""),
-                        }
-                    )
-                )
-            )
-        for event in self.get("__secondary__", []):
-            event["__request__"] = self["__request__"]
-            payloads.extend(event.to_GA_payload(tracking_id, cid_version)[1:])
-            # ignore the first event (pageview)
-            # which is already generated once
-        return payloads
 
     def to_GA4_payload(self, measurement_id, cid_version=1):
         payloads = super().to_GA4_payload(measurement_id, cid_version)

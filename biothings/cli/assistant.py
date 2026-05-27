@@ -38,7 +38,7 @@ class CLIAssistant(BaseAssistant):
 
     plugin_type = "CLI"
 
-    def __init__(self, plugin_name: Optional[str] = None, job_manager: "JobManager" = None):
+    def __init__(self, plugin_name: Optional[str] = None, job_manager: CLIJobManager = None):
         from biothings import config
         from biothings.hub.databuild.builder import BuilderManager
         from biothings.hub.dataindex.indexer import IndexManager

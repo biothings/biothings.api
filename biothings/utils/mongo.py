@@ -10,7 +10,7 @@ from functools import partial, wraps
 
 import bson
 import dateutil.parser as date_parser
-from pymongo import DESCENDING, MongoClient
+from pymongo import DESCENDING, AsyncMongoClient, MongoClient
 from pymongo.client_session import ClientSession
 from pymongo.collection import Collection as PymongoCollection
 from pymongo.database import Database as PymongoDatabase
@@ -155,6 +155,10 @@ class DatabaseClient(HandleAutoReconnectMixin, MongoClient, IDatabase):
         return Database(self, name)
 
 
+class AsyncDatabaseClient(AsyncMongoClient):
+    pass
+
+
 def requires_config(func):
     @wraps(func)
     def func_wrapper(*args, **kwargs):
@@ -193,6 +197,12 @@ def get_hub_db_conn():
 
 
 @requires_config
+def get_hub_db_async_conn():
+    conn = AsyncDatabaseClient(config.HUB_DB_BACKEND["uri"])
+    return conn
+
+
+@requires_config
 def get_src_conn():
     return get_conn(config.DATA_SRC_SERVER, getattr(config, "DATA_SRC_PORT", 27017))
 
@@ -218,6 +228,12 @@ def get_src_dump(conn=None):
 @requires_config
 def get_src_build(conn=None):
     conn = conn or get_hub_db_conn()
+    return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
+
+
+@requires_config
+def get_src_build_async(conn=None):
+    conn = conn or get_hub_db_async_conn()
     return conn[config.DATA_HUB_DB_DATABASE][config.DATA_SRC_BUILD_COLLECTION]
 
 

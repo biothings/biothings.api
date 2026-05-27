@@ -1,10 +1,11 @@
-import aiohttp
 import asyncio
-import certifi
 import logging
-import orjson
 import ssl
 
+import aiohttp
+import certifi
+
+from biothings.utils import serializer
 from biothings.web.analytics.events import Event, Message
 
 
@@ -34,30 +35,6 @@ class SlackChannel(Channel):
             pass
 
 
-class GAChannel(Channel):
-    def __init__(self, tracking_id, uid_version=1):
-        self.tracking_id = tracking_id
-        self.uid_version = uid_version
-        self.url = "http://www.google-analytics.com/batch"
-
-    async def handles(self, event):
-        return isinstance(event, Event)
-
-    async def send(self, event):
-        events = event.to_GA_payload(self.tracking_id, self.uid_version)
-        async with aiohttp.ClientSession() as session:
-            # The pagination of 20 is defined according to the context of the current application
-            # Usually, each client request is going to make just 1 request to the GA API.
-            # However, it's possible to collect data to GA in other parts of the application.
-            for i in range(0, len(events), 20):
-                data = "\n".join(events[i : i + 20])
-                await self.send_request(session, self.url, data)
-
-    async def send_request(self, session, url, data):
-        async with session.post(url, data=data) as _:
-            pass
-
-
 class GA4Channel(Channel):
     def __init__(self, measurement_id, api_secret, uid_version=1):
         self.measurement_id = measurement_id
@@ -81,7 +58,7 @@ class GA4Channel(Channel):
                     "user_id": str(event._cid(1)),
                     "events": events[i : i + 25],
                 }
-                await self.send_request(session, self.url, orjson.dumps(data))
+                await self.send_request(session, self.url, serializer.to_json(data, return_bytes=True))
 
     async def send_request(self, session, url, data):
         retries = 0

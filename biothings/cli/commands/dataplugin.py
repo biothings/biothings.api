@@ -8,7 +8,7 @@ from typing import Optional
 import typer
 from typing_extensions import Annotated
 
-from biothings.cli import operations
+from biothings.cli.commands import operations
 
 SHORT_HELP = "[green]CLI tool for locally evaluating a biothings dataplugin. Allows for simple querying and data inspection.[/green]"
 FULL_HELP = (
@@ -54,6 +54,10 @@ def create_data_plugin(
 @dataplugin_application.command(name="dump")
 def dump_source(
     plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
+    mark_success: Annotated[
+        Optional[bool],
+        typer.Option("--mark-sucess", "-m", help="Mark dump as success without attempting to actually dump the files"),
+    ] = False,
     show_dump: Annotated[
         Optional[bool],
         typer.Option("--show-dump", help="Displays the dump source result output after dump operation"),
@@ -62,7 +66,7 @@ def dump_source(
     """
     Download the source data files to the local file system
     """
-    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump))
+    asyncio.run(operations.do_dump(plugin_name=plugin_name, show_dumped=show_dump, mark_success=mark_success))
 
 
 @dataplugin_application.command(name="upload")
@@ -133,7 +137,7 @@ def listing(
 
 
 @dataplugin_application.command(name="inspect")
-def inspect_source(
+def inspect_source(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")

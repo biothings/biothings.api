@@ -5,7 +5,7 @@ on:
   pull_request:
     branches:
       - master
-      - 1.0.x
+      - 1.1.x
 
 jobs:
   install_and_run_tests:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12', '3.13' ]
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14t']
 
     services:
       # mongo:
@@ -41,9 +41,9 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies

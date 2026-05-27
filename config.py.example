@@ -110,10 +110,6 @@ GA4_UID_GENERATOR_VERSION = 1
 # Analytics Settings
 # *****************************************************************************
 
-# Google Analytics Account ID
-
-GA_ACCOUNT = 'UA-123123-1'
-
 # Google Measurement ID
 GA4_MEASUREMENT_ID = 'G-KXzzzzLBN'
 

@@ -201,10 +201,10 @@ class ManifestBasedPluginLoader(BasePluginLoader):
         """
         try:
             module, funcname = map(str.strip, mod_name.split(":"))
-        except ValueError:
+        except ValueError as exc:
             raise LoaderException(
                 "Invalid format for module '%s', it must be use the following format 'module:func'", mod_name
-            )
+            ) from exc
 
         plugin_directory = pathlib.Path(plugin_directory).resolve().absolute()
         module_file = plugin_directory.joinpath(module).with_suffix(".py")
@@ -271,6 +271,8 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 dumper_class = self.dumper_registry.get(scheme)
                 dumper_configuration["BASE_CLASSES"] = "biothings.hub.dataload.dumper.%s" % dumper_class.__name__
 
+            dumper_configuration["PLUGIN_MODULE"] = dumper_configuration["BASE_CLASSES"].split(".")[0]
+
             if not dumper_class:
                 raise LoaderException("No dumper class registered to handle scheme '%s'", scheme)
 
@@ -282,18 +284,12 @@ class ManifestBasedPluginLoader(BasePluginLoader):
             if dumper_section.get("release"):
                 indentfunc, func = self.get_code_for_mod_name(plugin_directory, dumper_section["release"])
                 assert func != "set_release", "'set_release' is a reserved method name, pick another name"
-                dumper_configuration["SET_RELEASE_FUNC"] = (
-                    """
-%s
+                dumper_configuration["SET_RELEASE_FUNC"] = f"""
+{indentfunc}
 
     def set_release(self):
-        self.release = self.%s()
+        self.release = self.{func}()
 """
-                    % (
-                        indentfunc,
-                        func,
-                    )
-                )
 
             else:
                 dumper_configuration["SET_RELEASE_FUNC"] = ""
@@ -352,20 +348,17 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                 if uploader_section.get("parser_kwargs"):
                     parser_kwargs_serialized = repr(uploader_section["parser_kwargs"])
 
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f"""
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f"""
                         # Setup parser to parser factory
                         from {mod} import {func} as parser_func
 
                         parser_kwargs = {parser_kwargs_serialized}
-                    """
-                    )
+                    """)
                 else:
                     # create empty parser_kwargs to pass to parser_func
                     parser_kwargs_serialized = repr({})
 
-                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(
-                        f"""
+                    confdict["PARSER_FACTORY_CODE"] = textwrap.dedent(f"""
                     # when code is exported, import becomes relative
                     try:
                         from {self.plugin_path_name}.{mod} import {func} as parser_func
@@ -381,8 +374,7 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                             importlib.reload({mod})
                             from {mod} import {func} as parser_func
                     parser_kwargs = {parser_kwargs_serialized}
-                    """
-                    )
+                    """)
             except ValueError as value_error:
                 loader_error_message = (
                     f"`parser` must be defined as `module:parser_func` but got: `{uploader_section['parser']}`"
@@ -426,38 +418,35 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     assert func != "jobs", "'jobs' is a reserved method name, pick another name"
                     confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.ParallelizedSourceUploader"
                     confdict["IMPORT_FROM_PARALLELIZER"] = ""
-                    confdict["JOBS_FUNC"] = (
-                        """
-%s
+                    confdict["JOBS_FUNC"] = f"""
+{indentfunc}
     def jobs(self):
-        return self.%s()
+        return self.{func}()
 """
-                        % (
-                            indentfunc,
-                            func,
-                        )
-                    )
                 else:
-                    confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+                    # use specified custom class
+                    klass = uploader_section.get("class")
+                    if klass:
+                        get_class_from_classpath(klass)
+                        confdict["BASE_CLASSES"] = klass
+                    else:
+                        confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
+
+                    confdict["PLUGIN_MODULE"] = confdict["BASE_CLASSES"].split(".")[0]
+
                     confdict["JOBS_FUNC"] = ""
 
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["mapping"])
                     assert func != "get_mapping", "'get_mapping' is a reserved class method name, pick another name"
-                    confdict["MAPPING_FUNC"] = (
-                        """
+                    confdict["MAPPING_FUNC"] = f"""
     @classmethod
-%s
+{indentfunc}
 
     @classmethod
     def get_mapping(cls):
-        return cls.%s()
+        return cls.{func}()
 """
-                        % (
-                            indentfunc,
-                            func,
-                        )
-                    )
                 else:
                     confdict["MAPPING_FUNC"] = ""
 
@@ -587,8 +576,7 @@ class AdvancedPluginLoader(BasePluginLoader):
         if df.exists():
             data_folder_files = {file.name for file in df.iterdir()}
             return "__init__.py" in data_folder_files
-        else:
-            return False
+        return False
 
     def load_plugin(self):
         plugin = self.get_plugin_obj()

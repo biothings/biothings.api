@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
 from urllib import parse as urlparse
 
+from biothings.utils import serializer
+
 try:
     import docker
     from docker.errors import ImageNotFound, NotFound, NullResource
@@ -28,7 +30,6 @@ try:
 except ImportError:
     docker_avail = False
 
-import orjson
 import requests
 
 from biothings import config as btconfig
@@ -873,9 +874,9 @@ class HTTPDumper(BaseDumper):
     Dumper using HTTP protocol and "requests" library
     """
 
-    VERIFY_CERT = True
-    IGNORE_HTTP_CODE = []  # list of HTTP code to ignore in case on non-200 response
-    RESOLVE_FILENAME = False  # global trigger to get filenames from headers
+    VERIFY_CERT: bool = True
+    IGNORE_HTTP_CODE: List[int] = []  # list of HTTP code to ignore in case on non-200 response
+    RESOLVE_FILENAME: bool = False  # global trigger to get filenames from headers
 
     def prepare_client(self) -> None:
         self.client = requests.Session()
@@ -1883,7 +1884,7 @@ def _run_api_and_store_to_disk(
     try:
         for filename, obj in fn():
             fn_byte_arr = buffer.setdefault(filename, bytearray())
-            fn_byte_arr.extend(orjson.dumps(obj) + b"\n")
+            fn_byte_arr.extend(serializer.to_json(obj, return_bytes=True) + b"\n")
             if len(fn_byte_arr) >= buffer_size:
                 with open(f"{filename}.{pid}", "ab") as f:
                     f.write(fn_byte_arr)

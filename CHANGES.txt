@@ -1,4 +1,67 @@
 
+v1.1.0 (2026/05/27)
+    Highlights:
+        - Added Python 3.14 support and dropped Python 3.8 support.
+        - Reworked biothings CLI configuration, pathing, and dataplugin command organization.
+        - Added MongoDB build cleanup management APIs and commands.
+
+    biothings.hub improvements:
+        - Added prefix support to DataTransformMDB. ([#411](https://github.com/biothings/biothings.api/pull/411))
+        - Added TAR and Zstandard file handling. ([#424](https://github.com/biothings/biothings.api/pull/424), [#428](https://github.com/biothings/biothings.api/pull/428))
+        - Added support for custom local uploader and dumper classes in dataplugin manifests. ([#431](https://github.com/biothings/biothings.api/pull/431))
+        - Added MongoDB build cleanup validation and deletion tooling. ([#437](https://github.com/biothings/biothings.api/pull/437))
+
+    biothings.utils improvements:
+        - Fixed dict_sweep handling for NaN-like values, including pandas.NA and pandas.NaT. ([#442](https://github.com/biothings/biothings.api/pull/442))
+        - Centralized orjson usage across the library. ([#435](https://github.com/biothings/biothings.api/pull/435))
+
+    biothings.web improvements:
+        - Removed deprecated Google Analytics event support. ([#439](https://github.com/biothings/biothings.api/pull/439))
+        - Removed old doc_type and deprecated Elasticsearch compatibility code.
+        - Improved Elasticsearch exception handling and query response behavior.
+        - Optimized Elasticsearch memory usage when using scroll API.
+
+    biothings.cli improvements:
+        - Added CLI config and pathing commands. ([#418](https://github.com/biothings/biothings.api/pull/418), [#422](https://github.com/biothings/biothings.api/pull/422))
+        - Added CLI dump mark-success support. ([#423](https://github.com/biothings/biothings.api/pull/423))
+        - Fixed Typer/rich_utils loading behavior. ([#426](https://github.com/biothings/biothings.api/pull/426))
+
+    Misc improvements:
+        - Updated dependencies and package metadata for Python 3.9+, including tornado, typer, pymongo, orjson, and zstandard.
+        - Updated GitHub Actions test, build, and publish workflows.
+
+
+v1.1.0 (2026/05/27)
+    Highlights:
+        - Added Python 3.14 support and dropped Python 3.8 support.
+        - Reworked biothings CLI configuration, pathing, and dataplugin command organization.
+        - Added MongoDB build cleanup management APIs and commands.
+
+    biothings.hub improvements:
+        - Added prefix support to DataTransformMDB. ([#411](https://github.com/biothings/biothings.api/pull/411))
+        - Added TAR and Zstandard file handling. ([#424](https://github.com/biothings/biothings.api/pull/424), [#428](https://github.com/biothings/biothings.api/pull/428))
+        - Added support for custom local uploader and dumper classes in dataplugin manifests. ([#431](https://github.com/biothings/biothings.api/pull/431))
+        - Added MongoDB build cleanup validation and deletion tooling. ([#437](https://github.com/biothings/biothings.api/pull/437))
+
+    biothings.utils improvements:
+        - Fixed dict_sweep handling for NaN-like values, including pandas.NA and pandas.NaT. ([#442](https://github.com/biothings/biothings.api/pull/442))
+        - Centralized orjson usage across the library. ([#435](https://github.com/biothings/biothings.api/pull/435))
+
+    biothings.web improvements:
+        - Removed deprecated Google Analytics event support. ([#439](https://github.com/biothings/biothings.api/pull/439))
+        - Removed old doc_type and deprecated Elasticsearch compatibility code.
+        - Improved Elasticsearch exception handling and query response behavior.
+        - Optimized Elasticsearch memory usage when using scroll API.
+
+    biothings.cli improvements:
+        - Added CLI config and pathing commands. ([#418](https://github.com/biothings/biothings.api/pull/418), [#422](https://github.com/biothings/biothings.api/pull/422))
+        - Added CLI dump mark-success support. ([#423](https://github.com/biothings/biothings.api/pull/423))
+        - Fixed Typer/rich_utils loading behavior. ([#426](https://github.com/biothings/biothings.api/pull/426))
+
+    Misc improvements:
+        - Updated dependencies and package metadata for Python 3.9+, including tornado, typer, pymongo, orjson, and zstandard.
+        - Updated GitHub Actions test, build, and publish workflows.
+
 v1.0.2 (2025/10/15)
     Bugfix:
         - Fixed an import issue in inspector.py that was causing the mapping inspect to fail.

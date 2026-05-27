@@ -83,8 +83,15 @@ import os
 import biothings.utils.jsondiff
 
 # set_default_folder is needed for evaluating some default values below
-from biothings.utils.configuration import set_default_folder  # pylint: disable=unused-import      # noqa
-from biothings.utils.configuration import ConfigurationDefault, ConfigurationError, ConfigurationValue
+from biothings.utils.configuration import (
+    ConfigurationDefault,
+    ConfigurationError,
+    ConfigurationValue,
+    set_default_folder,
+)
+
+# ConfigurationValue evaluates these symbols dynamically from this module's namespace.
+_CONFIGURATION_EVAL_SYMBOLS = (logging, set_default_folder)
 
 # * 1. General *#
 # Hub name/icon url/version, for display purpose
@@ -508,11 +515,21 @@ BIOTHINGS_ROLE = "slave"
 ####################################################
 
 # for running tests locally in our biothings hub with testing api
-APITEST_PATH = ConfigurationError("Define path to folder which will contain pytests")
-
+APITEST_ROOT = ConfigurationDefault(
+    default="./tests",
+    desc="Define the root path to a folder that contains API tests",
+)
+APITEST_PATH = ConfigurationDefault(
+    default="",
+    desc="Define the path to a sub-folder of `APITEST_ROOT` that contains API tests",
+)
+APITEST_CONFIG_ROOT = ConfigurationDefault(
+    default=".",
+    desc="Define the root path containing the config_web to run a dev API for testing",
+)
 APITEST_CONFIG = ConfigurationDefault(
-    default=ConfigurationValue("""'config_web_local'"""),
-    desc="Provide a default hub logger instance (use setup_default_log(name,log_folder)",
+    default="config_web_local",
+    desc="Define the name of the config_web file to run a dev API for testing",
 )
 
 

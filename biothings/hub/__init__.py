@@ -101,7 +101,7 @@ _config_for_app()
 #     _config.HUB_DB_BACKEND = {
 #         "module": "biothings.utils.sqlite3",
 #         "sqlite_db_folder": "."}
-#     _config.DATA_HUB_DB_DATABASE = ".hubdb"
+#     _config.DATA_HUB_DB_DATABASE = "biothings_hubdb"
 #     _config_for_app(_config)
 
 
@@ -534,6 +534,14 @@ class HubServer:
     def configure_ioloop(self):
         import tornado.platform.asyncio
 
+        # In Python 3.14, get_event_loop raises a RuntimeError if there is no current event loop.
+        # Eventually this probably should not be needed when tornado handles this internally.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
         tornado.platform.asyncio.AsyncIOMainLoop().install()
 
     def before_start(self):
@@ -693,6 +701,7 @@ class HubServer:
 
     def configure_snapshot_manager(self):
         assert "index" in self.features, "'snapshot' feature requires 'index'"
+        from biothings.hub.dataindex.mongo_build_cleanup import MongoBuildCleanupManager
         from biothings.hub.dataindex.snapshooter import SnapshotManager
 
         args = self.mixargs("snapshot")
@@ -705,6 +714,7 @@ class HubServer:
         snapshot_manager.configure(config.SNAPSHOT_CONFIG)
         snapshot_manager.poll("snapshot", snapshot_manager.snapshot_a_build)
         self.managers["snapshot_manager"] = snapshot_manager
+        self.managers["mongo_build_cleanup_manager"] = MongoBuildCleanupManager(job_manager=self.managers["job_manager"])
 
     def configure_auto_snapshot_cleaner_manager(self):
         assert "snapshot" in self.features, "'auto_snapshot_cleaner' feature requires 'snapshot'"
@@ -1140,6 +1150,10 @@ class HubServer:
             self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
             self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
             self.commands["validate_snapshots"] = self.managers["snapshot_manager"].validate_snapshots
+        if self.managers.get("mongo_build_cleanup_manager"):
+            self.commands["list_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].list_mongo_builds
+            self.commands["delete_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].delete_mongo_builds
+            self.commands["validate_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].validate_mongo_builds
         # data release commands
         if self.managers.get("release_manager"):
             self.commands["create_release_note"] = self.managers["release_manager"].create_release_note
@@ -1506,6 +1520,16 @@ class HubServer:
             )
         if "validate_snapshots" in cmdnames:
             self.api_endpoints["validate_snapshots"] = EndpointDefinition(name="validate_snapshots", method="post")
+        if "list_mongo_builds" in cmdnames:
+            self.api_endpoints["mongo_builds"] = EndpointDefinition(name="list_mongo_builds", method="get")
+        if "delete_mongo_builds" in cmdnames:
+            self.api_endpoints["mongo_builds/delete"] = EndpointDefinition(
+                name="delete_mongo_builds", method="put", force_bodyargs=True
+            )
+        if "validate_mongo_builds" in cmdnames:
+            self.api_endpoints["mongo_builds/validate"] = EndpointDefinition(
+                name="validate_mongo_builds", method="post"
+            )
         if "sync" in cmdnames:
             self.api_endpoints["sync"] = EndpointDefinition(name="sync", method="post", force_bodyargs=True)
         if "whatsnew" in cmdnames:
