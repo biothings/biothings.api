@@ -219,10 +219,10 @@ def anyfile(infile, mode="r"):
         tar_file = tarfile.open(infile, mode)  # pylint: disable=consider-using-with
         try:
             extracted = tar_file.extractfile(rawfile)
-        except KeyError:
+        except KeyError as exc:
             # provided rawfile does not appear in the tarball
             tar_file.close()
-            raise FileNotFoundError("target member does not contain the provided tar file.")
+            raise FileNotFoundError("target member does not contain the provided tar file.") from exc
 
         # extracted member is not a regular file or link
         if extracted is None:
