@@ -222,12 +222,12 @@ def anyfile(infile, mode="r"):
         except KeyError:
             # provided rawfile does not appear in the tarball
             tar_file.close()
-            raise Exception("target member does not contain the provided tar file.")
+            raise FileNotFoundError("target member does not contain the provided tar file.")
 
         # extracted member is not a regular file or link
         if extracted is None:
             tar_file.close()
-            raise Exception("invalid target file: must be a regular file or a link")
+            raise ValueError("invalid target file: must be a regular file or a link")
 
         return io.TextIOWrapper(extracted)
 
@@ -807,7 +807,7 @@ def sanitize_tarfile(tar_object, directory):
         abs_target = os.path.abspath(target)
         prefix = os.path.commonprefix([abs_directory, abs_target])
         if not prefix == abs_directory:
-            raise Exception("Attempted Path Traversal in Tar File")
+            raise ValueError("Attempted Path Traversal in Tar File")
 
 
 def sizeof_fmt(num, suffix="B"):
