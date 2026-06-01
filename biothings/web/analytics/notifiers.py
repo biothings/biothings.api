@@ -39,7 +39,7 @@ class AnalyticsMixin(RequestHandler):
         request_info["user_agent"] = self.request.headers.get("User-Agent")
         request_info["host"] = self.request.host
         request_info["path"] = self.request.path
-        request_info["referer"] = self.request.headers.get("Client-Type") or self.request.headers.get("Referer")
+        request_info["referer"] = self.request.headers.get("Referer")
         self.event["__request__"] = request_info
 
         if hasattr(self, "biothings"):

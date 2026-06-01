@@ -35,11 +35,10 @@ class DummyAnalyticsHandler(AnalyticsMixin):
         return default
 
 
-def test_analytics_mixin_records_client_type_as_referer():
+def test_analytics_mixin_records_referer_header():
     handler = DummyAnalyticsHandler(
         {
             "Referer": "https://data.niaid.nih.gov/",
-            "Client-Type": "ui",
         }
     )
 
@@ -49,8 +48,11 @@ def test_analytics_mixin_records_client_type_as_referer():
         handler.on_finish()
 
     schedule.call_args.args[0].close()
-    assert handler.event["__request__"]["referer"] == "ui"
-    assert handler.event.to_GA4_payload("GA4_MEASUREMENT_ID")[0]["params"]["page_referrer"] == "ui"
+    assert handler.event["__request__"]["referer"] == "https://data.niaid.nih.gov/"
+    assert (
+        handler.event.to_GA4_payload("GA4_MEASUREMENT_ID")[0]["params"]["page_referrer"]
+        == "https://data.niaid.nih.gov/"
+    )
 
 
 def test_analytics_mixin_referer_falls_back_to_referer_header():
