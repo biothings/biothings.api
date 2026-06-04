@@ -390,7 +390,11 @@ class Indexer:
         for step in Step.order(steps):
             step = Step.dispatch(step)(self)
             self.logger.info(step)
-            step.state.started()
+            state_context = {}
+            mode = kwargs.get("mode")
+            if step.name == "pre" and mode and mode != "index":
+                state_context["mode"] = mode
+            step.state.started(**state_context)
             try:
                 dx = await step.execute(job_manager, **kwargs)
                 dx = IndexerStepResult(dx)

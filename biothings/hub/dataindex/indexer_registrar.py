@@ -46,7 +46,7 @@ class IndexJobStateRegistrar:
             if dirty:
                 collection.replace_one({"_id": build["_id"]}, build)
 
-    def started(self, step="index"):
+    def started(self, step="index", **extra):
         self.stage.at(Stage.READY)
         self.stage = Stage.STARTED
 
@@ -58,6 +58,7 @@ class IndexJobStateRegistrar:
             "step_started_at": datetime.now().astimezone(),
             "pid": os.getpid(),
             **self.context,
+            **extra,
         }
         self.collection.update(
             {"_id": self.build_id},
@@ -98,8 +99,8 @@ class IndexJobStateRegistrar:
 
 
 class PreIndexJSR(IndexJobStateRegistrar):
-    def started(self):
-        super().started("pre-index")
+    def started(self, **extra):
+        super().started("pre-index", **extra)
 
     def succeed(self, result):
         # no result registration on pre-indexing step.
@@ -115,10 +116,10 @@ class PreIndexJSR(IndexJobStateRegistrar):
 
 
 class MainIndexJSR(IndexJobStateRegistrar):
-    def started(self):
-        super().started("index")
+    def started(self, **extra):
+        super().started("index", **extra)
 
 
 class PostIndexJSR(IndexJobStateRegistrar):
-    def started(self):
-        super().started("post-index")
+    def started(self, **extra):
+        super().started("post-index", **extra)
