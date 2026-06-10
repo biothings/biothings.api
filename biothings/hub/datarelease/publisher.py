@@ -417,31 +417,16 @@ class SnapshotPublisher(BasePublisher):
             credentials=self.envconf.get("cloud", {}),
         )
 
-        # hold error/exception on each step
-        got_error = None
-
         async def do():
-            jobs = []
+            results = []
             pinfo = self.get_pinfo()
             pinfo["step"] = "publish"
             pinfo["source"] = snapshot
 
-            def done(f, step):
+            async def run_step(job, step):
                 try:
-                    res = f.result()
-                    self.register_status(
-                        bdoc,
-                        "success",
-                        job={"step": step, "result": res},
-                        publish={
-                            "full": {
-                                snapshot: {"conf": self.envconf, step: res},
-                            }
-                        },
-                    )
+                    res = await job
                 except Exception as e:
-                    nonlocal got_error
-                    got_error = e
                     self.register_status(
                         bdoc,
                         "failed",
@@ -455,7 +440,19 @@ class SnapshotPublisher(BasePublisher):
                             }
                         },
                     )
-                    self.logger.exception("Error while running pre-publish: %s", got_error)
+                    self.logger.exception("Error while running %s-publish: %s", step, e)
+                    raise
+                self.register_status(
+                    bdoc,
+                    "success",
+                    job={"step": step, "result": res},
+                    publish={
+                        "full": {
+                            snapshot: {"conf": self.envconf, step: res},
+                        }
+                    },
+                )
+                results.append(res)
 
             if "_meta" not in bdoc:
                 raise PublisherException("No metadata (_meta) found in build document")
@@ -476,11 +473,7 @@ class SnapshotPublisher(BasePublisher):
                     pinfo,
                     partial(self.pre_publish, snapshot, self.envconf, bdoc),
                 )
-                job.add_done_callback(partial(done, step="pre"))
-                await job
-                if got_error:
-                    raise got_error
-                jobs.append(job)
+                await run_step(job, "pre")
 
             if "meta" in steps:
                 # TODO: this is a blocking call
@@ -708,33 +701,19 @@ class SnapshotPublisher(BasePublisher):
                 job = await self.job_manager.defer_to_thread(
                     pinfo, partial(self.post_publish, snapshot, self.envconf, bdoc)
                 )
-                job.add_done_callback(partial(done, step="post"))
-                await job
-                jobs.append(job)
+                await run_step(job, "post")
 
-            def published(f):
-                try:
-                    res = f.result()
-                    self.logger.info("Snapshot '%s' uploaded to S3: %s", snapshot, res, extra={"notify": True})
-                except Exception as e:
-                    self.logger.exception(
-                        "Failed to upload snapshot '%s' uploaded to S3: %s", snapshot, e, extra={"notify": True}
-                    )
+            if results:
+                self.logger.info("Snapshot '%s' uploaded to S3: %s", snapshot, results, extra={"notify": True})
 
-            if jobs:
-                await asyncio.wait(jobs)
-                task = asyncio.gather(*jobs)
-                task.add_done_callback(published)
-                await task
-
-        def done(f):
+        def done(t):
+            # consume a potential exception (already registered/logged per step)
             try:
-                _ = f.result()
+                _ = t.result()
             except Exception as e:
                 self.logger.exception("Unable to publish full release: %s" % e)
-                raise
 
-        task = asyncio.ensure_future(do())
+        task = self.job_manager.loop.create_task(do())
         task.add_done_callback(done)
 
         return task
@@ -859,31 +838,16 @@ class DiffPublisher(BasePublisher):
         diff_version = meta["diff"]["version"]
         s3_diff_basedir = os.path.join(s3_diff_folder, diff_version)
 
-        # hold error/exception on each step
-        got_error = None
-
         async def do():
-            jobs = []
+            results = []
             pinfo = self.get_pinfo()
             pinfo["source"] = diff_folder
             pinfo["description"] = diff_version
 
-            def done(f, step):
+            async def run_step(job, step):
                 try:
-                    res = f.result()
-                    self.register_status(
-                        bdoc,
-                        "success",
-                        job={"step": step, "result": res},
-                        publish={
-                            "incremental": {
-                                previous_build: {"conf": self.envconf, step: res},
-                            }
-                        },
-                    )
+                    res = await job
                 except Exception as e:
-                    nonlocal got_error
-                    got_error = e
                     self.register_status(
                         bdoc,
                         "failed",
@@ -894,7 +858,19 @@ class DiffPublisher(BasePublisher):
                             }
                         },
                     )
-                    self.logger.exception("Error while running %s-publish: %s", step, got_error)
+                    self.logger.exception("Error while running %s-publish: %s", step, e)
+                    raise
+                self.register_status(
+                    bdoc,
+                    "success",
+                    job={"step": step, "result": res},
+                    publish={
+                        "incremental": {
+                            previous_build: {"conf": self.envconf, step: res},
+                        }
+                    },
+                )
+                results.append(res)
 
             if "_meta" not in bdoc:
                 raise PublisherException("No metadata (_meta) found in build document")
@@ -914,11 +890,7 @@ class DiffPublisher(BasePublisher):
                 job = await self.job_manager.defer_to_thread(
                     pinfo, partial(self.pre_publish, previous_build, self.envconf, bdoc)
                 )
-                job.add_done_callback(partial(done, step="pre"))
-                await job
-                if got_error:
-                    raise got_error
-                jobs.append(job)
+                await run_step(job, "pre")
 
             if "reset" in steps:
                 # first we need to reset "synced" flag in diff files to make
@@ -934,11 +906,7 @@ class DiffPublisher(BasePublisher):
                     publish={"incremental": {previous_build: {}}},
                 )
                 job = await self.job_manager.defer_to_thread(pinfo, partial(self.reset_synced, diff_folder))
-                job.add_done_callback(partial(done, step="reset"))
-                await job
-                if got_error:
-                    raise got_error
-                jobs.append(job)
+                await run_step(job, "reset")
 
             if "upload" in steps:
                 # then we upload all the folder content
@@ -966,9 +934,7 @@ class DiffPublisher(BasePublisher):
                         overwrite=True,
                     ),
                 )
-                job.add_done_callback(partial(done, step="upload"))
-                await job
-                jobs.append(job)
+                await run_step(job, "upload")
 
             if "meta" in steps:
                 # finally we create a metadata json file pointing to this release
@@ -1111,8 +1077,6 @@ class DiffPublisher(BasePublisher):
                     )
                     raise
 
-                jobs.append(job)
-
             if "post" in steps:
                 pinfo["step"] = "post"
                 self.logger.info("Running post-publish step")
@@ -1127,37 +1091,19 @@ class DiffPublisher(BasePublisher):
                 job = await self.job_manager.defer_to_thread(
                     pinfo, partial(self.post_publish, previous_build, self.envconf, bdoc)
                 )
-                job.add_done_callback(partial(done, step="post"))
-                await job
-                if got_error:
-                    raise got_error
-                jobs.append(job)
+                await run_step(job, "post")
 
-            def uploaded(f):
-                try:
-                    res = f.result()
-                    self.logger.info("Diff folder '%s' uploaded to S3: %s", diff_folder, res, extra={"notify": True})
-                except Exception as e:
-                    self.logger.exception(
-                        "Failed to upload diff folder '%s' uploaded to S3: %s",
-                        diff_folder,
-                        e,
-                        extra={"notify": True},
-                    )
+            if results:
+                self.logger.info("Diff folder '%s' uploaded to S3: %s", diff_folder, results, extra={"notify": True})
 
-            await asyncio.wait(jobs)
-            task = asyncio.gather(*jobs)
-            task.add_done_callback(uploaded)
-            await task
-
-        def done(f):
+        def done(t):
+            # consume a potential exception (already registered/logged per step)
             try:
-                _ = f.result()
+                _ = t.result()
             except Exception as e:
                 self.logger.exception("Unable to publish incremental release: %s" % e)
-                raise
 
-        task = asyncio.ensure_future(do())
+        task = self.job_manager.loop.create_task(do())
         task.add_done_callback(done)
 
         return task
@@ -1467,7 +1413,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 logging.info("Set pending publish for %s.", build_doc["_id"])
                 set_pending_to_publish(build_doc["_id"])
 
-        return asyncio.ensure_future(_())
+        return self.job_manager.loop.create_task(_())
 
     def create_release_note(
         self,
@@ -1522,7 +1468,6 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
             return {"txt": txt, "changes": changes}
 
         async def main(release_folder):
-            got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "release_note"
             pinfo["source"] = release_folder
@@ -1537,46 +1482,37 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                 release_note={old: {}},
             )
             job = await self.job_manager.defer_to_thread(pinfo, do)
-
-            def reported(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    self.register_status(
-                        build_doc,
-                        "release_note",
-                        "success",
-                        job={"step": "release_note"},
-                        release_note={
-                            old: {
-                                "changes": res["changes"],
-                                "release_folder": release_folder,
-                            }
-                        },
-                    )
-                    self.logger.info(
-                        "Release note ready, saved in %s: %s", release_folder, res["txt"], extra={"notify": True}
-                    )
-                    set_pending_to_publish(new)
-                except Exception as e:
-                    self.logger.exception(e)
-                    got_error = e
-
-            job.add_done_callback(reported)
-            await job
-            if got_error:
-                self.logger.exception("Failed to create release note: %s", got_error, extra={"notify": True})
+            try:
+                res = await job
+            except Exception as e:
+                self.logger.exception(e)
+                self.logger.exception("Failed to create release note: %s", e, extra={"notify": True})
                 self.register_status(
                     build_doc,
                     "release_note",
                     "failed",
-                    job={"step": "release_note", "err": str(got_error)},
+                    job={"step": "release_note", "err": str(e)},
                     release_note={old: {}},
                 )
-                raise got_error
+                raise
+            self.register_status(
+                build_doc,
+                "release_note",
+                "success",
+                job={"step": "release_note"},
+                release_note={
+                    old: {
+                        "changes": res["changes"],
+                        "release_folder": release_folder,
+                    }
+                },
+            )
+            self.logger.info(
+                "Release note ready, saved in %s: %s", release_folder, res["txt"], extra={"notify": True}
+            )
+            set_pending_to_publish(new)
 
-        job = asyncio.ensure_future(main(release_folder))
-        return job
+        return self.job_manager.loop.create_task(main(release_folder))
 
     def build_release_note(self, old_colname, new_colname, note=None) -> ReleaseNoteSource:
         """

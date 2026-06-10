@@ -173,25 +173,16 @@ class APIManager(BaseManager):
                     job = await self.job_manager.defer_to_thread(
                         pinfo, partial(self.log_pytests, path, "localhost:" + str(port))
                     )
-                    got_error = None
+                    try:
+                        await job
+                    except Exception as e:
+                        self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
+                        self.register_status(api_id, "running", job={"err": repr(e)})
+                        raise
+                    self.logger.info("Finished running pytests for '%s'" % api_id)
+                    self.register_status(api_id, "running", job={"step": "test_api"})
 
-                    def updated(f):
-                        try:
-                            _ = f.result()
-                            self.logger.info("Finished running pytests for '%s'" % api_id)
-                            self.register_status(api_id, "running", job={"step": "test_api"})
-                        except Exception as e:
-                            nonlocal got_error
-                            self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
-                            self.register_status(api_id, "running", job={"err": repr(e)})
-                            got_error = e
-
-                    job.add_done_callback(updated)
-                    await job
-                    if isinstance(got_error, Exception):
-                        raise got_error
-
-                job = asyncio.ensure_future(run_pytests(APITEST_PATH, port))
+                job = self.job_manager.loop.create_task(run_pytests(APITEST_PATH, port))
                 return job
         except Exception as e:
             self.logger.error("Failed to run pytests for '%s': %s" % (api_id, e))
