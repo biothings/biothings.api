@@ -906,30 +906,22 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
     for parallelisation, and pinfo is a pre-filled dict used by
     job_manager to report jobs in the hub (see bt.utils.manager.JobManager)
     """
-    jobs = []
-    got_error = None
+    async def gunzip_one(job, infile):
+        try:
+            await job
+        except Exception as e:
+            logging.error("Failed to gunzip file %s: %s", infile, e)
+            raise
+
     logging.info("Unzipping files in '%s'", folder)
-    for f in glob.glob(os.path.join(folder, pattern)):
-        pinfo["description"] = os.path.basename(f)
-        job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
-
-        def gunzipped(fut, infile):
-            try:
-                # res = fut.result()
-                fut.result()
-            except Exception as e:
-                logging.error("Failed to gunzip file %s: %s", infile, e)
-                nonlocal got_error
-                got_error = e
-
-        job.add_done_callback(partial(gunzipped, infile=f))
-        jobs.append(job)
-        if got_error:
-            raise got_error
-    if jobs:
-        await asyncio.gather(*jobs)
-        if got_error:
-            raise got_error
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for f in glob.glob(os.path.join(folder, pattern)):
+                pinfo["description"] = os.path.basename(f)
+                job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
+                tg.create_task(gunzip_one(job, f))
+    except* Exception as eg:
+        raise first_exception(eg) from eg
 
 
 def uncompressall(folder):
@@ -1069,19 +1061,32 @@ def merge(x, dx):
 
 
 def get_loop():
-    """Since Python 3.10, a Deprecation warning is emitted if there is no running event loop.
-    In future Python releases, a RuntimeError will be raised instead.
-
-    Ref: https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop
-    """
-
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    """Return the running event loop if called from within one, otherwise the
+    thread's current loop, creating and registering a new one if needed."""
     try:
-        loop = asyncio.get_event_loop()
+        return asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        pass
+    # suppress the "no current event loop" DeprecationWarning locally:
+    # returning the thread's already-set loop (or transparently creating one)
+    # is exactly the behavior we want to keep
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
     return loop
+
+
+def first_exception(exc_group):
+    """Return the first leaf exception of an ExceptionGroup (e.g. raised by
+    asyncio.TaskGroup), for callers needing a single exception, like job
+    status reports storing one error message."""
+    while isinstance(exc_group, BaseExceptionGroup):
+        exc_group = exc_group.exceptions[0]
+    return exc_group
 
 
 def get_loop_with_max_workers(max_workers=None):
