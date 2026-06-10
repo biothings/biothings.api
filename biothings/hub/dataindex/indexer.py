@@ -479,10 +479,14 @@ class Indexer:
 
         async def batch_finished(job):
             try:
-                schedule.finished += await job
+                count = await job
             except Exception as exc:
                 self.logger.error(exc)
                 raise
+            # resolve the await into a local first: "schedule.finished += await job"
+            # would read schedule.finished before suspending, so concurrent
+            # batch_finished tasks would clobber each other's increments
+            schedule.finished += count
 
         try:
             # when one batch fails, and job scheduling has not completed,
