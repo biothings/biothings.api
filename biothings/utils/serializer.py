@@ -32,12 +32,43 @@ def json_enc_hook(o):
 orjson_default = json_enc_hook
 
 
+# orjson's OPT_NON_STR_KEYS coerced any non-string dict key to a string. msgspec
+# stringifies int/float/datetime/uuid/enum keys natively but rejects bool/None
+# keys (and rejects ANY non-str key when order="sorted"). When that happens we
+# coerce all non-string keys ourselves, matching orjson (None->"null",
+# True/False->"true"/"false", everything else via str()).
+def _coerce_key(k):
+    if isinstance(k, str):
+        return k
+    if k is None:
+        return "null"
+    if isinstance(k, bool):
+        return "true" if k else "false"
+    return str(k)
+
+
+def _stringify_keys(obj):
+    """Recursively replace non-string dict keys with their string form.
+    Only invoked as a fallback after a failed encode, so it never touches the
+    common all-string-keys payload."""
+    if isinstance(obj, dict):
+        return {_coerce_key(k): _stringify_keys(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_stringify_keys(v) for v in obj]
+    return obj
+
+
 def to_json(data, indent=False, sort_keys=False, return_bytes=False):
     # msgspec handles non-string dictionary keys (e.g. integer), inf/nan
     # (encoded as null) and datetimes natively. Note: unlike orjson with
     # OPT_NAIVE_UTC, naive datetimes are encoded without a UTC offset suffix.
     order = "sorted" if sort_keys else None
-    byte_dump = msgspec.json.encode(data, enc_hook=json_enc_hook, order=order)
+    try:
+        byte_dump = msgspec.json.encode(data, enc_hook=json_enc_hook, order=order)
+    except TypeError:
+        # a non-string dict key msgspec won't take (bool/None, or any non-str
+        # key when sorting); coerce keys like orjson's OPT_NON_STR_KEYS, retry
+        byte_dump = msgspec.json.encode(_stringify_keys(data), enc_hook=json_enc_hook, order=order)
     if indent:
         byte_dump = msgspec.json.format(byte_dump, indent=2)
     if return_bytes:
