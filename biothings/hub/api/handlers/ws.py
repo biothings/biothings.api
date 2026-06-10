@@ -4,6 +4,7 @@ import logging
 
 import sockjs.tornado
 
+from biothings.utils.common import get_loop
 from biothings.utils.hub_db import ChangeListener
 
 
@@ -93,10 +94,7 @@ class LogListener(ChangeListener):
             # make sure there's a loop in current thread
             try:
                 logging.disable(logging.CRITICAL)
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                get_loop()
             finally:
                 logging.disable(logging.NOTSET)
 
