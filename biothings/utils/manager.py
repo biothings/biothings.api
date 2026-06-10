@@ -6,7 +6,6 @@ import glob
 import multiprocessing
 import os
 import re
-import sys
 import threading
 import time
 import types
@@ -89,7 +88,7 @@ def track(func):
         try:
             _id = None
             if ptype == "thread":
-                _id = "%s" % threading.current_thread().getName()
+                _id = "%s" % threading.current_thread().name
             else:
                 _id = os.getpid()
             # add random chars: 2 jobs handled by the same slot (pid or thread)
@@ -170,19 +169,18 @@ class JobManager:
 
     def _get_process_executor(self):
         kwargs = {}
-        if sys.version_info >= (3, 7):
-            # since Python 3.14, multiprocessing uses `forkserver` as the default, instead of 'fork'
-            # on POSIX systems. This breaks our current biothings JobManager when creating dynamic
-            # classes in worker processes (e.g. AssistedDumper_<src_name> class), as the 'forkserver'
-            # context does not inherit resources from the parent process.
-            # This is a quick fix to force using 'fork' context for ProcessPoolExecutor in 3.14,
-            # consistent with previous Python versions.
-            # REF: https://docs.python.org/3.14/library/multiprocessing.html#contexts-and-start-methods
-            # TODO: we should consider refactoring the code to be compatible with 'forkserver' context in the future.
-            try:
-                kwargs["mp_context"] = multiprocessing.get_context("fork")
-            except ValueError:
-                pass
+        # since Python 3.14, multiprocessing uses `forkserver` as the default, instead of 'fork'
+        # on POSIX systems. This breaks our current biothings JobManager when creating dynamic
+        # classes in worker processes (e.g. AssistedDumper_<src_name> class), as the 'forkserver'
+        # context does not inherit resources from the parent process.
+        # This is a quick fix to force using 'fork' context for ProcessPoolExecutor in 3.14,
+        # consistent with previous Python versions.
+        # REF: https://docs.python.org/3.14/library/multiprocessing.html#contexts-and-start-methods
+        # TODO: we should consider refactoring the code to be compatible with 'forkserver' context in the future.
+        try:
+            kwargs["mp_context"] = multiprocessing.get_context("fork")
+        except ValueError:
+            pass
         return concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers, **kwargs)
 
     def __init__(
@@ -292,20 +290,18 @@ class JobManager:
                 logger.warning("Killing %s", proc)
                 proc.kill()
 
-        def done(f):
-            f.result()  # consume future's result to potentially raise exception
-
-        fut = asyncio.ensure_future(do())
-        fut.add_done_callback(done)
+        task = self.loop.create_task(do())
+        # retrieve a potential exception so asyncio doesn't complain when the
+        # caller (e.g. hub shell's restart) doesn't await the returned task
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())
         if force:
-            # futkill = asyncio.ensure_future(kill())
-            asyncio.ensure_future(kill())
-        return fut
+            self.loop.create_task(kill())
+        return task
 
     def clean_staled(self):
         # clean old/staled files
         children_pids = [p.pid for p in self.pchildren]
-        active_tids = [t.getName() for t in self.thread_queue._threads]
+        active_tids = [t.name for t in self.thread_queue._threads]
         pid_pat = re.compile(r".*/(\d+)_.*\.pickle")  # see track() for filename format
         for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
             pid = pid_pat.findall(fn)
@@ -364,23 +360,17 @@ class JobManager:
                     tworkers = self.get_thread_files()
                     if len(pworkers) == 0 and len(tworkers) == 0:
                         logger.info("No worker running, recycling the process queue...")
-                        fut = self.recycle_process_queue()
-
-                        def recycled(f):
-                            # res = f.result()
-                            f.result()
-                            # still out of memory ?
-                            avail_mem = self.max_memory_usage - self.hub_memory
-                            if avail_mem <= 0:
-                                logger.error(
-                                    "After recycling process queue, "
-                                    "memory usage is still too high (needs at least %s more)"
-                                    "now turn auto-recycling off to prevent infinite recycling...",
-                                    sizeof_fmt(abs(avail_mem)),
-                                )
-                                self.auto_recycle = False
-
-                        fut.add_done_callback(recycled)
+                        await self.recycle_process_queue()
+                        # still out of memory ?
+                        avail_mem = self.max_memory_usage - self.hub_memory
+                        if avail_mem <= 0:
+                            logger.error(
+                                "After recycling process queue, "
+                                "memory usage is still too high (needs at least %s more)"
+                                "now turn auto-recycling off to prevent infinite recycling...",
+                                sizeof_fmt(abs(avail_mem)),
+                            )
+                            self.auto_recycle = False
                 logger.info(
                     "Hub is using too much memory to launch job {cat:%s,source:%s,step:%s}"
                     " (%s used, more than max allowed %s), wait a little (job's already been postponed for %s)",
@@ -418,7 +408,7 @@ class JobManager:
                 # thus memory usage can be modified on-the-fly
                 hub_mem = self.hub_memory
                 max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
-        pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
+        pendings = self._pending_jobs_count() - config.HUB_MAX_WORKERS
         while pendings >= config.MAX_QUEUED_JOBS:
             if not waited:
                 logger.info(
@@ -429,7 +419,7 @@ class JobManager:
                     config.MAX_QUEUED_JOBS,
                 )
             await asyncio.sleep(sleep_time)
-            pendings = len(self.process_queue._pending_work_items.keys()) - config.HUB_MAX_WORKERS
+            pendings = self._pending_jobs_count() - config.HUB_MAX_WORKERS
             waited = True
         # finally check custom predicates
         predicates = pinfo and pinfo.get("__predicates__", [])
@@ -468,118 +458,87 @@ class JobManager:
             if self.auto_recycle_setting:
                 self.auto_recycle = self.auto_recycle_setting
 
+    def _ensure_process_pool_alive(self):
+        try:
+            # test to see if Executor still alive
+            _ = self.process_queue.submit(int, 1)
+        except concurrent.futures.process.BrokenProcessPool as e:
+            # recreate if not
+            # we don't need to care about the remaining tasks because
+            # they'd all be SIGTERM'd anyways. But ...
+            logger.warning("Broken Process Pool: %s, restarting.", e)
+            self.process_queue = self._get_process_executor()
+            for stale_id in self._process_job_ids:
+                self.jobs.pop(stale_id, None)  # in the rare case that
+                # somehow they de-sync
+            self._process_job_ids.clear()
+
+    def _pending_jobs_count(self):
+        """Number of jobs submitted to the process executor and not done yet
+        (including the ones currently running in a worker)."""
+        return len(self.process_queue._pending_work_items)
+
+    async def _reap(self, fut, job_id, process=False):
+        """Await an executor future and clean up the job registry, keeping it
+        in sync with actually running jobs. Returns the worker's result,
+        raises its exception."""
+        try:
+            res = await fut
+            # the worker could itself generate other parallelized jobs and
+            # return a Future/Task; if so, make sure we get its results too
+            if isinstance(res, asyncio.Task):
+                res = await res
+            return res
+        finally:
+            self.jobs.pop(job_id, None)
+            if process:
+                self._process_job_ids.discard(job_id)
+
     async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
-        async def run(future, job_id):
-            nonlocal pinfo
+        """Submit func to the process executor, as soon as job constraints
+        (memory, queue depth, predicates) allow it. Blocks until the job is
+        admitted and submitted, then returns an asyncio.Task resolving to the
+        worker's result (awaiting it raises the worker's exception, if any)."""
+        # ok_to_run serializes admission: only one job at a time checks its
+        # constraints, providing submission backpressure to the pipelines
+        async with self.ok_to_run:
             await self.check_constraints(pinfo)
-            self.ok_to_run.release()
             # pinfo can contain predicates hardly pickleable during run_in_executor
             # but we also need not to touch the original one
             copy_pinfo = copy.deepcopy(pinfo)
             copy_pinfo.pop("__predicates__", None)
+            self._ensure_process_pool_alive()
+            job_id = get_random_string()
             self.jobs[job_id] = copy_pinfo
             self._process_job_ids.add(job_id)
-
-            try:
-                # test to see if Executor still alive
-                _ = self.process_queue.submit(int, 1)
-            except concurrent.futures.process.BrokenProcessPool as e:
-                # recreate if not
-                # we don't need to care about the remaining tasks because
-                # they'd all be SIGTERM'd anyways. But ...
-                logger.warning("Broken Process Pool: %s, restarting.", e)
-                self.process_queue = self._get_process_executor()
-                for stale_id in self._process_job_ids:
-                    self.jobs.pop(stale_id, None)  # in the rare case that
-                    # somehow they de-sync
-                self._process_job_ids.clear()
-            res = self.loop.run_in_executor(
+            fut = self.loop.run_in_executor(
                 self.process_queue,
                 partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs),
             )
             # do_work will create and clean up the pickle files unless
             # the worker process gets killed unexpectedly
+        return asyncio.create_task(self._reap(fut, job_id, process=True))
 
-            # callback to consume executor future to trigger exception
-            # and remove the job from self.jobs
-            def ran(f):
-                try:
-                    # consume future, just to trigger potential exceptions
-                    # r = f.result()
-                    f.result()
-                finally:
-                    # whatever the result we want to make sure to clean the job registry
-                    # to keep it sync with actual running jobs
-                    # -- actually it can't the job_id is added in
-                    # defer_to_process, but this is inside the try-finally
-                    # block indefer_to_process.run.ran (names are hard, I know)
-                    self.jobs.pop(job_id)
-                    self._process_job_ids.discard(job_id)
-
-            res.add_done_callback(ran)
-            res = await res
-            # process could generate other parallelized jobs and return a Future/Task
-            # If so, we want to make sure we get the results from that task
-            if type(res) == asyncio.Task:
-                res = await res
-            future.set_result(res)
-
-        # lock is released in run coroutine
-        await self.ok_to_run.acquire()
-        f = asyncio.Future()
-
-        def runned(innerf, job_id):
-            # not exactly inner future, if f is the most outside future
-            # and res is the innermost future, then innerf is in-between
-            # res is an asyncio future that represents the concurrent.futures.
-            # Future from the Executor
-            if innerf.exception():
-                f.set_exception(innerf.exception())
-
-        job_id = get_random_string()
-        fut = asyncio.ensure_future(run(f, job_id))
-        fut.add_done_callback(partial(runned, job_id=job_id))
-        return f
-
-    async def defer_to_thread(self, pinfo=None, func=None, *args):
+    async def defer_to_thread(self, pinfo=None, func=None, *args, **kwargs):
+        """Same as defer_to_process, but runs func in the thread executor."""
         skip_check = pinfo.get("__skip_check__", False)
 
-        async def run(future, job_id):
-            if not skip_check:
-                await self.check_constraints(pinfo)
-                self.ok_to_run.release()
+        def submit():
+            job_id = get_random_string()
             self.jobs[job_id] = pinfo
-            res = self.loop.run_in_executor(self.thread_queue, partial(do_work, job_id, "thread", pinfo, func, *args))
+            fut = self.loop.run_in_executor(
+                self.thread_queue,
+                partial(do_work, job_id, "thread", pinfo, func, *args, **kwargs),
+            )
+            return fut, job_id
 
-            def ran(f):
-                try:
-                    # r = f.result()
-                    f.result()
-                finally:
-                    # whatever the result we want to make sure to clean the job registry
-                    # to keep it sync with actual running jobs
-                    self.jobs.pop(job_id)
-
-            res.add_done_callback(ran)
-            res = await res
-            # thread could generate other parallelized jobs and return a Future/Task
-            # If so, we want to make sure we get the results from that task
-            if type(res) == asyncio.Task:
-                res = await res
-            future.set_result(res)
-
-        if not skip_check:
-            await self.ok_to_run.acquire()
-        f = asyncio.Future()
-
-        def runned(innerf, job_id):
-            if innerf.exception():
-                f.set_exception(innerf.exception())
-
-        job_id = get_random_string()
-        fut = asyncio.ensure_future(run(f, job_id))
-        fut.add_done_callback(partial(runned, job_id=job_id))
-        return f
+        if skip_check:
+            fut, job_id = submit()
+        else:
+            async with self.ok_to_run:
+                await self.check_constraints(pinfo)
+                fut, job_id = submit()
+        return asyncio.create_task(self._reap(fut, job_id))
 
     def submit(self, pfunc, schedule=None):
         """
@@ -602,28 +561,19 @@ class JobManager:
         Helper to create a cron job from a callable "func". *argd, and **kwargs
         are passed to func. "crontab" follows aicron notation.
         """
-        # we need to dynamically create a wrapper coroutine with a name
-        # that makes sense, taken from func, otherwise all scheduled jobs would
-        # have the same wrapping coroutine name
+        # the wrapper coroutine takes its name from func, otherwise all
+        # scheduled jobs would have the same wrapping coroutine name
         if isinstance(func, partial):
             func_name = func.func.__name__
         else:
             func_name = func.__name__
-        strcode = (
-            """
-async def %s():
-    func(*args, **kwargs)
-"""
-            % func_name
-        )
-        code = compile(strcode, "<string>", "exec")
-        command_globals = {}
-        command_locals = {"asyncio": asyncio, "func": func, "args": args, "kwargs": kwargs}
-        eval(code, command_locals, command_globals)
-        run_func = command_globals[func_name]
-        job = self.submit(run_func, schedule=crontab)
 
-        return job
+        async def run_func():
+            func(*args, **kwargs)
+
+        run_func.__name__ = func_name
+        run_func.__qualname__ = func_name
+        return self.submit(run_func, schedule=crontab)
 
     @property
     def hub_process(self):
@@ -897,7 +847,7 @@ async def %s():
 
     def get_pending_summary(self, getstr=False):
         running = len(self.get_pid_files())
-        return "%d pending job(s)" % (len(self.process_queue._pending_work_items) - running)
+        return "%d pending job(s)" % (self._pending_jobs_count() - running)
 
     def get_pending_processes(self):
         # pendings are kept in queue while running, until result is there so we need
