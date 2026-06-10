@@ -60,8 +60,7 @@ dependencies = [
     "elasticsearch[async]>=8, <9",
     "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
     "PyYAML>=5.1",
-    'orjson>=3.10.16; python_version < "3.14.0"',  # a faster json lib supports inf/nan and datetime, v3.10.16 is the first version requires Python 3.9+
-    'orjson==3.11.4; python_version >= "3.14.0"',  # orjson 3.11.5 cannot be built on Python 3.14t for now
+    "msgspec>=0.21.1",  # fast json lib supporting inf/nan and datetime; ships free-threaded (cp314t) wheels (replaced orjson, which re-enables the GIL on 3.14t)
     'zstandard>=0.21.0; python_version<"3.14"', # we need zst library before 3.14
 ]
 
@@ -97,8 +96,6 @@ hub = [
     "sockjs-tornado==1.0.7",  # websocket server for HubServer
     "jsonschema>=2.6.0",
     "pip",  # auto-install requirements from plugins
-    # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
-    # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     # "yapf",  # code reformatter, better results than autopep8
     "black",  # code formatter
     "boto3",  # for aws S3 access

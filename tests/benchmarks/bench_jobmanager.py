@@ -3,13 +3,13 @@
 Runs merge_struct-heavy batches (the hub's merge pipeline hot loop) through
 JobManager.defer_to_process and reports wall time and peak RSS.
 
-Three configurations to compare (biothings imports orjson, which re-enables
-the GIL on 3.14t unless PYTHON_GIL=0 is forced):
+Three configurations to compare, all runnable on a single 3.14t build
+(PYTHON_GIL=1 re-enables the GIL to emulate a regular build):
 
   (a) baseline, fork process pool, GIL on:
       PYTHON_GIL=1 python tests/benchmarks/bench_jobmanager.py
   (b) free-threaded thread pool, GIL off (requires a 3.14t build):
-      PYTHON_GIL=0 BENCH_FT_WORKERS=1 python tests/benchmarks/bench_jobmanager.py
+      BENCH_FT_WORKERS=1 python tests/benchmarks/bench_jobmanager.py
   (c) control, thread pool with the GIL on (should be ~serial):
       PYTHON_GIL=1 BENCH_FT_WORKERS=1 python tests/benchmarks/bench_jobmanager.py
 
