@@ -14,7 +14,7 @@ from biothings.hub.databuild.backend import generate_folder
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.hub.manager import BaseManager
 from biothings.utils.backend import DocMongoBackend
-from biothings.utils.common import dump, get_timestamp, loadobj, md5sum, rmdashfr, timesofar
+from biothings.utils.common import dump, first_exception, get_timestamp, loadobj, md5sum, rmdashfr, timesofar
 from biothings.utils.diff import diff_docs_jsonpatch
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.jsondiff import make as jsondiff
@@ -278,30 +278,6 @@ class BaseDiffer(object):
                     )
                 return summary
 
-            def mapping_diffed(f):
-                res = f.result()
-                self.register_status("success", job={"step": "diff-mapping"})
-                if res.get("mapping_file"):
-                    nonlocal got_error
-                    # check mapping differences: only "add" ops are allowed, as any others actions would be
-                    # ingored by ES once applied (you can't update/delete elements of an existing mapping)
-                    mf = os.path.join(diff_folder, res["mapping_file"]["name"])
-                    ops = loadobj(mf)
-                    for op in ops:
-                        if op["op"] != "add":
-                            err = DifferException(
-                                "Found diff operation '%s' in mapping file, " % op["op"]
-                                + " only 'add' operations are allowed. You can still produce the "
-                                + "diff by removing 'mapping' from 'steps' arguments. "
-                                + f"Ex: steps=['content']. Diff operation was: {op}"
-                            )
-                            got_error = err
-                    self.metadata["diff"]["mapping_file"] = res["mapping_file"]
-                    diff_stats["mapping_changed"] = True
-                    to_json_file(self.metadata, open(self.metadata_filename, "w"), indent=True)
-
-                self.logger.info("Diff file containing mapping differences generated: %s", res.get("mapping_file"))
-
             pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (self.new.target_name, self.old.target_name)
             pinfo["step"] = "mapping: old vs new"
@@ -315,8 +291,26 @@ class BaseDiffer(object):
                 pinfo,
                 partial(diff_mapping, self.old, self.new, diff_folder),
             )
-            job.add_done_callback(mapping_diffed)
-            await job
+            res = await job
+            self.register_status("success", job={"step": "diff-mapping"})
+            if res.get("mapping_file"):
+                # check mapping differences: only "add" ops are allowed, as any others actions would be
+                # ingored by ES once applied (you can't update/delete elements of an existing mapping)
+                mf = os.path.join(diff_folder, res["mapping_file"]["name"])
+                ops = loadobj(mf)
+                for op in ops:
+                    if op["op"] != "add":
+                        got_error = DifferException(
+                            "Found diff operation '%s' in mapping file, " % op["op"]
+                            + " only 'add' operations are allowed. You can still produce the "
+                            + "diff by removing 'mapping' from 'steps' arguments. "
+                            + f"Ex: steps=['content']. Diff operation was: {op}"
+                        )
+                self.metadata["diff"]["mapping_file"] = res["mapping_file"]
+                diff_stats["mapping_changed"] = True
+                to_json_file(self.metadata, open(self.metadata_filename, "w"), indent=True)
+
+            self.logger.info("Diff file containing mapping differences generated: %s", res.get("mapping_file"))
             if got_error:
                 raise got_error
 
@@ -324,7 +318,6 @@ class BaseDiffer(object):
             self.logger.info("Old and new collections are the same, skipping 'content' step")
         elif "content" in steps:
             cnt = 0
-            jobs = []
             pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (content_new.target_name, content_old.target_name)
             pinfo["step"] = "content: new vs old"
@@ -336,37 +329,41 @@ class BaseDiffer(object):
                 init=True,
                 job={"step": "diff-content"},
             )
-            for id_list_new in data_new:
-                cnt += 1
-                pinfo["description"] = "batch #%s" % cnt
 
-                def diffed(f):
-                    res = f.result()
-                    diff_stats["update"] += res["update"]
-                    diff_stats["add"] += res["add"]
-                    if res.get("diff_file"):
-                        self.metadata["diff"]["files"].append(res["diff_file"])
-                    self.logger.info("(Updated: %s, Added: %s)", res["update"], res["add"])
-                    self.register_status("success", job={"step": "diff-content"})
+            async def diffed_new_vs_old(job):
+                res = await job
+                # diff_stats/metadata updates happen on the event loop, so
+                # they're serialized even with parallel diff workers
+                diff_stats["update"] += res["update"]
+                diff_stats["add"] += res["add"]
+                if res.get("diff_file"):
+                    self.metadata["diff"]["files"].append(res["diff_file"])
+                self.logger.info("(Updated: %s, Added: %s)", res["update"], res["add"])
+                self.register_status("success", job={"step": "diff-content"})
 
-                self.logger.info("Creating diff worker for batch #%s" % cnt)
-                job = await self.job_manager.defer_to_process(
-                    pinfo,
-                    partial(
-                        diff_worker_new_vs_old,
-                        id_list_new,
-                        old_db_col_names,
-                        new_db_col_names,
-                        cnt,
-                        diff_folder,
-                        self.diff_func,
-                        exclude,
-                        selfcontained,
-                    ),
-                )
-                job.add_done_callback(diffed)
-                jobs.append(job)
-            await asyncio.gather(*jobs)
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for id_list_new in data_new:
+                        cnt += 1
+                        pinfo["description"] = "batch #%s" % cnt
+                        self.logger.info("Creating diff worker for batch #%s" % cnt)
+                        job = await self.job_manager.defer_to_process(
+                            pinfo,
+                            partial(
+                                diff_worker_new_vs_old,
+                                id_list_new,
+                                old_db_col_names,
+                                new_db_col_names,
+                                cnt,
+                                diff_folder,
+                                self.diff_func,
+                                exclude,
+                                selfcontained,
+                            ),
+                        )
+                        tg.create_task(diffed_new_vs_old(job))
+            except* Exception as eg:
+                raise first_exception(eg) from eg
             self.logger.info(
                 "Finished calculating diff for the new collection. Total number of docs updated: %s, added: %s",
                 diff_stats["update"],
@@ -374,29 +371,30 @@ class BaseDiffer(object):
             )
 
             data_old = id_feeder(content_old, batch_size=batch_size)
-            jobs = []
             pinfo = self.get_pinfo()
             pinfo["source"] = "%s vs %s" % (content_old.target_name, content_new.target_name)
             pinfo["step"] = "content: old vs new"
-            for id_list_old in data_old:
-                cnt += 1
-                pinfo["description"] = "batch #%s" % cnt
 
-                def diffed(f):
-                    res = f.result()
-                    diff_stats["delete"] += res["delete"]
-                    if res.get("diff_file"):
-                        self.metadata["diff"]["files"].append(res["diff_file"])
-                    self.logger.info("(Deleted: {})".format(res["delete"]))
+            async def diffed_old_vs_new(job):
+                res = await job
+                diff_stats["delete"] += res["delete"]
+                if res.get("diff_file"):
+                    self.metadata["diff"]["files"].append(res["diff_file"])
+                self.logger.info("(Deleted: {})".format(res["delete"]))
 
-                self.logger.info("Creating diff worker for batch #%s" % cnt)
-                job = await self.job_manager.defer_to_process(
-                    pinfo,
-                    partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt, diff_folder),
-                )
-                job.add_done_callback(diffed)
-                jobs.append(job)
-            await asyncio.gather(*jobs)
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for id_list_old in data_old:
+                        cnt += 1
+                        pinfo["description"] = "batch #%s" % cnt
+                        self.logger.info("Creating diff worker for batch #%s" % cnt)
+                        job = await self.job_manager.defer_to_process(
+                            pinfo,
+                            partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt, diff_folder),
+                        )
+                        tg.create_task(diffed_old_vs_new(job))
+            except* Exception as eg:
+                raise first_exception(eg) from eg
             self.logger.info(
                 "Finished calculating diff for the old collection. Total number of docs deleted: %s",
                 diff_stats["delete"],
@@ -427,15 +425,10 @@ class BaseDiffer(object):
                 except FileExistsError:
                     pass
 
-                def merged(f, cnt):
-                    nonlocal got_error
-                    nonlocal final_res
-                    try:
-                        res = f.result()
-                        final_res.extend(res)
-                        self.logger.info("Diff file #%s created" % cnt)
-                    except Exception as e:
-                        got_error = e
+                async def merged(job, cnt):
+                    res = await job
+                    final_res.extend(res)
+                    self.logger.info("Diff file #%s created" % cnt)
 
                 diff_files = [
                     f
@@ -443,35 +436,30 @@ class BaseDiffer(object):
                     if not os.path.basename(f).startswith("mapping")
                 ]
                 self.logger.info("%d diff files to process in total" % len(diff_files))
-                jobs = []
-                while diff_files:
-                    if len(diff_files) % 100 == 0:
-                        self.logger.info("%d diff files to process" % len(diff_files))
-                    if current_size > max_diff_size:
+                async with asyncio.TaskGroup() as tg:
+                    while diff_files:
+                        if len(diff_files) % 100 == 0:
+                            self.logger.info("%d diff files to process" % len(diff_files))
+                        if current_size > max_diff_size:
+                            job = await self.job_manager.defer_to_process(
+                                pinfo, partial(reduce_diffs, tomerge, cnt, diff_folder, done_folder)
+                            )
+                            tg.create_task(merged(job, cnt))
+                            current_size = 0
+                            cnt += 1
+                            tomerge = []
+                        else:
+                            diff_file = diff_files.pop()
+                            current_size += os.stat(diff_file).st_size
+                            tomerge.append(diff_file)
+
+                    assert not diff_files
+
+                    if tomerge:
                         job = await self.job_manager.defer_to_process(
                             pinfo, partial(reduce_diffs, tomerge, cnt, diff_folder, done_folder)
                         )
-                        job.add_done_callback(partial(merged, cnt=cnt))
-                        jobs.append(job)
-                        current_size = 0
-                        cnt += 1
-                        tomerge = []
-                    else:
-                        diff_file = diff_files.pop()
-                        current_size += os.stat(diff_file).st_size
-                        tomerge.append(diff_file)
-
-                assert not diff_files
-
-                if tomerge:
-                    job = await self.job_manager.defer_to_process(
-                        pinfo, partial(reduce_diffs, tomerge, cnt, diff_folder, done_folder)
-                    )
-                    job.add_done_callback(partial(merged, cnt=cnt))
-                    jobs.append(job)
-                    await job
-
-                await asyncio.gather(*jobs)
+                        tg.create_task(merged(job, cnt))
 
                 return final_res
 
@@ -485,19 +473,21 @@ class BaseDiffer(object):
                 init=True,
                 job={"step": "diff-reduce"},
             )
-            res = await merge_diff()
+            try:
+                res = await merge_diff()
+            except* Exception as eg:
+                err = first_exception(eg)
+                self.logger.exception(
+                    "Failed to reduce diff files: %s" % err,
+                    extra={"notify": True},
+                )
+                raise err from eg
             self.metadata["diff"]["files"] = res
             to_json_file(
                 self.metadata,
                 open(self.metadata_filename, "w"),
                 indent=True,
             )
-            if got_error:
-                self.logger.exception(
-                    "Failed to reduce diff files: %s" % got_error,
-                    extra={"notify": True},
-                )
-                raise got_error
             self.register_status("success", job={"step": "diff-reduce"})
 
         if "post" in steps:
@@ -518,21 +508,15 @@ class BaseDiffer(object):
                 ),
             )
 
-            def posted(f):
-                nonlocal got_error
-                try:
-                    res = f.result()
-                    self.register_status("success", job={"step": "diff-post"}, diff={"post": res})
-                    self.logger.info("Post diff process successfully run: %s", res)
-                except Exception as e:
-                    got_error = e
-
-            job.add_done_callback(posted)
-            await job
+            try:
+                res = await job
+            except Exception as e:
+                to_json_file(self.metadata, open(self.metadata_filename, "w"), indent=True)
+                self.logger.exception("Failed to run post diff process: %s" % e, extra={"notify": True})
+                raise
+            self.register_status("success", job={"step": "diff-post"}, diff={"post": res})
+            self.logger.info("Post diff process successfully run: %s", res)
             to_json_file(self.metadata, open(self.metadata_filename, "w"), indent=True)
-            if got_error:
-                self.logger.exception("Failed to run post diff process: %s" % got_error, extra={"notify": True})
-                raise got_error
 
         strargs = "[old=%s,new=%s,steps=%s,diff_stats=%s]" % (old_db_col_names, new_db_col_names, steps, diff_stats)
         self.logger.info("success %s" % strargs, extra={"notify": True})
@@ -563,10 +547,9 @@ class BaseDiffer(object):
             steps = [steps]
 
         self.setup_log(old_db_col_names, new_db_col_names)
-        job = asyncio.ensure_future(
+        return self.job_manager.loop.create_task(
             self.diff_cols(old_db_col_names, new_db_col_names, batch_size, steps, mode, exclude)
         )
-        return job
 
     def get_metadata(self):
         new_doc = get_src_build().find_one({"_id": self.new.target_collection.name})
@@ -1095,18 +1078,18 @@ class DifferManager(BaseManager):
                 exclude=exclude,
             )
 
-            def diffed(f):
+            async def diffed():
                 try:
-                    _ = f.result()
-                    # after creating a build diff, indicate
-                    # a release note should be auto generated
-                    set_pending_to_release_note(new)
+                    res = await job
                 except Exception as e:
                     self.logger.error("Error during diff: %s", e)
                     raise
+                # after creating a build diff, indicate
+                # a release note should be auto generated
+                set_pending_to_release_note(new)
+                return res
 
-            job.add_done_callback(diffed)
-            return job
+            return self.job_manager.loop.create_task(diffed())
         except KeyError as e:
             raise DifferException("No such differ '%s' (error: %s)" % (diff_type, e))
 
@@ -1141,34 +1124,25 @@ class DifferManager(BaseManager):
                 return open(reportfilepath).read()
 
         async def main(diff_folder):
-            got_error = False
             pinfo = self.get_pinfo()
             pinfo["step"] = "report"
             pinfo["source"] = diff_folder
             pinfo["description"] = report_filename
             job = await self.job_manager.defer_to_thread(pinfo, do)
-
-            def reported(f):
-                nonlocal got_error
-                try:
-                    _ = f.result()
-                    self.logger.info(
-                        "Diff report ready, saved in %s" % reportfilepath,
-                        extra={"notify": True, "attach": reportfilepath},
-                    )
-                except Exception as e:
-                    got_error = e
-
-            job.add_done_callback(reported)
-            await job
-            if got_error:
-                self.logger.exception("Failed to create diff report: %s" % got_error, extra={"notify": True})
-                raise got_error
+            try:
+                res = await job
+            except Exception as e:
+                self.logger.exception("Failed to create diff report: %s" % e, extra={"notify": True})
+                raise
+            self.logger.info(
+                "Diff report ready, saved in %s" % reportfilepath,
+                extra={"notify": True, "attach": reportfilepath},
+            )
+            return res
 
         diff_folder = generate_folder(btconfig.DIFF_PATH, old_db_col_names, new_db_col_names)
         reportfilepath = os.path.join(diff_folder, report_filename)
-        job = asyncio.ensure_future(main(diff_folder))
-        return job
+        return self.job_manager.loop.create_task(main(diff_folder))
 
     def build_diff_report(self, diff_folder, detailed=True, max_reported_ids=None):
         """

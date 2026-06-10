@@ -16,7 +16,7 @@ import biothings.utils.jsonpatch as jsonpatch
 from biothings import config as btconfig
 from biothings.hub import SYNCER_CATEGORY
 from biothings.hub.manager import BaseManager
-from biothings.utils.common import iter_n, loadobj, timesofar
+from biothings.utils.common import first_exception, iter_n, loadobj, timesofar
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.mongo import doc_feeder, get_target_db, invalidate_cache
@@ -181,9 +181,7 @@ class BaseSyncer(object):
             steps = [steps]
         assert self.old and self.new, "'self.old' and 'self.new' must be set to old/new collections"
         self.target_backend = target_backend
-        got_error = False
         cnt = 0
-        jobs = []
         self.load_metadata(diff_folder)
         meta = self._meta
         diff_type = self.diff_type
@@ -219,27 +217,18 @@ class BaseSyncer(object):
 
                 self.register_status("syncing", transient=True, init=True, job={"step": "sync-mapping"})
                 job = await self.job_manager.defer_to_thread(pinfo, partial(update_mapping))
-
-                def updated(f):
-                    try:
-                        _ = f.result()
-                        self.logger.info("Mapping updated on index '%s'" % index_name)
-                        summary["mapping_updated"] = True
-                        self.register_status("success", job={"step": "sync-mapping"}, sync=summary)
-                    except Exception as e:
-                        nonlocal got_error
-                        self.logger.error("Failed to update mapping on index '%s': %s" % (index_name, e))
-                        self.register_status("failed", job={"err": repr(e)})
-                        got_error = e
-
-                job.add_done_callback(updated)
-                await job
-
-            if got_error:
-                self.logger.error(
-                    "Failed to update mapping on index '%s': %s" % (old_db_col_names, got_error), extra={"notify": True}
-                )
-                raise got_error
+                try:
+                    await job
+                except Exception as e:
+                    self.logger.error("Failed to update mapping on index '%s': %s" % (index_name, e))
+                    self.register_status("failed", job={"err": repr(e)})
+                    self.logger.error(
+                        "Failed to update mapping on index '%s': %s" % (old_db_col_names, e), extra={"notify": True}
+                    )
+                    raise
+                self.logger.info("Mapping updated on index '%s'" % index_name)
+                summary["mapping_updated"] = True
+                self.register_status("success", job={"step": "sync-mapping"}, sync=summary)
 
         if "content" in steps:
             if selfcontained:
@@ -254,59 +243,56 @@ class BaseSyncer(object):
             )
             pinfo["step"] = "content"
             self.register_status("syncing", transient=True, init=True, job={"step": "sync-content"})
-            for diff_file, worker_args in diff_files:
-                cnt += 1
-                pinfo["description"] = "file %s (%s/%s)" % (diff_file, cnt, total)
-                worker = getattr(
-                    sys.modules["biothings.hub.databuild.syncer"],
-                    "sync_%s_%s_worker" % (self.target_backend_type, diff_type),
-                )
-                strwargs = worker_args and " using specific worker args %s" % repr(worker_args) or ""
-                self.logger.info(
-                    "Creating sync worker %s for file %s (%s/%s)%s" % (worker.__name__, diff_file, cnt, total, strwargs)
-                )
-                # deepcopy to make we don't embed "self" with unpickleable stuff
-                meta = copy.deepcopy(self._meta)
-                job = await self.job_manager.defer_to_process(
-                    pinfo,
-                    partial(
-                        worker,
-                        diff_file,
-                        old_db_col_names,
-                        new_db_col_names,
-                        worker_args.get("batch_size") or batch_size,
-                        cnt,
-                        force,
-                        selfcontained,
-                        meta,
-                        debug,
-                    ),
-                )
-                jobs.append(job)
 
-            def synced(f):
-                try:
-                    res = f.result()
-                    for d in res:
-                        for k in d:
-                            summary.setdefault(k, 0)
-                            summary[k] += d[k]
-                except Exception as e:
-                    nonlocal got_error
-                    got_error = e
-                    self.register_status("failed", job={"err": repr(e)})
-                    raise
+            async def synced(job):
+                res = await job
+                # summary updates happen on the event loop, so they're
+                # serialized even with parallel sync workers
+                for k in res:
+                    summary.setdefault(k, 0)
+                    summary[k] += res[k]
 
-            tasks = asyncio.gather(*jobs)
-            tasks.add_done_callback(synced)
-            await tasks
-            if got_error:
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for diff_file, worker_args in diff_files:
+                        cnt += 1
+                        pinfo["description"] = "file %s (%s/%s)" % (diff_file, cnt, total)
+                        worker = getattr(
+                            sys.modules["biothings.hub.databuild.syncer"],
+                            "sync_%s_%s_worker" % (self.target_backend_type, diff_type),
+                        )
+                        strwargs = worker_args and " using specific worker args %s" % repr(worker_args) or ""
+                        self.logger.info(
+                            "Creating sync worker %s for file %s (%s/%s)%s"
+                            % (worker.__name__, diff_file, cnt, total, strwargs)
+                        )
+                        # deepcopy to make we don't embed "self" with unpickleable stuff
+                        meta = copy.deepcopy(self._meta)
+                        job = await self.job_manager.defer_to_process(
+                            pinfo,
+                            partial(
+                                worker,
+                                diff_file,
+                                old_db_col_names,
+                                new_db_col_names,
+                                worker_args.get("batch_size") or batch_size,
+                                cnt,
+                                force,
+                                selfcontained,
+                                meta,
+                                debug,
+                            ),
+                        )
+                        tg.create_task(synced(job))
+            except* Exception as eg:
+                e = first_exception(eg)
+                self.register_status("failed", job={"err": repr(e)})
                 self.logger.error(
                     "Failed to sync collection from %s to %s using diff files in '%s': %s"
-                    % (old_db_col_names, new_db_col_names, diff_folder, got_error),
+                    % (old_db_col_names, new_db_col_names, diff_folder, e),
                     extra={"notify": True},
                 )
-                raise got_error
+                raise e from eg
             self.register_status("success", job={"step": "sync-content"}, sync=summary)
 
         if "meta" in steps and self.target_backend_type == "es":
@@ -322,29 +308,20 @@ class BaseSyncer(object):
                 return res
 
             job = await self.job_manager.defer_to_thread(pinfo, partial(update_metadata))
-
-            def updated(f):
-                try:
-                    res = f.result()
-                    self.logger.info("Metadata updated on index '%s': %s", index_name, res)
-                    summary["metadata_updated"] = True
-                    self.register_status("success", job={"step": "sync-meta"}, sync=summary)
-                except Exception as e:
-                    nonlocal got_error
-                    self.logger.error("Failed to update metadata on index '%s': %s", index_name, e)
-                    self.register_status("failed", job={"err": repr(e)})
-                    got_error = e
-
             self.register_status("syncing", transient=True, init=True, job={"step": "sync-meta"})
-            job.add_done_callback(updated)
-            await job
-
-            if got_error:
+            try:
+                res = await job
+            except Exception as e:
+                self.logger.error("Failed to update metadata on index '%s': %s", index_name, e)
+                self.register_status("failed", job={"err": repr(e)})
                 self.logger.error(
-                    "Failed to update metadata on index '%s': %s" % (old_db_col_names, got_error),
+                    "Failed to update metadata on index '%s': %s" % (old_db_col_names, e),
                     extra={"notify": True},
                 )
-                raise got_error
+                raise
+            self.logger.info("Metadata updated on index '%s': %s", index_name, res)
+            summary["metadata_updated"] = True
+            self.register_status("success", job={"step": "sync-meta"}, sync=summary)
 
         if "post" in steps:
             pinfo["step"] = "post"
@@ -361,30 +338,22 @@ class BaseSyncer(object):
                 ),
             )
 
-            def posted(f):
-                try:
-                    res = f.result()
-                    self.logger.info("Post-sync process done on index '%s': %s", repr(old_db_col_names), res)
-                    summary["post-sync"] = True
-                    self.register_status("success", job={"step": "sync-post"}, sync=summary)
-                except Exception as e:
-                    nonlocal got_error
-                    self.logger.error("Failed to run post-sync process on index '%s': %s", repr(old_db_col_names), e)
-                    self.register_status("failed", job={"err": repr(e)})
-                    got_error = e
-
             self.register_status("syncing", transient=True, init=True, job={"step": "sync-post"})
-            job.add_done_callback(posted)
-            await job
-
-            if got_error:
+            try:
+                res = await job
+            except Exception as e:
+                self.logger.error("Failed to run post-sync process on index '%s': %s", repr(old_db_col_names), e)
+                self.register_status("failed", job={"err": repr(e)})
                 self.logger.error(
                     "Failed to run post-sync process on index '%s': %s",
                     repr(old_db_col_names),
-                    got_error,
+                    e,
                     extra={"notify": True},
                 )
-                raise got_error
+                raise
+            self.logger.info("Post-sync process done on index '%s': %s", repr(old_db_col_names), res)
+            summary["post-sync"] = True
+            self.register_status("success", job={"step": "sync-post"}, sync=summary)
 
         self.logger.info(
             "Succesfully synced index %s to reach collection %s using diff files in '%s': %s",
@@ -411,7 +380,7 @@ class BaseSyncer(object):
         debug=False,
     ):
         """wrapper over sync_cols() coroutine, return a task"""
-        job = asyncio.ensure_future(
+        return self.job_manager.loop.create_task(
             self.sync_cols(
                 diff_folder=diff_folder,
                 batch_size=batch_size,
@@ -421,7 +390,6 @@ class BaseSyncer(object):
                 debug=debug,
             )
         )
-        return job
 
 
 class ThrottlerSyncer(BaseSyncer):
