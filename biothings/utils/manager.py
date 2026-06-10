@@ -6,6 +6,7 @@ import glob
 import multiprocessing
 import os
 import re
+import sys
 import threading
 import time
 import types
@@ -89,6 +90,10 @@ def track(func):
             _id = None
             if ptype == "thread":
                 _id = "%s" % threading.current_thread().name
+            elif multiprocessing.current_process().name == "MainProcess":
+                # free-threaded workers mode: "process" jobs actually run in
+                # threads of the hub process, the pid alone would collide
+                _id = "%s-%s" % (os.getpid(), threading.current_thread().name)
             else:
                 _id = os.getpid()
             # add random chars: 2 jobs handled by the same slot (pid or thread)
@@ -167,7 +172,20 @@ class JobManager:
     HEADERLINE = "{pid:^10}|{source:^35}|{category:^10}|{step:^20}|{description:^30}|{mem:^10}|{cpu:^6}|{started_at:^20}|{duration:^10}"
     DATALINE = HEADERLINE.replace("^", "<")
 
+    def _free_threaded_mode(self):
+        """True when running a free-threaded (no-GIL) Python build and the
+        config opted in to run CPU-bound workers in threads instead of
+        processes (HUB_FREE_THREADED_WORKERS)."""
+        if not getattr(config, "HUB_FREE_THREADED_WORKERS", False):
+            return False
+        return hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()
+
     def _get_process_executor(self):
+        if self._free_threaded_mode():
+            # the GIL is disabled: CPU-bound workers can run in threads,
+            # sharing the hub's heap, with no fork and no job pickling
+            logger.info("Free-threaded mode: using a thread pool for CPU-bound workers")
+            return concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers, thread_name_prefix="FTWorker")
         kwargs = {}
         # since Python 3.14, multiprocessing uses `forkserver` as the default, instead of 'fork'
         # on POSIX systems. This breaks our current biothings JobManager when creating dynamic
@@ -238,6 +256,11 @@ class JobManager:
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
         # Process obj. for hub (process which JobManager is in)
+        if auto_recycle and isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
+            # free-threaded workers share the hub's heap, recycling the
+            # executor wouldn't reclaim any memory
+            logger.info("Free-threaded workers: disabling process queue auto-recycling")
+            auto_recycle = False
         self.auto_recycle = auto_recycle  # active
         self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
         self.jobs = {}  # all active jobs (thread/process)
@@ -316,7 +339,18 @@ class JobManager:
                 logger.info("Removing staled pid file '%s'", fn)
                 os.unlink(fn)
         tid_pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
+        ft_pat = re.compile(r".*/(\d+)-(FTWorker_\d+)_.*\.pickle")
+        ft_active = [t.name for t in getattr(self.process_queue, "_threads", None) or []]
         for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
+            ft = ft_pat.findall(fn)
+            if ft:
+                # free-threaded mode worker file, staled unless it belongs to
+                # this very hub process and its worker thread is still alive
+                pid, tid = int(ft[0][0]), ft[0][1]
+                if pid != os.getpid() or tid not in ft_active:
+                    logger.info("Removing staled free-threaded worker file '%s'", fn)
+                    os.unlink(fn)
+                continue
             try:
                 tid = tid_pat.findall(fn)[0].split("_")[0]
             except IndexError:
@@ -459,6 +493,9 @@ class JobManager:
                 self.auto_recycle = self.auto_recycle_setting
 
     def _ensure_process_pool_alive(self):
+        if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):
+            # thread pools (free-threaded workers mode) can't break this way
+            return
         try:
             # test to see if Executor still alive
             _ = self.process_queue.submit(int, 1)
@@ -476,6 +513,10 @@ class JobManager:
     def _pending_jobs_count(self):
         """Number of jobs submitted to the process executor and not done yet
         (including the ones currently running in a worker)."""
+        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
+            # free-threaded workers mode: the work queue only holds jobs not
+            # yet picked up; approximate running ones with the spawned workers
+            return self.process_queue._work_queue.qsize() + len(self.process_queue._threads)
         return len(self.process_queue._pending_work_items)
 
     async def _reap(self, fut, job_id, process=False):
@@ -634,13 +675,15 @@ class JobManager:
     def get_thread_files(self):
         tids = {}
         try:
-            # see track() for filename format
-            pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
+            # see track() for filename format; the second alternative matches
+            # free-threaded mode worker files ("<pid>-FTWorker_<n>_<jobid>")
+            pat = re.compile(r".*/(?:(Thread\w*-\d+)|\d+-(FTWorker_\d+))_.*\.pickle")
             # threads = self.thread_queue._threads
             # active_tids = [t.getName() for t in threads]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
                 try:
-                    tid = pat.findall(fn)[0].split("_")[0]
+                    thread_tid, ft_tid = pat.findall(fn)[0]
+                    tid = ft_tid or thread_tid.split("_")[0]
                     worker = pickle.load(open(fn, "rb"))
                     worker["process"] = self.hub_process  # misleading... it's the hub process
                     tids[tid] = worker
@@ -797,7 +840,10 @@ class JobManager:
 
     def get_thread_summary(self):
         running_tids = self.get_thread_files()
-        tchildren = self.thread_queue._threads
+        tchildren = list(self.thread_queue._threads)
+        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
+            # free-threaded workers mode: report CPU-bound worker threads too
+            tchildren += list(self.process_queue._threads)
         res = {}
         for child in tchildren:
             res[child.name] = {
@@ -850,6 +896,9 @@ class JobManager:
         return "%d pending job(s)" % (self._pending_jobs_count() - running)
 
     def get_pending_processes(self):
+        if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):
+            # free-threaded workers mode: no per-job introspection available
+            return {}
         # pendings are kept in queue while running, until result is there so we need
         # to adjust the actual real pending jobs. also, pending job are get() from the
         # queue following FIFO order. finally, worker ID is incremental. So...

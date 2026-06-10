@@ -167,6 +167,54 @@ class TestJobManager:
             shutdown(manager)
 
     @pytest.mark.asyncio
+    async def test_free_threaded_workers_opt_in(self, monkeypatch):
+        import sys
+
+        from biothings import config
+
+        monkeypatch.setattr(config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
+        monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
+        manager = make_manager()
+        try:
+            assert isinstance(manager.process_queue, ThreadPoolExecutor)
+            # recycling is pointless with a shared heap, must be off
+            assert manager.auto_recycle is False
+            job = await manager.defer_to_process(dict(PINFO), square, 6)
+            assert await job == 36
+            # introspection helpers must not raise in thread mode
+            manager.get_pending_summary()
+            manager.get_pending_processes()
+            manager.get_summary()
+            manager.top()
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_free_threaded_workers_distinct_run_files(self, monkeypatch, tmp_path):
+        import glob
+        import os
+        import sys
+        import time
+
+        from biothings import config
+
+        monkeypatch.setattr(config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
+        monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
+        monkeypatch.setattr(config, "RUN_DIR", str(tmp_path), raising=False)
+        manager = make_manager()
+        try:
+            jobs = [await manager.defer_to_process(dict(PINFO), time.sleep, 0.5) for _ in range(2)]
+            await asyncio.sleep(0.2)
+            run_files = [os.path.basename(f) for f in glob.glob(str(tmp_path / "*.pickle"))]
+            # one tracking file per worker thread, named pid-threadname_jobid
+            assert len(run_files) == 2
+            assert all(f.startswith("%d-FTWorker" % os.getpid()) for f in run_files)
+            await asyncio.gather(*jobs)
+            assert glob.glob(str(tmp_path / "*.pickle")) == []
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
     async def test_predicates_block_admission(self):
         manager = make_manager()
         try:
