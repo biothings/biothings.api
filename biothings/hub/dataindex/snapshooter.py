@@ -227,7 +227,8 @@ class SnapshotEnv:
                     state.succeed({snapshot: x.data}, res=dx.data)
             return x
 
-        future = asyncio.ensure_future(_snapshot(snapshot or index))
+        future = self.job_manager.loop.create_task(_snapshot(snapshot or index))
+        # logging the result doubles as marking the exception retrieved
         future.add_done_callback(self.logger.debug)
         return future
 
@@ -440,7 +441,7 @@ class SnapshotManager(BaseManager):
 
             return self.snapshot(snapshot_env, latest_index)
 
-        return asyncio.ensure_future(_())
+        return self.job_manager.loop.create_task(_())
 
     def snapshot_info(self, env=None, remote=False):
         return self.snapshot_config
@@ -496,11 +497,9 @@ class SnapshotManager(BaseManager):
                 env=environment, keep=0, dryrun=False, ignoreErrors=ignoreErrors, _id={"$in": snapshot_names}
             )
 
-        def done(f):
+        async def all_done():
             try:
-                # just consume the result to raise exception
-                # if there were an error... (what an api...)
-                f.result()
+                await asyncio.gather(*jobs)
                 logging.info("success", extra={"notify": True})
             except Exception as e:
                 logging.exception("failed: %s" % e, extra={"notify": True})
@@ -510,8 +509,7 @@ class SnapshotManager(BaseManager):
             for environment, snapshot_names in snapshots_data.items():
                 job = self.job_manager.submit(partial(delete, environment, snapshot_names))
                 jobs.append(job)
-            tasks = asyncio.gather(*jobs)
-            tasks.add_done_callback(done)
+            self.job_manager.loop.create_task(all_done())
         except Exception as ex:
             logging.exception("Error while deleting snapshots. error: %s", ex, extra={"notify": True})
         return jobs
@@ -601,9 +599,9 @@ class SnapshotManager(BaseManager):
             logging.info("Validation of snapshots completed.")
             return {"snapshots_deleted": snapshots_deleted, "errors": errors}
 
-        def done(f):
+        async def done(job):
             try:
-                result = f.result()
+                result = await job
                 snapshots_deleted = result.get("snapshots_deleted", 0)
                 errors = result.get("errors", [])
                 if errors:
@@ -618,7 +616,7 @@ class SnapshotManager(BaseManager):
 
         try:
             job = self.job_manager.submit(validate)
-            job.add_done_callback(done)
+            self.job_manager.loop.create_task(done(job))
         except Exception as ex:
             logging.exception("Error while submitting validation job: %s", ex, extra={"notify": True})
         return job
