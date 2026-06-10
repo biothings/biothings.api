@@ -44,6 +44,9 @@ class AnalyticsMixin(RequestHandler):
 
         if hasattr(self, "biothings"):
             notifier = self.biothings.notifier
-            asyncio.run_coroutine_threadsafe(notifier.broadcast(self.event), asyncio.get_event_loop())
+            # on_finish runs on the event loop thread: schedule the broadcast
+            # there directly, retrieving a potential exception once done
+            task = asyncio.get_running_loop().create_task(notifier.broadcast(self.event))
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
         else:  # need to initialize a notifier
             raise NotImplementedError()

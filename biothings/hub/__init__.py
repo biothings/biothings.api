@@ -23,7 +23,7 @@ except ImportError:
         SSHServerSession = object  # noqa
 
 
-from biothings.utils.common import DummyConfig, get_random_string, get_timestamp
+from biothings.utils.common import DummyConfig, get_loop, get_random_string, get_timestamp
 from biothings.utils.configuration import ConfigurationError, ConfigurationWrapper
 from biothings.utils.document_generator import generate_command_documentations
 
@@ -609,7 +609,7 @@ class HubServer:
         return args
 
     def configure_job_manager(self):
-        loop = asyncio.get_event_loop()
+        loop = get_loop()
         from biothings.utils.manager import JobManager
 
         args = self.mixargs(
@@ -956,7 +956,7 @@ class HubServer:
         app_upgrader_class = get_upgrader(ApplicationSystemUpgrade, config.app_folder)
         self.managers["dump_manager"].register_classes([cls for cls in [bt_upgrader_class, app_upgrader_class] if cls])
 
-        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or asyncio.get_event_loop()
+        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or get_loop()
 
         @aiocron.crontab(HUB_CHECK_UPGRADE, start=True, loop=loop)
         async def check_code_upgrade():
@@ -994,7 +994,8 @@ class HubServer:
                     if val:
                         val.pop("upgrade", None)
 
-        asyncio.ensure_future(check_code_upgrade.func())
+        task = loop.create_task(check_code_upgrade.func())
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())
 
     def get_websocket_urls(self):
         if self.ws_urls:
@@ -1201,7 +1202,7 @@ class HubServer:
         """
         assert self.managers, "No managers configured"
         self.extra_commands = {}  # unordered since not exposed, we don't care
-        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or asyncio.get_event_loop()
+        loop = self.managers.get("job_manager") and self.managers["job_manager"].loop or get_loop()
         self.extra_commands["g"] = CommandDefinition(command=globals(), tracked=False)
         self.extra_commands["sch"] = CommandDefinition(command=partial(get_schedule, loop), tracked=False)
         # expose contant so no need to put quotes (eg. top(pending) instead of top("pending")
@@ -1670,7 +1671,7 @@ class HubServer:
                 # delete temporary build configuration
                 self.managers["build_manager"].delete_build_configuration(build_configuration_name)
 
-        return asyncio.ensure_future(do())
+        return self.managers["job_manager"].loop.create_task(do())
 
 
 class HubSSHServer(asyncssh.SSHServer):
