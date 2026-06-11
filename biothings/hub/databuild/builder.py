@@ -6,6 +6,7 @@ import os
 import pickle
 import re
 import sys
+import threading
 import time
 from datetime import datetime
 from functools import partial
@@ -994,6 +995,11 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     return list(dids.values())
 
 
+# serializes the one-time mapper.load() in merger_worker when a mapper instance
+# is shared across concurrent worker threads (free-threaded workers mode)
+_MAPPER_LOAD_LOCK = threading.Lock()
+
+
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
         src = get_src_db()
@@ -1003,7 +1009,12 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
         if cleaner:
             cur = map(cleaner, cur)
-        mapper.load()
+        # In free-threaded workers mode the same mapper instance is shared
+        # across concurrent merge batches; serialize the (idempotent, one-time)
+        # load() so two threads can't run the first load concurrently. In
+        # process mode each worker has its own mapper, so the lock is uncontended.
+        with _MAPPER_LOAD_LOCK:
+            mapper.load()
         docs = [d for d in mapper.process(cur)]
         # while documents from cursor "cur" are unique, at this point, due to the use
         # a mapper, documents can be converted and there now can be duplicates (same _id)
