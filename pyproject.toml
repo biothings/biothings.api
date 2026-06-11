@@ -124,6 +124,10 @@ docker_ssh = [
 # extra requirements to develop biothings
 dev = [
     "aioresponses",
+    # aioresponses 0.7.8 (latest) builds aiohttp's ClientResponse internally, which
+    # gained a required `stream_writer` kwarg in aiohttp 3.14; cap aiohttp for tests
+    # until aioresponses supports 3.14. Runtime code works fine with aiohttp >= 3.14.
+    "aiohttp<3.14",
     "mongomock",
     "pytest-asyncio",
     "pytest-mock",
