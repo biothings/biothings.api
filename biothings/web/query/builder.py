@@ -712,7 +712,7 @@ class ESQueryBuilder:
 
         if not isinstance(scopes, (list, tuple, str)) or not scopes:
             raise ValueError("Parameter 'scopes' must be a non-empty list, tuple, or string.")
-        
+
         _params = dict(query=q, fields=scopes, operator="AND", lenient=True)
         if options.analyzer:
             _params["analyzer"] = options.analyzer
