@@ -708,7 +708,7 @@ class ESQueryBuilder:
         By default it implements a multi_match query.
         """
         if not isinstance(q, (str, int, float, bool)):
-            raise ValueError("Query parameter 'q' must be a primitive type (string, integer, float, or boolean).")        
+            raise ValueError("Query parameter 'q' must be a primitive type (string, integer, float, or boolean).")
 
         if not isinstance(scopes, (list, tuple, str)) or not scopes:
             raise ValueError("Parameter 'scopes' must be a non-empty list, tuple, or string.")
