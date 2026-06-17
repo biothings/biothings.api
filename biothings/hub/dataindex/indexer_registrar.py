@@ -79,6 +79,14 @@ class IndexJobStateRegistrar:
 
         self._done(func)
 
+    def succeed_without_registration(self):
+        def func(job, delta_build):
+            job["status"] = "success"
+            # Do not leave a stale ready record visible while a later step is still required.
+            delta_build["index"] = {self.index_name: {"__REMOVE__": True}}
+
+        self._done(func)
+
     def _done(self, func):
         self.stage.at(Stage.STARTED)
         self.stage = Stage.DONE
