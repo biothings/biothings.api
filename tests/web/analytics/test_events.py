@@ -69,3 +69,38 @@ def test_event_ga4_2():
     )
     print(event.to_GA4_payload("GA4_MEASUREMENT_ID"))
     print(event.to_GA4_payload("GA4_MEASUREMENT_ID", 2))
+
+
+def test_event_ga4_request_context_on_custom_events():
+    event = GAEvent(
+        {
+            "__request__": {
+                "user_agent": "Mozilla/5.0",
+                "referer": "https://data-staging.niaid.nih.gov/",
+                "user_ip": "127.0.0.1",
+                "host": "api-staging.data.niaid.nih.gov",
+                "path": "/v1/query",
+            },
+            "__secondary__": [
+                GAEvent(
+                    {
+                        "category": "parameter_tracking",
+                        "action": "field_filter",
+                        "label": "all",
+                    }
+                )
+            ],
+            "category": "v1_api",
+            "action": "query_get",
+        }
+    )
+
+    page_view, query_get, field_filter = event.to_GA4_payload("GA4_MEASUREMENT_ID")
+
+    assert page_view["params"]["page_referrer"] == "https://data-staging.niaid.nih.gov/"
+    assert query_get["name"] == "query_get"
+    assert query_get["params"]["page_referrer"] == "https://data-staging.niaid.nih.gov/"
+    assert query_get["params"]["page_location"] == "api-staging.data.niaid.nih.gov/v1/query"
+    assert field_filter["name"] == "field_filter"
+    assert field_filter["params"]["page_referrer"] == "https://data-staging.niaid.nih.gov/"
+    assert field_filter["params"]["page_location"] == "api-staging.data.niaid.nih.gov/v1/query"
