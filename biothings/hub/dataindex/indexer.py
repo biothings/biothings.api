@@ -361,6 +361,7 @@ class Indexer:
         """
 
         steps = kwargs.pop("steps", ("pre", "index", "post"))
+        defer_index_registration = kwargs.pop("_defer_index_registration", False)
         batch_size = kwargs.setdefault("batch_size", 10000)
         # mode = kwargs.setdefault("mode", "index")
         kwargs.setdefault("mode", "index")
@@ -378,9 +379,12 @@ class Indexer:
         # can be sent to elasticsearch within one request, making it
         # inefficient, amplifying the scheduling overhead.
 
+        ordered_steps = tuple(Step.order(steps))
+        defer_index_registration = defer_index_registration or ("index" in ordered_steps and "post" in ordered_steps)
+
         x = IndexerCumulativeResult()
-        for step in Step.order(steps):
-            step = Step.dispatch(step)(self)
+        for step_name in ordered_steps:
+            step = Step.dispatch(step_name)(self)
             self.logger.info(step)
             step.state.started()
             try:
@@ -395,7 +399,10 @@ class Indexer:
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed(x.data)
+                if step.name == "index" and defer_index_registration:
+                    step.state.succeed_without_registration()
+                else:
+                    step.state.succeed(x.data)
 
         return x
 
@@ -571,10 +578,13 @@ class ColdHotIndexer:
         **kwargs,
     ):
         result = []
+        ordered_steps = tuple(Step.order(steps))
+        defer_index_registration = "index" in ordered_steps and "post" in ordered_steps
 
         cold_task = self.cold.index(
             job_manager,
-            steps=set(Step.order(steps)) & {"pre", "index"},
+            steps=set(ordered_steps) & {"pre", "index"},
+            _defer_index_registration=defer_index_registration,
             batch_size=batch_size,
             ids=ids,
             mode=mode,
@@ -583,7 +593,7 @@ class ColdHotIndexer:
 
         hot_task = self.hot.index(
             job_manager,
-            steps=set(Step.order(steps)) & {"index", "post"},
+            steps=set(ordered_steps) & {"index", "post"},
             batch_size=batch_size,
             ids=ids,
             mode="merge",
