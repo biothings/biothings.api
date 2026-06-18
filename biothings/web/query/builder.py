@@ -707,8 +707,12 @@ class ESQueryBuilder:
         Override this to customize default match query.
         By default it implements a multi_match query.
         """
-        assert isinstance(q, (str, int, float, bool))
-        assert isinstance(scopes, (list, tuple, str)) and scopes
+        if not isinstance(q, (str, int, float, bool)):
+            raise ValueError("Query parameter 'q' must be a primitive type (string, integer, float, or boolean).")
+
+        if not isinstance(scopes, (list, tuple, str)) or not scopes:
+            raise ValueError("Parameter 'scopes' must be a non-empty list, tuple, or string.")
+
         _params = dict(query=q, fields=scopes, operator="AND", lenient=True)
         if options.analyzer:
             _params["analyzer"] = options.analyzer
