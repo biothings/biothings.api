@@ -400,6 +400,11 @@ class DataTransform:
         keys = field.split(".")
         try:
             for k in keys:
+                if isinstance(value, (list, tuple)):
+                    # assuming we have a list of dict with k as one of the keys
+                    value = [e[k] for e in value if isinstance(e, dict) and e.get(k) is not None]
+                    # can't descend any further into a list, return the collected values
+                    return [str(v) for v in value]
                 value = value[k]
         except KeyError:
             return None
