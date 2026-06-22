@@ -114,3 +114,24 @@ def test_03():
 
     opt = Option({"keyword": "size", "type": int})
     assert opt.parse(reqargs) == 10
+
+
+def test_list_min_rejects_too_few_values():
+    reqargs = ReqArgs(query={"ids": "cdk"})
+
+    opt = Option({"keyword": "ids", "type": list, "min": 2})
+
+    with pytest.raises(OptionError) as err:
+        opt.parse(reqargs)
+
+    assert err.value.info["keyword"] == "ids"
+    assert err.value.info["min"] == 2
+    assert err.value.info["size"] == 1
+
+
+def test_list_min_allows_enough_values():
+    reqargs = ReqArgs(query={"ids": "cdk,cdk2"})
+
+    opt = Option({"keyword": "ids", "type": list, "min": 2})
+
+    assert opt.parse(reqargs) == ["cdk", "cdk2"]
