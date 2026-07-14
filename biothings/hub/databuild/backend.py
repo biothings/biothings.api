@@ -171,8 +171,12 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     # "step" is the actual sub-source name
                     sub_source = job.get("step")
                     docm = self.master.find_one({"_id": sub_source})
+                    # store the src_meta for each sub-source, if any. This is useful for instance to store mapping information.
                     if docm and docm.get("src_meta"):
-                        meta[sub_source] = docm["src_meta"]
+                        src_meta_doc = docm["src_meta"]
+                        if docm.get("mapping"):
+                            src_meta_doc.setdefault("code", {})["mapping"] = docm["mapping"]
+                        meta[sub_source] = src_meta_doc
                     # Store the latest success upload time
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
                         step_meta = meta.setdefault(sub_source, {})
