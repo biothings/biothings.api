@@ -19,15 +19,17 @@ import os
 import os.path
 import pickle
 import random
+import shutil
 import string
 import sys
 import tarfile
+import tempfile
 import time
 import types
 import urllib.parse
 import warnings
 from collections import UserDict, UserList
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
 from functools import partial
 from itertools import islice
@@ -35,6 +37,11 @@ from shlex import shlex
 
 import requests
 import yaml
+
+try:
+    import zstandard as zstd
+except ImportError:
+    zstd = None
 
 # from json serial, catching special type
 # import _sre     # TODO: unused import;remove it once confirmed
@@ -176,40 +183,51 @@ def anyfile(infile, mode="r"):
     # check if lower version zst handling is needed
     lower_version_zst = False
     if sys.version_info < (3, 14) and filetype == ".zst":
-        import zstandard as zstd
+        if zstd is None:
+            raise ImportError("zstandard is required to open .zst files on Python versions below 3.14")
         lower_version_zst = True
 
     # tarfile handling. works for zst in Python >= 3.14
     if lower_version_zst or tarfile.is_tarfile(infile):
         if lower_version_zst:
-            f = open(infile, "rb")
-            dctx = zstd.ZstdDecompressor()
-            reader = dctx.stream_reader(f)
-            tar_file = tarfile.open(fileobj=reader, mode="r|")  # streaming mode
-        else:
-            tar_file = tarfile.open(infile, mode)
+            with open(infile, "rb") as compressed_file:
+                dctx = zstd.ZstdDecompressor()
+                with closing(dctx.stream_reader(compressed_file)) as reader:
+                    with tarfile.open(fileobj=reader, mode="r|") as tar_file:
+                        for member in tar_file:
+                            if member.name == rawfile:
+                                extracted = tar_file.extractfile(member)
+                                break
+                        else:
+                            extracted = None
 
-        extracted = None
+                        # Keep the returned file readable after closing the tar and zst streams.
+                        if extracted is not None:
+                            with extracted:
+                                spooled_file = tempfile.SpooledTemporaryFile(  # pylint: disable=consider-using-with
+                                    max_size=1024 * 1024
+                                )
+                                shutil.copyfileobj(extracted, spooled_file)
+                            spooled_file.seek(0)
+
+            # extracted member is not a regular file or link
+            if extracted is None:
+                raise ValueError("invalid target file: must be a regular file or a link")
+
+            return spooled_file
+
+        tar_file = tarfile.open(infile, mode)  # pylint: disable=consider-using-with
         try:
-            if lower_version_zst:
-                for member in tar_file:
-                    if member.name == rawfile:
-                        extracted = tar_file.extractfile(member)
-                        break
-            else:
-                extracted = tar_file.extractfile(rawfile)
-        except KeyError:
+            extracted = tar_file.extractfile(rawfile)
+        except KeyError as exc:
             # provided rawfile does not appear in the tarball
             tar_file.close()
-            raise Exception("target member does not contain the provided tar file.")
+            raise FileNotFoundError("target member does not contain the provided tar file.") from exc
 
         # extracted member is not a regular file or link
         if extracted is None:
             tar_file.close()
-            raise Exception("invalid target file: must be a regular file or a link")
-
-        if lower_version_zst:
-            return extracted
+            raise ValueError("invalid target file: must be a regular file or a link")
 
         return io.TextIOWrapper(extracted)
 
@@ -789,7 +807,7 @@ def sanitize_tarfile(tar_object, directory):
         abs_target = os.path.abspath(target)
         prefix = os.path.commonprefix([abs_directory, abs_target])
         if not prefix == abs_directory:
-            raise Exception("Attempted Path Traversal in Tar File")
+            raise ValueError("Attempted Path Traversal in Tar File")
 
 
 def sizeof_fmt(num, suffix="B"):

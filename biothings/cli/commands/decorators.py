@@ -16,8 +16,14 @@ from typing import Callable
 
 from biothings.cli.exceptions import MissingPluginName
 
-
 logger = logging.getLogger(name="biothings-cli")
+
+
+def get_biothings_config():
+    try:
+        return sys.modules["biothings.config"]
+    except KeyError as exc:
+        raise RuntimeError("BioThings CLI configuration has not been loaded") from exc
 
 
 def operation_mode(operation: Callable):
@@ -86,8 +92,7 @@ def operation_mode(operation: Callable):
 
         if inspect.iscoroutinefunction(operation):
             return handle_corountine(*args, **kwargs)
-        else:
-            return handle_function(*args, **kwargs)
+        return handle_function(*args, **kwargs)
 
     return determine_operation_mode
 
@@ -103,8 +108,7 @@ def cli_system_path(operation: Callable):  # pylint: disable=unused-argument
     def update_system_path(*args, **kwargs):
 
         def update_system_path_from_file():
-            from biothings import config
-
+            config = get_biothings_config()
             discovery_path = pathlib.Path(config.BIOTHINGS_CLI_PATH).resolve().absolute()
             path_file = discovery_path.joinpath("biothings_cli.pth")
 
@@ -130,7 +134,6 @@ def cli_system_path(operation: Callable):  # pylint: disable=unused-argument
 
         if inspect.iscoroutinefunction(operation):
             return handle_corountine(*args, **kwargs)
-        else:
-            return handle_function(*args, **kwargs)
+        return handle_function(*args, **kwargs)
 
     return update_system_path

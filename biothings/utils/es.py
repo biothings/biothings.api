@@ -361,13 +361,11 @@ class ESIndexer:
                 # use "_doc" as a fake doc_type to make it compatible with old behavior
                 # in case some caller expects a doc_type level key
                 return {"_doc": m[self._index]["mappings"]}
-            else:
-                return m[self._index]["mappings"]
-        else:
-            raise RuntimeError(
-                f"Server Elasticsearch version is {self._host_major_ver} "
-                "which is unsupported (must >=7) when using old ESIndexer class"
-            )
+            return m[self._index]["mappings"]
+        raise RuntimeError(
+            f"Server Elasticsearch version is {self._host_major_ver} "
+            "which is unsupported (must >=7) when using old ESIndexer class"
+        )
 
     def update_mapping(self, m):
         if self._host_major_ver >= 7:
@@ -496,7 +494,7 @@ class ESIndexer:
         try first with dryrun turned on, and then perform the actual updates with dryrun off.
         """
         if self._host_major_ver >= 7:
-            raise RuntimeError("clean_field is no longer supported")   # It may still work, but untested yet
+            raise RuntimeError("clean_field is no longer supported")  # It may still work, but untested yet
         q = {"query": {"constant_score": {"filter": {"exists": {"field": field}}}}}
         cnt_orphan_doc = 0
         cnt = 0

@@ -56,6 +56,7 @@ import random
 import shutil
 import sys
 import uuid
+from importlib import import_module
 from typing import Optional, Union
 
 import jsonschema
@@ -66,9 +67,9 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
-from biothings.cli.commands.decorators import cli_system_path, operation_mode
-from biothings.cli.structure import TEMPLATE_DIRECTORY
+from biothings.cli.commands.decorators import cli_system_path, get_biothings_config, operation_mode
 from biothings.cli.exceptions import UnknownUploaderSource
+from biothings.cli.structure import TEMPLATE_DIRECTORY
 from biothings.cli.utils import (
     clean_dumped_files,
     clean_uploaded_sources,
@@ -85,6 +86,10 @@ from biothings.utils.serializer import JSONDecodeError, load_json, to_json
 from biothings.utils.workers import upload_worker
 
 logger = logging.getLogger(name="biothings-cli")
+
+
+def _load_attr(module_path: str, attr_name: str):
+    return getattr(import_module(module_path), attr_name)
 
 
 # do not apply operation_mode decorator since this operation means to create a new plugin
@@ -127,9 +132,9 @@ async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True, m
     """
     Perform dump for the given plugin
     """
-    from biothings import config
-    from biothings.cli.assistant import CLIAssistant
-    from biothings.utils import hub_db
+    config = get_biothings_config()
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
+    hub_db = import_module("biothings.utils.hub_db")
 
     hub_db.setup(config)
     assistant_instance = CLIAssistant(plugin_name)
@@ -184,8 +189,7 @@ async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000,
     >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
     >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
     """
-    from biothings.cli.assistant import CLIAssistant
-
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -243,8 +247,7 @@ async def do_parallel_upload(
 
     This is a modified version of the ParallelUploader `update_data` source call
     """
-    from biothings.cli.assistant import CLIAssistant
-
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -368,10 +371,10 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
     The default location is localhost:9200. If successful a couple frames detailing the build and
     index information will be displayed to the enduser
     """
-    from biothings import config
-    from biothings.cli.assistant import CLIAssistant
-    from biothings.hub.databuild.builder import BuilderException
-    from biothings.utils.manager import JobManager
+    config = get_biothings_config()
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
+    BuilderException = _load_attr("biothings.hub.databuild.builder", "BuilderException")
+    JobManager = _load_attr("biothings.utils.manager", "JobManager")
 
     if platform.system() == "Windows":
         logger.warning("The `biothings-cli dataplugin index` command isn't supported on windows")
@@ -500,8 +503,7 @@ async def do_list(
     """
     List the dumped files, uploaded sources, or hubdb content.
     """
-    from biothings.cli.assistant import CLIAssistant
-
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
     assistant_instance = CLIAssistant(plugin_name)
     if dump:
         dumper_instance = assistant_instance.get_dumper_class()
@@ -524,7 +526,7 @@ async def do_list(
 
 @cli_system_path
 @operation_mode
-async def do_inspect(
+async def do_inspect(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     plugin_name: Optional[str] = None,
     sub_source_name: Optional[str] = None,
     mode: str = "type,stats",
@@ -535,8 +537,7 @@ async def do_inspect(
     """
     Perform inspection on a data plugin.
     """
-    from biothings.cli.assistant import CLIAssistant
-
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
 
@@ -593,9 +594,9 @@ async def do_serve(plugin_name: Optional[str] = None, host: str = "localhost", p
     """
     Handles creation of a basic web server for hosting files using for a dataplugin
     """
-    from biothings.cli.assistant import CLIAssistant
-    from biothings.cli.web_app import main
-    from biothings.utils import hub_db
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
+    main = _load_attr("biothings.cli.web_app", "main")
+    hub_db = import_module("biothings.utils.hub_db")
 
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
@@ -614,8 +615,7 @@ async def do_clean(
     """
     Clean the dumped files, uploaded sources, or both.
     """
-    from biothings.cli.assistant import CLIAssistant
-
+    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
     if clean_all:
         dump = True
         upload = True
@@ -644,8 +644,7 @@ async def display_schema():
     Loads the jsonschema definition file and displays it to the
     console
     """
-    from biothings.hub.dataplugin.loaders.schema import load_manifest_schema
-
+    load_manifest_schema = _load_attr("biothings.hub.dataplugin.loaders.schema", "load_manifest_schema")
     manifest_schema = load_manifest_schema()
     schema_validator = jsonschema.validators.validator_for(manifest_schema)
     valid_schema = False
@@ -677,8 +676,7 @@ async def validate_manifest(plugin_name: Optional[str] = None):
     Loads the manifest file and validates it against the schema file
     If an error exists it will display the error to the enduser
     """
-    from biothings.hub.dataplugin.loaders.loader import ManifestBasedPluginLoader
-
+    ManifestBasedPluginLoader = _load_attr("biothings.hub.dataplugin.loaders.loader", "ManifestBasedPluginLoader")
     if plugin_name is None:
         plugin_directory = pathlib.Path.cwd().resolve().absolute()
         plugin_name = plugin_directory.name

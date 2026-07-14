@@ -137,7 +137,7 @@ def listing(
 
 
 @dataplugin_application.command(name="inspect")
-def inspect_source(
+def inspect_source(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     plugin_name: Annotated[Optional[str], typer.Option("--name", "-n", help=PLUGIN_NAME_HELP)] = None,
     sub_source_name: Annotated[
         Optional[str], typer.Option("--sub-source-name", "-s", help="Your sub source name")

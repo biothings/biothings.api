@@ -209,9 +209,6 @@ LICENSE_TRANSFORM = {
 # Sentry project address
 SENTRY_CLIENT_KEY = ""
 
-# Google Analytics Account ID
-GA_ACCOUNT = ""
-
 # *****************************************************************************
 # Endpoints Specifics & Others
 # *****************************************************************************

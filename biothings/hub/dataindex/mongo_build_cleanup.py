@@ -1,9 +1,12 @@
+from datetime import datetime
 from functools import partial
+
+from config import logger as logging
 
 from biothings import config as btconfig
 from biothings.hub.manager import BaseManager
+from biothings.utils import mongo
 from biothings.utils.hub_db import get_src_build
-from config import logger as logging
 
 
 class MongoBuildCleaner:
@@ -19,8 +22,6 @@ class MongoBuildCleaner:
         if build_name:
             filters["_id"] = build_name
         if year:
-            from datetime import datetime
-
             year = int(year)
             filters["started_at"] = {
                 "$gte": datetime(year, 1, 1),
@@ -50,8 +51,6 @@ class MongoBuildCleaner:
                 "target_collections_deleted_count": 0,
                 "target_collections_deleted": [],
             }
-
-        from biothings.utils import mongo
 
         conn = mongo.get_hub_db_async_conn()
         try:
@@ -99,8 +98,6 @@ class MongoBuildCleaner:
 
         Returns a dict with ``builds_removed`` (count) and ``builds_removed_names``.
         """
-        from biothings.utils import mongo
-
         logging.info("Starting validation of MongoDB builds...")
         conn = mongo.get_hub_db_async_conn()
         try:
