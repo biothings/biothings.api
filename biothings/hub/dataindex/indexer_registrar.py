@@ -124,8 +124,7 @@ class PreIndexJSR(IndexJobStateRegistrar):
 
 
 class MainIndexJSR(IndexJobStateRegistrar):
-    def started(self, step="index", **extra):
-        super().started(step, **extra)
+    pass
 
 
 class PostIndexJSR(IndexJobStateRegistrar):
