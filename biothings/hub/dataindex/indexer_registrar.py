@@ -107,8 +107,8 @@ class IndexJobStateRegistrar:
 
 
 class PreIndexJSR(IndexJobStateRegistrar):
-    def started(self, **extra):
-        super().started("pre-index", **extra)
+    def started(self, step="pre-index", **extra):
+        super().started(step, **extra)
 
     def succeed(self, result):
         # no result registration on pre-indexing step.
@@ -124,10 +124,10 @@ class PreIndexJSR(IndexJobStateRegistrar):
 
 
 class MainIndexJSR(IndexJobStateRegistrar):
-    def started(self, **extra):
-        super().started("index", **extra)
+    def started(self, step="index", **extra):
+        super().started(step, **extra)
 
 
 class PostIndexJSR(IndexJobStateRegistrar):
-    def started(self, **extra):
-        super().started("post-index", **extra)
+    def started(self, step="post-index", **extra):
+        super().started(step, **extra)
