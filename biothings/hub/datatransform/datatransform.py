@@ -392,6 +392,12 @@ class DataTransform:
         """
         Performs a nested lookup of doc using a period (.) delimited
         list of fields.  This is a nested dictionary lookup.
+
+        Some hits (e.g. gene documents from MyGene.info) store an
+        intermediate field as a list of dicts instead of a single dict
+        when the document maps to more than one value (e.g. a gene
+        with multiple Ensembl IDs) - the first match found across the
+        list is returned.
         :param doc: document to perform lookup on
         :param field: period delimited list of fields
         :return:
@@ -399,9 +405,16 @@ class DataTransform:
         value = doc
         keys = field.split(".")
         try:
-            for k in keys:
+            for i, k in enumerate(keys):
+                if isinstance(value, (list, tuple)):
+                    remaining = ".".join(keys[i:])
+                    for item in value:
+                        result = DataTransform._nested_lookup(item, remaining)
+                        if result is not None:
+                            return result
+                    return None
                 value = value[k]
-        except KeyError:
+        except (KeyError, TypeError):
             return None
 
         return str(value)
