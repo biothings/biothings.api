@@ -180,9 +180,9 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
 def get_backend(uri, db, col, bk_type):
     if bk_type != "mongodb":
         raise NotImplementedError("Backend type '%s' not supported" % bk_type)
-    from biothings.utils.mongo import MongoClient
+    from biothings.utils.mongo import _cached_client
 
-    colobj = MongoClient(uri)[db][col]
+    colobj = _cached_client(uri)[db][col]
     return DocMongoDBBackend(colobj)
 
 

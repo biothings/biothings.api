@@ -28,7 +28,7 @@ from biothings.hub.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.mongo import DatabaseClient, id_feeder
+from biothings.utils.mongo import DatabaseClient, cached_client, id_feeder
 from biothings.utils.manager import JobManager
 
 
@@ -453,7 +453,12 @@ class Indexer:
             await client.close()
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
-        client = DatabaseClient(**self.mongo_client_args)
+        # DatabaseClient holds a connection pool and is meant to be created once and
+        # shared, not per call - do_index() runs once per indexing job, but a hub can run
+        # many index jobs over its lifetime, so an uncached client here still leaks one
+        # connection pool per job into the long-lived hub process.
+        key = ("indexer_mongo_client", tuple(sorted(self.mongo_client_args.items())))
+        client = cached_client(key, lambda: DatabaseClient(**self.mongo_client_args))
         database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]
 

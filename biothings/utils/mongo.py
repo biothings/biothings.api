@@ -177,29 +177,42 @@ def requires_config(func):
 
 
 # MongoClient (DatabaseClient) instances hold a connection pool and are meant to be
-# created once and shared, not instantiated per call. get_conn()/get_hub_db_conn() used to
-# create a brand new client (and socket pool) on every call: harmless for short-lived forked
-# workers (the OS reclaims the fds on process exit), but a fd leak when uploader/job code runs
-# as threads inside the long-lived hub process (e.g. HUB_FREE_THREADED_WORKERS on a
-# free-threaded Python build), since nothing ever closes those clients.
-# The cache is keyed by (uri, pid) so that a forked child never reuses a client created by its
+# created once and shared, not instantiated per call. get_conn()/get_hub_db_conn()/
+# get_target_conn() used to create a brand new client (and socket pool) on every call.
+# That's harmless for short-lived forked workers (the OS reclaims the fds on process
+# exit), but a fd leak anywhere these are called from the long-lived hub/web process -
+# e.g. uploader/job code running as threads under HUB_FREE_THREADED_WORKERS, or plain
+# web request handlers (build_info, flatten_inspection_data, ...) that call
+# get_target_db()/create_backend() on every request - since nothing ever closes those
+# clients.
+# The cache is keyed by (key, pid) so that a forked child never reuses a client created by its
 # parent (MongoClient/sockets are not fork-safe) - it lazily reconnects on first use instead.
 _client_cache_lock = threading.Lock()
-_client_cache = {}  # uri -> (pid, DatabaseClient)
+_client_cache = {}  # key -> (pid, client)
 
 
-def _cached_client(uri):
+def cached_client(key, factory):
+    """Generic pid/thread-safe cache for client-like objects (e.g. MongoClient) that hold
+    a connection pool and are meant to be created once and shared, not per call. ``key``
+    must be hashable and unique to the client's identity (e.g. a connection URI, or a tag
+    plus its connection kwargs); ``factory`` is called with no arguments to build a fresh
+    client on a cache miss or after a fork boundary.
+    """
     pid = os.getpid()
-    cached = _client_cache.get(uri)
+    cached = _client_cache.get(key)
     if cached is not None and cached[0] == pid:
         return cached[1]
     with _client_cache_lock:
-        cached = _client_cache.get(uri)
+        cached = _client_cache.get(key)
         if cached is not None and cached[0] == pid:
             return cached[1]
-        client = DatabaseClient(uri)
-        _client_cache[uri] = (pid, client)
+        client = factory()
+        _client_cache[key] = (pid, client)
         return client
+
+
+def _cached_client(uri):
+    return cached_client(uri, lambda: DatabaseClient(uri))
 
 
 @requires_config
@@ -316,8 +329,7 @@ def get_target_conn():
         )
     else:
         uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
-    conn = DatabaseClient(uri)
-    return conn
+    return _cached_client(uri)
 
 
 @requires_config
