@@ -7,6 +7,7 @@ import os
 from functools import partial
 
 import biothings.utils.mongo as mongo
+from biothings import config as btconfig
 from biothings.utils.backend import DocBackendBase, DocESBackend, DocMongoBackend
 from biothings.utils.common import get_random_string, get_timestamp
 from biothings.utils.es import ESIndexer
@@ -174,7 +175,9 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     # store the src_meta for each sub-source, if any. This is useful for instance to store mapping information.
                     if docm and docm.get("src_meta"):
                         src_meta_doc = docm["src_meta"]
-                        if docm.get("mapping"):
+                        # optionally expose each source's field mapping in the build metadata,
+                        # enabled via the INCLUDE_SOURCE_MAPPING_IN_METADATA config flag.
+                        if getattr(btconfig, "INCLUDE_SOURCE_MAPPING_IN_METADATA", False) and docm.get("mapping"):
                             src_meta_doc.setdefault("code", {})["mapping"] = docm["mapping"]
                         meta[sub_source] = src_meta_doc
                     # Store the latest success upload time
