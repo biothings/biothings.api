@@ -28,7 +28,7 @@ from biothings.hub.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.mongo import DatabaseClient, cached_client, id_feeder
+from biothings.utils.mongo import DatabaseClient, cached_client, id_feeder, kwargs_cache_key
 from biothings.utils.manager import JobManager
 
 
@@ -457,7 +457,7 @@ class Indexer:
         # shared, not per call - do_index() runs once per indexing job, but a hub can run
         # many index jobs over its lifetime, so an uncached client here still leaks one
         # connection pool per job into the long-lived hub process.
-        key = ("indexer_mongo_client", tuple(sorted(self.mongo_client_args.items())))
+        key = kwargs_cache_key("indexer_mongo_client", self.mongo_client_args)
         client = cached_client(key, lambda: DatabaseClient(**self.mongo_client_args))
         database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]

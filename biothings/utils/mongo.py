@@ -2,6 +2,7 @@ import datetime
 import glob
 import inspect
 import io
+import json
 import logging
 import os
 import threading
@@ -191,12 +192,21 @@ _client_cache_lock = threading.Lock()
 _client_cache = {}  # key -> (pid, client)
 
 
+def kwargs_cache_key(tag, kwargs):
+    """Build a hashable cached_client() key from a tag and a client-constructor kwargs
+    dict that may itself contain unhashable values (e.g. a ``hosts`` list for an
+    Elasticsearch client) - a plain ``tuple(sorted(kwargs.items()))`` would raise
+    TypeError in that case.
+    """
+    return (tag, json.dumps(kwargs, sort_keys=True, default=str))
+
+
 def cached_client(key, factory):
     """Generic pid/thread-safe cache for client-like objects (e.g. MongoClient) that hold
     a connection pool and are meant to be created once and shared, not per call. ``key``
-    must be hashable and unique to the client's identity (e.g. a connection URI, or a tag
-    plus its connection kwargs); ``factory`` is called with no arguments to build a fresh
-    client on a cache miss or after a fork boundary.
+    must be hashable and unique to the client's identity (e.g. a connection URI, or a key
+    built by ``kwargs_cache_key()``); ``factory`` is called with no arguments to build a
+    fresh client on a cache miss or after a fork boundary.
     """
     pid = os.getpid()
     cached = _client_cache.get(key)
