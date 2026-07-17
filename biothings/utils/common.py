@@ -166,6 +166,25 @@ def safewfile(filename, prompt=True, default="C", mode="w"):
     return open(filename, mode), filename
 
 
+def _closing_parent(wrapper, parent):
+    """Make closing ``wrapper`` also close ``parent``.
+
+    Used for archive members (tarfile/zipfile) whose extracted stream doesn't own the
+    archive's underlying file descriptor - closing just the stream leaves the archive
+    handle open (and leaking) until garbage collected.
+    """
+    close = wrapper.close
+
+    def close_and_close_parent():
+        try:
+            close()
+        finally:
+            parent.close()
+
+    wrapper.close = close_and_close_parent
+    return wrapper
+
+
 def anyfile(infile, mode="r"):
     """
     return a file handler with the support for gzip/zip compressed files.
@@ -229,7 +248,7 @@ def anyfile(infile, mode="r"):
             tar_file.close()
             raise ValueError("invalid target file: must be a regular file or a link")
 
-        return io.TextIOWrapper(extracted)
+        return _closing_parent(io.TextIOWrapper(extracted), tar_file)
 
     if filetype == ".gz":
         # import gzip
@@ -237,7 +256,8 @@ def anyfile(infile, mode="r"):
     elif filetype == ".zip":
         import zipfile
 
-        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, mode).open(rawfile, mode))
+        zip_file = zipfile.ZipFile(infile, mode)  # pylint: disable=consider-using-with
+        in_f = _closing_parent(io.TextIOWrapper(zip_file.open(rawfile, mode)), zip_file)
     elif filetype == ".xz":
         import lzma
 
@@ -826,10 +846,10 @@ def unzipall(folder, pattern="*.zip"):
     import zipfile
 
     for zfile in glob.glob(os.path.join(folder, pattern)):
-        zf = zipfile.ZipFile(zfile)
-        logging.info("unzipping '%s'", zf.filename)
-        zf.extractall(folder)
-        logging.info("done unzipping '%s'", zf.filename)
+        with zipfile.ZipFile(zfile) as zf:
+            logging.info("unzipping '%s'", zf.filename)
+            zf.extractall(folder)
+            logging.info("done unzipping '%s'", zf.filename)
 
 
 def untargzall(folder, pattern="*.tar.gz"):
@@ -839,12 +859,11 @@ def untargzall(folder, pattern="*.tar.gz"):
     import tarfile
 
     for tgz in glob.glob(os.path.join(folder, pattern)):
-        gz = gzip.GzipFile(tgz)
-        tf = tarfile.TarFile(fileobj=gz)
-        sanitize_tarfile(tf, folder)
-        logging.info("untargz '%s'", tf.name)
-        tf.extractall(folder)
-        logging.info("done untargz '%s'", tf.name)
+        with gzip.GzipFile(tgz) as gz, tarfile.TarFile(fileobj=gz) as tf:
+            sanitize_tarfile(tf, folder)
+            logging.info("untargz '%s'", tf.name)
+            tf.extractall(folder)
+            logging.info("done untargz '%s'", tf.name)
 
 
 def untarall(folder, pattern="*.tar"):
@@ -854,11 +873,11 @@ def untarall(folder, pattern="*.tar"):
     import tarfile
 
     for tg in glob.glob(os.path.join(folder, pattern)):
-        tf = tarfile.TarFile(tg)
-        sanitize_tarfile(tf, folder)
-        logging.info("untargz '%s'", tf.name)
-        tf.extractall(folder)
-        logging.info("done untar '%s'", tf.name)
+        with tarfile.TarFile(tg) as tf:
+            sanitize_tarfile(tf, folder)
+            logging.info("untargz '%s'", tf.name)
+            tf.extractall(folder)
+            logging.info("done untar '%s'", tf.name)
 
 
 def gunzipall(folder, pattern="*.gz"):

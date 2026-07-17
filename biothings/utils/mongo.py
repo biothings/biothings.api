@@ -4,6 +4,7 @@ import inspect
 import io
 import logging
 import os
+import threading
 import time
 from collections.abc import Iterable
 from functools import partial, wraps
@@ -175,6 +176,32 @@ def requires_config(func):
     return func_wrapper
 
 
+# MongoClient (DatabaseClient) instances hold a connection pool and are meant to be
+# created once and shared, not instantiated per call. get_conn()/get_hub_db_conn() used to
+# create a brand new client (and socket pool) on every call: harmless for short-lived forked
+# workers (the OS reclaims the fds on process exit), but a fd leak when uploader/job code runs
+# as threads inside the long-lived hub process (e.g. HUB_FREE_THREADED_WORKERS on a
+# free-threaded Python build), since nothing ever closes those clients.
+# The cache is keyed by (uri, pid) so that a forked child never reuses a client created by its
+# parent (MongoClient/sockets are not fork-safe) - it lazily reconnects on first use instead.
+_client_cache_lock = threading.Lock()
+_client_cache = {}  # uri -> (pid, DatabaseClient)
+
+
+def _cached_client(uri):
+    pid = os.getpid()
+    cached = _client_cache.get(uri)
+    if cached is not None and cached[0] == pid:
+        return cached[1]
+    with _client_cache_lock:
+        cached = _client_cache.get(uri)
+        if cached is not None and cached[0] == pid:
+            return cached[1]
+        client = DatabaseClient(uri)
+        _client_cache[uri] = (pid, client)
+        return client
+
+
 @requires_config
 def get_conn(server, port):
     try:
@@ -182,8 +209,7 @@ def get_conn(server, port):
             uri = f"mongodb://{config.DATA_SRC_SERVER_USERNAME}:{config.DATA_SRC_SERVER_PASSWORD}@{server}:{port}"
         else:
             uri = f"mongodb://{server}:{port}"
-        conn = DatabaseClient(uri)
-        return conn
+        return _cached_client(uri)
     except (AttributeError, ValueError):
         # missing config variables (or invalid), we'll pretend it's a dummy connection to mongo
         # (dummy here means there really shouldn't be any call to get_conn() but mongo is too much tied to the code and needs more work to unlink it)
@@ -192,8 +218,7 @@ def get_conn(server, port):
 
 @requires_config
 def get_hub_db_conn():
-    conn = DatabaseClient(config.HUB_DB_BACKEND["uri"])
-    return conn
+    return _cached_client(config.HUB_DB_BACKEND["uri"])
 
 
 @requires_config
