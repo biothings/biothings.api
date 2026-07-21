@@ -30,12 +30,12 @@ options: dotdict, optional query options.
 
 """
 
-from collections import UserString, namedtuple
-from copy import deepcopy
-from random import randrange
 import logging
 import os
 import re
+from collections import UserString, namedtuple
+from copy import deepcopy
+from random import randrange
 from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch.dsl import MultiSearch, Q, Search
@@ -46,7 +46,6 @@ from biothings.utils.common import dotdict
 from biothings.web.query.formatter import ESResultFormatter
 from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
-
 
 logger = logging.getLogger(__name__)
 
@@ -579,7 +578,7 @@ class ESQueryBuilder:
 
         except IllegalOperation as illegal_operation_error:
             logger.exception(illegal_operation_error)
-            raise ValueError from illegal_operation_error
+            raise ValueError(str(illegal_operation_error)) from illegal_operation_error
 
         if options.get("rawquery"):
             raise RawQueryInterrupt(search.to_dict())
@@ -718,6 +717,37 @@ class ESQueryBuilder:
             _params["analyzer"] = options.analyzer
         return Search().query("multi_match", **_params)
 
+    @staticmethod
+    def _validate_sort(sort):
+        """
+        Validate the user-provided sort fields before handing them to
+        elasticsearch-dsl.
+
+        Biothings sort syntax is a comma-separated list of field names,
+        each optionally prefixed with '-' for descending order (ascending
+        otherwise). A common mistake is to use the Elasticsearch-style
+        'field:asc' / 'field:desc' syntax, which ES then rejects with an
+        opaque "No mapping found for [field:desc]" shard error. Catch that
+        (and other malformed entries) here and return a clear message.
+        """
+        for field in sort:
+            # the '-' descending prefix is the only allowed decoration
+            name = field[1:] if field.startswith("-") else field
+            if not name:
+                raise ValueError(
+                    f"Invalid sort field '{field}': missing field name. "
+                    'Use a comma-separated list of fields, each optionally '
+                    'prefixed with "-" for descending order, e.g. sort=-taxid,symbol.'
+                )
+            if ":" in name:
+                _field, _, _order = name.partition(":")
+                hint = f"sort=-{_field}" if _order.lower().startswith("desc") else f"sort={_field}"
+                raise ValueError(
+                    f"Invalid sort field '{field}': the 'field:order' syntax is not supported. "
+                    'Prefix the field with "-" for descending order, otherwise it is ascending. '
+                    f"Did you mean '{hint}'?"
+                )
+
     def apply_extras(self, search, options):
         """
         Process non-query options and customize their behaviors.
@@ -738,6 +768,7 @@ class ESQueryBuilder:
         # add es params
         if isinstance(options.sort, list):
             # accept '-' prefixed field names
+            self._validate_sort(options.sort)
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
             if "all" not in options._source:
