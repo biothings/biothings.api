@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
+from elastic_transport import ObjectApiResponse
 
 from biothings.web.query.pipeline import (
     AuthenticationException,
@@ -46,15 +47,33 @@ async def test_end_scroll_interrupt():
 
 @pytest.mark.asyncio
 async def test_raw_result_interrupt():
+    # a single search returns an ObjectApiResponse, which is unwrapped via .body
     @capturesESExceptions
     async def func():
-        raise RawResultInterrupt(type("obj", (object,), {"body": "test_body"}))
+        raise RawResultInterrupt(ObjectApiResponse(body="test_body", meta=None))
 
     with pytest.raises(QueryPipelineInterrupt) as exc_info:
         await func()
     assert exc_info.value.code == 200
     assert exc_info.value.summary is None
     assert exc_info.value.details == "test_body"
+
+
+@pytest.mark.asyncio
+async def test_raw_result_interrupt_multisearch():
+    # a multisearch (e.g. POST queries) returns a plain list of responses,
+    # which must be passed through as-is (no .body attribute to unwrap)
+    responses = [{"hits": {"total": 1}}, {"hits": {"total": 2}}]
+
+    @capturesESExceptions
+    async def func():
+        raise RawResultInterrupt(responses)
+
+    with pytest.raises(QueryPipelineInterrupt) as exc_info:
+        await func()
+    assert exc_info.value.code == 200
+    assert exc_info.value.summary is None
+    assert exc_info.value.details == responses
 
 
 @pytest.mark.asyncio
