@@ -3,6 +3,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass
 
+from elastic_transport import ObjectApiResponse
 from elasticsearch.exceptions import (
     AuthenticationException,
     AuthorizationException,
@@ -107,7 +108,12 @@ def capturesESExceptions(func):
         ) as exc:
             raise QueryPipelineInterrupt(exc.data)
         except RawResultInterrupt as exc:  # correspond to 'raw' option
-            raise QueryPipelineInterrupt(exc.data.body)
+            # a single search returns an ObjectApiResponse (unwrap via .body),
+            # while a multisearch (e.g. POST queries) returns a plain list.
+            data = exc.data
+            if isinstance(data, ObjectApiResponse):
+                data = data.body
+            raise QueryPipelineInterrupt(data)
         except AssertionError as exc:
             # in our application, AssertionError should be internal
             # the individual components raising the error should instead

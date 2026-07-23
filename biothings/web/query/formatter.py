@@ -30,7 +30,7 @@ class FormatterDict(UserDict):
 
     def include(self, keys):
         for key in list(self.keys()):
-            if key in keys:
+            if key not in keys:
                 self.pop(key)
 
     def wrap(self, key, kls):
@@ -84,10 +84,24 @@ class ESResultFormatter(ResultFormatter):
     class _Hits(Hits):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # Check if this is an error response from Elasticsearch
+            # Check if this is an error response from Elasticsearch. This
+            # happens per-query inside a multisearch (msearch) response, where
+            # errors are embedded in each result rather than raised as a single
+            # RequestError. Surface the underlying ES reason (preferring the
+            # more specific root_cause) so the user sees e.g. "No mapping found
+            # for [score] in order to sort on" instead of a generic message.
             if "error" in self.data:
                 logger.error("ES returned error response: %s", self.data)
-                raise ValueError("Invalid response format")
+                error = self.data["error"]
+                reason = ""
+                if isinstance(error, dict):
+                    root_cause = error.get("root_cause") or []
+                    if root_cause and isinstance(root_cause[0], dict):
+                        reason = root_cause[0].get("reason", "")
+                    reason = reason or error.get("reason", "")
+                elif isinstance(error, str):
+                    reason = error
+                raise ValueError(reason or "Invalid response format")
 
             # make sure the document is coming from
             # elasticsearch at initialization time

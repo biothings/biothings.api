@@ -1,5 +1,7 @@
 import pprint
 
+import pytest
+
 from biothings.web.query.builder import ESQueryBuilder, MongoQueryBuilder, SQLQueryBuilder
 
 
@@ -62,3 +64,34 @@ def test_elasticsearch_querybuilder():
     assert "*.description" in query["_source"]["excludes"]
     assert "_id" in query["_source"]["includes"]
     assert "fieldA" in query["_source"]["includes"]
+
+
+def test_elasticsearch_querybuilder_sort():
+    builder = ESQueryBuilder()
+
+    # valid: plain (ascending) and '-' prefixed (descending) fields
+    query = builder.build("term", sort=["symbol", "-taxid", "-ensembl.gene"]).to_dict()
+    assert query["sort"] == ["symbol", {"taxid": {"order": "desc"}}, {"ensembl.gene": {"order": "desc"}}]
+
+    # invalid: the Elasticsearch-style 'field:order' syntax is rejected with a
+    # helpful message instead of surfacing an opaque ES shard error.
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", sort=["_score:desc"])
+    message = str(exc_info.value)
+    assert "field:order" in message
+    assert "sort=-_score" in message  # suggests the correct form
+
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", sort=["symbol:asc"])
+    assert "sort=symbol" in str(exc_info.value)
+
+    # invalid: a lone '-' with no field name
+    with pytest.raises(ValueError):
+        builder.build("term", sort=["-"])
+
+    # elasticsearch-dsl rejects '-_score' (score is descending by default); the
+    # IllegalOperation is surfaced as a ValueError that carries a real message
+    # (previously the message was empty).
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", sort=["-_score"])
+    assert str(exc_info.value)  # non-empty, explanatory message
