@@ -1,3 +1,16 @@
+v1.1.2 (2026/07/23)
+    biothings.hub improvements:
+        - Added index recovery modes for resume and purge workflows, including mode metadata, job-state context, batched missing-ID checks, and client cleanup. ([#453](https://github.com/biothings/biothings.api/pull/453))
+        - Fixed index lookup compatibility for indexes whose metadata stores counts as `total_documents`. ([#453](https://github.com/biothings/biothings.api/pull/453))
+
+    biothings.web improvements:
+        - Fixed POST raw query handling so multisearch raw results are returned without assuming a single response body.
+        - Added sort syntax validation and clearer Elasticsearch error messages for invalid fields or unsupported `field:order` sort input.
+        - Fixed list minimum validation and FormatterDict.include() behavior. ([#452](https://github.com/biothings/biothings.api/pull/452))
+
+    Misc improvements:
+        - Avoided network calls when detecting GitHub data plugin assistant URLs. ([#453](https://github.com/biothings/biothings.api/pull/453))
+        - Stabilized random query handler tests.
 
 v1.1.1 (2026/06/18)
     biothings.hub improvements:
@@ -11,7 +24,6 @@ v1.1.1 (2026/06/18)
     Misc improvements:
         - Fixed GA4 analytics channel tests for newer aiohttp behavior without relying on aioresponses internals. ([#448](https://github.com/biothings/biothings.api/pull/448))
         - Updated the Elasticsearch dependency floor to 8.18+ for supported Python versions.
-
 
 v1.1.0 (2026/05/27)
     Highlights:
