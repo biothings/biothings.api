@@ -736,7 +736,7 @@ class ESQueryBuilder:
             if not name:
                 raise ValueError(
                     f"Invalid sort field '{field}': missing field name. "
-                    'Use a comma-separated list of fields, each optionally '
+                    "Use a comma-separated list of fields, each optionally "
                     'prefixed with "-" for descending order, e.g. sort=-taxid,symbol.'
                 )
             if ":" in name:
