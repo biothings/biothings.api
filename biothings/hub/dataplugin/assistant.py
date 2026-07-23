@@ -133,10 +133,14 @@ class GithubAssistant(BaseAssistant):
         return self._plugin_name
 
     def can_handle(self) -> bool:
+        parsed_url = urllib.parse.urlparse(self.url)
+        if parsed_url.netloc.lower() == "github.com":
+            return True
+
         # analyze headers to guess type of required assitant
         try:
-            headers = requests.head(self.url).headers
-            return headers.get("server").lower() == "github.com"
+            headers = requests.head(self.url, allow_redirects=True).headers
+            return headers.get("server", "").lower() == "github.com"
         except Exception as gen_exc:
             self.logger.exception(gen_exc)
             self.logger.error("%s plugin can't handle URL '%s'", self.plugin_type, self.url)
