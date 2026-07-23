@@ -217,7 +217,9 @@ async def test_es_rejected_execution_exception():
     async def func():
         exc = TransportError("test_es_rejected_execution_exception")
         exc.status_code = 503
-        exc.info = {"error": {"type": "es_rejected_execution_exception", "reason": "rejected execution of TimedRunnable..."}}
+        exc.info = {
+            "error": {"type": "es_rejected_execution_exception", "reason": "rejected execution of TimedRunnable..."}
+        }
         raise exc
 
     with pytest.raises(QueryPipelineException) as exc_info:
