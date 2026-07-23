@@ -4,8 +4,6 @@ import urllib.parse
 from pathlib import Path
 from typing import Optional, Union
 
-import requests
-
 from biothings import config as btconfig
 from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.plugins import GitDataPlugin, ManualDataPlugin
@@ -134,17 +132,7 @@ class GithubAssistant(BaseAssistant):
 
     def can_handle(self) -> bool:
         parsed_url = urllib.parse.urlparse(self.url)
-        if parsed_url.netloc.lower() == "github.com":
-            return True
-
-        # analyze headers to guess type of required assitant
-        try:
-            headers = requests.head(self.url, allow_redirects=True).headers
-            return headers.get("server", "").lower() == "github.com"
-        except Exception as gen_exc:
-            self.logger.exception(gen_exc)
-            self.logger.error("%s plugin can't handle URL '%s'", self.plugin_type, self.url)
-            return False
+        return parsed_url.hostname in {"github.com", "www.github.com"}
 
     def get_classdef(self):
         # generate class dynamically and register
