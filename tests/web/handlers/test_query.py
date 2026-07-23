@@ -839,9 +839,14 @@ class TestQueryString(BiothingsWebAppTest):
             "hits": [ ... ]
         }
         """
-        res1 = self.query(q="__any__")
-        res2 = self.query(q="__any__")
-        assert res1["hits"][0]["_id"] != res2["hits"][0]["_id"]
+        responses = [self.query(q="__any__") for _ in range(5)]
+        for response in responses:
+            assert response["total"] == 100
+            assert response["hits"]
+
+        # Random sampling can legitimately return the same top hit twice.
+        sampled_ids = {response["hits"][0]["_id"] for response in responses}
+        assert len(sampled_ids) > 1
 
     def test_02_none(self):
         """GET /query?q=
