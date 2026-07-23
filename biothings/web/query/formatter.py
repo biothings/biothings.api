@@ -30,7 +30,7 @@ class FormatterDict(UserDict):
 
     def include(self, keys):
         for key in list(self.keys()):
-            if key in keys:
+            if key not in keys:
                 self.pop(key)
 
     def wrap(self, key, kls):

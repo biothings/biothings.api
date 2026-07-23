@@ -545,7 +545,7 @@ class Validator:
             raise OptionError(keyword=self.keyword, max=self.max, num=num)
 
     def _check_list_min(self, container):
-        if len(container) > self.min:
+        if len(container) < self.min:
             raise OptionError(keyword=self.keyword, min=self.min, size=len(container))
 
     def _check_num_min(self, num):

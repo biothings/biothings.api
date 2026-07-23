@@ -1,6 +1,7 @@
 import pytest
 
 from biothings.web.query import ESResultFormatter
+from biothings.web.query.formatter import FormatterDict
 
 
 def test_es_error_response_surfaces_reason():
@@ -81,3 +82,17 @@ def test_es_3():
             one=True,
         )
     )
+
+
+def test_formatter_dict_include_keeps_only_requested_keys():
+    data = FormatterDict(
+        {
+            "_id": "1017",
+            "symbol": "CDK2",
+            "name": "cyclin dependent kinase 2",
+        }
+    )
+
+    data.include({"_id", "symbol"})
+
+    assert data == {"_id": "1017", "symbol": "CDK2"}
