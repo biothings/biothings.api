@@ -132,11 +132,6 @@ SKIP_DUMPER_SCHEDULE = False
 # Skip all scheduled uploader jobs after a success dump
 SKIP_UPLOADER_POLL = False
 
-# When True, each source's field mapping (from src_master) is included in a build's
-# metadata, under _meta.src.<source>.code.mapping (per sub-source for multi-uploader
-# sources). Defaults to False so the mapping is only exposed when explicitly enabled.
-INCLUDE_SOURCE_MAPPING_IN_METADATA = False
-
 # Auto archive feature will use this configuration to get schedule config for corresponding build configuration.
 # If not set it will use the default value defined in AutoArchiveManager
 AUTO_ARCHIVE_CONFIG = None

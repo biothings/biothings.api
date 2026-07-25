@@ -7,9 +7,9 @@ import os
 from functools import partial
 
 import biothings.utils.mongo as mongo
-from biothings import config as btconfig
 from biothings.utils.backend import DocBackendBase, DocESBackend, DocMongoBackend
 from biothings.utils.common import get_random_string, get_timestamp
+from biothings.utils.dataload import merge_struct
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_source_fullname, get_src_build
 
@@ -167,19 +167,19 @@ class SourceDocMongoBackend(SourceDocBackendBase):
             if src and src.get("upload"):
                 latest_upload_date = None
                 meta = {}
+                # collect each sub-source's field mapping (from src_master) so they can be
+                # merged into a single mapping stored at the main-source level below
+                sub_mappings = []
                 for job_name in src["upload"].get("jobs", {}):
                     job = src["upload"]["jobs"][job_name]
                     # "step" is the actual sub-source name
                     sub_source = job.get("step")
                     docm = self.master.find_one({"_id": sub_source})
-                    # store the src_meta for each sub-source, if any. This is useful for instance to store mapping information.
+                    # store the src_meta for each sub-source, if any.
                     if docm and docm.get("src_meta"):
-                        src_meta_doc = docm["src_meta"]
-                        # optionally expose each source's field mapping in the build metadata,
-                        # enabled via the INCLUDE_SOURCE_MAPPING_IN_METADATA config flag.
-                        if getattr(btconfig, "INCLUDE_SOURCE_MAPPING_IN_METADATA", False) and docm.get("mapping"):
-                            src_meta_doc.setdefault("code", {})["mapping"] = docm["mapping"]
-                        meta[sub_source] = src_meta_doc
+                        meta[sub_source] = docm["src_meta"]
+                    if docm and docm.get("mapping"):
+                        sub_mappings.append(docm["mapping"])
                     # Store the latest success upload time
                     if not latest_upload_date or latest_upload_date < job["started_at"]:
                         step_meta = meta.setdefault(sub_source, {})
@@ -229,6 +229,15 @@ class SourceDocMongoBackend(SourceDocBackendBase):
                     subname, metad = meta.popitem()
                     for k, v in metad.items():
                         src_meta.setdefault(src["_id"], {}).setdefault(k, v)
+
+                # merge all sub-source field mappings into a single mapping stored at the
+                # main-source level (_meta.src.<source>.mapping). For multi-uploader sources
+                # the individual uploader mappings are merged together into one.
+                if sub_mappings:
+                    merged_mapping = sub_mappings[0]
+                    for mapping in sub_mappings[1:]:
+                        merged_mapping = merge_struct(merged_mapping, mapping)
+                    src_meta.setdefault(src["_id"], {})["mapping"] = merged_mapping
             if subsrc_versions:
                 version = subsrc_versions[0]["version"]
                 src_version[src["_id"]] = version

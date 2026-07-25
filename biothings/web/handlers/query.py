@@ -29,6 +29,7 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
+import copy
 import logging
 from collections import Counter
 from inspect import iscoroutinefunction
@@ -147,6 +148,14 @@ class MetadataSourceHandler(BaseQueryHandler):
 
         elif self.args.dev:
             meta["software"] = self.biothings.devinfo.get()
+            # flatten each source's field mapping to dotted property keys, matching the
+            # representation used by /metadata/fields
+            if "src" in meta:
+                formatter = self.pipeline.formatter
+                meta["src"] = self._transform_source_mappings(
+                    meta["src"],
+                    lambda source: source.__setitem__("mapping", formatter.transform_mapping(source["mapping"])),
+                )
 
         else:  # remove debug info
             filtered_meta = {}
@@ -154,6 +163,12 @@ class MetadataSourceHandler(BaseQueryHandler):
                 if not key.startswith("_"):
                     filtered_meta[key] = value
             meta = filtered_meta
+            # per-source field mappings (src.<source>.mapping) are only exposed in
+            # dev mode (/metadata?dev); strip them from the public response
+            if "src" in meta:
+                meta["src"] = self._transform_source_mappings(
+                    meta["src"], lambda source: source.pop("mapping", None)
+                )
 
         if iscoroutinefunction(self.extras):
             meta = await self.extras(meta)
@@ -161,6 +176,23 @@ class MetadataSourceHandler(BaseQueryHandler):
             meta = self.extras(meta)
 
         self.finish(dict(sorted(meta.items())))
+
+    @staticmethod
+    def _transform_source_mappings(src, func):
+        """
+        Return a deep copy of the ``src`` metadata after applying ``func`` to every
+        source that carries a field mapping.
+
+        The mapping lives under ``<source>.mapping`` (a single merged mapping per source,
+        including multi-uploader sources). ``func`` receives the source dict that holds the
+        ``"mapping"`` key and mutates it in place (e.g. to drop or flatten the mapping). A
+        deep copy is used so the cached metadata (shared across requests) is left untouched.
+        """
+        src = copy.deepcopy(src)
+        for source in src.values():
+            if isinstance(source, dict) and "mapping" in source:
+                func(source)
+        return src
 
     def extras(self, _meta):
         """
@@ -191,7 +223,44 @@ class MetadataFieldHandler(BaseQueryHandler):
 
         result = self.pipeline.formatter.transform_mapping(mapping, self.args.prefix, self.args.search)
 
+        # annotate each field with the main source(s) that populate it
+        self._annotate_field_sources(result)
+
         self.finish(result)
+
+    def _annotate_field_sources(self, result):
+        """
+        Add a ``source`` key to each field in ``result`` listing the main sources whose
+        field mapping (stored in ``_meta.src.<source>.mapping``) includes that field.
+
+        Sources are identified by flattening each per-source mapping the same way the field
+        list itself is built, so the field paths line up. If no per-source mapping data is
+        available (e.g. an index built before mappings were recorded), no annotation is added.
+        """
+        metadata = self.metadata.get_metadata(self.biothing_type)
+        sources = metadata.get("src", {}) if metadata else {}
+        formatter = self.pipeline.formatter
+
+        # map each field path to the set of main sources that define it
+        field_sources = {}
+        for source, info in sources.items():
+            source_mapping = info.get("mapping") if isinstance(info, dict) else None
+            if not source_mapping:
+                continue
+            for field in formatter.transform_mapping(source_mapping):
+                field_sources.setdefault(field, set()).add(source)
+
+        if not field_sources:
+            return
+
+        for field, definition in result.items():
+            field_srcs = field_sources.get(field)
+            # only annotate fields that actually map to a source; computed fields
+            # (e.g. _id) with no source mapping are left without a "source" key
+            if field_srcs and isinstance(definition, dict):
+                srcs = sorted(field_srcs)
+                definition["source"] = srcs[0] if len(srcs) == 1 else srcs
+
 
 
 async def ensure_awaitable(obj):
