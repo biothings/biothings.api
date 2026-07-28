@@ -1,10 +1,12 @@
+import logging
+
 import pytest
 
 from biothings.web.query import ESResultFormatter
 from biothings.web.query.formatter import FormatterDict
 
 
-def test_es_error_response_surfaces_reason():
+def test_es_error_response_surfaces_reason(caplog):
     # an error embedded in a (multisearch) response should surface the
     # underlying ES reason, preferring the more specific root_cause, rather
     # than a generic "Invalid response format" message.
@@ -19,14 +21,26 @@ def test_es_error_response_surfaces_reason():
         },
         "status": 400,
     }
-    with pytest.raises(ValueError) as exc_info:
+    with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
         formatter.transform(error_response)
     assert str(exc_info.value) == "No mapping found for [score] in order to sort on"
+    # a specific ES reason is an expected client error: it must be logged
+    # BELOW error level so it is not captured as a Sentry event.
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
     # falls back to the top-level reason when there is no root_cause
     with pytest.raises(ValueError) as exc_info:
         formatter.transform({"error": {"reason": "some top-level reason"}, "status": 400})
     assert str(exc_info.value) == "some top-level reason"
+
+    # a response with no extractable reason is unexpected/malformed: it should
+    # keep logging at ERROR (so Sentry still reports it) and raise the generic
+    # "Invalid response format".
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
+        formatter.transform({"error": {}, "status": 500})
+    assert str(exc_info.value) == "Invalid response format"
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 def test_es_1():

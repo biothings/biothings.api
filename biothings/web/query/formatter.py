@@ -8,14 +8,13 @@ one or more individual queries.
 
 """
 
+import logging
 from collections import UserDict, defaultdict
 
 from elastic_transport import ObjectApiResponse
 
-from biothings.utils.common import dotdict, traverse, list_trim
+from biothings.utils.common import dotdict, list_trim, traverse
 from biothings.utils.jmespath import options as jmp_options
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +90,6 @@ class ESResultFormatter(ResultFormatter):
             # more specific root_cause) so the user sees e.g. "No mapping found
             # for [score] in order to sort on" instead of a generic message.
             if "error" in self.data:
-                logger.error("ES returned error response: %s", self.data)
                 error = self.data["error"]
                 reason = ""
                 if isinstance(error, dict):
@@ -101,7 +99,14 @@ class ESResultFormatter(ResultFormatter):
                     reason = reason or error.get("reason", "")
                 elif isinstance(error, str):
                     reason = error
-                raise ValueError(reason or "Invalid response format")
+
+                if reason:
+                    # no sentry capture here, since this is a user error, not a server error
+                    logger.warning("ES returned error response: %s", self.data)
+                    raise ValueError(reason)
+
+                logger.error("ES returned error response with no reason: %s", self.data)
+                raise ValueError("Invalid response format")
 
             # make sure the document is coming from
             # elasticsearch at initialization time
