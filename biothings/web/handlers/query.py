@@ -29,7 +29,6 @@ biothings.web.handlers.ESRequestHandler
 
 """
 
-import copy
 import logging
 from collections import Counter
 from inspect import iscoroutinefunction
@@ -148,14 +147,11 @@ class MetadataSourceHandler(BaseQueryHandler):
 
         elif self.args.dev:
             meta["software"] = self.biothings.devinfo.get()
-            # flatten each source's field mapping to dotted property keys, matching the
-            # representation used by /metadata/fields
+            # replace each source's field mapping with a "fields" list holding only the
+            # dotted field names, using the same flattening as /metadata/fields
             if "src" in meta:
                 formatter = self.pipeline.formatter
-                meta["src"] = self._transform_source_mappings(
-                    meta["src"],
-                    lambda source: source.__setitem__("mapping", formatter.transform_mapping(source["mapping"])),
-                )
+                meta["src"] = self._transform_source_mappings(meta["src"], self._set_source_fields(formatter))
 
         else:  # remove debug info
             filtered_meta = {}
@@ -180,19 +176,36 @@ class MetadataSourceHandler(BaseQueryHandler):
     @staticmethod
     def _transform_source_mappings(src, func):
         """
-        Return a deep copy of the ``src`` metadata after applying ``func`` to every
-        source that carries a field mapping.
+        Return a copy of the ``src`` metadata after applying ``func`` to every source that
+        carries a field mapping.
 
         The mapping lives under ``<source>.mapping`` (a single merged mapping per source,
         including multi-uploader sources). ``func`` receives the source dict that holds the
-        ``"mapping"`` key and mutates it in place (e.g. to drop or flatten the mapping). A
-        deep copy is used so the cached metadata (shared across requests) is left untouched.
+        ``"mapping"`` key and replaces or drops that key in place.
+
+        Each source dict is copied because ``src`` is part of the metadata cache shared
+        across requests, and mutating it would remove the mapping for later requests. Only
+        the source dicts themselves are copied (not their nested mappings), since ``func``
+        must not modify the mapping content itself.
         """
-        src = copy.deepcopy(src)
-        for source in src.values():
+        src = dict(src)
+        for name, source in src.items():
             if isinstance(source, dict) and "mapping" in source:
+                source = src[name] = dict(source)  # copy before mutating the cached dict
                 func(source)
         return src
+
+    @staticmethod
+    def _set_source_fields(formatter):
+        """
+        Build a function replacing a source's ``mapping`` with a ``fields`` list of the
+        dotted field names it provides, e.g.
+        """
+
+        def _set_fields(source):
+            source["fields"] = sorted(formatter.transform_mapping(source.pop("mapping")))
+
+        return _set_fields
 
     def extras(self, _meta):
         """
