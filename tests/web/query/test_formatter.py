@@ -6,6 +6,10 @@ from biothings.web.query import ESResultFormatter
 from biothings.web.query.formatter import FormatterDict
 
 
+def _has_error_log(caplog):
+    return bool([r for r in caplog.records if r.levelno >= logging.ERROR])
+
+
 def test_es_error_response_surfaces_reason(caplog):
     # an error embedded in a (multisearch) response should surface the
     # underlying ES reason, preferring the more specific root_cause, rather
@@ -24,23 +28,46 @@ def test_es_error_response_surfaces_reason(caplog):
     with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
         formatter.transform(error_response)
     assert str(exc_info.value) == "No mapping found for [score] in order to sort on"
-    # a specific ES reason is an expected client error: it must be logged
-    # BELOW error level so it is not captured as a Sentry event.
-    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
     # falls back to the top-level reason when there is no root_cause
     with pytest.raises(ValueError) as exc_info:
         formatter.transform({"error": {"reason": "some top-level reason"}, "status": 400})
     assert str(exc_info.value) == "some top-level reason"
 
-    # a response with no extractable reason is unexpected/malformed: it should
-    # keep logging at ERROR (so Sentry still reports it) and raise the generic
-    # "Invalid response format".
+
+def test_es_mapping_errors_logged_below_error(caplog):
+    # known user-input (mapping) errors must be logged BELOW error level so
+    # they are not captured as Sentry events.
+    formatter = ESResultFormatter()
+
+    for reason in (
+        "No mapping found for [score] in order to sort on",
+        "Fielddata is disabled on [name] in [my_index]. Text fields are not optimised for sorting...",
+    ):
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
+            formatter.transform({"error": {"root_cause": [{"reason": reason}]}, "status": 400})
+        assert str(exc_info.value) == reason
+        assert not _has_error_log(caplog), f"mapping error should not log at ERROR: {reason}"
+
+
+def test_es_other_errors_still_logged_at_error(caplog):
+    # a reasoned error we don't recognize as user-caused should still be
+    # surfaced to the user, but kept at ERROR so Sentry reports it.
+    formatter = ESResultFormatter()
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
+        formatter.transform({"error": {"reason": "something unexpected went wrong"}, "status": 500})
+    assert str(exc_info.value) == "something unexpected went wrong"
+    assert _has_error_log(caplog)
+
+    # a response with no extractable reason is unexpected/malformed -> ERROR
+    # and the generic "Invalid response format" message.
     caplog.clear()
     with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
         formatter.transform({"error": {}, "status": 500})
     assert str(exc_info.value) == "Invalid response format"
-    assert [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert _has_error_log(caplog)
 
 
 def test_es_1():
