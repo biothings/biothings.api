@@ -181,7 +181,7 @@ class MetadataSourceHandler(BaseQueryHandler):
 
         The mapping lives under ``<source>.mapping`` (a single merged mapping per source,
         including multi-uploader sources). ``func`` receives the source dict that holds the
-        ``"mapping"`` key and replaces or drops that key in place.
+        ``"mapping"`` key.
 
         ``src`` belongs to the metadata service's cache, so each source ``func`` touches is
         copied instead of being edited in place. Handlers currently refresh the metadata on
@@ -189,7 +189,7 @@ class MetadataSourceHandler(BaseQueryHandler):
         the source dicts are copied, not their nested mappings, so ``func`` must not modify
         the mapping content itself.
         """
-        src = dict(src)
+        src = dict(src) # shallow copy so func doesn't edit the cached src dict
         for name, source in src.items():
             if isinstance(source, dict) and "mapping" in source:
                 src[name] = dict(source)  # shallow copy so func doesn't edit the cached source
