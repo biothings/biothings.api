@@ -183,16 +183,17 @@ class MetadataSourceHandler(BaseQueryHandler):
         including multi-uploader sources). ``func`` receives the source dict that holds the
         ``"mapping"`` key and replaces or drops that key in place.
 
-        Each source dict is copied because ``src`` is part of the metadata cache shared
-        across requests, and mutating it would remove the mapping for later requests. Only
-        the source dicts themselves are copied (not their nested mappings), since ``func``
-        must not modify the mapping content itself.
+        ``src`` belongs to the metadata service's cache, so each source ``func`` touches is
+        copied instead of being edited in place. Handlers currently refresh the metadata on
+        every request, which rebuilds that cache, but copying avoids depending on it. Only
+        the source dicts are copied, not their nested mappings, so ``func`` must not modify
+        the mapping content itself.
         """
         src = dict(src)
         for name, source in src.items():
             if isinstance(source, dict) and "mapping" in source:
-                source = src[name] = dict(source)  # copy before mutating the cached dict
-                func(source)
+                src[name] = dict(source)  # shallow copy so func doesn't edit the cached source
+                func(src[name])
         return src
 
     @staticmethod
