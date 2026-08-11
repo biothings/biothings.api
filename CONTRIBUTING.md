@@ -172,5 +172,7 @@ You just need to install it on your local git repository:
 
 ## Maintainer releases
 
-Package maintainers should follow the canonical [release procedure](RELEASE.md). To perform the procedure with a local coding
-agent, provide the release version and development branch to the reusable [release prompt](RELEASE_PROMPT.md).
+Package maintainers should follow the canonical [release procedure](RELEASE.md). Codex, Claude Code, and other compatible
+agents can perform it through the repository's [release skill](.agents/skills/release-biothings-sdk/SKILL.md) using a request
+such as `make the next minor release` or `make a new 1.2.0 release`. For agents without Agent Skills support, provide the
+release version and development branch to the reusable [release prompt](RELEASE_PROMPT.md).

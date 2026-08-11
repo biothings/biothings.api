@@ -1,5 +1,8 @@
 # BioThings SDK release prompt
 
+This file is the fallback for agents that do not support the open Agent Skills format. Codex, Claude Code, and other
+compatible agents should use the [release-biothings-sdk skill](.agents/skills/release-biothings-sdk/SKILL.md) instead.
+
 Use this prompt with a local coding agent to perform the release procedure in [RELEASE.md](RELEASE.md). Run the agent from
 the root of the `biothings.api` repository.
 

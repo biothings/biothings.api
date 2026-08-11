@@ -1,7 +1,9 @@
 # Releasing the BioThings SDK
 
 This document is the canonical procedure for releasing the `biothings` package. It is intended for maintainers performing
-the process manually and for local coding agents following [RELEASE_PROMPT.md](RELEASE_PROMPT.md).
+the process manually and for coding agents using the
+[release-biothings-sdk skill](.agents/skills/release-biothings-sdk/SKILL.md). Agents without Agent Skills support can use
+[RELEASE_PROMPT.md](RELEASE_PROMPT.md) as a fallback.
 
 Publishing a GitHub Release triggers the PyPI publishing workflow. Treat that action as the irreversible release boundary
 and require explicit maintainer approval immediately before it.
@@ -13,6 +15,9 @@ Set these values for each release:
 - `VERSION`: the new semantic version without a `v` prefix, for example `1.2.0`.
 - `DEV_BRANCH`: the existing development branch to release, for example `1.2.x`.
 - `BASE_BRANCH`: the branch receiving the release. This is normally `master`.
+
+When using `release-biothings-sdk`, the request may instead provide an explicit version or a `major`, `minor`, or `patch`
+intent. The skill resolves that intent against the latest published version and derives `DEV_BRANCH` as `MAJOR.MINOR.x`.
 
 The development branch remains in place after the release. Do not create, rename, or delete development branches as part
 of this procedure.
