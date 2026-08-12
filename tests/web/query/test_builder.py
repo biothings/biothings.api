@@ -79,7 +79,8 @@ def test_elasticsearch_querybuilder_sort():
         builder.build("term", sort=["_score:desc"])
     message = str(exc_info.value)
     assert "field:order" in message
-    assert "sort=-_score" in message  # suggests the correct form
+    # '_score' must not be suggested with a '-' prefix, that form is rejected too
+    assert "sort=_score" in message
 
     with pytest.raises(ValueError) as exc_info:
         builder.build("term", sort=["symbol:asc"])
@@ -89,9 +90,70 @@ def test_elasticsearch_querybuilder_sort():
     with pytest.raises(ValueError):
         builder.build("term", sort=["-"])
 
-    # elasticsearch-dsl rejects '-_score' (score is descending by default); the
-    # IllegalOperation is surfaced as a ValueError that carries a real message
-    # (previously the message was empty).
+    # '-_score' is rejected by _validate_sort before elasticsearch-dsl sees it,
+    # so no IllegalOperation (and no ERROR-level log) is produced.
     with pytest.raises(ValueError) as exc_info:
         builder.build("term", sort=["-_score"])
-    assert str(exc_info.value)  # non-empty, explanatory message
+    message = str(exc_info.value)
+    assert "descending order" in message
+    assert "sort=_score" in message
+
+    # plain '_score' remains valid (ES sorts relevance descending by default)
+    query = builder.build("term", sort=["_score", "-taxid"]).to_dict()
+    assert query["sort"] == ["_score", {"taxid": {"order": "desc"}}]
+
+
+def test_elasticsearch_querybuilder_result_window():
+    builder = ESQueryBuilder()
+
+    # 'from' and 'size' are each within their own limit (10000 and 1000), but
+    # their sum is not, so this has to be caught here rather than in ES.
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", **{"from": 10000, "size": 1000})
+    message = str(exc_info.value)
+    assert "Result window is too large" in message
+    assert "fetch_all=true" in message  # advise the way to page past the window
+    assert "scroll_id" in message
+
+    # only 'from' given: ES would apply its default size, pushing past the window
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", **{"from": 10000})
+    assert "Result window is too large" in str(exc_info.value)
+
+    # exactly at the limit is allowed
+    query = builder.build("term", **{"from": 9000, "size": 1000}).to_dict()
+    assert query["from"] == 9000 and query["size"] == 1000
+
+    # ordinary paging is unaffected
+    query = builder.build("term", **{"from": 0, "size": 10}).to_dict()
+    assert query["from"] == 0 and query["size"] == 10
+
+    # neither given -> nothing to validate
+    assert "from" not in builder.build("term").to_dict()
+
+    # 'fetch_all' scrolls instead of paging, so the window does not apply
+    query = builder.build("term", fetch_all=True, **{"from": 10000}).to_dict()
+    assert query["from"] == 10000
+
+
+class _FakeMetadata:
+    def __init__(self, total):
+        self.biothings_metadata = {None: {"stats": {"total": total}}}
+
+
+@pytest.mark.parametrize("total", [30_000_000, 100, 5])
+@pytest.mark.parametrize("options", [{}, {"size": 1000}, {"size": 10}])
+def test_elasticsearch_querybuilder_any_stays_in_result_window(total, options):
+    """q=__any__ picks a random 'from', which must stay inside the window.
+
+    With ALLOW_RANDOM_QUERY off (the default) the offset is chosen randomly, so
+    it has to leave room for 'size' -- otherwise a high offset intermittently
+    pushes 'from' + 'size' past the window and the query fails in ES.
+    """
+    builder = ESQueryBuilder(allow_random_query=False, metadata=_FakeMetadata(total))
+
+    for _ in range(2000):
+        query = builder.build("__any__", **dict(options)).to_dict()
+        from_ = query.get("from", 0)
+        size = query.get("size", 10)
+        assert from_ + size <= 10000, f"from={from_} size={size} exceeds the result window"
