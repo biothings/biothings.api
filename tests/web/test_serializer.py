@@ -4,17 +4,20 @@ from biothings.web.handlers import serializer
 def test_json_01():
     import json
     from collections import UserDict, UserList
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     obj = {
         "key1": "val1",
-        "key2": datetime.now().astimezone(),
+        "key2": datetime.now(timezone.utc),
         "key3": UserDict({"key3.1": "val3.1"}),
         "key4": UserList(["val4.1", "val4.2"]),
     }
     json_str = serializer.to_json(obj)
     obj2 = json.loads(json_str)
-    obj2["key2"] = datetime.fromisoformat(obj2["key2"])
+    datetime_str = obj2["key2"]
+    if datetime_str.endswith("Z"):
+        datetime_str = f"{datetime_str[:-1]}+00:00"
+    obj2["key2"] = datetime.fromisoformat(datetime_str)
     assert obj2 == obj
 
 
