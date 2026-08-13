@@ -1,3 +1,12 @@
+v1.1.3 (2026/08/13)
+    biothings.web improvements:
+        - Reduced Sentry noise for known Elasticsearch mapping errors by logging them below ERROR while preserving error reporting for unexpected responses. ([3257d21](https://github.com/biothings/biothings.api/commit/3257d212baca228164318339157e84dd40daf8df), [371122c](https://github.com/biothings/biothings.api/commit/371122c78121c742e1608dddbd5edc79b27c575c))
+        - Added query-builder validation for Elasticsearch's maximum result window and improved random-query pagination and `_score` sort guidance. ([30112da](https://github.com/biothings/biothings.api/commit/30112da5bc0827c05ca51d162cfed07c17169203))
+
+    Misc improvements:
+        - Added standardized release instructions and a cross-agent release skill for maintainers. ([#457](https://github.com/biothings/biothings.api/pull/457))
+        - Added a Docker Compose test stack for local Elasticsearch and MongoDB services. ([a2b21ea](https://github.com/biothings/biothings.api/commit/a2b21ead7baf0b108c54accd97e6ea0aa8773cbc))
+
 v1.1.2 (2026/07/23)
     biothings.hub improvements:
         - Added index recovery modes for resume and purge workflows, including mode metadata, job-state context, batched missing-ID checks, and client cleanup. ([#453](https://github.com/biothings/biothings.api/pull/453))

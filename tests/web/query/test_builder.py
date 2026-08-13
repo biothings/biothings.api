@@ -79,7 +79,8 @@ def test_elasticsearch_querybuilder_sort():
         builder.build("term", sort=["_score:desc"])
     message = str(exc_info.value)
     assert "field:order" in message
-    assert "sort=-_score" in message  # suggests the correct form
+    # '_score' must not be suggested with a '-' prefix, that form is rejected too
+    assert "sort=_score" in message
 
     with pytest.raises(ValueError) as exc_info:
         builder.build("term", sort=["symbol:asc"])
@@ -89,9 +90,15 @@ def test_elasticsearch_querybuilder_sort():
     with pytest.raises(ValueError):
         builder.build("term", sort=["-"])
 
-    # elasticsearch-dsl rejects '-_score' (score is descending by default); the
-    # IllegalOperation is surfaced as a ValueError that carries a real message
-    # (previously the message was empty).
+    # '-_score' is rejected by _validate_sort before elasticsearch-dsl sees it,
+    # so no IllegalOperation (and no ERROR-level log) is produced.
     with pytest.raises(ValueError) as exc_info:
         builder.build("term", sort=["-_score"])
-    assert str(exc_info.value)  # non-empty, explanatory message
+    message = str(exc_info.value)
+    assert "descending order" in message
+    assert "sort=_score" in message
+
+    # plain '_score' remains valid (ES sorts relevance descending by default)
+    query = builder.build("term", sort=["_score", "-taxid"]).to_dict()
+    assert query["sort"] == ["_score", {"taxid": {"order": "desc"}}]
+
