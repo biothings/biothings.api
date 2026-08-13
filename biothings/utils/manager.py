@@ -323,44 +323,45 @@ class JobManager:
 
     def clean_staled(self):
         # clean old/staled files
-        children_pids = [p.pid for p in self.pchildren]
-        active_tids = [t.name for t in self.thread_queue._threads]
-        pid_pat = re.compile(r".*/(\d+)_.*\.pickle")  # see track() for filename format
+        children_pids = {p.pid for p in self.pchildren}
+        active_tids = {t.name for t in self.thread_queue._threads}
+        ft_active = {t.name for t in getattr(self.process_queue, "_threads", None) or []}
+        ft_pat = re.compile(r"(?P<pid>\d+)-(?P<tid>FTWorker_\d+)")
+
+        # Inspect one snapshot. A worker may create another tracking file while
+        # cleanup is running; it can be considered on the next pass instead of
+        # being misclassified between separate process/thread scans.
         for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
-            pid = pid_pat.findall(fn)
-            if not pid:
-                continue
+            stem = os.path.splitext(os.path.basename(fn))[0]
             try:
-                pid = int(pid[0].split("_")[0])
-            except IndexError:
-                logger.warning("Invalid PID file '%s', skip it", fn)
-                raise
-            if pid not in children_pids:
-                logger.info("Removing staled pid file '%s'", fn)
-                os.unlink(fn)
-        tid_pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
-        ft_pat = re.compile(r".*/(\d+)-(FTWorker_\d+)_.*\.pickle")
-        ft_active = [t.name for t in getattr(self.process_queue, "_threads", None) or []]
-        for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
-            ft = ft_pat.findall(fn)
-            if ft:
-                # free-threaded mode worker file, staled unless it belongs to
-                # this very hub process and its worker thread is still alive
-                pid, tid = int(ft[0][0]), ft[0][1]
-                if pid != os.getpid() or tid not in ft_active:
-                    logger.info("Removing staled free-threaded worker file '%s'", fn)
+                worker_id, _job_id = stem.rsplit("_", 1)
+            except ValueError:
+                logger.warning("Unrecognized worker file '%s', skip it", fn)
+                continue
+
+            stale = False
+            worker_type = None
+            if worker_id.isdigit():
+                worker_type = "pid"
+                stale = int(worker_id) not in children_pids
+            elif match := ft_pat.fullmatch(worker_id):
+                worker_type = "free-threaded worker"
+                stale = int(match.group("pid")) != os.getpid() or match.group("tid") not in ft_active
+            elif worker_id.startswith("Thread"):
+                worker_type = "thread"
+                stale = worker_id not in active_tids
+            else:
+                logger.warning("Unrecognized worker file '%s', skip it", fn)
+                continue
+
+            if stale:
+                logger.info("Removing staled %s file '%s'", worker_type, fn)
+                try:
                     os.unlink(fn)
-                continue
-            try:
-                tid = tid_pat.findall(fn)[0].split("_")[0]
-            except IndexError:
-                logger.warning("Invalid TID file '%s', skip it", fn)
-                raise
-            if not tid:
-                continue
-            if tid not in active_tids:
-                logger.info("Removing staled thread file '%s'", fn)
-                os.unlink(fn)
+                except FileNotFoundError:
+                    # The worker may have finished and removed its own tracking
+                    # file after the snapshot was taken.
+                    pass
 
     def recycle_process_queue(self):
         """

@@ -3,6 +3,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import pytest
 
+import biothings.utils.manager as manager_module
 from biothings.utils.common import get_loop
 from biothings.utils.manager import JobManager
 
@@ -170,9 +171,7 @@ class TestJobManager:
     async def test_free_threaded_workers_opt_in(self, monkeypatch):
         import sys
 
-        from biothings import config
-
-        monkeypatch.setattr(config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
+        monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
         monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
         manager = make_manager()
         try:
@@ -196,11 +195,9 @@ class TestJobManager:
         import sys
         import time
 
-        from biothings import config
-
-        monkeypatch.setattr(config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
+        monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
         monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
-        monkeypatch.setattr(config, "RUN_DIR", str(tmp_path), raising=False)
+        monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path), raising=False)
         manager = make_manager()
         try:
             jobs = [await manager.defer_to_process(dict(PINFO), time.sleep, 0.5) for _ in range(2)]
@@ -211,6 +208,18 @@ class TestJobManager:
             assert all(f.startswith("%d-FTWorker" % os.getpid()) for f in run_files)
             await asyncio.gather(*jobs)
             assert glob.glob(str(tmp_path / "*.pickle")) == []
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_clean_staled_ignores_unrecognized_run_file(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path), raising=False)
+        unrecognized = tmp_path / "unrecognized.pickle"
+        unrecognized.write_bytes(b"not a worker tracking file")
+
+        manager = make_manager()
+        try:
+            assert unrecognized.exists()
         finally:
             shutdown(manager)
 
