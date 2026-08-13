@@ -169,3 +169,10 @@ You just need to install it on your local git repository:
 * [The Black code style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html)
 * [**requests** code style](http://python-requests.org//en/latest/dev/contributing/#kenneth-reitz-s-code-style)
 * [Google's Python code style guide](http://flake8.pycqa.org/en/latest/)
+
+## Maintainer releases
+
+Package maintainers should follow the canonical [release procedure](RELEASE.md). Codex, Claude Code, and other compatible
+agents can perform it through the repository's [release skill](.agents/skills/release-biothings-sdk/SKILL.md) using a request
+such as `make the next minor release` or `make a new 1.2.0 release`. For agents without Agent Skills support, provide the
+release version and development branch to the reusable [release prompt](RELEASE_PROMPT.md).

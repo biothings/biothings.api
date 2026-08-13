@@ -49,6 +49,10 @@ from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
 logger = logging.getLogger(__name__)
 
+MAX_RESULT_WINDOW = 10000
+
+ES_DEFAULT_SIZE = 10
+
 
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
@@ -626,9 +630,11 @@ class ESQueryBuilder:
                 try:  # limit 'from' parameter to a valid result window
                     metadata = self.metadata.biothings_metadata[options.biothing_type]
                     total = metadata["stats"]["total"]
-                    fmax = total - options.get("size", 0)
-                    from_ = randrange(fmax if fmax < 10000 else 10000)
-                    options["from"] = from_ if from_ >= 0 else 0
+                    # 'from' + 'size' must stay inside the result window
+                    size = options.get("size") or ES_DEFAULT_SIZE
+                    fmax = min(total, MAX_RESULT_WINDOW) - size
+                    # Random result selection is not used for security or cryptographic purposes.
+                    options["from"] = randrange(fmax) if fmax > 0 else 0  # nosec B311
                 except Exception:
                     raise ValueError("random query not available.")
 
@@ -732,7 +738,8 @@ class ESQueryBuilder:
         """
         for field in sort:
             # the '-' descending prefix is the only allowed decoration
-            name = field[1:] if field.startswith("-") else field
+            descending = field.startswith("-")
+            name = field[1:] if descending else field
             if not name:
                 raise ValueError(
                     f"Invalid sort field '{field}': missing field name. "
@@ -741,12 +748,49 @@ class ESQueryBuilder:
                 )
             if ":" in name:
                 _field, _, _order = name.partition(":")
-                hint = f"sort=-{_field}" if _order.lower().startswith("desc") else f"sort={_field}"
+                if _field == "_score":
+                    # '_score' cannot take the '-' prefix, see below
+                    hint = "sort=_score"
+                else:
+                    hint = f"sort=-{_field}" if _order.lower().startswith("desc") else f"sort={_field}"
                 raise ValueError(
                     f"Invalid sort field '{field}': the 'field:order' syntax is not supported. "
                     'Prefix the field with "-" for descending order, otherwise it is ascending. '
                     f"Did you mean '{hint}'?"
                 )
+            if descending and name == "_score":
+                # elasticsearch-dsl raises IllegalOperation for '-_score' because
+                # relevance already sorts descending. Reject it here so the user
+                # gets an actionable message and no ERROR-level log is emitted.
+                raise ValueError(
+                    "Invalid sort field '-_score': relevance is already sorted in "
+                    "descending order, so the '-' prefix is not supported here. "
+                    "Did you mean 'sort=_score'?"
+                )
+
+    @staticmethod
+    def _validate_result_window(options):
+        """
+        Reject 'from' + 'size' beyond index.max_result_window up front.
+        """
+        if options.get("fetch_all"):
+            return  # scrolling is not subject to the result window
+
+        from_ = options.get("from") or 0
+        size = options.get("size")
+        if size is None:  # ES applies its own default when size is not set
+            size = ES_DEFAULT_SIZE
+
+        if from_ + size > MAX_RESULT_WINDOW:
+            raise ValueError(
+                f"Result window is too large: 'from' ({from_}) + 'size' ({size}) must be "
+                f"less than or equal to {MAX_RESULT_WINDOW}. To retrieve more hits than "
+                "that, use 'fetch_all=true' instead of paging with 'from' and 'size'. The "
+                "response includes a '_scroll_id' that you pass back as 'scroll_id' to "
+                "fetch each subsequent batch of about 1000 hits. Note that 'fetch_all' "
+                "results are unsorted, so 'sort' is ignored, and a scroll session expires "
+                "after 1 minute of inactivity."
+            )
 
     def apply_extras(self, search, options):
         """
@@ -775,6 +819,7 @@ class ESQueryBuilder:
                 fields_with_minus = [field.lstrip("-") for field in options._source if field.startswith("-")]
                 fields_without_minus = [field for field in options._source if not field.startswith("-")]
                 search = search.source(includes=fields_without_minus, excludes=fields_with_minus)
+        self._validate_result_window(options)
         for key in ("from", "size", "explain", "version"):
             if key in options:
                 search = search.extra(**{key: options[key]})
