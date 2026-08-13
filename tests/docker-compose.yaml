@@ -17,8 +17,8 @@ services:
     ports:
       - 27017:27017
     volumes:
-      - mongodata8:/data/db
+      - mongodata:/data/db
 
 volumes:
   esdata:
-  mongodata8:
+  mongodata:
