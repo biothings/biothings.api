@@ -30,12 +30,12 @@ options: dotdict, optional query options.
 
 """
 
-from collections import UserString, namedtuple
-from copy import deepcopy
-from random import randrange
 import logging
 import os
 import re
+from collections import UserString, namedtuple
+from copy import deepcopy
+from random import randrange
 from typing import Iterable, List, Set, Tuple, Union
 
 from elasticsearch.dsl import MultiSearch, Q, Search
@@ -47,8 +47,11 @@ from biothings.web.query.formatter import ESResultFormatter
 from biothings.web.services.metadata import BiothingsMetadata
 from biothings.web.settings.default import ANNOTATION_DEFAULT_REGEX_PATTERN
 
-
 logger = logging.getLogger(__name__)
+
+MAX_RESULT_WINDOW = 10000
+
+ES_DEFAULT_SIZE = 10
 
 
 class RawQueryInterrupt(Exception):
@@ -579,7 +582,7 @@ class ESQueryBuilder:
 
         except IllegalOperation as illegal_operation_error:
             logger.exception(illegal_operation_error)
-            raise ValueError from illegal_operation_error
+            raise ValueError(str(illegal_operation_error)) from illegal_operation_error
 
         if options.get("rawquery"):
             raise RawQueryInterrupt(search.to_dict())
@@ -627,9 +630,11 @@ class ESQueryBuilder:
                 try:  # limit 'from' parameter to a valid result window
                     metadata = self.metadata.biothings_metadata[options.biothing_type]
                     total = metadata["stats"]["total"]
-                    fmax = total - options.get("size", 0)
-                    from_ = randrange(fmax if fmax < 10000 else 10000)
-                    options["from"] = from_ if from_ >= 0 else 0
+                    # 'from' + 'size' must stay inside the result window
+                    size = options.get("size") or ES_DEFAULT_SIZE
+                    fmax = min(total, MAX_RESULT_WINDOW) - size
+                    # Random result selection is not used for security or cryptographic purposes.
+                    options["from"] = randrange(fmax) if fmax > 0 else 0  # nosec B311
                 except Exception:
                     raise ValueError("random query not available.")
 
@@ -707,12 +712,85 @@ class ESQueryBuilder:
         Override this to customize default match query.
         By default it implements a multi_match query.
         """
-        assert isinstance(q, (str, int, float, bool))
-        assert isinstance(scopes, (list, tuple, str)) and scopes
+        if not isinstance(q, (str, int, float, bool)):
+            raise ValueError("Query parameter 'q' must be a primitive type (string, integer, float, or boolean).")
+
+        if not isinstance(scopes, (list, tuple, str)) or not scopes:
+            raise ValueError("Parameter 'scopes' must be a non-empty list, tuple, or string.")
+
         _params = dict(query=q, fields=scopes, operator="AND", lenient=True)
         if options.analyzer:
             _params["analyzer"] = options.analyzer
         return Search().query("multi_match", **_params)
+
+    @staticmethod
+    def _validate_sort(sort):
+        """
+        Validate the user-provided sort fields before handing them to
+        elasticsearch-dsl.
+
+        Biothings sort syntax is a comma-separated list of field names,
+        each optionally prefixed with '-' for descending order (ascending
+        otherwise). A common mistake is to use the Elasticsearch-style
+        'field:asc' / 'field:desc' syntax, which ES then rejects with an
+        opaque "No mapping found for [field:desc]" shard error. Catch that
+        (and other malformed entries) here and return a clear message.
+        """
+        for field in sort:
+            # the '-' descending prefix is the only allowed decoration
+            descending = field.startswith("-")
+            name = field[1:] if descending else field
+            if not name:
+                raise ValueError(
+                    f"Invalid sort field '{field}': missing field name. "
+                    "Use a comma-separated list of fields, each optionally "
+                    'prefixed with "-" for descending order, e.g. sort=-taxid,symbol.'
+                )
+            if ":" in name:
+                _field, _, _order = name.partition(":")
+                if _field == "_score":
+                    # '_score' cannot take the '-' prefix, see below
+                    hint = "sort=_score"
+                else:
+                    hint = f"sort=-{_field}" if _order.lower().startswith("desc") else f"sort={_field}"
+                raise ValueError(
+                    f"Invalid sort field '{field}': the 'field:order' syntax is not supported. "
+                    'Prefix the field with "-" for descending order, otherwise it is ascending. '
+                    f"Did you mean '{hint}'?"
+                )
+            if descending and name == "_score":
+                # elasticsearch-dsl raises IllegalOperation for '-_score' because
+                # relevance already sorts descending. Reject it here so the user
+                # gets an actionable message and no ERROR-level log is emitted.
+                raise ValueError(
+                    "Invalid sort field '-_score': relevance is already sorted in "
+                    "descending order, so the '-' prefix is not supported here. "
+                    "Did you mean 'sort=_score'?"
+                )
+
+    @staticmethod
+    def _validate_result_window(options):
+        """
+        Reject 'from' + 'size' beyond index.max_result_window up front.
+        """
+        if options.get("fetch_all"):
+            return  # scrolling is not subject to the result window
+
+        from_ = options.get("from") or 0
+        size = options.get("size")
+        if size is None:  # ES applies its own default when size is not set
+            size = ES_DEFAULT_SIZE
+
+        if from_ + size > MAX_RESULT_WINDOW:
+            raise ValueError(
+                f"Result window is too large: 'from' ({from_}) + 'size' ({size}) must be "
+                f"less than or equal to {MAX_RESULT_WINDOW}. To retrieve more hits than "
+                "that, use 'fetch_all=true' instead of paging with 'from' and 'size'. The "
+                "response includes a '_scroll_id' that you pass back as 'scroll_id' to "
+                "fetch each subsequent batch of about 1000 hits. Note that 'fetch_all' "
+                "results are unsorted, so 'sort' is ignored, and a scroll session expires "
+                "after 1 minute of inactivity."
+            )
 
     def apply_extras(self, search, options):
         """
@@ -734,12 +812,14 @@ class ESQueryBuilder:
         # add es params
         if isinstance(options.sort, list):
             # accept '-' prefixed field names
+            self._validate_sort(options.sort)
             search = search.sort(*options.sort)
         if isinstance(options._source, list):
             if "all" not in options._source:
                 fields_with_minus = [field.lstrip("-") for field in options._source if field.startswith("-")]
                 fields_without_minus = [field for field in options._source if not field.startswith("-")]
                 search = search.source(includes=fields_without_minus, excludes=fields_with_minus)
+        self._validate_result_window(options)
         for key in ("from", "size", "explain", "version"):
             if key in options:
                 search = search.extra(**{key: options[key]})

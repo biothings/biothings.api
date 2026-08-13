@@ -1,3 +1,38 @@
+v1.1.3 (2026/08/13)
+    biothings.web improvements:
+        - Reduced Sentry noise for known Elasticsearch mapping errors by logging them below ERROR while preserving error reporting for unexpected responses. ([3257d21](https://github.com/biothings/biothings.api/commit/3257d212baca228164318339157e84dd40daf8df), [371122c](https://github.com/biothings/biothings.api/commit/371122c78121c742e1608dddbd5edc79b27c575c))
+        - Added query-builder validation for Elasticsearch's maximum result window and improved random-query pagination and `_score` sort guidance. ([30112da](https://github.com/biothings/biothings.api/commit/30112da5bc0827c05ca51d162cfed07c17169203))
+
+    Misc improvements:
+        - Added standardized release instructions and a cross-agent release skill for maintainers. ([#457](https://github.com/biothings/biothings.api/pull/457))
+        - Added a Docker Compose test stack for local Elasticsearch and MongoDB services. ([a2b21ea](https://github.com/biothings/biothings.api/commit/a2b21ead7baf0b108c54accd97e6ea0aa8773cbc))
+
+v1.1.2 (2026/07/23)
+    biothings.hub improvements:
+        - Added index recovery modes for resume and purge workflows, including mode metadata, job-state context, batched missing-ID checks, and client cleanup. ([#453](https://github.com/biothings/biothings.api/pull/453))
+        - Fixed index lookup compatibility for indexes whose metadata stores counts as `total_documents`. ([#453](https://github.com/biothings/biothings.api/pull/453))
+
+    biothings.web improvements:
+        - Fixed POST raw query handling so multisearch raw results are returned without assuming a single response body.
+        - Added sort syntax validation and clearer Elasticsearch error messages for invalid fields or unsupported `field:order` sort input.
+        - Fixed list minimum validation and FormatterDict.include() behavior. ([#452](https://github.com/biothings/biothings.api/pull/452))
+
+    Misc improvements:
+        - Avoided network calls when detecting GitHub data plugin assistant URLs. ([#453](https://github.com/biothings/biothings.api/pull/453))
+        - Stabilized random query handler tests.
+
+v1.1.1 (2026/06/18)
+    biothings.hub improvements:
+        - Fixed index lifecycle registration so indexes are only marked ready after post-index steps complete. ([#449](https://github.com/biothings/biothings.api/pull/449))
+        - Fixed DataTransform nested lookup handling for lists of dictionaries and one-to-many API lookup results.
+
+    biothings.web improvements:
+        - Fixed GA4 analytics request context handling so referer and page location are propagated to custom events. ([#450](https://github.com/biothings/biothings.api/pull/450))
+        - Replaced risky Elasticsearch query assertions with explicit user-input validation. ([#447](https://github.com/biothings/biothings.api/pull/447))
+
+    Misc improvements:
+        - Fixed GA4 analytics channel tests for newer aiohttp behavior without relying on aioresponses internals. ([#448](https://github.com/biothings/biothings.api/pull/448))
+        - Updated the Elasticsearch dependency floor to 8.18+ for supported Python versions.
 
 v1.1.0 (2026/05/27)
     Highlights:

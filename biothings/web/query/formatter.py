@@ -8,16 +8,31 @@ one or more individual queries.
 
 """
 
+import logging
 from collections import UserDict, defaultdict
 
 from elastic_transport import ObjectApiResponse
 
-from biothings.utils.common import dotdict, traverse, list_trim
+from biothings.utils.common import dotdict, list_trim, traverse
 from biothings.utils.jmespath import options as jmp_options
 
-import logging
-
 logger = logging.getLogger(__name__)
+
+# Substrings identifying Elasticsearch error reasons that are caused by user
+# input (typically mapping problems: sorting/aggregating/collapsing on a field
+# that isn't mapped or isn't the right type). These are the client's fault, not
+# a server-side bug, so they are logged below ERROR to avoid noisy Sentry
+# reports. Any other reasoned error stays at ERROR so it is still reported.
+_ES_CLIENT_ERROR_REASONS = (
+    "no mapping found for",  # e.g. "No mapping found for [score] in order to sort on"
+    "fielddata is disabled",  # e.g. sorting/aggregating on an analyzed text field
+)
+
+
+def _is_es_client_error_reason(reason):
+    """Return True if `reason` is a known user-input (mapping) error."""
+    reason = (reason or "").lower()
+    return any(pattern in reason for pattern in _ES_CLIENT_ERROR_REASONS)
 
 
 class FormatterDict(UserDict):
@@ -30,7 +45,7 @@ class FormatterDict(UserDict):
 
     def include(self, keys):
         for key in list(self.keys()):
-            if key in keys:
+            if key not in keys:
                 self.pop(key)
 
     def wrap(self, key, kls):
@@ -84,9 +99,35 @@ class ESResultFormatter(ResultFormatter):
     class _Hits(Hits):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # Check if this is an error response from Elasticsearch
+            # Check if this is an error response from Elasticsearch. This
+            # happens per-query inside a multisearch (msearch) response, where
+            # errors are embedded in each result rather than raised as a single
+            # RequestError. Surface the underlying ES reason (preferring the
+            # more specific root_cause) so the user sees e.g. "No mapping found
+            # for [score] in order to sort on" instead of a generic message.
             if "error" in self.data:
-                logger.error("ES returned error response: %s", self.data)
+                error = self.data["error"]
+                reason = ""
+                if isinstance(error, dict):
+                    root_cause = error.get("root_cause") or []
+                    if root_cause and isinstance(root_cause[0], dict):
+                        reason = root_cause[0].get("reason", "")
+                    reason = reason or error.get("reason", "")
+                elif isinstance(error, str):
+                    reason = error
+
+                if reason:
+                    if _is_es_client_error_reason(reason):
+                        # known user-input (mapping) error -> log below ERROR so
+                        # it is not captured as a Sentry event.
+                        logger.warning("ES returned client error response: %s", self.data)
+                    else:
+                        # a reasoned error we don't recognize as user-caused ->
+                        # keep it at ERROR so Sentry still reports it.
+                        logger.error("ES returned error response: %s", self.data)
+                    raise ValueError(reason)
+
+                logger.error("ES returned error response with no reason: %s", self.data)
                 raise ValueError("Invalid response format")
 
             # make sure the document is coming from

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release BioThings SDK"
+  short_description: "Prepare, test, tag, and publish SDK releases"
+  default_prompt: "Use $release-biothings-sdk to make the next minor release."

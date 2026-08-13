@@ -162,11 +162,14 @@ class DataTransformAPI(DataTransform):
             query = q_out["query"]
             val = self._parse_h(q_out)
             if val:
+                # _nested_lookup may return a single value or a list of values
+                # (e.g. a one-to-many field such as ensembl.gene)
+                vals = val if isinstance(val, list) else [val]
                 if query not in qm_struct.keys():
-                    qm_struct[query] = [val]
+                    qm_struct[query] = vals
                 else:
                     self.one_to_many_cnt += 1
-                    qm_struct[query] = qm_struct[query] + [val]
+                    qm_struct[query] = qm_struct[query] + vals
         # self.logger.debug("parse_querymany num qm_struct keys: {}"\
         #        .format(len(qm_struct.keys())))
         # self.logger.info("parse_querymany running one_to_many_cnt: {}"\

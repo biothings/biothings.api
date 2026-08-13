@@ -74,6 +74,16 @@ class Event(UserDict):
 
         raise ValueError("CID Version.")
 
+    def _ga4_request_params(self):
+        params = {"page_location": f"{self.host}{self.path}"}
+
+        if isinstance(self.referer, str):
+            # Parameter values (including item parameter values) must be 100 character or fewer.
+            if len(self.referer) <= 100:
+                params["page_referrer"] = self.referer
+
+        return params
+
     def to_GA4_payload(self, measurement_id, cid_version=1):
         # Document about page_view event: https://support.google.com/analytics/answer/9964640#pageviews&zippy=%2Cin-this-article
         # GA4 does not support [Document path as UA](https://developers.google.com/analytics/devguides/collection/protocol/v1/parameters#dp)
@@ -84,17 +94,11 @@ class Event(UserDict):
             "name": "page_view",
             "params": _clean(
                 {
-                    "page_location": f"{self.host}{self.path}",
+                    **self._ga4_request_params(),
                     "page_title": self.path.strip("/").replace("/", "-"),
                 }
             ),
         }
-
-        # add document referer
-        if isinstance(self.referer, str):
-            # Parameter values (including item parameter values) must be 100 character or fewer.
-            if len(self.referer) <= 100:
-                payload["params"]["page_referrer"] = self.referer
 
         # add user_agent
         if self.user_agent:
@@ -130,6 +134,7 @@ class GAEvent(Event):
                     "name": self["action"],
                     "params": _clean(
                         {
+                            **self._ga4_request_params(),
                             "event_category": self["category"],
                             "event_label": self.get("label", ""),
                             "value": self.get("value", ""),

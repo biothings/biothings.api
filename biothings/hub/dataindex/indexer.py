@@ -61,6 +61,14 @@ from biothings.hub.dataindex.indexer_task import dispatch
 class IndexerException(Exception): ...
 
 
+INDEX_MODES = {
+    "index": "Create a new index and fail if it already exists.",
+    "resume": "Use an existing index and add missing documents.",
+    "purge": "Delete an existing index before creating it.",
+    "merge": "Merge source documents into an existing index.",
+}
+
+
 class ProcessInfo:
     def __init__(self, indexer, concurrency):
         self.indexer = indexer
@@ -362,6 +370,7 @@ class Indexer:
         """
 
         steps = kwargs.pop("steps", ("pre", "index", "post"))
+        defer_index_registration = kwargs.pop("_defer_index_registration", False)
         batch_size = kwargs.setdefault("batch_size", 10000)
         # mode = kwargs.setdefault("mode", "index")
         kwargs.setdefault("mode", "index")
@@ -379,11 +388,18 @@ class Indexer:
         # can be sent to elasticsearch within one request, making it
         # inefficient, amplifying the scheduling overhead.
 
+        ordered_steps = tuple(Step.order(steps))
+        defer_index_registration = defer_index_registration or ("index" in ordered_steps and "post" in ordered_steps)
+
         x = IndexerCumulativeResult()
-        for step in Step.order(steps):
-            step = Step.dispatch(step)(self)
+        for step_name in ordered_steps:
+            step = Step.dispatch(step_name)(self)
             self.logger.info(step)
-            step.state.started()
+            state_context = {}
+            mode = kwargs.get("mode")
+            if step.name == "pre" and mode and mode != "index":
+                state_context["mode"] = mode
+            step.state.started(**state_context)
             try:
                 dx = await step.execute(job_manager, **kwargs)
                 dx = IndexerStepResult(dx)
@@ -396,7 +412,10 @@ class Indexer:
                 merge(x.data, dx.data)
                 self.logger.info(dx)
                 self.logger.info(x)
-                step.state.succeed(x.data)
+                if step.name == "index" and defer_index_registration:
+                    step.state.succeed_without_registration()
+                else:
+                    step.state.succeed(x.data)
 
         return x
 
@@ -572,10 +591,13 @@ class ColdHotIndexer:
         **kwargs,
     ):
         result = []
+        ordered_steps = tuple(Step.order(steps))
+        defer_index_registration = "index" in ordered_steps and "post" in ordered_steps
 
         cold_task = self.cold.index(
             job_manager,
-            steps=set(Step.order(steps)) & {"pre", "index"},
+            steps=set(ordered_steps) & {"pre", "index"},
+            _defer_index_registration=defer_index_registration,
             batch_size=batch_size,
             ids=ids,
             mode=mode,
@@ -584,7 +606,7 @@ class ColdHotIndexer:
 
         hot_task = self.hot.index(
             job_manager,
-            steps=set(Step.order(steps)) & {"index", "post"},
+            steps=set(ordered_steps) & {"index", "post"},
             batch_size=batch_size,
             ids=ids,
             mode="merge",
@@ -800,8 +822,13 @@ class IndexManager(BaseManager):
         """Show index manager config with enhanced index information."""
         # http://localhost:7080/index_manager
 
-        async def _enhance(conf):
+        def _with_supported_modes(conf):
             conf = copy.deepcopy(conf)
+            conf["index_modes"] = copy.deepcopy(INDEX_MODES)
+            return conf
+
+        async def _enhance(conf):
+            conf = _with_supported_modes(conf)
 
             for name, env in self.register.items():
                 async with AsyncElasticsearch(**env["args"]) as client:
@@ -827,7 +854,7 @@ class IndexManager(BaseManager):
             job.add_done_callback(self.logger.debug)
             return job
 
-        return self._config
+        return _with_supported_modes(self._config)
 
     def get_indexes_by_name(self, index_name=None, env_name=None, limit=10):
         """Accept an index_name and return a list of indexes get from all elasticsearch environments
@@ -870,13 +897,15 @@ class IndexManager(BaseManager):
                     for index_name, index_data in indices.items():
                         if "_meta" in index_data["mappings"] and "biothing_type" in index_data["mappings"]["_meta"]:
                             mapping_meta = index_data["mappings"]["_meta"]
-                            if "total" in mapping_meta["stats"]:
+                            stats = mapping_meta.get("stats", {})
+                            count = stats.get("total", stats.get("total_documents"))
+                            if count is not None:
                                 indexes.append(
                                     {
                                         "index_name": index_name,
                                         "doc_type": mapping_meta["biothing_type"],
                                         "build_version": mapping_meta["build_version"],
-                                        "count": mapping_meta["stats"]["total"],
+                                        "count": count,
                                         "creation_date": index_data["settings"]["index"]["creation_date"],
                                         "environment": {
                                             "name": _env_name,
