@@ -633,7 +633,8 @@ class ESQueryBuilder:
                     # 'from' + 'size' must stay inside the result window
                     size = options.get("size") or ES_DEFAULT_SIZE
                     fmax = min(total, MAX_RESULT_WINDOW) - size
-                    options["from"] = randrange(fmax) if fmax > 0 else 0
+                    # Random result selection is not used for security or cryptographic purposes.
+                    options["from"] = randrange(fmax) if fmax > 0 else 0  # nosec B311
                 except Exception:
                     raise ValueError("random query not available.")
 
