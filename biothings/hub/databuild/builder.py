@@ -32,6 +32,7 @@ from biothings.hub.databuild.mapper import TransparentMapper
 from biothings.hub.dataload.uploader import ResourceNotReady
 from biothings.hub.manager import BaseManager
 from biothings.utils import mongo
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import (
     dotdict,
@@ -887,7 +888,7 @@ class DataBuilder:
         try:
             # TaskGroup raises errors as soon as we know, cancelling the
             # submission loop and pending batches
-            async with asyncio.TaskGroup() as tg:
+            async with TaskGroup() as tg:
                 for big_doc_ids in id_provider:
                     for doc_ids in iter_n(big_doc_ids, batch_size):
                         # try to put some async here to give control back
@@ -925,7 +926,7 @@ class DataBuilder:
                         njobs += 1
                         bnum += 1
                 self.logger.info("%d jobs created for merging step", njobs)
-        except* Exception as eg:
+        except ExceptionGroup as eg:
             raise first_exception(eg) from eg
         return {"%s" % src_name: cnt}
 

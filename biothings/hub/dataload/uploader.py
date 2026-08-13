@@ -10,8 +10,9 @@ from typing import Iterable, Optional
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
-from biothings.hub.manager import ResourceNotFound
 from biothings.hub.dataload.manager import BaseSourceManager
+from biothings.hub.manager import ResourceNotFound
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.common import first_exception, get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
@@ -698,7 +699,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
             # in other words: once unprepared, self should never be changed until all
             # jobs are submitted
             # (TaskGroup raises errors as soon as we know, cancelling the submission loop)
-            async with asyncio.TaskGroup() as tg:
+            async with TaskGroup() as tg:
                 for batch_number, args in enumerate(job_params):
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "update_data"
@@ -727,7 +728,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     )
                     tg.create_task(batch_uploaded(job, fullname, batch_number))
                     submitted = True
-        except* Exception as eg:
+        except ExceptionGroup as eg:
             raise first_exception(eg) from eg
 
         if submitted:

@@ -16,6 +16,7 @@ import biothings.utils.jsonpatch as jsonpatch
 from biothings import config as btconfig
 from biothings.hub import SYNCER_CATEGORY
 from biothings.hub.manager import BaseManager
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.common import first_exception, iter_n, loadobj, timesofar
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
@@ -253,7 +254,7 @@ class BaseSyncer(object):
                     summary[k] += res[k]
 
             try:
-                async with asyncio.TaskGroup() as tg:
+                async with TaskGroup() as tg:
                     for diff_file, worker_args in diff_files:
                         cnt += 1
                         pinfo["description"] = "file %s (%s/%s)" % (diff_file, cnt, total)
@@ -284,7 +285,7 @@ class BaseSyncer(object):
                             ),
                         )
                         tg.create_task(synced(job))
-            except* Exception as eg:
+            except ExceptionGroup as eg:
                 e = first_exception(eg)
                 self.register_status("failed", job={"err": repr(e)})
                 self.logger.error(

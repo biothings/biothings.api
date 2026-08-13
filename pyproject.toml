@@ -20,7 +20,7 @@ dynamic = ["version"]    # version is dynamically generated from setup.py
 authors = [
     {name = "The BioThings Team", email="dev@biothings.io"},
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 description = "a toolkit for building high-performance data & knowledge APIs in biology"
 readme = "README.md"
 license = "Apache-2.0"
@@ -37,6 +37,7 @@ keywords = [
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -61,6 +62,8 @@ dependencies = [
     "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
     "PyYAML>=5.1",
     "msgspec>=0.21.1",  # fast json lib supporting inf/nan and datetime; ships free-threaded (cp314t) wheels (replaced orjson, which re-enables the GIL on 3.14t)
+    'exceptiongroup; python_version<"3.11"',
+    'taskgroup>=0.2.2; python_version<"3.11"',
     'zstandard>=0.21.0; python_version<"3.14"', # we need zst library before 3.14
 ]
 

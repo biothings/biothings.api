@@ -37,6 +37,7 @@ from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_re
 from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.manager import ResourceError
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.common import first_exception, open_anyfile, rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
@@ -614,7 +615,7 @@ class BaseDumper:
             # 1. it prevents from launching things for nothing
             # 2. if we gathered errors at the end of the loop *and* if we
             #    had more errors than the queue size, we'd get stuck
-            async with asyncio.TaskGroup() as tg:
+            async with TaskGroup() as tg:
                 for todo in self.to_dump:
                     remote = todo["remote"]
                     local = todo["local"]
@@ -627,7 +628,7 @@ class BaseDumper:
                         await asyncio.sleep(courtesy_wait)
                     job = await job_manager.defer_to_process(pinfo, partial(self.download, remote, local))
                     tg.create_task(self._download_done(job, remote, local, max_dump))
-        except* Exception as eg:
+        except ExceptionGroup as eg:
             raise first_exception(eg) from eg
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []

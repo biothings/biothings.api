@@ -38,6 +38,8 @@ from shlex import shlex
 import requests
 import yaml
 
+from biothings.utils.asyncio_compat import BaseExceptionGroup, ExceptionGroup, TaskGroup
+
 try:
     import zstandard as zstd
 except ImportError:
@@ -934,12 +936,12 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
 
     logging.info("Unzipping files in '%s'", folder)
     try:
-        async with asyncio.TaskGroup() as tg:
+        async with TaskGroup() as tg:
             for f in glob.glob(os.path.join(folder, pattern)):
                 pinfo["description"] = os.path.basename(f)
                 job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
                 tg.create_task(gunzip_one(job, f))
-    except* Exception as eg:
+    except ExceptionGroup as eg:
         raise first_exception(eg) from eg
 
 

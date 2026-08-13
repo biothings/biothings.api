@@ -20,6 +20,7 @@ from biothings.hub.datainspect.doc_inspect import (
     stringify_inspect_doc,
 )
 from biothings.hub.manager import BaseManager
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.common import first_exception, timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_source_fullname, get_src_build, get_src_dump
@@ -244,7 +245,7 @@ class InspectorManager(BaseManager):
 
                 backend = create_backend(backend_provider).target_collection
                 try:
-                    async with asyncio.TaskGroup() as tg:
+                    async with TaskGroup() as tg:
                         for ids in id_feeder(backend, batch_size=batch_size):
                             if sample is not None:
                                 if random.random() > sample:
@@ -264,7 +265,7 @@ class InspectorManager(BaseManager):
                                 ),
                             )
                             tg.create_task(batch_inspected(job, cnt))
-                except* Exception as eg:
+                except ExceptionGroup as eg:
                     raise first_exception(eg) from eg
 
                 # compute metadata (they were skipped before)

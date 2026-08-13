@@ -16,6 +16,7 @@ from elasticsearch import AsyncElasticsearch
 from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.common import (
     first_exception,
     get_class_from_classpath,
@@ -516,7 +517,7 @@ class Indexer:
             # when one batch fails, and job scheduling has not completed,
             # the TaskGroup stops scheduling and cancels all on-going jobs,
             # to fail quickly.
-            async with asyncio.TaskGroup() as tg:
+            async with TaskGroup() as tg:
                 for batch_num, ids in zip(schedule, id_provider):
                     await asyncio.sleep(0.0)
                     self.logger.info(schedule)
@@ -537,7 +538,7 @@ class Indexer:
                         batch_num,
                     )
                     tg.create_task(batch_finished(job))
-        except* Exception as eg:
+        except ExceptionGroup as eg:
             raise first_exception(eg) from eg
 
         self.logger.info(schedule)

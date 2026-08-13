@@ -27,6 +27,8 @@ import tempfile
 import time
 from functools import partial
 
+from biothings.utils.asyncio_compat import TaskGroup
+
 
 def setup_config(workers):
     # minimal hub configuration so biothings.utils.manager can be imported
@@ -109,7 +111,7 @@ async def run_bench(jm, batches, num_docs, width):
         done += res
 
     t0 = time.time()
-    async with asyncio.TaskGroup() as tg:
+    async with TaskGroup() as tg:
         for b in range(batches):
             job = await jm.defer_to_process(dict(pinfo), partial(merge_batch, num_docs, width, b))
             tg.create_task(watch(job))

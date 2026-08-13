@@ -13,6 +13,7 @@ from biothings.hub import DIFFER_CATEGORY, DIFFMANAGER_CATEGORY
 from biothings.hub.databuild.backend import generate_folder
 from biothings.hub.datarelease import set_pending_to_release_note
 from biothings.hub.manager import BaseManager
+from biothings.utils.asyncio_compat import ExceptionGroup, TaskGroup
 from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import dump, first_exception, get_timestamp, loadobj, md5sum, rmdashfr, timesofar
 from biothings.utils.diff import diff_docs_jsonpatch
@@ -342,7 +343,7 @@ class BaseDiffer(object):
                 self.register_status("success", job={"step": "diff-content"})
 
             try:
-                async with asyncio.TaskGroup() as tg:
+                async with TaskGroup() as tg:
                     for id_list_new in data_new:
                         cnt += 1
                         pinfo["description"] = "batch #%s" % cnt
@@ -362,7 +363,7 @@ class BaseDiffer(object):
                             ),
                         )
                         tg.create_task(diffed_new_vs_old(job))
-            except* Exception as eg:
+            except ExceptionGroup as eg:
                 raise first_exception(eg) from eg
             self.logger.info(
                 "Finished calculating diff for the new collection. Total number of docs updated: %s, added: %s",
@@ -383,7 +384,7 @@ class BaseDiffer(object):
                 self.logger.info("(Deleted: {})".format(res["delete"]))
 
             try:
-                async with asyncio.TaskGroup() as tg:
+                async with TaskGroup() as tg:
                     for id_list_old in data_old:
                         cnt += 1
                         pinfo["description"] = "batch #%s" % cnt
@@ -393,7 +394,7 @@ class BaseDiffer(object):
                             partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt, diff_folder),
                         )
                         tg.create_task(diffed_old_vs_new(job))
-            except* Exception as eg:
+            except ExceptionGroup as eg:
                 raise first_exception(eg) from eg
             self.logger.info(
                 "Finished calculating diff for the old collection. Total number of docs deleted: %s",
@@ -436,7 +437,7 @@ class BaseDiffer(object):
                     if not os.path.basename(f).startswith("mapping")
                 ]
                 self.logger.info("%d diff files to process in total" % len(diff_files))
-                async with asyncio.TaskGroup() as tg:
+                async with TaskGroup() as tg:
                     while diff_files:
                         if len(diff_files) % 100 == 0:
                             self.logger.info("%d diff files to process" % len(diff_files))
@@ -475,7 +476,7 @@ class BaseDiffer(object):
             )
             try:
                 res = await merge_diff()
-            except* Exception as eg:
+            except ExceptionGroup as eg:
                 err = first_exception(eg)
                 self.logger.exception(
                     "Failed to reduce diff files: %s" % err,
