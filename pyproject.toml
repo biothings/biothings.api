@@ -20,11 +20,10 @@ dynamic = ["version"]    # version is dynamically generated from setup.py
 authors = [
     {name = "The BioThings Team", email="dev@biothings.io"},
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 description = "a toolkit for building high-performance data & knowledge APIs in biology"
 readme = "README.md"
-license = "Apache-2.0"                   # this new format works for Python 3.9+
-# license = {text = "Apache-2.0"}        # this is an old format, but works for Python 3.8+
+license = "Apache-2.0"
 keywords = [
     "biology",
     "medicine",
@@ -38,8 +37,6 @@ keywords = [
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -58,19 +55,12 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.21.0",
-    'tornado==6.1.0; python_version < "3.7.0"',
-    'tornado==6.2.0; python_version == "3.7.0"',
-    'tornado==6.4.2; python_version == "3.8.0"',
-    'tornado==6.5.3; python_version >= "3.9.0"',
+    "tornado==6.5.3",
     "gitpython>=3.1.0",
-    "elasticsearch[async]>=7, <8; python_version < '3.7.0'",
-    "elasticsearch[async]>=8.18,<9; python_version >= '3.7.0'",
-    'singledispatchmethod; python_version < "3.8.0"',
-    'dataclasses; python_version < "3.7.0"',
+    "elasticsearch[async]>=8, <9",
     "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
     "PyYAML>=5.1",
-    'orjson>=3.10.16; python_version < "3.14.0"',  # a faster json lib supports inf/nan and datetime, v3.10.16 is the first version requires Python 3.9+
-    'orjson==3.11.4; python_version >= "3.14.0"',  # orjson 3.11.5 cannot be built on Python 3.14t for now
+    "msgspec>=0.21.1",  # fast json lib supporting inf/nan and datetime; ships free-threaded (cp314t) wheels (replaced orjson, which re-enables the GIL on 3.14t)
     'zstandard>=0.21.0; python_version<"3.14"', # we need zst library before 3.14
 ]
 
@@ -106,14 +96,11 @@ hub = [
     "sockjs-tornado==1.0.7",  # websocket server for HubServer
     "jsonschema>=2.6.0",
     "pip",  # auto-install requirements from plugins
-    # 'pandas==1.0.1',    # json with inf/nan and more to come (replaced by orjson below now)
-    # 'orjson>=3.5.2',    # this is a faster json lib support inf/nan and datetime
     # "yapf",  # code reformatter, better results than autopep8
     "black",  # code formatter
     "boto3",  # for aws S3 access
     "requests-aws4auth",  # aws s3 auth requests for autohub
-    'networkx>=2.1,<3.0; python_version >= "3.7.0"',  # datatransform
-    'networkx>=2.1,<2.6; python_version < "3.7.0"',  # datatransform
+    "networkx>=2.1,<3.0",  # datatransform
     "biothings_client>=0.2.6",  # datatransform (api client)
     "cryptography>=38.0.3",  # for generate ssh keys, ssl cert.
     "pytest",  # to run hub api pytests
@@ -137,6 +124,10 @@ docker_ssh = [
 # extra requirements to develop biothings
 dev = [
     "aioresponses",
+    # aioresponses 0.7.8 (latest) builds aiohttp's ClientResponse internally, which
+    # gained a required `stream_writer` kwarg in aiohttp 3.14; cap aiohttp for tests
+    # until aioresponses supports 3.14. Runtime code works fine with aiohttp >= 3.14.
+    "aiohttp<3.14",
     "mongomock",
     "pytest-asyncio",
     "pytest-mock",

@@ -17,6 +17,7 @@ from biothings import config as btconfig
 from biothings.hub import INDEXER_CATEGORY, INDEXMANAGER_CATEGORY
 from biothings.hub.databuild.backend import merge_src_build_metadata
 from biothings.utils.common import (
+    first_exception,
     get_class_from_classpath,
     get_random_string,
     iter_n,
@@ -27,7 +28,7 @@ from biothings.hub.manager import BaseManager
 from biothings.utils.es import ESIndexer
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
-from biothings.utils.mongo import DatabaseClient, id_feeder
+from biothings.utils.mongo import DatabaseClient, cached_client, id_feeder, kwargs_cache_key
 from biothings.utils.manager import JobManager
 
 
@@ -471,7 +472,12 @@ class Indexer:
             await client.close()
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
-        client = DatabaseClient(**self.mongo_client_args)
+        # DatabaseClient holds a connection pool and is meant to be created once and
+        # shared, not per call - do_index() runs once per indexing job, but a hub can run
+        # many index jobs over its lifetime, so an uncached client here still leaks one
+        # connection pool per job into the long-lived hub process.
+        key = kwargs_cache_key("indexer_mongo_client", self.mongo_client_args)
+        client = cached_client(key, lambda: DatabaseClient(**self.mongo_client_args))
         database = client[self.mongo_database_name]
         collection = database[self.mongo_collection_name]
 
@@ -492,54 +498,49 @@ class Indexer:
             # use ids from the target mongodb collection in batch
             id_provider = id_feeder(collection, batch_size, logger=self.logger)
 
-        jobs = []  # asyncio.Future(s)
-        error = None  # the first Exception
-
         total = len(ids) if ids else collection.count()
         schedule = Schedule(total, batch_size)
 
-        def batch_finished(future):
-            nonlocal error
+        async def batch_finished(job):
             try:
-                schedule.finished += future.result()
+                count = await job
             except Exception as exc:
                 self.logger.error(exc)
-                error = exc
+                raise
+            # resolve the await into a local first: "schedule.finished += await job"
+            # would read schedule.finished before suspending, so concurrent
+            # batch_finished tasks would clobber each other's increments
+            schedule.finished += count
 
-        for batch_num, ids in zip(schedule, id_provider):
-            await asyncio.sleep(0.0)
+        try:
+            # when one batch fails, and job scheduling has not completed,
+            # the TaskGroup stops scheduling and cancels all on-going jobs,
+            # to fail quickly.
+            async with asyncio.TaskGroup() as tg:
+                for batch_num, ids in zip(schedule, id_provider):
+                    await asyncio.sleep(0.0)
+                    self.logger.info(schedule)
 
-            # when one batch failed, and job scheduling has not completed,
-            # stop scheduling and cancel all on-going jobs, to fail quickly.
+                    pinfo = self.pinfo.get_pinfo(schedule.suffix(self.mongo_collection_name))
 
-            if isinstance(error, Exception):
-                for job in jobs:
-                    if not job.done():
-                        job.cancel()
-                raise error
-
-            self.logger.info(schedule)
-
-            pinfo = self.pinfo.get_pinfo(schedule.suffix(self.mongo_collection_name))
-
-            job = await job_manager.defer_to_process(
-                pinfo,
-                dispatch,
-                self.mongo_client_args,
-                self.mongo_database_name,
-                self.mongo_collection_name,
-                self.es_client_args,
-                self.es_blkidx_args,
-                self.es_index_name,
-                ids,
-                mode,
-                batch_num,
-            )
-            job.add_done_callback(batch_finished)
-            jobs.append(job)
+                    job = await job_manager.defer_to_process(
+                        pinfo,
+                        dispatch,
+                        self.mongo_client_args,
+                        self.mongo_database_name,
+                        self.mongo_collection_name,
+                        self.es_client_args,
+                        self.es_blkidx_args,
+                        self.es_index_name,
+                        ids,
+                        mode,
+                        batch_num,
+                    )
+                    tg.create_task(batch_finished(job))
+        except* Exception as eg:
+            raise first_exception(eg) from eg
 
         self.logger.info(schedule)
-        await asyncio.gather(*jobs)
 
         try:
             schedule.completed()
@@ -769,10 +770,7 @@ class IndexManager(BaseManager):
         indexer_class = self._select_indexer(build_name)
         indexer_instance = indexer_class(build_doc, indexer_env_, index_name)
         self.logger.info("Created indexer instance %s", indexer_instance)
-        job = indexer_instance.index(self.job_manager, ids=ids, **kwargs)
-        job = asyncio.ensure_future(job)
-        # job.add_done_callback(self.logger.debug)
-
+        job = self.job_manager.loop.create_task(indexer_instance.index(self.job_manager, ids=ids, **kwargs))
         return job
 
     def update_metadata(
@@ -815,7 +813,8 @@ class IndexManager(BaseManager):
                     doc_type=doc_type,
                 )
 
-        job = asyncio.ensure_future(_update_meta(_meta))
+        job = self.job_manager.loop.create_task(_update_meta(_meta))
+        # logging the result doubles as marking the exception retrieved
         job.add_done_callback(self.logger.debug)
         return job
 
@@ -850,7 +849,8 @@ class IndexManager(BaseManager):
             return conf
 
         if remote:
-            job = asyncio.ensure_future(_enhance(self._config))
+            job = self.job_manager.loop.create_task(_enhance(self._config))
+            # logging the result doubles as marking the exception retrieved
             job.add_done_callback(self.logger.debug)
             return job
 
@@ -920,7 +920,8 @@ class IndexManager(BaseManager):
                 indexes = indexes[:limit]
             return indexes
 
-        job = asyncio.ensure_future(fetch(index_name, env_name=env_name, limit=limit))
+        job = self.job_manager.loop.create_task(fetch(index_name, env_name=env_name, limit=limit))
+        # logging the result doubles as marking the exception retrieved
         job.add_done_callback(self.logger.debug)
         return job
 
@@ -947,7 +948,8 @@ class IndexManager(BaseManager):
                 await client.indices.delete(index_name, ignore_unavailable=True)
                 await client.close()
 
-        job = asyncio.ensure_future(_validate_mapping())
+        job = self.job_manager.loop.create_task(_validate_mapping())
+        # logging the result doubles as marking the exception retrieved
         job.add_done_callback(self.logger.info)
         return job
 
@@ -978,7 +980,8 @@ class IndexManager(BaseManager):
                 )
             )
 
-        job = asyncio.ensure_future(cleaner.clean(cleanups))
+        job = self.job_manager.loop.create_task(cleaner.clean(cleanups))
+        # logging the result doubles as marking the exception retrieved
         job.add_done_callback(self.logger.info)
         return job
 

@@ -322,7 +322,7 @@ def create_backend(db_col_names, name_only=False, follow_ref=False, **kwargs):
             db_col_names = ["%s:%s" % (db.client.HOST, db.client.PORT), db.name, col.name]
     elif db_col_names[0].startswith("mongodb://"):
         assert len(db_col_names) == 3, "Missing connection information for %s" % repr(db_col_names)
-        conn = mongo.MongoClient(db_col_names[0])
+        conn = mongo._cached_client(db_col_names[0])
         db = conn[db_col_names[1]]
         col = db[db_col_names[2]]
         # normalize params

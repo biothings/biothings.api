@@ -131,9 +131,9 @@ class MongoBuildCleaner:
         finally:
             await conn.close()
 
-    def done(self, future):
+    async def done(self, job):
         try:
-            result = future.result()
+            result = await job
             logging.info(
                 "Deleted %d MongoDB builds and dropped %d target collections",
                 result.get("deleted_count", 0),
@@ -143,9 +143,9 @@ class MongoBuildCleaner:
         except Exception as exc:
             logging.exception("Failed to delete MongoDB builds: %s", exc, extra={"notify": True})
 
-    def validate_done(self, future):
+    async def validate_done(self, job):
         try:
-            result = future.result()
+            result = await job
             logging.info(
                 "Build validation complete: removed %d orphaned build record(s)",
                 result.get("builds_removed", 0),
@@ -166,7 +166,7 @@ class MongoBuildCleanupManager(BaseManager):
     def delete_mongo_builds(self, build_ids):
         try:
             job = self.job_manager.submit(partial(self.cleaner.delete_builds, build_ids))
-            job.add_done_callback(self.cleaner.done)
+            self.job_manager.loop.create_task(self.cleaner.done(job))
         except Exception as ex:
             logging.exception("Error while submitting MongoDB build deletion job: %s", ex, extra={"notify": True})
             raise
@@ -175,7 +175,7 @@ class MongoBuildCleanupManager(BaseManager):
     def validate_mongo_builds(self):
         try:
             job = self.job_manager.submit(partial(self.cleaner.validate_builds))
-            job.add_done_callback(self.cleaner.validate_done)
+            self.job_manager.loop.create_task(self.cleaner.validate_done(job))
         except Exception as ex:
             logging.exception("Error while submitting MongoDB build validation job: %s", ex, extra={"notify": True})
             raise

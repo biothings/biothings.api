@@ -20,7 +20,7 @@ from biothings.hub.datainspect.doc_inspect import (
     stringify_inspect_doc,
 )
 from biothings.hub.manager import BaseManager
-from biothings.utils.common import timesofar
+from biothings.utils.common import first_exception, timesofar
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.hub_db import get_source_fullname, get_src_build, get_src_dump
 from biothings.utils.loggers import get_logger
@@ -221,7 +221,6 @@ class InspectorManager(BaseManager):
 
                 cnt = 0
                 doccnt = 0
-                jobs = []
                 # normalize mode param and prepare global results
                 if isinstance(mode, str):
                     mode = [mode]
@@ -232,41 +231,41 @@ class InspectorManager(BaseManager):
                 for m in mode:
                     inspected.setdefault(m, {})
 
+                async def batch_inspected(job, bnum):
+                    try:
+                        res = await job
+                    except Exception as e:
+                        self.logger.error("Error while inspecting data from batch #%s: %s" % (bnum, e))
+                        raise
+                    # merging into "inspected" happens on the event loop, so
+                    # it's serialized even with parallel inspect workers
+                    for m in mode:
+                        inspected[m] = merge_record(inspected[m], res[m], m)
+
                 backend = create_backend(backend_provider).target_collection
-                for ids in id_feeder(backend, batch_size=batch_size):
-                    if sample is not None:
-                        if random.random() > sample:
-                            continue
-                    cnt += 1
-                    doccnt += batch_size
-                    if limit and doccnt > limit:
-                        break
-                    pinfo["description"] = "batch #%s" % cnt
-
-                    def batch_inspected(bnum, i, f):
-                        nonlocal inspected
-                        nonlocal got_error
-                        nonlocal mode
-                        try:
-                            res = f.result()
-                            for m in mode:
-                                inspected[m] = merge_record(inspected[m], res[m], m)
-                        except Exception as e:
-                            got_error = e
-                            self.logger.error("Error while inspecting data from batch #%s: %s" % (bnum, e))
-                            raise
-
-                    pre_mapping = "mapping" in mode  # we want to generate intermediate mapping so we can merge
-                    # all maps later and then generate the ES mapping from there
-                    self.logger.info("Creating inspect worker for batch #%s" % cnt)
-                    job = await self.job_manager.defer_to_process(
-                        pinfo,
-                        partial(inspect_data, backend_provider, ids, mode=mode, pre_mapping=pre_mapping, **kwargs),
-                    )
-                    job.add_done_callback(partial(batch_inspected, cnt, ids))
-                    jobs.append(job)
-
-                await asyncio.gather(*jobs)
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        for ids in id_feeder(backend, batch_size=batch_size):
+                            if sample is not None:
+                                if random.random() > sample:
+                                    continue
+                            cnt += 1
+                            doccnt += batch_size
+                            if limit and doccnt > limit:
+                                break
+                            pinfo["description"] = "batch #%s" % cnt
+                            pre_mapping = "mapping" in mode  # we want to generate intermediate mapping so we can merge
+                            # all maps later and then generate the ES mapping from there
+                            self.logger.info("Creating inspect worker for batch #%s" % cnt)
+                            job = await self.job_manager.defer_to_process(
+                                pinfo,
+                                partial(
+                                    inspect_data, backend_provider, ids, mode=mode, pre_mapping=pre_mapping, **kwargs
+                                ),
+                            )
+                            tg.create_task(batch_inspected(job, cnt))
+                except* Exception as eg:
+                    raise first_exception(eg) from eg
 
                 # compute metadata (they were skipped before)
                 for m in mode:
@@ -318,8 +317,7 @@ class InspectorManager(BaseManager):
                 if got_error:
                     raise got_error
 
-            task = asyncio.ensure_future(do())
-            return task
+            return self.job_manager.loop.create_task(do())
         except Exception as e:
             self.logger.error("Error while inspecting '%s': %s" % (repr(data_provider), e))
             raise

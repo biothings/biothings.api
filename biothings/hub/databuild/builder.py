@@ -6,6 +6,7 @@ import os
 import pickle
 import re
 import sys
+import threading
 import time
 from datetime import datetime
 from functools import partial
@@ -35,6 +36,7 @@ from biothings.utils.backend import DocMongoBackend
 from biothings.utils.common import (
     dotdict,
     find_classes_subclassing,
+    first_exception,
     get_random_string,
     iter_n,
     open_compressed_file,
@@ -622,60 +624,53 @@ class DataBuilder:
                     pinfo = self.get_pinfo()
                     pinfo["step"] = "metadata"
                     self.register_status("building", transient=True, init=True, job={"step": "metadata"})
-
-                    def stored(f):
-                        try:
-                            nonlocal res
-                            if res:
-                                res = f.result()  # consume to trigger exceptions if any
-                            strargs = "[sources=%s,stats=%s]" % (sources, self.merge_stats)
-                            build_version = self.get_build_version()
-                            if "." in build_version:
-                                raise BuilderException(
-                                    "Can't use '.' in build version '%s', it's reserved for minor versions"
-                                    % build_version
-                                )
-                            # get original start dt
-                            src_build = self.source_backend.build
-                            build = src_build.find_one({"_id": target_name})
-                            _meta = {
-                                "biothing_type": build["build_config"]["doc_type"],
-                                "src": self.src_meta,
-                                "stats": self.stats,
-                                "build_version": build_version,
-                                "build_date": datetime.fromtimestamp(self.t0).astimezone().isoformat(),
-                            }
-                            # custom
-                            _meta.update(self.custom_metadata)
-                            self.register_status(
-                                "success",
-                                build={
-                                    "merge_stats": self.merge_stats,
-                                    "mapping": self.mapping,
-                                    "_meta": _meta,
-                                },
-                            )
-                            self.logger.info("success %s", strargs, extra={"notify": True})
-                            # set next step
-                            build_conf = AutoBuildConfig(build["build_config"])
-                            if build_conf.should_diff_new_build():
-                                pending(target_name, "diff")
-                            if build_conf.should_snapshot_new_build():
-                                pending(target_name, "snapshot")
-                        except Exception as e:
-                            strargs = "[sources=%s]" % sources
-                            self.register_status("failed", job={"err": repr(e)})
-                            self.logger.exception("failed %s: %s", strargs, e, extra={"notify": True})
-                            raise
-
                     postjob = await job_manager.defer_to_thread(
                         pinfo, partial(self.store_metadata, res, sources=sources, job_manager=job_manager)
                     )
-                    postjob.add_done_callback(stored)
-                    await postjob
+                    try:
+                        stored_res = await postjob
+                        if res:
+                            res = stored_res
+                        strargs = "[sources=%s,stats=%s]" % (sources, self.merge_stats)
+                        build_version = self.get_build_version()
+                        if "." in build_version:
+                            raise BuilderException(
+                                "Can't use '.' in build version '%s', it's reserved for minor versions" % build_version
+                            )
+                        # get original start dt
+                        src_build = self.source_backend.build
+                        build = src_build.find_one({"_id": target_name})
+                        _meta = {
+                            "biothing_type": build["build_config"]["doc_type"],
+                            "src": self.src_meta,
+                            "stats": self.stats,
+                            "build_version": build_version,
+                            "build_date": datetime.fromtimestamp(self.t0).astimezone().isoformat(),
+                        }
+                        # custom
+                        _meta.update(self.custom_metadata)
+                        self.register_status(
+                            "success",
+                            build={
+                                "merge_stats": self.merge_stats,
+                                "mapping": self.mapping,
+                                "_meta": _meta,
+                            },
+                        )
+                        self.logger.info("success %s", strargs, extra={"notify": True})
+                        # set next step
+                        build_conf = AutoBuildConfig(build["build_config"])
+                        if build_conf.should_diff_new_build():
+                            pending(target_name, "diff")
+                        if build_conf.should_snapshot_new_build():
+                            pending(target_name, "snapshot")
+                    except Exception as e:
+                        strargs = "[sources=%s]" % sources
+                        self.register_status("failed", job={"err": repr(e)})
+                        self.logger.exception("failed %s: %s", strargs, e, extra={"notify": True})
+                        raise
 
-            task = asyncio.ensure_future(do())
-            return task
+            return job_manager.loop.create_task(do())
 
         except (KeyboardInterrupt, Exception) as e:
             self.logger.exception(e)
@@ -741,33 +736,17 @@ class DataBuilder:
         self.logger.info("Root sources: %s", root_sources)
         self.logger.info("Other sources: %s", other_sources)
 
-        got_error = False
-
         async def merge(src_names):
-            jobs = []
-            # for i, src_name in enumerate(src_names):
+            # sources are merged sequentially, by design: each source is fully
+            # merged (parallelized batches inside merge_source) before the next
             for src_name in src_names:
                 await asyncio.sleep(0.0)
-                job = self.merge_source(src_name, batch_size=batch_size, ids=ids, job_manager=job_manager)
-                job = asyncio.ensure_future(job)
-
-                def merged(f, name, stats):
-                    try:
-                        res = f.result()
-                        stats.update(res)
-                    except Exception as e:
-                        self.logger.exception("Failed merging source '%s': %s", name, e)
-                        nonlocal got_error
-                        got_error = e
-
-                job.add_done_callback(partial(merged, name=src_name, stats=self.merge_stats))
-                jobs.append(job)
-                await asyncio.wait([job])
-                # raise error as soon as we know something went wrong
-                if got_error:
-                    raise got_error
-            tasks = asyncio.gather(*jobs)
-            await tasks
+                try:
+                    stats = await self.merge_source(src_name, batch_size=batch_size, ids=ids, job_manager=job_manager)
+                except Exception as e:
+                    self.logger.exception("Failed merging source '%s': %s", src_name, e)
+                    raise
+                self.merge_stats.update(stats)
 
         if do_merge:
             if root_sources:
@@ -801,21 +780,13 @@ class DataBuilder:
             job = await job_manager.defer_to_thread(
                 pinfo, partial(self.post_merge, source_names, batch_size, job_manager)
             )
-            job = asyncio.ensure_future(job)
-
-            def postmerged(f):
-                try:
-                    self.logger.info("Post-merge completed [%s]", f.result())
-                    self.register_status("success", job={"step": "post-merge"})
-                except Exception as e:
-                    self.logger.exception("Failed post-merging source: %s", e)
-                    nonlocal got_error
-                    got_error = e
-
-            job.add_done_callback(postmerged)
-            await job
-            if got_error:
-                raise got_error
+            try:
+                res = await job
+            except Exception as e:
+                self.logger.exception("Failed post-merging source: %s", e)
+                raise
+            self.logger.info("Post-merge completed [%s]", res)
+            self.register_status("success", job={"step": "post-merge"})
         else:
             self.logger.info("Skip post-merge process")
 
@@ -846,12 +817,10 @@ class DataBuilder:
             self.logger.debug(
                 "Documents from source '%s' will be stored only if a previous document exists with same _id", src_name
             )
-        jobs = []
         total = self.source_backend[src_name].count()
         btotal = math.ceil(total / batch_size)
         bnum = 1
         cnt = 0
-        got_error = False
         # grab ids only, so we can get more, let's say 10 times more
         id_batch_size = batch_size * 10
 
@@ -908,70 +877,57 @@ class DataBuilder:
             )
 
         doc_cleaner = self.document_cleaner(src_name)
-        for big_doc_ids in id_provider:
-            for doc_ids in iter_n(big_doc_ids, batch_size):
-                # try to put some async here to give control back
-                # (but everybody knows it's a blocking call: doc_feeder)
-                await asyncio.sleep(0.1)
-                cnt += len(doc_ids)
-                pinfo = self.get_pinfo()
-                pinfo["step"] = src_name
-                pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
-                self.logger.info(
-                    "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
-                    bnum,
-                    btotal,
-                    src_name,
-                    cnt,
-                    total,
-                    (cnt / total * 100.0),
-                )
-                job = await job_manager.defer_to_process(
-                    pinfo,
-                    partial(
-                        merger_worker,
-                        self.source_backend[src_name].name,
-                        self.target_backend.target_name,
-                        doc_ids,
-                        self.get_mapper_for_source(src_name, init=False),
-                        doc_cleaner,
-                        upsert,
-                        merger,
-                        bnum,
-                        merger_kwargs,
-                    ),
-                )
 
-                def batch_merged(f, batch_num):
-                    nonlocal got_error
-                    if type(f.result()) != int:
-                        got_error = Exception(
-                            "Batch #%s failed while merging source '%s' [%s]" % (batch_num, src_name, f.result())
+        async def batch_merged(job, batch_num):
+            res = await job
+            if not isinstance(res, int):
+                raise Exception("Batch #%s failed while merging source '%s' [%s]" % (batch_num, src_name, res))
+
+        njobs = 0
+        try:
+            # TaskGroup raises errors as soon as we know, cancelling the
+            # submission loop and pending batches
+            async with asyncio.TaskGroup() as tg:
+                for big_doc_ids in id_provider:
+                    for doc_ids in iter_n(big_doc_ids, batch_size):
+                        # try to put some async here to give control back
+                        # (but everybody knows it's a blocking call: doc_feeder)
+                        await asyncio.sleep(0.1)
+                        cnt += len(doc_ids)
+                        pinfo = self.get_pinfo()
+                        pinfo["step"] = src_name
+                        pinfo["description"] = "#%d/%d (%.1f%%)" % (bnum, btotal, (cnt / total * 100))
+                        self.logger.info(
+                            "Creating merger job #%d/%d, to process '%s' %d/%d (%.1f%%)",
+                            bnum,
+                            btotal,
+                            src_name,
+                            cnt,
+                            total,
+                            (cnt / total * 100.0),
                         )
-
-                job.add_done_callback(partial(batch_merged, batch_num=bnum))
-                jobs.append(job)
-                bnum += 1
-                # raise error as soon as we know
-                if got_error:
-                    raise got_error
-        self.logger.info("%d jobs created for merging step", len(jobs))
-        tasks = asyncio.gather(*jobs)
-
-        def done(f):
-            nonlocal got_error
-            if None in f.result():
-                got_error = Exception("Some batches failed")
-                return
-            # compute overall inserted/updated records (consume result() and check summable)
-            _ = sum(f.result())
-
-        tasks.add_done_callback(done)
-        await tasks
-        if got_error:
-            raise got_error
-        else:
-            return {"%s" % src_name: cnt}
+                        job = await job_manager.defer_to_process(
+                            pinfo,
+                            partial(
+                                merger_worker,
+                                self.source_backend[src_name].name,
+                                self.target_backend.target_name,
+                                doc_ids,
+                                self.get_mapper_for_source(src_name, init=False),
+                                doc_cleaner,
+                                upsert,
+                                merger,
+                                bnum,
+                                merger_kwargs,
+                            ),
+                        )
+                        tg.create_task(batch_merged(job, bnum))
+                        njobs += 1
+                        bnum += 1
+                self.logger.info("%d jobs created for merging step", njobs)
+        except* Exception as eg:
+            raise first_exception(eg) from eg
+        return {"%s" % src_name: cnt}
 
     def post_merge(self, source_names, batch_size, job_manager):
         pass
@@ -1039,6 +995,11 @@ def fix_batch_duplicates(docs, fail_if_struct_is_different=False):
     return list(dids.values())
 
 
+# serializes the one-time mapper.load() in merger_worker when a mapper instance
+# is shared across concurrent worker threads (free-threaded workers mode)
+_MAPPER_LOAD_LOCK = threading.Lock()
+
+
 def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, batch_num, merger_kwargs=None):
     try:
         src = get_src_db()
@@ -1048,7 +1009,12 @@ def merger_worker(col_name, dest_name, ids, mapper, cleaner, upsert, merger, bat
         cur = doc_feeder(col, step=len(ids), inbatch=False, query={"_id": {"$in": ids}})
         if cleaner:
             cur = map(cleaner, cur)
-        mapper.load()
+        # In free-threaded workers mode the same mapper instance is shared
+        # across concurrent merge batches; serialize the (idempotent, one-time)
+        # load() so two threads can't run the first load concurrently. In
+        # process mode each worker has its own mapper, so the lock is uncontended.
+        with _MAPPER_LOAD_LOCK:
+            mapper.load()
         docs = [d for d in mapper.process(cur)]
         # while documents from cursor "cur" are unique, at this point, due to the use
         # a mapper, documents can be converted and there now can be duplicates (same _id)

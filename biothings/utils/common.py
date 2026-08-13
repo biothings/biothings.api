@@ -166,6 +166,25 @@ def safewfile(filename, prompt=True, default="C", mode="w"):
     return open(filename, mode), filename
 
 
+def _closing_parent(wrapper, parent):
+    """Make closing ``wrapper`` also close ``parent``.
+
+    Used for archive members (tarfile/zipfile) whose extracted stream doesn't own the
+    archive's underlying file descriptor - closing just the stream leaves the archive
+    handle open (and leaking) until garbage collected.
+    """
+    close = wrapper.close
+
+    def close_and_close_parent():
+        try:
+            close()
+        finally:
+            parent.close()
+
+    wrapper.close = close_and_close_parent
+    return wrapper
+
+
 def anyfile(infile, mode="r"):
     """
     return a file handler with the support for gzip/zip compressed files.
@@ -229,7 +248,7 @@ def anyfile(infile, mode="r"):
             tar_file.close()
             raise ValueError("invalid target file: must be a regular file or a link")
 
-        return io.TextIOWrapper(extracted)
+        return _closing_parent(io.TextIOWrapper(extracted), tar_file)
 
     if filetype == ".gz":
         # import gzip
@@ -237,7 +256,8 @@ def anyfile(infile, mode="r"):
     elif filetype == ".zip":
         import zipfile
 
-        in_f = io.TextIOWrapper(zipfile.ZipFile(infile, mode).open(rawfile, mode))
+        zip_file = zipfile.ZipFile(infile, mode)  # pylint: disable=consider-using-with
+        in_f = _closing_parent(io.TextIOWrapper(zip_file.open(rawfile, mode)), zip_file)
     elif filetype == ".xz":
         import lzma
 
@@ -826,10 +846,10 @@ def unzipall(folder, pattern="*.zip"):
     import zipfile
 
     for zfile in glob.glob(os.path.join(folder, pattern)):
-        zf = zipfile.ZipFile(zfile)
-        logging.info("unzipping '%s'", zf.filename)
-        zf.extractall(folder)
-        logging.info("done unzipping '%s'", zf.filename)
+        with zipfile.ZipFile(zfile) as zf:
+            logging.info("unzipping '%s'", zf.filename)
+            zf.extractall(folder)
+            logging.info("done unzipping '%s'", zf.filename)
 
 
 def untargzall(folder, pattern="*.tar.gz"):
@@ -839,12 +859,11 @@ def untargzall(folder, pattern="*.tar.gz"):
     import tarfile
 
     for tgz in glob.glob(os.path.join(folder, pattern)):
-        gz = gzip.GzipFile(tgz)
-        tf = tarfile.TarFile(fileobj=gz)
-        sanitize_tarfile(tf, folder)
-        logging.info("untargz '%s'", tf.name)
-        tf.extractall(folder)
-        logging.info("done untargz '%s'", tf.name)
+        with gzip.GzipFile(tgz) as gz, tarfile.TarFile(fileobj=gz) as tf:
+            sanitize_tarfile(tf, folder)
+            logging.info("untargz '%s'", tf.name)
+            tf.extractall(folder)
+            logging.info("done untargz '%s'", tf.name)
 
 
 def untarall(folder, pattern="*.tar"):
@@ -854,11 +873,11 @@ def untarall(folder, pattern="*.tar"):
     import tarfile
 
     for tg in glob.glob(os.path.join(folder, pattern)):
-        tf = tarfile.TarFile(tg)
-        sanitize_tarfile(tf, folder)
-        logging.info("untargz '%s'", tf.name)
-        tf.extractall(folder)
-        logging.info("done untar '%s'", tf.name)
+        with tarfile.TarFile(tg) as tf:
+            sanitize_tarfile(tf, folder)
+            logging.info("untargz '%s'", tf.name)
+            tf.extractall(folder)
+            logging.info("done untar '%s'", tf.name)
 
 
 def gunzipall(folder, pattern="*.gz"):
@@ -906,30 +925,22 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
     for parallelisation, and pinfo is a pre-filled dict used by
     job_manager to report jobs in the hub (see bt.utils.manager.JobManager)
     """
-    jobs = []
-    got_error = None
+    async def gunzip_one(job, infile):
+        try:
+            await job
+        except Exception as e:
+            logging.error("Failed to gunzip file %s: %s", infile, e)
+            raise
+
     logging.info("Unzipping files in '%s'", folder)
-    for f in glob.glob(os.path.join(folder, pattern)):
-        pinfo["description"] = os.path.basename(f)
-        job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
-
-        def gunzipped(fut, infile):
-            try:
-                # res = fut.result()
-                fut.result()
-            except Exception as e:
-                logging.error("Failed to gunzip file %s: %s", infile, e)
-                nonlocal got_error
-                got_error = e
-
-        job.add_done_callback(partial(gunzipped, infile=f))
-        jobs.append(job)
-        if got_error:
-            raise got_error
-    if jobs:
-        await asyncio.gather(*jobs)
-        if got_error:
-            raise got_error
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for f in glob.glob(os.path.join(folder, pattern)):
+                pinfo["description"] = os.path.basename(f)
+                job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
+                tg.create_task(gunzip_one(job, f))
+    except* Exception as eg:
+        raise first_exception(eg) from eg
 
 
 def uncompressall(folder):
@@ -1069,19 +1080,32 @@ def merge(x, dx):
 
 
 def get_loop():
-    """Since Python 3.10, a Deprecation warning is emitted if there is no running event loop.
-    In future Python releases, a RuntimeError will be raised instead.
-
-    Ref: https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop
-    """
-
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    """Return the running event loop if called from within one, otherwise the
+    thread's current loop, creating and registering a new one if needed."""
     try:
-        loop = asyncio.get_event_loop()
+        return asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        pass
+    # suppress the "no current event loop" DeprecationWarning locally:
+    # returning the thread's already-set loop (or transparently creating one)
+    # is exactly the behavior we want to keep
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
     return loop
+
+
+def first_exception(exc_group):
+    """Return the first leaf exception of an ExceptionGroup (e.g. raised by
+    asyncio.TaskGroup), for callers needing a single exception, like job
+    status reports storing one error message."""
+    while isinstance(exc_group, BaseExceptionGroup):
+        exc_group = exc_group.exceptions[0]
+    return exc_group
 
 
 def get_loop_with_max_workers(max_workers=None):

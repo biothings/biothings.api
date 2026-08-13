@@ -74,8 +74,7 @@ def test_01():
         print(await mappings.finalize(client))
         await client.close()
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(finalize_mapping())
+    asyncio.run(finalize_mapping())
 
 
 def test_02():
@@ -87,8 +86,7 @@ def test_02():
     async def finalize_settings():
         print(await settings.finalize(None))
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(finalize_settings())
+    asyncio.run(finalize_settings())
 
 
 if __name__ == "__main__":

@@ -122,11 +122,28 @@ class ESIndex(BaseESIndex):
 
 
 def _get_es_client(es_client_args, es_blk_args, es_idx_name):
-    return ESIndex(Elasticsearch(**es_client_args), es_idx_name, **es_blk_args)
+    # Elasticsearch holds an HTTP connection pool and is meant to be created once and
+    # shared, not per batch - same reasoning as _get_mg_client below. Keyed via
+    # kwargs_cache_key() since es_client_args commonly contains a "hosts" list, which
+    # isn't hashable on its own.
+    from biothings.utils.mongo import cached_client, kwargs_cache_key
+
+    key = kwargs_cache_key("indexer_task_es_client", es_client_args)
+    client = cached_client(key, lambda: Elasticsearch(**es_client_args))
+    return ESIndex(client, es_idx_name, **es_blk_args)
 
 
 def _get_mg_client(mg_client_args, mg_dbs_name, mg_col_name):
-    return MongoClient(**mg_client_args)[mg_dbs_name][mg_col_name]
+    # MongoClient holds a connection pool and is meant to be created once and shared, not
+    # per batch: this is called once per indexing batch (potentially thousands per job),
+    # dispatched to worker threads/processes sharing the hub process's fd table under
+    # HUB_FREE_THREADED_WORKERS, so an uncached client here leaks a full connection pool
+    # per batch. Cache keyed on the connection kwargs so distinct targets don't collide.
+    from biothings.utils.mongo import cached_client, kwargs_cache_key
+
+    key = kwargs_cache_key("indexer_task_mg_client", mg_client_args)
+    client = cached_client(key, lambda: MongoClient(**mg_client_args))
+    return client[mg_dbs_name][mg_col_name]
 
 
 # --------------

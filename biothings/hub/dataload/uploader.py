@@ -12,7 +12,7 @@ from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
 from biothings.hub.manager import ResourceNotFound
 from biothings.hub.dataload.manager import BaseSourceManager
-from biothings.utils.common import get_random_string, get_timestamp, timesofar
+from biothings.utils.common import first_exception, get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
 from biothings.utils.loggers import get_logger
 from biothings.utils.storage import (
@@ -296,7 +296,6 @@ class BaseSourceUploader:
         """
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
-        got_error = False
         self.unprepare()
         job = await job_manager.defer_to_process(
             pinfo,
@@ -311,16 +310,9 @@ class BaseSourceUploader:
                 self.data_folder,
             ),
         )
-
-        def uploaded(f):
-            nonlocal got_error
-            if not isinstance(f.result(), int):
-                got_error = Exception(f"upload error (should have a int as returned value got {repr(f.result())}")
-
-        job.add_done_callback(uploaded)
-        await job
-        if got_error:
-            raise got_error
+        res = await job
+        if not isinstance(res, int):
+            raise Exception(f"upload error (should have a int as returned value got {repr(res)}")
         self.switch_collection()
 
     def generate_doc_src_master(self):
@@ -471,24 +463,14 @@ class BaseSourceUploader:
             if update_master:
                 self.update_master()
             if post_update_data:
-                got_error = False
                 self.unprepare()
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_update_data"
-                f2 = await job_manager.defer_to_thread(
+                job = await job_manager.defer_to_thread(
                     pinfo,
                     partial(self.post_update_data, steps, force, batch_size, job_manager, **kwargs),
                 )
-
-                def postupdated(f):
-                    nonlocal got_error
-                    if f.exception():
-                        got_error = f.exception()
-
-                f2.add_done_callback(postupdated)
-                await f2
-                if got_error:
-                    raise got_error
+                await job
             # take the total from update call or directly from collection
             cnt = cnt or self.db[self.collection_name].count()
             if clean_archives:
@@ -599,25 +581,12 @@ class BaseSourceUploader:
             self.prepare()
             pinfo = self.get_pinfo()
             pinfo["step"] = "validate_src"
-            got_error = False
 
             extra = {"model_file": "/hub" + model_path.split("/hub", 1)[1]}
             self.register_status("validating", subkey="validate", **extra)
             self.unprepare()
             job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
-
-            def done(f):
-                nonlocal got_error
-                try:
-                    f.result()
-                except Exception as e:
-                    got_error = e
-
-            job.add_done_callback(done)
             await job
-
-            if got_error:
-                raise got_error
 
             self.register_status("success", subkey="validate", err=None, tb=None, **extra)
         except Exception as e:
@@ -700,74 +669,68 @@ class ParallelizedSourceUploader(BaseSourceUploader):
 
     async def update_data(self, batch_size, job_manager=None, **kwargs):
         max_upload = self.__class__.MAX_PARALLEL_UPLOAD and asyncio.Semaphore(self.__class__.MAX_PARALLEL_UPLOAD)
-        jobs = []
         job_params = self.jobs()
-        got_error = None
         # make sure we don't use any of self reference in the following loop
         fullname = copy.deepcopy(self.fullname)
         storage_class = copy.deepcopy(self.__class__.storage_class)
         load_data = copy.deepcopy(self.load_data)
         temp_collection_name = copy.deepcopy(self.temp_collection_name)
+
+        async def batch_uploaded(job, name, batch_num):
+            # important: don't even use "self" ref here to make sure jobs can be submitted
+            # (see comment above, before loop)
+            try:
+                res = await job
+            finally:
+                if max_upload:
+                    max_upload.release()
+            if not isinstance(res, int):
+                raise Exception("Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, res))
+
         self.unprepare()
-        # important: within this loop, "self" should never be used to make sure we don't
-        # instantiate unpicklable attributes (via via autoset attributes, see prepare())
-        # because there could a race condition where an error would cause self to log a statement
-        # (logger is unpicklable) while at the same another job from the loop would be
-        # subtmitted to job_manager causing a error due to that logger attribute)
-        # in other words: once unprepared, self should never be changed until all
-        # jobs are submitted
-        for batch_number, args in enumerate(job_params):
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "update_data"
-            pinfo["description"] = "%s" % str(args)
+        submitted = False
+        try:
+            # important: within this loop, "self" should never be used to make sure we don't
+            # instantiate unpicklable attributes (via via autoset attributes, see prepare())
+            # because there could a race condition where an error would cause self to log a statement
+            # (logger is unpicklable) while at the same another job from the loop would be
+            # subtmitted to job_manager causing a error due to that logger attribute)
+            # in other words: once unprepared, self should never be changed until all
+            # jobs are submitted
+            # (TaskGroup raises errors as soon as we know, cancelling the submission loop)
+            async with asyncio.TaskGroup() as tg:
+                for batch_number, args in enumerate(job_params):
+                    pinfo = self.get_pinfo()
+                    pinfo["step"] = "update_data"
+                    pinfo["description"] = "%s" % str(args)
 
-            def batch_uploaded(f, name, batch_num):
-                # important: don't even use "self" ref here to make sure jobs can be submitted
-                # (see comment above, before loop)
-                nonlocal max_upload
-                nonlocal got_error
-                try:
                     if max_upload:
-                        max_upload.release()
-                    if type(f.result()) != int:
-                        got_error = Exception(
-                            "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
-                        )
-                except Exception as e:
-                    got_error = e
+                        await max_upload.acquire()
 
-            if max_upload:
-                await max_upload.acquire()
+                    upload_worker_db = kwargs.get("db", None)
+                    max_batch_num = kwargs.get("max_batch_num", None)
 
-            upload_worker_db = kwargs.get("db", None)
-            max_batch_num = kwargs.get("max_batch_num", None)
+                    job = await job_manager.defer_to_process(
+                        pinfo,
+                        partial(
+                            upload_worker,  # pickable worker
+                            fullname,  # worker name
+                            storage_class,  # storage class
+                            load_data,  # loading function
+                            temp_collection_name,  # destination collection name
+                            batch_size,  # batch size
+                            batch_number,  # batch number
+                            *args,  # loading function arguments
+                            db=upload_worker_db,
+                            max_batch_num=max_batch_num,
+                        ),
+                    )
+                    tg.create_task(batch_uploaded(job, fullname, batch_number))
+                    submitted = True
+        except* Exception as eg:
+            raise first_exception(eg) from eg
 
-            job = await job_manager.defer_to_process(
-                pinfo,
-                partial(
-                    upload_worker,  # pickable worker
-                    fullname,  # worker name
-                    storage_class,  # storage class
-                    load_data,  # loading function
-                    temp_collection_name,  # destination collection name
-                    batch_size,  # batch size
-                    batch_number,  # batch number
-                    *args,  # loading function arguments
-                    db=upload_worker_db,
-                    max_batch_num=max_batch_num,
-                ),
-            )
-            job.add_done_callback(partial(batch_uploaded, name=fullname, batch_num=batch_number))
-            jobs.append(job)
-
-            # raise error as soon as we know
-            if got_error:
-                raise got_error
-
-        if jobs:
-            await asyncio.gather(*jobs)
-            if got_error:
-                raise got_error
+        if submitted:
             self.switch_collection()
             self.clean_archived_collections()
 
@@ -893,18 +856,14 @@ class UploaderManager(BaseSourceManager):
                     partial(self.create_and_load, klass, validate, *args, **kwargs)  # Fix Flake8 B026
                 )
                 jobs.append(job)
-            tasks = asyncio.gather(*jobs)
-
-            def done(f):
+            async def all_done():
                 try:
-                    # just consume the result to raise exception
-                    # if there were an error... (what an api...)
-                    f.result()
+                    await asyncio.gather(*jobs)
                     logging.info("success", extra={"notify": True})
                 except Exception as e:
                     logging.exception("failed: %s" % e, extra={"notify": True})
 
-            tasks.add_done_callback(done)
+            self.job_manager.loop.create_task(all_done())
             return jobs
         except Exception as e:
             logging.exception("Error while uploading '%s': %s" % (src, e), extra={"notify": True})
@@ -924,18 +883,14 @@ class UploaderManager(BaseSourceManager):
             for _, klass in enumerate(klasses):
                 job = self.job_manager.submit(partial(self.create_and_update_master, klass, dry=dry))
                 jobs.append(job)
-            tasks = asyncio.gather(*jobs)
-
-            def done(f):
+            async def all_done():
                 try:
-                    # just consume the result to raise exception
-                    # if there were an error... (what an api...)
-                    f.result()
+                    await asyncio.gather(*jobs)
                     logging.info("success", extra={"notify": True})
                 except Exception as e:
                     logging.exception("failed: %s" % e, extra={"notify": True})
 
-            tasks.add_done_callback(done)
+            self.job_manager.loop.create_task(all_done())
             return jobs
         except Exception as e:
             logging.exception("Error while update src meta '%s': %s" % (src, e), extra={"notify": True})
@@ -1039,17 +994,14 @@ class UploaderManager(BaseSourceManager):
                 kwargs["job_manager"] = self.job_manager
                 job = self.job_manager.submit(partial(self.create_and_validate, klass, *args, **kwargs))
                 jobs.append(job)
-            tasks = asyncio.gather(*jobs)
-
-            def done(f):
+            async def all_done():
                 try:
-                    # just consume the result to raise exception
-                    f.result()
+                    await asyncio.gather(*jobs)
                     logging.info("success", extra={"notify": True})
                 except Exception as e:
                     logging.exception("failed: %s" % e, extra={"notify": True})
 
-            tasks.add_done_callback(done)
+            self.job_manager.loop.create_task(all_done())
             return jobs
         except Exception as e:
             logging.exception("Error while validating '%s': %s" % src, e, extra={"notify": True})

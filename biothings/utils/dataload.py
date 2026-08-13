@@ -481,7 +481,8 @@ def alwayslist(value):
 
 
 def tabfile_tester(datafile, header=1, sep="\t"):
-    reader = csv.reader(anyfile(datafile), delimiter=sep)
+    in_f = anyfile(datafile)
+    reader = csv.reader(in_f, delimiter=sep)
     lineno = 0
     try:
         for _ in range(header):
@@ -495,6 +496,8 @@ def tabfile_tester(datafile, header=1, sep="\t"):
     except Exception:
         print("Error at line number:", lineno)
         raise
+    finally:
+        in_f.close()
 
 
 def dupline_seperator(dupline, dup_sep, dup_idx=None, strip=False):
@@ -561,6 +564,8 @@ def tabfile_feeder(datafile, header=1, sep="\t", includefn=None, coerce_unicode=
     except ValueError:
         print("Error at line number:", lineno)
         raise
+    finally:
+        in_f.close()
 
 
 def tab2list(datafile, cols, **kwargs):

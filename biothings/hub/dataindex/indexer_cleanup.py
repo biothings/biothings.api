@@ -330,8 +330,7 @@ def test_clean():
     import asyncio
 
     cleaner, cleanups = test_find()
-    loop = asyncio.get_event_loop()
-    print(loop.run_until_complete(cleaner.clean(cleanups)))
+    print(asyncio.run(cleaner.clean(cleanups)))
 
 
 if __name__ == "__main__":
