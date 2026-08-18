@@ -102,3 +102,29 @@ def test_elasticsearch_querybuilder_sort():
     query = builder.build("term", sort=["_score", "-taxid"]).to_dict()
     assert query["sort"] == ["_score", {"taxid": {"order": "desc"}}]
 
+    # sorting on '_id' is rejected up front: ES disallows fielddata on _id, so
+    # this would otherwise surface as an opaque shard error. Reject '_id',
+    # '-_id', '_id:desc', and '_id' anywhere in the list.
+    for sort in (["_id"], ["-_id"], ["_id:desc"], ["taxid", "-_id"]):
+        with pytest.raises(ValueError) as exc_info:
+            builder.build("term", sort=sort)
+        assert "_id" in str(exc_info.value)
+        assert "not available for sorting or aggregation" in str(exc_info.value)
+
+
+def test_elasticsearch_querybuilder_aggs_reject_id():
+    # aggregating on '_id' requires fielddata, which ES disallows on _id.
+    # Reject it up front (both top-level and nested aggregations).
+    builder = ESQueryBuilder()
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", aggs=["_id"])
+    assert "not available for sorting or aggregation" in str(exc_info.value)
+
+    nested_builder = ESQueryBuilder(allow_nested_query=True)
+    with pytest.raises(ValueError) as exc_info:
+        nested_builder.build("term", aggs=["taxid(_id)"])
+    assert "not available for sorting or aggregation" in str(exc_info.value)
+
+    # a normal aggregation is unaffected
+    assert "aggs" in builder.build("term", aggs=["taxid"]).to_dict()
+
