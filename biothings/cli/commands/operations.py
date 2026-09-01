@@ -267,7 +267,6 @@ async def do_parallel_upload(
         job_parameters = uploader.jobs()
         jobs = []
         job_manager = assistant_instance.dumper_manager.job_manager
-        uploader.unprepare()
         for batch_number, data_load_arguments in enumerate(job_parameters):
             pinfo = uploader.get_pinfo()
             pinfo["step"] = "update_data"

@@ -323,32 +323,25 @@ class BaseDumper:
         log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload") if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger("dump_%s" % self.src_name, log_folder=log_folder)
 
-    def prepare(self, state={}):  # noqa: B006
+    def prepare(self):
         if self.prepared:
-            return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
             return
         self.prepare_src_dump()
         self.setup_log()
+        self.prepared = True
 
-    def unprepare(self):
+    def __getstate__(self):
         """
-        reset anything that's not pickable (so self can be pickled)
-        return what's been reset as a dict, so self can be restored
-        once pickled
+        Blank _state and the prepared flag for pickling.
+
+        do_dump() defers download() to a worker process, which pickles self, and
+        _state holds an unpicklable mongo client. The worker rebuilds what it needs
+        on first use through the lazy properties, which only run while prepared is
+        False.
         """
-        state = {
-            "client": self._state["client"],
-            "src_dump": self._state["src_dump"],
-            "logger": self._state["logger"],
-            "src_doc": self._state["src_doc"],
-        }
-        for k in state:
-            self._state[k] = None
-        self.prepared = False
+        state = self.__dict__.copy()
+        state["_state"] = dict.fromkeys(self._state)
+        state["prepared"] = False
         return state
 
     def prepare_src_dump(self):
@@ -463,11 +456,7 @@ class BaseDumper:
                         return self.release
                     # mark the download starts
                     self.register_status("downloading", transient=True)
-                    # unsync to make it pickable
-                    state = self.unprepare()
                     await self.do_dump(job_manager=job_manager)
-                    # then restore state
-                    self.prepare(state)
                 else:
                     # if nothing to dump, don't do post process
                     self.logger.debug("Nothing to dump", extra={"notify": True})
@@ -607,7 +596,6 @@ class BaseDumper:
         # should downloads be throttled ?
         max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
         courtesy_wait = self.__class__.SLEEP_BETWEEN_DOWNLOAD
-        self.unprepare()
         try:
             # TaskGroup raises errors as soon as we get them, cancelling the
             # submission loop and remaining downloads:
@@ -1144,16 +1132,12 @@ class ManualDumper(BaseDumper):
     def new_data_folder(self, value):
         self._new_data_folder = value
 
-    def prepare(self, state={}):  # noqa : B006
+    def prepare(self):
         self.setup_log()
         if self.prepared:
             return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
-            return
         self.prepare_src_dump()
+        self.prepared = True
 
     def prepare_client(self):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
@@ -2267,10 +2251,37 @@ class DockerContainerDumper(BaseDumper):
             return True
         return False
 
-    def generate_remote_file(self):
-        """Execute dump_command to generate the remote file, called in create_todump_list method"""
+    def __getstate__(self):
+        """
+        Also blank the container and volume handles, which hold a live docker client
+        and don't survive pickling. The workers running generate_remote_file() and
+        download() re-get them in ensure_container(). The container config
+        (CONTAINER_NAME, VOLUMES, NAMED_VOLUMES, ...) is plain data and travels.
+        """
+        state = super().__getstate__()
+        state["container"] = None
+        state["volumes"] = None
+        return state
+
+    def ensure_container(self):
+        """
+        Get a handle on the container, connecting the docker client first if needed.
+
+        Called by the methods that run in a worker process, generate_remote_file()
+        and download(): __getstate__ leaves self.container behind, so they have to
+        re-get it.
+        """
         if self.need_prepare():
             self.prepare_client()
+        if not self.container:
+            if not self.CONTAINER_NAME:
+                raise DockerContainerException("CONTAINER_NAME is required to reach the container")
+            self.container = self.client.containers.get(self.CONTAINER_NAME)
+        return self.container
+
+    def generate_remote_file(self):
+        """Execute dump_command to generate the remote file, called in create_todump_list method"""
+        self.ensure_container()
         if self.DUMP_COMMAND:
             self.logger.info(f"Exec the command: sh -c {self.DUMP_COMMAND}")
             exit_code, output = self.container.exec_run(["sh", "-c", self.DUMP_COMMAND])
@@ -2294,8 +2305,6 @@ class DockerContainerDumper(BaseDumper):
         if self.need_prepare():
             self.prepare_client()
         self.prepare_remote_container()
-        # unprepare unpicklable objects so we can use multiprocessing
-        state = self.unprepare()
         # set up job to generate remote file
         if job_manager:
             pinfo = self.get_pinfo()
@@ -2305,12 +2314,8 @@ class DockerContainerDumper(BaseDumper):
         else:
             # otherwise, just run it in the running loop's default executor
             await asyncio.get_running_loop().run_in_executor(None, self.generate_remote_file)
-        # Need to reinit _state b/c of unprepare
-        self.prepare(state)  # reverse of unpreare after async job is done
-        # TODO: test if the following two lines can be removed after we call self.prepare(state) above
         if self.need_prepare():
             self.prepare_client()
-        # self.setup_log()    # this line should not needed, since self.prepare calls it already.
 
         self.set_release()
 
@@ -2345,9 +2350,11 @@ class DockerContainerDumper(BaseDumper):
     def download(self, remote_file, local_file):
         # removes local file if exists before downloading remote file to local
         self.prepare_local_folders(local_file)
+        # do_dump() defers this to a worker process, which has no container yet
+        container = self.ensure_container()
         try:
             # get_archive returns a tar datastream and dict with stat info
-            bits, stat = self.container.get_archive(remote_file, encode_stream=True)
+            bits, stat = container.get_archive(remote_file, encode_stream=True)
             if stat.get("size", 0) > 0:
                 tmp_file = f"{local_file}.tar"
                 with open(tmp_file, "wb") as fp:

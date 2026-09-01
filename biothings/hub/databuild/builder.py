@@ -177,14 +177,8 @@ class DataBuilder:
     def build_config(self, value):
         self._state["build_config"] = value
 
-    def prepare(self, state=None):
-        state = state or {}
+    def prepare(self):
         if self.prepared:
-            return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
             return
         if self._partial_source_backend:
             self._state["source_backend"] = self._partial_source_backend()
@@ -193,24 +187,6 @@ class DataBuilder:
         self.setup()
         self.setup_log()
         self.prepared = True
-
-    def unprepare(self):
-        """
-        reset anything that's not pickable (so self can be pickled)
-        return what's been reset as a dict, so self can be restored
-        once pickled
-        """
-        # TODO: use copy ?
-        state = {
-            "logger": self._state["logger"],
-            "source_backend": self._state["source_backend"],
-            "target_backend": self._state["target_backend"],
-            "build_config": self._state["build_config"],
-        }
-        for k in state:
-            self._state[k] = None
-        self.prepared = False
-        return state
 
     def get_predicates(self):
         """
