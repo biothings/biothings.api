@@ -43,6 +43,7 @@ def test_es_mapping_errors_logged_below_error(caplog):
     for reason in (
         "No mapping found for [score] in order to sort on",
         "Fielddata is disabled on [name] in [my_index]. Text fields are not optimised for sorting...",
+        "Failed to parse query [entrezgene:-]",
     ):
         caplog.clear()
         with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
