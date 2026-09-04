@@ -19,18 +19,14 @@ from biothings.utils.jmespath import options as jmp_options
 logger = logging.getLogger(__name__)
 
 # Substrings identifying Elasticsearch error reasons that are caused by user
-# input (typically mapping problems: sorting/aggregating/collapsing on a field
-# that isn't mapped or isn't the right type). These are the client's fault, not
-# a server-side bug, so they are logged below ERROR to avoid noisy Sentry
-# reports. Any other reasoned error stays at ERROR so it is still reported.
 _ES_CLIENT_ERROR_REASONS = (
     "no mapping found for",  # e.g. "No mapping found for [score] in order to sort on"
     "fielddata is disabled",  # e.g. sorting/aggregating on an analyzed text field
+    "failed to parse query",  # e.g. "Failed to parse query [entrezgene:-]"
 )
 
 
 def _is_es_client_error_reason(reason):
-    """Return True if `reason` is a known user-input (mapping) error."""
     reason = (reason or "").lower()
     return any(pattern in reason for pattern in _ES_CLIENT_ERROR_REASONS)
 
@@ -118,8 +114,8 @@ class ESResultFormatter(ResultFormatter):
 
                 if reason:
                     if _is_es_client_error_reason(reason):
-                        # known user-input (mapping) error -> log below ERROR so
-                        # it is not captured as a Sentry event.
+                        # known user-input error -> log below ERROR so it is
+                        # not captured as a Sentry event.
                         logger.warning("ES returned client error response: %s", self.data)
                     else:
                         # a reasoned error we don't recognize as user-caused ->
