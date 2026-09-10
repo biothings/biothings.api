@@ -53,6 +53,8 @@ MAX_RESULT_WINDOW = 10000
 
 ES_DEFAULT_SIZE = 10
 
+_ID_FIELDDATA_ERROR = "Cannot {operation} the '_id' field: it is not available for sorting or aggregation."
+
 
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
@@ -383,7 +385,7 @@ class QStringParser:
                     scope_fields = [scope_fields]
 
                 query_object = Query(term_query, scope_fields)
-                logger.info("Regex match generated query object: [%s]", query_object)
+                logger.debug("Regex match generated query object: [%s]", query_object)
                 break
 
         if query_metadata is not None:
@@ -407,7 +409,7 @@ class QStringParser:
             query_object = Query(query, fallback_scope_fields)
             logger.debug("No regex pattern match found. Setting query object instance to default [%s]", query_object)
 
-        logger.info("Generated query object: [%s]", query_object)
+        logger.debug("Generated query object: [%s]", query_object)
         return query_object
 
 
@@ -746,6 +748,10 @@ class ESQueryBuilder:
                     "Use a comma-separated list of fields, each optionally "
                     'prefixed with "-" for descending order, e.g. sort=-taxid,symbol.'
                 )
+            # the field name without any ':order' suffix, so '_id', '-_id' and
+            # '_id:desc' are all recognized as sorting on _id
+            if name.partition(":")[0] == "_id":
+                raise ValueError(_ID_FIELDDATA_ERROR.format(operation="sort on"))
             if ":" in name:
                 _field, _, _order = name.partition(":")
                 if _field == "_score":
@@ -760,8 +766,7 @@ class ESQueryBuilder:
                 )
             if descending and name == "_score":
                 # elasticsearch-dsl raises IllegalOperation for '-_score' because
-                # relevance already sorts descending. Reject it here so the user
-                # gets an actionable message and no ERROR-level log is emitted.
+                # relevance already sorts descending.
                 raise ValueError(
                     "Invalid sort field '-_score': relevance is already sorted in "
                     "descending order, so the '-' prefix is not supported here. "
@@ -807,6 +812,8 @@ class ESQueryBuilder:
                     _term, term = term[:-1].split("(", 1)
                 else:
                     _term, term = term, ""
+                if _term == "_id":
+                    raise ValueError(_ID_FIELDDATA_ERROR.format(operation="aggregate on"))
                 bucket = bucket.bucket(_term, "terms", field=_term, size=facet_size)
 
         # add es params
