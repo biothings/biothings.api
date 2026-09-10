@@ -51,7 +51,7 @@ DEFAULT_MIN_SUBFIELDS = 8
 # myvariant-shaped data: it covers the nested objects that show up in slow
 # traffic ('gnomad_genome.hom', 'gnomad_exome.af') while keeping the scan to a
 # manageable number of queries.
-MAX_OBJECT_DEPTH = 1
+MAX_OBJECT_DEPTH = 0
 
 # how many subfield counts to ask for in a single _msearch request
 _COUNT_BATCH = 100
