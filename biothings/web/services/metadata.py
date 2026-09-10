@@ -261,17 +261,37 @@ class _BiothingsESMetadataReader:
     def get_exists_aliases(self):
         """
         Object field - equivalent subfield pairs, recorded in the index
-        metadata by the hub's post-index step. Example:
+        metadata by the hub's post-index step, combined across every index
+        this biothing_type spans. Example:
         {
             'gnomad_genome': 'gnomad_genome.chrom',
             'gnomad_genome.hom': 'gnomad_genome.hom.hom',
             'dbnsfp': 'dbnsfp.alt',
             ...
         }
+
+        An alias survives the merge only if every index that actually maps
+        the field agrees on it. An index that does not map the field at all
+        has no say either way: an unmapped field can never match an exists
+        query, with or without the rewrite, so that index is unaffected by
+        it regardless. This matters because BioThings apps commonly combine
+        a large curated index with a smaller, structurally different one
+        under one biothing_type (for example mygeneset's curated genesets
+        alongside user-submitted ones) -- the second index legitimately has
+        nothing to say about fields it never defines, and must not veto an
+        alias already proven safe on the first.
         """
-        aliases = list(info.get_exists_aliases() for info in self.indices_info.values())
-        aliases = reduce(add, aliases).to_dict() if aliases else {}
-        return aliases
+        per_index = [(info.mappings, info.get_exists_aliases().aliases) for info in self.indices_info.values()]
+
+        candidates = {}
+        for _, aliases in per_index:
+            candidates.update(aliases)
+
+        return {
+            field: alias
+            for field, alias in candidates.items()
+            if all(aliases.get(field) == alias or mapping._resolve(field) is None for mapping, aliases in per_index)
+        }
 
     def get_metadata(self):
         """
@@ -483,13 +503,6 @@ class BiothingLicenses(BiothingMetaProp):
 class BiothingExistsAliases(BiothingMetaProp):
     def __init__(self, aliases):
         self.aliases = aliases
-
-    def __add__(self, other):
-        # when one biothing_type spans several indices, only keep the aliases
-        # the indices agree on. a subfield proven equivalent against one build
-        # says nothing about another, and rewriting on a disagreement would
-        # silently change results for part of the data.
-        return BiothingExistsAliases({k: v for k, v in self.aliases.items() if other.aliases.get(k) == v})
 
     def to_dict(self):
         return dict(self.aliases)

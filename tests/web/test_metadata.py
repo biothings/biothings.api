@@ -125,11 +125,65 @@ class TestExistsAliasMetadata:
     def test_absent_or_malformed_map_disables_the_rewrite(self, aliases):
         assert self._extract(aliases) == {}
 
-    def test_indices_of_one_type_must_agree(self):
-        # a subfield proven equivalent for one build says nothing about
-        # another, so only aliases every index agrees on survive the merge
-        from biothings.web.services.metadata import BiothingExistsAliases
+    @staticmethod
+    def _index_info(properties, aliases):
+        """One entry of the dict '_BiothingsESMetadataReader' expects, shaped
+        like the per-index value 'client.indices.get()' returns."""
+        return {
+            "aliases": {},
+            "settings": {"index": {"creation_date": "1700000000000", "version": {"created": "8000099"}}},
+            "mappings": {"properties": properties, "_meta": {"exists_field_aliases": aliases}},
+        }
 
-        a = BiothingExistsAliases({"x": "x.a", "y": "y.a", "z": "z.a"})
-        b = BiothingExistsAliases({"x": "x.a", "y": "y.b"})
-        assert (a + b).to_dict() == {"x": "x.a"}
+    def test_an_index_that_lacks_the_field_entirely_cannot_veto(self):
+        # mygeneset-shaped topology: one biothing_type spans a big curated
+        # index and a small, structurally different one (here: a stand-in for
+        # mygeneset's user-submitted genesets) that simply never maps some of
+        # the curated index's object fields at all. Confirmed against the
+        # real su12 mygeneset_current_user_genesets index, which has no
+        # 'msigdb' or 'go' field, so an alias for either must survive.
+        from biothings.web.services.metadata import _BiothingsESMetadataReader
+
+        curated = {
+            "msigdb": {"properties": {"id": {"type": "keyword"}, "abstract": {"type": "text"}}},
+            "go": {"properties": {"id": {"type": "keyword"}, "name": {"type": "text"}}},
+        }
+        other = {"name": {"type": "text"}}  # no 'msigdb', no 'go'
+
+        info = {
+            "curated": self._index_info(curated, {"msigdb": "msigdb.id", "go": "go.id"}),
+            "other": self._index_info(other, {}),
+        }
+        reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
+        assert reader.get_exists_aliases() == {"msigdb": "msigdb.id", "go": "go.id"}
+
+    def test_an_index_that_maps_the_field_without_a_verified_alias_still_vetoes(self):
+        # both indices map 'genes', but only one of them has verified an
+        # alias for it -- confirmed against su12's mygeneset_current_user_
+        # genesets, which does map 'genes' (with a 'genes.taxid' subfield
+        # too) but was never scanned, so nothing proves 'genes.taxid' is
+        # populated on every one of ITS documents that have 'genes'.
+        # Combining anyway would risk dropping real hits from that index.
+        from biothings.web.services.metadata import _BiothingsESMetadataReader
+
+        shared = {"genes": {"properties": {"taxid": {"type": "integer"}, "symbol": {"type": "keyword"}}}}
+        info = {
+            "curated": self._index_info(shared, {"genes": "genes.taxid"}),
+            "other": self._index_info(shared, {}),  # maps 'genes', but no alias verified here
+        }
+        reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
+        assert reader.get_exists_aliases() == {}
+
+    def test_indices_that_disagree_on_the_alias_still_veto(self):
+        # a subfield proven equivalent for one build says nothing about
+        # another; two indices proposing different subfields for the same
+        # object field is the clearest case for staying conservative
+        from biothings.web.services.metadata import _BiothingsESMetadataReader
+
+        shared = {"x": {"properties": {"a": {"type": "keyword"}, "b": {"type": "keyword"}}}}
+        info = {
+            "one": self._index_info(shared, {"x": "x.a"}),
+            "two": self._index_info(shared, {"x": "x.b"}),
+        }
+        reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
+        assert reader.get_exists_aliases() == {}
