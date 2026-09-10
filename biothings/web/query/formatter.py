@@ -19,10 +19,19 @@ from biothings.utils.jmespath import options as jmp_options
 logger = logging.getLogger(__name__)
 
 # Substrings identifying Elasticsearch error reasons that are caused by user
+# input, rather than by a server-side bug. Logged below ERROR so they are not
+# reported to sentry.
+# Note that the same bad query surfaces different reasons depending on cluster
+# topology. On a single node cluster the shard failure stays in process and ES
+# reports its own QueryShardException ("Failed to parse query [...]"). On a
+# multi node cluster the shard is remote so the raw lucene exception surfaces
+# ("parse_exception: ...", "token_mgr_error: ...").
 _ES_CLIENT_ERROR_REASONS = (
     "no mapping found for",  # e.g. "No mapping found for [score] in order to sort on"
     "fielddata is disabled",  # e.g. sorting/aggregating on an analyzed text field
-    "failed to parse query",  # e.g. "Failed to parse query [entrezgene:-]"
+    "failed to parse query",  # e.g. "Failed to parse query [entrezgene:-]" (single node)
+    "parse_exception",  # e.g. 'parse_exception: Encountered " "-" "- ""' (multi node)
+    "token_mgr_error",  # e.g. "token_mgr_error: Lexical error at line 1" (multi node)
 )
 
 

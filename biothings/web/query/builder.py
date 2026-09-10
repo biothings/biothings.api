@@ -385,7 +385,7 @@ class QStringParser:
                     scope_fields = [scope_fields]
 
                 query_object = Query(term_query, scope_fields)
-                logger.info("Regex match generated query object: [%s]", query_object)
+                logger.debug("Regex match generated query object: [%s]", query_object)
                 break
 
         if query_metadata is not None:
@@ -409,7 +409,7 @@ class QStringParser:
             query_object = Query(query, fallback_scope_fields)
             logger.debug("No regex pattern match found. Setting query object instance to default [%s]", query_object)
 
-        logger.info("Generated query object: [%s]", query_object)
+        logger.debug("Generated query object: [%s]", query_object)
         return query_object
 
 
