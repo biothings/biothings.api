@@ -44,6 +44,8 @@ def test_es_mapping_errors_logged_below_error(caplog):
         "No mapping found for [score] in order to sort on",
         "Fielddata is disabled on [name] in [my_index]. Text fields are not optimised for sorting...",
         "Failed to parse query [entrezgene:-]",
+        'parse_exception: Encountered " "-" "- "" at line 1, column 11.',
+        "token_mgr_error: Lexical error at line 1, column 21.  Encountered: <EOF>",
     ):
         caplog.clear()
         with caplog.at_level(logging.DEBUG), pytest.raises(ValueError) as exc_info:
