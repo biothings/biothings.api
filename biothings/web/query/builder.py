@@ -55,6 +55,12 @@ ES_DEFAULT_SIZE = 10
 
 _ID_FIELDDATA_ERROR = "Cannot {operation} the '_id' field: it is not available for sorting or aggregation."
 
+# every '_exists_:<field>' in a query string, of which there can be several.
+# elasticsearch expands an exists query on an object field into a disjunction
+# over all of its leaves, costing #leaves x #docs to evaluate.
+# See ESQueryBuilder._rewrite_exists.
+_EXISTS_FIELD_PATTERN = re.compile(r"(?<=_exists_:)[A-Za-z0-9_.*\-]+")
+
 
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
@@ -607,12 +613,42 @@ class ESQueryBuilder:
         search = self.apply_extras(search, options)
         return search
 
+    def _rewrite_exists(self, q, options):
+        """
+        Replace every '_exists_:<object field>' with '_exists_:<subfield>'.
+
+        Elasticsearch has no single posting for "this object is present", so an
+        exists query on an object field is expanded into a disjunction over
+        every leaf below it. On a large index that costs tens of seconds and a
+        lot of CPU, while an exists query on one subfield costs milliseconds.
+
+        When a subfield is populated on every document that holds the object,
+        the two queries match the identical documents -- and since both are
+        wrapped in a constant score by elasticsearch, hits, total, ordering and
+        scores are all unchanged. The hub works out which subfield qualifies
+        for each build (it depends on the data, not the schema) and records it
+        in the index metadata; this only looks the answer up.
+
+        Fields with no recorded alias, and fields that are already leaves, are
+        left exactly as they were.
+        """
+        if not isinstance(q, str) or "_exists_:" not in q or self.metadata is None:
+            return q
+        try:
+            aliases = self.metadata.get_exists_aliases(options.biothing_type)
+        except Exception:  # a metadata backend that does not support it
+            return q
+        if not aliases:
+            return q
+        return _EXISTS_FIELD_PATTERN.sub(lambda match: aliases.get(match.group(), match.group()), q)
+
     def _build_string_query(self, q, options):
         """q + options -> query object
 
         options:
             userquery
         """
+        q = self._rewrite_exists(q, options)
         search = Search()
         userquery = options.userquery or ""
 
@@ -842,13 +878,13 @@ class ESQueryBuilder:
         # apply extra filter (as query_string query) to filter results
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/query-dsl-bool-query.html
         if options.filter:
-            search = search.filter("query_string", query=options.filter)
+            search = search.filter("query_string", query=self._rewrite_exists(options.filter, options))
 
         # Feature: post_filter
         # -- implementation using query string matching
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/filter-search-results.html#post-filter
         if options.post_filter:
-            search = search.post_filter("query_string", query=options["post_filter"])
+            search = search.post_filter("query_string", query=self._rewrite_exists(options["post_filter"], options))
 
         return search
 

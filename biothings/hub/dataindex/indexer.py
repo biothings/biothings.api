@@ -31,6 +31,11 @@ from biothings.utils.mongo import DatabaseClient, id_feeder
 from biothings.utils.manager import JobManager
 
 
+from biothings.hub.dataindex.exists_alias import (
+    DEFAULT_MIN_SUBFIELDS,
+    derive_exists_field_aliases,
+    store_exists_field_aliases,
+)
 from biothings.hub.dataindex.indexer_cleanup import Cleaner
 from biothings.hub.dataindex.indexer_payload import (
     DEFAULT_INDEX_MAPPINGS,
@@ -332,6 +337,10 @@ class Indexer:
         self.conf_name = _build_doc.build_config.get("name")
         self.build_name = _build_doc.build_name
 
+        # opt-in: derive '_exists_:<object field>' aliases after indexing.
+        # truthy enables it; an int overrides the minimum subfield count.
+        self.exists_alias_scan = _build_doc.build_config.get("exists_field_alias_scan", False)
+
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
@@ -555,7 +564,32 @@ class Indexer:
         self.logger.notify(schedule)
         return {"count": total, "created_at": datetime.now().astimezone()}
 
-    async def post_index(self, *args, **kwargs): ...
+    async def post_index(self, *args, **kwargs):
+        """
+        Derive the '_exists_:<object field>' alias map for the new index and
+        record it in the index _meta, so the web tier can rewrite those queries
+        to an equivalent single-subfield query. Opt-in per build config.
+        """
+        if not self.exists_alias_scan:
+            return {}
+
+        scan = self.exists_alias_scan
+        min_subfields = scan if isinstance(scan, int) and not isinstance(scan, bool) else DEFAULT_MIN_SUBFIELDS
+        client = AsyncElasticsearch(**self.es_client_args)
+        try:
+            aliases = await derive_exists_field_aliases(
+                client, self.es_index_name, min_subfields=min_subfields, logger=self.logger
+            )
+            await store_exists_field_aliases(client, self.es_index_name, aliases, logger=self.logger)
+        except Exception as exc:
+            # an index that works is worth more than a faster _exists_ query;
+            # never fail the build over this
+            self.logger.exception("Could not derive _exists_ aliases: %s", exc)
+            return {}
+        finally:
+            await client.close()
+
+        return {"exists_field_aliases": aliases}
 
 
 class ColdHotIndexer:

@@ -128,3 +128,103 @@ def test_elasticsearch_querybuilder_aggs_reject_id():
     # a normal aggregation is unaffected
     assert "aggs" in builder.build("term", aggs=["taxid"]).to_dict()
 
+
+class _FakeMetadata:
+    """Stands in for BiothingsESMetadata, which reads the map from index _meta."""
+
+    ALIASES = {
+        None: {"gnomad_genome": "gnomad_genome.chrom", "dbnsfp": "dbnsfp.alt"},
+        "hg38": {"gnomad_genome": "gnomad_genome.alt"},
+    }
+
+    def __init__(self, aliases=None):
+        self.aliases = self.ALIASES if aliases is None else aliases
+
+    def get_exists_aliases(self, biothing_type):
+        return self.aliases.get(biothing_type, {})
+
+
+class TestExistsAliasRewrite:
+    """
+    '_exists_:<object field>' is expanded by ES into a disjunction over every
+    leaf below the object, which is orders of magnitude more expensive than an
+    exists query on one subfield that every matching document has. The hub
+    records which subfield qualifies in the index _meta; the builder looks it
+    up and substitutes it.
+    """
+
+    @staticmethod
+    def _query_string(q, aliases=None, **options):
+        builder = ESQueryBuilder(metadata=_FakeMetadata(aliases))
+        return builder.build(q, **options).to_dict()["query"]["query_string"]["query"]
+
+    @pytest.mark.parametrize(
+        "q, expected",
+        [
+            ("_exists_:gnomad_genome", "_exists_:gnomad_genome.chrom"),
+            # several occurrences in one query string
+            (
+                "_exists_:gnomad_genome AND _exists_:dbnsfp",
+                "_exists_:gnomad_genome.chrom AND _exists_:dbnsfp.alt",
+            ),
+            # ... including through negation and grouping
+            (
+                "chr1:100-200 AND NOT (_exists_:gnomad_genome OR _exists_:dbnsfp)",
+                "chr1:100-200 AND NOT (_exists_:gnomad_genome.chrom OR _exists_:dbnsfp.alt)",
+            ),
+            # no recorded alias: left exactly as it was
+            ("_exists_:cadd", "_exists_:cadd"),
+            # matching is on the whole field name, so a nested field does not
+            # inherit its parent's alias
+            ("_exists_:gnomad_genome.af", "_exists_:gnomad_genome.af"),
+            # and only directly after '_exists_:'
+            ("gnomad_genome:1", "gnomad_genome:1"),
+            ("_missing_:gnomad_genome", "_missing_:gnomad_genome"),
+        ],
+        ids=[
+            "single",
+            "multiple_occurrences",
+            "negation_and_grouping",
+            "no_alias_recorded",
+            "nested_field_not_inherited",
+            "not_an_exists_clause",
+            "not_the_exists_keyword",
+        ],
+    )
+    def test_rewrite(self, q, expected):
+        assert self._query_string(q) == expected
+
+    def test_map_is_per_biothing_type(self):
+        # each index gets its own build, so each has its own map
+        assert self._query_string("_exists_:gnomad_genome") == "_exists_:gnomad_genome.chrom"
+        assert self._query_string("_exists_:gnomad_genome", biothing_type="hg38") == "_exists_:gnomad_genome.alt"
+        assert self._query_string("_exists_:dbnsfp", biothing_type="hg38") == "_exists_:dbnsfp"
+
+    def test_filter_and_post_filter_are_query_strings_too(self):
+        builder = ESQueryBuilder(metadata=_FakeMetadata())
+        query = builder.build("term", filter="_exists_:gnomad_genome", post_filter="_exists_:dbnsfp").to_dict()
+
+        assert query["query"]["bool"]["filter"][0]["query_string"]["query"] == "_exists_:gnomad_genome.chrom"
+        assert query["post_filter"]["query_string"]["query"] == "_exists_:dbnsfp.alt"
+
+    @pytest.mark.parametrize(
+        "builder",
+        [
+            ESQueryBuilder(),
+            ESQueryBuilder(metadata=_FakeMetadata({})),
+            ESQueryBuilder(metadata=_FakeMetadata({None: {}})),
+        ],
+        ids=["no_metadata_service", "no_map_for_any_type", "empty_map"],
+    )
+    def test_nothing_is_rewritten_without_a_map(self, builder):
+        query = builder.build("_exists_:gnomad_genome").to_dict()
+        assert query["query"]["query_string"]["query"] == "_exists_:gnomad_genome"
+
+    @pytest.mark.parametrize(
+        "q, expected_clause",
+        [(None, "match_all"), ("", "match_none")],
+        ids=["match_all", "match_none"],
+    )
+    def test_non_string_queries_are_untouched(self, q, expected_clause):
+        # the rewrite must not disturb the __all__/empty-q paths
+        assert expected_clause in ESQueryBuilder(metadata=_FakeMetadata()).build(q).to_dict()["query"]
