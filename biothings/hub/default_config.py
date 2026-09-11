@@ -261,6 +261,25 @@ AUTO_SNAPSHOT_CLEANUP_CONFIG = {
     }
 """
 
+# Hub-wide default for whether the indexer derives '_exists_:<object field>'
+# aliases after indexing (see biothings.hub.dataindex.exists_alias). An exists
+# query on an object field is expensive in Elasticsearch, since it expands
+# into a check across every leaf below that object; when a subfield turns out
+# to be populated on every document that holds the object, querying that
+# subfield instead is equivalent and orders of magnitude cheaper. Whether this
+# is worth deriving depends on the data, so it is computed per index rather
+# than guessed.
+# A build config's own "exists_field_alias_scan" param, if set, overrides this
+# for that build config specifically. Value is either a bool to enable/disable,
+# or an int to also override the minimum subfield count a candidate object
+# field must have (see DEFAULT_MIN_SUBFIELDS in exists_alias.py).
+EXISTS_FIELD_ALIAS_SCAN = ConfigurationDefault(
+    default=False,
+    desc="Hub-wide default for deriving '_exists_' object-field aliases after "
+    "indexing (bool, or int to override the minimum subfield count). A build "
+    "config's own 'exists_field_alias_scan' overrides this per build config.",
+)
+
 # reporting diff results, number of IDs to consider (to avoid too much mem usage)
 MAX_REPORTED_IDS = 1000
 # for diff updates, number of IDs randomly picked as examples when rendering the report

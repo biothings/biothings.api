@@ -339,7 +339,10 @@ class Indexer:
 
         # opt-in: derive '_exists_:<object field>' aliases after indexing.
         # truthy enables it; an int overrides the minimum subfield count.
-        self.exists_alias_scan = _build_doc.build_config.get("exists_field_alias_scan", False)
+        # the build config's own value, if set, overrides the hub-wide default.
+        self.exists_alias_scan = _build_doc.build_config.get(
+            "exists_field_alias_scan", btconfig.EXISTS_FIELD_ALIAS_SCAN
+        )
 
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
