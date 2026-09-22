@@ -64,10 +64,6 @@ class BiothingsMetadata:
         return self.biothing_licenses[biothing_type]
 
     def get_exists_aliases(self, biothing_type):
-        """
-        Object field -> an equivalent subfield, as derived by the hub's
-        post-index step. Used to speed up '_exists_:<object field>'.
-        """
         return self.biothing_exists_aliases[biothing_type]
 
     async def refresh(self, biothing_type):
@@ -270,16 +266,8 @@ class _BiothingsESMetadataReader:
             ...
         }
 
-        An alias survives the merge only if every index that actually maps
-        the field agrees on it. An index that does not map the field at all
-        has no say either way: an unmapped field can never match an exists
-        query, with or without the rewrite, so that index is unaffected by
-        it regardless. This matters because BioThings apps commonly combine
-        a large curated index with a smaller, structurally different one
-        under one biothing_type (for example mygeneset's curated genesets
-        alongside user-submitted ones) -- the second index legitimately has
-        nothing to say about fields it never defines, and must not veto an
-        alias already proven safe on the first.
+        An alias survives the merge only if every index that maps the field
+        agrees on it; an index that doesn't map the field at all has no say.
         """
         per_index = [(info.mappings, info.get_exists_aliases().aliases) for info in self.indices_info.values()]
 
@@ -430,11 +418,7 @@ class _ESIndexMappings:
         return licenses
 
     def _resolve(self, path):
-        """
-        The mapping spec for a dotted field path, or None if this index has no
-        such field. Works at any depth, so 'gnomad_genome.hom' resolves as
-        readily as 'gnomad_genome'.
-        """
+        """The mapping spec for a dotted field path (any depth), or None if not mapped."""
         spec = {"properties": self.properties}
         for part in path.split("."):
             properties = spec.get("properties") if isinstance(spec, dict) else None
@@ -449,11 +433,9 @@ class _ESIndexMappings:
 
     def extract_exists_aliases(self):
         """
-        Return object field - equivalent subfield pairs, as derived and
-        recorded by the hub's post-index step. Only entries that name an object
-        field of this index and one of that field's own subfields are kept: a
-        stale or hand-edited _meta must not be able to redirect a query
-        somewhere else, which would silently return the wrong documents.
+        Object field - equivalent subfield pairs from the index's _meta.
+        Only entries naming a real object field and one of its own subfields
+        are kept, so a stale or hand-edited _meta can't redirect a query.
         """
         aliases = self.metadata.get("exists_field_aliases") or {}
         if not isinstance(aliases, dict):

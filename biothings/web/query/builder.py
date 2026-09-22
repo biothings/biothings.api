@@ -55,10 +55,7 @@ ES_DEFAULT_SIZE = 10
 
 _ID_FIELDDATA_ERROR = "Cannot {operation} the '_id' field: it is not available for sorting or aggregation."
 
-# every '_exists_:<field>' in a query string, of which there can be several.
-# elasticsearch expands an exists query on an object field into a disjunction
-# over all of its leaves, costing #leaves x #docs to evaluate.
-# See ESQueryBuilder._rewrite_exists.
+# matches the field name in each '_exists_:<field>' occurrence in a query string
 _EXISTS_FIELD_PATTERN = re.compile(r"(?<=_exists_:)[A-Za-z0-9_.*\-]+")
 
 
@@ -615,22 +612,10 @@ class ESQueryBuilder:
 
     def _rewrite_exists(self, q, options):
         """
-        Replace every '_exists_:<object field>' with '_exists_:<subfield>'.
-
-        Elasticsearch has no single posting for "this object is present", so an
-        exists query on an object field is expanded into a disjunction over
-        every leaf below it. On a large index that costs tens of seconds and a
-        lot of CPU, while an exists query on one subfield costs milliseconds.
-
-        When a subfield is populated on every document that holds the object,
-        the two queries match the identical documents -- and since both are
-        wrapped in a constant score by elasticsearch, hits, total, ordering and
-        scores are all unchanged. The hub works out which subfield qualifies
-        for each build (it depends on the data, not the schema) and records it
-        in the index metadata; this only looks the answer up.
-
-        Fields with no recorded alias, and fields that are already leaves, are
-        left exactly as they were.
+        Replace '_exists_:<object field>' with '_exists_:<subfield>' per the
+        alias map the hub derives per build and stores in the index metadata
+        (see hub/dataindex/exists_alias.py). A no-op if no alias is recorded
+        for the field.
         """
         if not isinstance(q, str) or "_exists_:" not in q or self.metadata is None:
             return q
