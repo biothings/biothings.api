@@ -567,7 +567,7 @@ class Indexer:
         self.logger.notify(schedule)
         return {"count": total, "created_at": datetime.now().astimezone()}
 
-    async def post_index(self, *_args, **kwargs):
+    async def post_index(self, *_args, **_kwargs):
         """
         Derive the '_exists_:<object field>' alias map for the new index and
         record it in the index _meta, so the web tier can rewrite those queries
