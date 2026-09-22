@@ -15,7 +15,7 @@ from elasticsearch.exceptions import (
 )
 
 from biothings.web.query.builder import RawQueryInterrupt
-from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
+from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt, parse_api_error
 from biothings.web.query.formatter import ResultFormatterException
 
 # here this module defines two types of operations supported in
@@ -143,39 +143,29 @@ def capturesESExceptions(func):
         # hierarchy for client/connection-level failures and is never raised for
         # these ES-side error bodies, so a clause catching it here is dead code.
         except ApiError as exc:
-            if hasattr(exc, "info") and isinstance(exc.info, dict):
-                error_info = exc.info.get("error", {})
-                error_type = error_info.get("type", "")
-                reason = error_info.get("reason", "")
+            error_type, reason, root_causes = parse_api_error(exc)
 
-                if error_type == "search_phase_execution_exception":
-                    root_causes = {cause.get("type") for cause in error_info.get("root_cause", [])}
+            if error_type == "search_phase_execution_exception":
+                # "rejected execution" (a reason string) indicates the search
+                # was rejected due to resource constraints, like a node
+                # overload. illegal_state_exception (a root cause type) means
+                # a cluster node was briefly unreachable - e.g. a scroll retry
+                # already attempted this once and still failed. Both are
+                # transient/retryable, so both get the same 503.
+                if "rejected execution" in reason or "illegal_state_exception" in root_causes:
+                    raise QueryPipelineException(503)
 
-                    # indicates that the search request was rejected due to resource
-                    # constraints, like a node overload.
-                    if "rejected execution" in reason:
-                        raise QueryPipelineException(503)
+                else:  # unexpected, provide additional information for debug
+                    raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
 
-                    elif "illegal_state_exception" in root_causes:
-                        # a cluster node was briefly unreachable (e.g. a scroll retry
-                        # already attempted this once and still failed); treat as a
-                        # transient/retryable failure rather than an opaque 500.
-                        raise QueryPipelineException(503)
+            elif error_type == "index_not_found_exception":
+                raise QueryPipelineException(500, error_type)
 
-                    else:  # unexpected, provide additional information for debug
-                        raise QueryPipelineException(500, *_simplify_ES_exception(exc, True))
-
-                elif error_type == "index_not_found_exception":
-                    raise QueryPipelineException(500, error_type)
-
-                elif error_type == "es_rejected_execution_exception":
-                    # ES cluster is overloaded, all thread pools at capacity
-                    raise QueryPipelineException(
-                        503, "Service Unavailable", "Elasticsearch cluster overloaded"
-                    ) from exc
-
-                else:  # unexpected
-                    raise
+            elif error_type == "es_rejected_execution_exception":
+                # ES cluster is overloaded, all thread pools at capacity
+                raise QueryPipelineException(
+                    503, "Service Unavailable", "Elasticsearch cluster overloaded"
+                ) from exc
 
             elif getattr(exc, "status_code", None) in (429, "N/A"):
                 raise QueryPipelineException(503)

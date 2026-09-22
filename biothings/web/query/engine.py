@@ -32,17 +32,26 @@ from biothings.web.query.builder import ESScrollID
 logger = logging.getLogger(__name__)
 
 
-def _scroll_failure_root_causes(exc):
+def parse_api_error(exc):
     """
-    Return the set of ES root-cause exception types reported for a failed
-    scroll call, e.g. {"search_context_missing_exception"}. Empty if the
-    error body doesn't have the expected shape.
+    Extract (error_type, reason, root_cause_types) from an elasticsearch-py
+    ApiError's response body, e.g. ("search_phase_execution_exception",
+    "all shards failed", {"search_context_missing_exception"}).
+
+    Returns (None, "", set()) if the body doesn't have the expected shape -
+    ES's error body is a best-effort diagnostic, not a validated contract,
+    so a differently-shaped or absent "error"/"root_cause" must fall back
+    cleanly rather than raise out of here.
     """
     try:
         error = exc.info.get("error", {})
-        return {cause.get("type") for cause in error.get("root_cause", [])}
+        if not isinstance(error, dict):
+            return None, "", set()
+        root_cause = error.get("root_cause") or []  # covers both absent and explicit null
+        root_causes = {cause.get("type") for cause in root_cause if isinstance(cause, dict)}
+        return error.get("type"), error.get("reason", ""), root_causes
     except (AttributeError, TypeError):
-        return set()
+        return None, "", set()
 
 
 class ResultInterrupt(Exception):
@@ -135,9 +144,7 @@ class AsyncESQueryBackend(ESQueryBackend):
             # 500 like search_phase_execution_exception; TransportError
             # (elastic_transport.TransportError) is a disjoint hierarchy for
             # client/connection-level failures and is never raised here.
-            error = getattr(exc, "info", None) or {}
-            error_type = error.get("error", {}).get("type") if isinstance(error, dict) else None
-            root_causes = _scroll_failure_root_causes(exc)
+            error_type, _reason, root_causes = parse_api_error(exc)
 
             if error_type != "search_phase_execution_exception" or not root_causes:
                 raise  # unrecognized shape, let the caller's generic handler classify it
@@ -149,9 +156,12 @@ class AsyncESQueryBackend(ESQueryBackend):
                 logger.warning("Scroll hit an unavailable node, retrying once: %s", exc)
                 return await self._scroll(scroll_id, _retry=False)
 
-            if root_causes == {"search_context_missing_exception"}:
+            if "search_context_missing_exception" in root_causes:
                 # same outcome as NotFoundError above, just reported by ES as a
-                # partial-shard failure instead of a clean 404
+                # partial-shard failure instead of a clean 404. checking
+                # membership rather than exact equality so this still applies
+                # when a context-missing shard is mixed with some other,
+                # unrelated shard failure.
                 raise ValueError("Invalid or stale scroll_id.")
 
             raise

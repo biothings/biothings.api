@@ -325,6 +325,42 @@ async def test_search_phase_execution_exception_illegal_state_mixed_root_causes(
 
 
 @pytest.mark.asyncio
+async def test_malformed_error_body_does_not_crash_the_decorator():
+    # a real legacy-ES error shape where "error" is a plain string, not a
+    # dict, doesn't match any recognized error_type, so - same as any other
+    # unrecognized shape in this decorator - the original ApiError bare-
+    # propagates. The bug this guards against is capturesESExceptions itself
+    # crashing with an uncaught AttributeError instead of reaching that
+    # point cleanly.
+    _meta = Mock()
+    _meta.status = 500
+
+    @capturesESExceptions
+    async def func():
+        raise ApiError(message="test_malformed_body", meta=_meta, body={"error": "IndexMissingException[[foo] missing]"})
+
+    with pytest.raises(ApiError):
+        await func()
+
+
+@pytest.mark.asyncio
+async def test_search_phase_execution_exception_null_root_cause_does_not_crash():
+    # root_cause present but explicitly null (not just absent) must not
+    # crash the decorator either.
+    _meta = Mock()
+    _meta.status = 500
+
+    @capturesESExceptions
+    async def func():
+        body = {"error": {"type": "search_phase_execution_exception", "reason": "x", "root_cause": None}}
+        raise ApiError(message="test_null_root_cause", meta=_meta, body=body)
+
+    with pytest.raises(QueryPipelineException) as exc_info:
+        await func()
+    assert exc_info.value.code == 500
+
+
+@pytest.mark.asyncio
 async def test_too_many_requests_error():
     # 429 has no dedicated exception subclass (see elasticsearch.exceptions.
     # HTTP_EXCEPTIONS), so the client raises a plain ApiError with a

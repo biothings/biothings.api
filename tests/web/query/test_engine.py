@@ -5,7 +5,13 @@ from elasticsearch import ApiError, NotFoundError, RequestError
 
 from biothings.web import connections
 from biothings.web.query.builder import ESScrollID
-from biothings.web.query.engine import AsyncESQueryBackend, ESQueryBackend, EndScrollInterrupt, RawResultInterrupt
+from biothings.web.query.engine import (
+    AsyncESQueryBackend,
+    ESQueryBackend,
+    EndScrollInterrupt,
+    RawResultInterrupt,
+    parse_api_error,
+)
 
 
 def test_adjust_index_overrided():
@@ -39,6 +45,56 @@ def _search_phase_execution_exception(root_cause_types):
         }
     }
     return ApiError(message="search_phase_execution_exception", meta=_meta, body=body)
+
+
+def _api_error(body):
+    _meta = Mock()
+    _meta.status = 500
+    return ApiError(message="x", meta=_meta, body=body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": {"type": "search_phase_execution_exception", "reason": "x", "root_cause": None}},
+        {"error": {"type": "search_phase_execution_exception", "reason": "x", "root_cause": ["not_a_dict"]}},
+        {"error": "some_plain_string_error"},
+        "not_even_a_dict",
+    ],
+)
+def test_parse_api_error_never_raises_on_malformed_body(body):
+    error_type, reason, root_causes = parse_api_error(_api_error(body))
+    assert isinstance(root_causes, set)
+    assert isinstance(reason, str)
+
+
+@pytest.mark.asyncio
+async def test_scroll_context_missing_mixed_with_unrelated_cause_still_reports_invalid_scroll_id():
+    # a context-missing shard mixed with an unrelated, unrecognized shard
+    # failure (not illegal_state_exception) must still be reported as a
+    # clean expired scroll, not fall through to an opaque 500.
+    backend = AsyncESQueryBackend(client=AsyncMock())
+    backend.client.scroll = AsyncMock(
+        side_effect=_search_phase_execution_exception(
+            ["search_context_missing_exception", "no_shard_available_action_exception"]
+        )
+    )
+
+    with pytest.raises(ValueError, match="Invalid or stale scroll_id."):
+        await backend._scroll("abc")
+    assert backend.client.scroll.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_scroll_malformed_error_body_reraises_instead_of_crashing():
+    # a non-dict "error" value must not crash _scroll itself - it should
+    # re-raise the original ApiError for the caller to classify, same as
+    # any other unrecognized shape.
+    backend = AsyncESQueryBackend(client=AsyncMock())
+    backend.client.scroll = AsyncMock(side_effect=_api_error({"error": "some_plain_string_error"}))
+
+    with pytest.raises(ApiError):
+        await backend._scroll("abc")
 
 
 @pytest.mark.asyncio
