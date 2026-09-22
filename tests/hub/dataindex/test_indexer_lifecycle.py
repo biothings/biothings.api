@@ -278,25 +278,24 @@ class TestExistsFieldAliasScanPrecedence:
         )
         return indexer.exists_alias_scan
 
-    def test_falls_back_to_the_hub_default_when_build_config_is_silent(self, dataindex_modules):
-        # nothing set anywhere -> the hardcoded default (False) from default_config.py
-        assert self._exists_alias_scan(dataindex_modules) is False
-
-    def test_build_config_true_overrides_a_false_hub_default(self, dataindex_modules, root_configuration):
-        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": False})
-        assert self._exists_alias_scan(dataindex_modules, {"exists_field_alias_scan": True}) is True
-
-    def test_build_config_false_overrides_a_true_hub_default(self, dataindex_modules, root_configuration):
-        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": True})
-        assert self._exists_alias_scan(dataindex_modules, {"exists_field_alias_scan": False}) is False
-
-    def test_hub_default_applies_when_build_config_is_silent(self, dataindex_modules, root_configuration):
-        # flipping the hub-wide default takes effect for build configs that
-        # never mention the setting at all -- the whole point of having it
-        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": True})
-        assert self._exists_alias_scan(dataindex_modules) is True
-
-    def test_build_config_can_override_with_an_int(self, dataindex_modules, root_configuration):
-        # an int overrides the minimum subfield count, not just enable/disable
-        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": False})
-        assert self._exists_alias_scan(dataindex_modules, {"exists_field_alias_scan": 20}) == 20
+    @pytest.mark.parametrize(
+        "hub_default, build_config_extra, expected",
+        [
+            (None, None, False),  # nothing set anywhere -> hardcoded default
+            (False, {"exists_field_alias_scan": True}, True),  # build config wins
+            (True, {"exists_field_alias_scan": False}, False),  # build config wins either way
+            (True, None, True),  # hub default applies when build config is silent
+            (False, {"exists_field_alias_scan": 20}, 20),  # an int, not just enable/disable
+        ],
+        ids=[
+            "falls_back_to_hub_default",
+            "build_config_true_overrides_false_default",
+            "build_config_false_overrides_true_default",
+            "hub_default_applies_when_silent",
+            "build_config_can_override_with_an_int",
+        ],
+    )
+    def test_precedence(self, dataindex_modules, root_configuration, hub_default, build_config_extra, expected):
+        if hub_default is not None:
+            root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": hub_default})
+        assert self._exists_alias_scan(dataindex_modules, build_config_extra) == expected

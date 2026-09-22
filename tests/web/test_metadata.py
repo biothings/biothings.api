@@ -86,29 +86,24 @@ class TestExistsAliasMetadata:
         mapping = dict(self.MAPPING, _meta={"src": {}, "exists_field_aliases": aliases})
         return _ESIndexMappings(mapping).extract_exists_aliases()
 
-    def test_valid_entries_are_kept_at_any_depth(self):
-        assert self._extract(
-            {
-                "gnomad_genome": "gnomad_genome.chrom",
-                "gnomad_genome.hom": "gnomad_genome.hom.hom",
-            }
-        ) == {
-            "gnomad_genome": "gnomad_genome.chrom",
-            "gnomad_genome.hom": "gnomad_genome.hom.hom",
-        }
-
     @pytest.mark.parametrize(
-        "entry",
+        "entry, expected",
         [
-            {"gnomad_genome": 1},  # value is not a field name
-            {1: "gnomad_genome.chrom"},  # key is not a field name
-            {"gnomad_genome": "somewhere.else"},  # not a subfield of the key
-            {"gnomad_genome": "gnomad_genome"},  # the object itself, no gain
-            {"chrom": "chrom.x"},  # key is a leaf, not an object
-            {"absent": "absent.x"},  # key is not in this mapping
-            {"gnomad_genome": "gnomad_genome.gone"},  # target is not in this mapping
+            # valid, at any depth: kept as is
+            (
+                {"gnomad_genome": "gnomad_genome.chrom", "gnomad_genome.hom": "gnomad_genome.hom.hom"},
+                {"gnomad_genome": "gnomad_genome.chrom", "gnomad_genome.hom": "gnomad_genome.hom.hom"},
+            ),
+            ({"gnomad_genome": 1}, {}),  # value is not a field name
+            ({1: "gnomad_genome.chrom"}, {}),  # key is not a field name
+            ({"gnomad_genome": "somewhere.else"}, {}),  # not a subfield of the key
+            ({"gnomad_genome": "gnomad_genome"}, {}),  # the object itself, no gain
+            ({"chrom": "chrom.x"}, {}),  # key is a leaf, not an object
+            ({"absent": "absent.x"}, {}),  # key is not in this mapping
+            ({"gnomad_genome": "gnomad_genome.gone"}, {}),  # target is not in this mapping
         ],
         ids=[
+            "valid_at_any_depth",
             "non_string_value",
             "non_string_key",
             "alias_outside_the_object",
@@ -118,8 +113,8 @@ class TestExistsAliasMetadata:
             "target_absent_from_mapping",
         ],
     )
-    def test_unverifiable_entries_are_rejected(self, entry):
-        assert self._extract(entry) == {}
+    def test_extract_exists_aliases(self, entry, expected):
+        assert self._extract(entry) == expected
 
     @pytest.mark.parametrize("aliases", [{}, None, "not-a-dict"], ids=["empty", "missing", "malformed"])
     def test_absent_or_malformed_map_disables_the_rewrite(self, aliases):
@@ -135,55 +130,46 @@ class TestExistsAliasMetadata:
             "mappings": {"properties": properties, "_meta": {"exists_field_aliases": aliases}},
         }
 
-    def test_an_index_that_lacks_the_field_entirely_cannot_veto(self):
-        # mygeneset-shaped topology: one biothing_type spans a big curated
-        # index and a small, structurally different one (here: a stand-in for
-        # mygeneset's user-submitted genesets) that simply never maps some of
-        # the curated index's object fields at all. Confirmed against the
-        # real su12 mygeneset_current_user_genesets index, which has no
-        # 'msigdb' or 'go' field, so an alias for either must survive.
+    @pytest.mark.parametrize(
+        "per_index, expected",
+        [
+            # a field missing entirely from an index (mygeneset-shaped: a
+            # curated index plus a structurally different one) can't veto
+            (
+                {
+                    "curated": (
+                        {
+                            "msigdb": {"properties": {"id": {"type": "keyword"}}},
+                            "go": {"properties": {"id": {"type": "keyword"}}},
+                        },
+                        {"msigdb": "msigdb.id", "go": "go.id"},
+                    ),
+                    "other": ({"name": {"type": "text"}}, {}),  # no 'msigdb', no 'go'
+                },
+                {"msigdb": "msigdb.id", "go": "go.id"},
+            ),
+            # both map the field, but only one verified an alias for it
+            (
+                {
+                    "curated": ({"genes": {"properties": {"taxid": {"type": "integer"}}}}, {"genes": "genes.taxid"}),
+                    "other": ({"genes": {"properties": {"taxid": {"type": "integer"}}}}, {}),
+                },
+                {},
+            ),
+            # two indices proposing different subfields for the same field
+            (
+                {
+                    "one": ({"x": {"properties": {"a": {"type": "keyword"}}}}, {"x": "x.a"}),
+                    "two": ({"x": {"properties": {"a": {"type": "keyword"}}}}, {"x": "x.b"}),
+                },
+                {},
+            ),
+        ],
+        ids=["missing_field_cannot_veto", "unverified_alias_still_vetoes", "disagreeing_indices_still_veto"],
+    )
+    def test_get_exists_aliases_veto_rules(self, per_index, expected):
         from biothings.web.services.metadata import _BiothingsESMetadataReader
 
-        curated = {
-            "msigdb": {"properties": {"id": {"type": "keyword"}, "abstract": {"type": "text"}}},
-            "go": {"properties": {"id": {"type": "keyword"}, "name": {"type": "text"}}},
-        }
-        other = {"name": {"type": "text"}}  # no 'msigdb', no 'go'
-
-        info = {
-            "curated": self._index_info(curated, {"msigdb": "msigdb.id", "go": "go.id"}),
-            "other": self._index_info(other, {}),
-        }
+        info = {name: self._index_info(props, aliases) for name, (props, aliases) in per_index.items()}
         reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
-        assert reader.get_exists_aliases() == {"msigdb": "msigdb.id", "go": "go.id"}
-
-    def test_an_index_that_maps_the_field_without_a_verified_alias_still_vetoes(self):
-        # both indices map 'genes', but only one of them has verified an
-        # alias for it -- confirmed against su12's mygeneset_current_user_
-        # genesets, which does map 'genes' (with a 'genes.taxid' subfield
-        # too) but was never scanned, so nothing proves 'genes.taxid' is
-        # populated on every one of ITS documents that have 'genes'.
-        # Combining anyway would risk dropping real hits from that index.
-        from biothings.web.services.metadata import _BiothingsESMetadataReader
-
-        shared = {"genes": {"properties": {"taxid": {"type": "integer"}, "symbol": {"type": "keyword"}}}}
-        info = {
-            "curated": self._index_info(shared, {"genes": "genes.taxid"}),
-            "other": self._index_info(shared, {}),  # maps 'genes', but no alias verified here
-        }
-        reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
-        assert reader.get_exists_aliases() == {}
-
-    def test_indices_that_disagree_on_the_alias_still_veto(self):
-        # a subfield proven equivalent for one build says nothing about
-        # another; two indices proposing different subfields for the same
-        # object field is the clearest case for staying conservative
-        from biothings.web.services.metadata import _BiothingsESMetadataReader
-
-        shared = {"x": {"properties": {"a": {"type": "keyword"}, "b": {"type": "keyword"}}}}
-        info = {
-            "one": self._index_info(shared, {"x": "x.a"}),
-            "two": self._index_info(shared, {"x": "x.b"}),
-        }
-        reader = _BiothingsESMetadataReader("geneset", info, count={"count": 10})
-        assert reader.get_exists_aliases() == {}
+        assert reader.get_exists_aliases() == expected
