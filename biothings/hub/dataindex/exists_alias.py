@@ -140,6 +140,55 @@ def _pick_alias(candidates):
     return min(candidates, key=lambda subfield: (subfield.count("."), len(subfield), subfield))
 
 
+async def _derive_one_alias(client, index, field, subfields, logger):
+    """
+    Measure one object field against its subfields. Returns the subfield to
+    alias it to, or None if none qualifies (also logging the outcome either
+    way).
+    """
+    started = time.time()
+    counts = await _count_subfields(client, index, subfields)
+    if not counts:
+        return None
+
+    # the exists-on-object query: the expensive one, and the reference the
+    # subfield counts have to match
+    response = await client.search(
+        index=index, body={"query": {"exists": {"field": field}}, "size": 0, "track_total_hits": True}
+    )
+    total = response["hits"]["total"]["value"]
+    elapsed = time.time() - started
+
+    if any(count > total for count in counts.values()):
+        # a subfield cannot outnumber its parent object; the mapping and
+        # the data disagree, so trust neither and leave this field alone
+        logger.warning("Skipping '%s': subfield count exceeds object count, mapping may be stale", field)
+        return None
+
+    matching = [subfield for subfield, count in counts.items() if count == total]
+    if not matching:
+        logger.info(
+            "  %s -> no subfield present in all %s docs, left as is (%s subfields, scanned in %.1fs)",
+            field,
+            total,
+            len(subfields),
+            elapsed,
+        )
+        return None
+
+    alias = _pick_alias(matching)
+    logger.info(
+        "  %s -> %s (%s/%s subfields present in all %s docs, scanned in %.1fs)",
+        field,
+        alias,
+        len(matching),
+        len(subfields),
+        total,
+        elapsed,
+    )
+    return alias
+
+
 async def derive_exists_field_aliases(
     client,
     index,
@@ -169,45 +218,9 @@ async def derive_exists_field_aliases(
 
     aliases = {}
     for field, subfields in targets:
-        started = time.time()
-        counts = await _count_subfields(client, index, subfields)
-        if not counts:
-            continue
-
-        # the exists-on-object query: the expensive one, and the reference the
-        # subfield counts have to match
-        response = await client.search(
-            index=index, body={"query": {"exists": {"field": field}}, "size": 0, "track_total_hits": True}
-        )
-        total = response["hits"]["total"]["value"]
-        elapsed = time.time() - started
-
-        if any(count > total for count in counts.values()):
-            # a subfield cannot outnumber its parent object; the mapping and
-            # the data disagree, so trust neither and leave this field alone
-            logger.warning("Skipping '%s': subfield count exceeds object count, mapping may be stale", field)
-            continue
-
-        matching = [subfield for subfield, count in counts.items() if count == total]
-        if matching:
-            aliases[field] = _pick_alias(matching)
-            logger.info(
-                "  %s -> %s (%s/%s subfields present in all %s docs, scanned in %.1fs)",
-                field,
-                aliases[field],
-                len(matching),
-                len(subfields),
-                total,
-                elapsed,
-            )
-        else:
-            logger.info(
-                "  %s -> no subfield present in all %s docs, left as is (%s subfields, scanned in %.1fs)",
-                field,
-                total,
-                len(subfields),
-                elapsed,
-            )
+        alias = await _derive_one_alias(client, index, field, subfields, logger)
+        if alias:
+            aliases[field] = alias
 
     return aliases
 

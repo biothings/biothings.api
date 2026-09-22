@@ -290,7 +290,7 @@ class _BiothingsESMetadataReader:
         return {
             field: alias
             for field, alias in candidates.items()
-            if all(aliases.get(field) == alias or mapping._resolve(field) is None for mapping, aliases in per_index)
+            if all(aliases.get(field) == alias or not mapping.has_field(field) for mapping, aliases in per_index)
         }
 
     def get_metadata(self):
@@ -442,6 +442,10 @@ class _ESIndexMappings:
                 return None
             spec = properties[part]
         return spec if isinstance(spec, dict) else None
+
+    def has_field(self, path):
+        """Whether this index's mapping defines the dotted field path at all."""
+        return self._resolve(path) is not None
 
     def extract_exists_aliases(self):
         """
