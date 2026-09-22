@@ -4,6 +4,7 @@ import pytest
 from elastic_transport import ObjectApiResponse
 
 from biothings.web.query.pipeline import (
+    ApiError,
     AuthenticationException,
     AuthorizationException,
     ConflictError,
@@ -14,7 +15,6 @@ from biothings.web.query.pipeline import (
     RawQueryInterrupt,
     RawResultInterrupt,
     RequestError,
-    TransportError,
     capturesESExceptions,
 )
 
@@ -213,14 +213,15 @@ async def test_index_not_found_exception():
 
 @pytest.mark.asyncio
 async def test_es_rejected_execution_exception():
+    _meta = Mock()
+    _meta.status = 503
+
     @capturesESExceptions
     async def func():
-        exc = TransportError("test_es_rejected_execution_exception")
-        exc.status_code = 503
-        exc.info = {
+        body = {
             "error": {"type": "es_rejected_execution_exception", "reason": "rejected execution of TimedRunnable..."}
         }
-        raise exc
+        raise ApiError(message="test_es_rejected_execution_exception", meta=_meta, body=body)
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -231,12 +232,13 @@ async def test_es_rejected_execution_exception():
 
 @pytest.mark.asyncio
 async def test_search_phase_execution_exception_rejected_execution():
+    _meta = Mock()
+    _meta.status = 500
+
     @capturesESExceptions
     async def func():
-        exc = TransportError("test_generic_exception")
-        exc.status_code = 500
-        exc.info = {"error": {"type": "search_phase_execution_exception", "reason": "rejected execution"}}
-        raise exc
+        body = {"error": {"type": "search_phase_execution_exception", "reason": "rejected execution"}}
+        raise ApiError(message="test_generic_exception", meta=_meta, body=body)
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -247,19 +249,19 @@ async def test_search_phase_execution_exception_rejected_execution():
 
 @pytest.mark.asyncio
 async def test_search_phase_execution_exception_not_rejected_execution():
+    _meta = Mock()
+    _meta.status = 500
+
     @capturesESExceptions
     async def func():
-        exc = TransportError("test_generic_exception")
-        exc.status_code = 500
-        exc.error = "test_generic_exception"
-        exc.info = {
+        body = {
             "error": {
                 "type": "search_phase_execution_exception",
                 "reason": "any kind of execution",
                 "root_cause": [{"reason": "reason"}],
             }
         }
-        raise exc
+        raise ApiError(message="test_generic_exception", meta=_meta, body=body)
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()
@@ -271,18 +273,68 @@ async def test_search_phase_execution_exception_not_rejected_execution():
 
 
 @pytest.mark.asyncio
-async def test_too_many_requests_error():
+async def test_search_phase_execution_exception_illegal_state():
+    # a cluster node was briefly unreachable (e.g. a scroll retry in engine.py
+    # already attempted once and still failed) - treat as retryable, not an
+    # opaque 500. see sentry MYVARIANTINFO-9A.
+    _meta = Mock()
+    _meta.status = 500
+
     @capturesESExceptions
     async def func():
-        exc = TransportError(
-            {
-                "status_code": 429,
+        body = {
+            "error": {
+                "type": "search_phase_execution_exception",
+                "reason": "all shards failed",
+                "root_cause": [{"type": "illegal_state_exception", "reason": "node [...] is not available"}],
             }
-        )
-        exc.status_code = 429
-        exc.error = "too_many_requests"
-        exc.info = "too_many_requests"
-        raise exc
+        }
+        raise ApiError(message="test_generic_exception", meta=_meta, body=body)
+
+    with pytest.raises(QueryPipelineException) as exc_info:
+        await func()
+    assert exc_info.value.code == 503
+    assert exc_info.value.summary == ""
+    assert exc_info.value.details is None
+
+
+@pytest.mark.asyncio
+async def test_search_phase_execution_exception_illegal_state_mixed_root_causes():
+    # matches the actual MYVARIANTINFO-9A event: most root causes were
+    # search_context_missing_exception, two were illegal_state_exception.
+    _meta = Mock()
+    _meta.status = 500
+
+    @capturesESExceptions
+    async def func():
+        body = {
+            "error": {
+                "type": "search_phase_execution_exception",
+                "reason": "all shards failed",
+                "root_cause": [
+                    {"type": "search_context_missing_exception", "reason": "No search context found for id [...]"},
+                    {"type": "illegal_state_exception", "reason": "node [...] is not available"},
+                ],
+            }
+        }
+        raise ApiError(message="test_generic_exception", meta=_meta, body=body)
+
+    with pytest.raises(QueryPipelineException) as exc_info:
+        await func()
+    assert exc_info.value.code == 503
+
+
+@pytest.mark.asyncio
+async def test_too_many_requests_error():
+    # 429 has no dedicated exception subclass (see elasticsearch.exceptions.
+    # HTTP_EXCEPTIONS), so the client raises a plain ApiError with a
+    # non-dict body, same as elsewhere in this shape.
+    _meta = Mock()
+    _meta.status = 429
+
+    @capturesESExceptions
+    async def func():
+        raise ApiError(message="too_many_requests", meta=_meta, body="too_many_requests")
 
     with pytest.raises(QueryPipelineException) as exc_info:
         await func()

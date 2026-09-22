@@ -5,13 +5,13 @@ from dataclasses import dataclass
 
 from elastic_transport import ObjectApiResponse
 from elasticsearch.exceptions import (
+    ApiError,
     AuthenticationException,
     AuthorizationException,
     ConflictError,
     ConnectionError,
     NotFoundError,
     RequestError,
-    TransportError,
 )
 
 from biothings.web.query.builder import RawQueryInterrupt
@@ -135,16 +135,31 @@ def capturesESExceptions(func):
         # this case and most of the handling below can be further studied.
         # most of the exception handlings from this point on are based on
         # experience. further documentation in details will be helpful.
-        except TransportError as exc:
+        #
+        # note: this must catch ApiError, not TransportError. elasticsearch-py
+        # 8.x/9.x raises ApiError (elastic_transport.ApiError) for any API-level
+        # HTTP response without a dedicated subclass (e.g. a plain 500 or 429) -
+        # TransportError (elastic_transport.TransportError) is a disjoint
+        # hierarchy for client/connection-level failures and is never raised for
+        # these ES-side error bodies, so a clause catching it here is dead code.
+        except ApiError as exc:
             if hasattr(exc, "info") and isinstance(exc.info, dict):
                 error_info = exc.info.get("error", {})
                 error_type = error_info.get("type", "")
                 reason = error_info.get("reason", "")
 
                 if error_type == "search_phase_execution_exception":
+                    root_causes = {cause.get("type") for cause in error_info.get("root_cause", [])}
+
                     # indicates that the search request was rejected due to resource
                     # constraints, like a node overload.
                     if "rejected execution" in reason:
+                        raise QueryPipelineException(503)
+
+                    elif "illegal_state_exception" in root_causes:
+                        # a cluster node was briefly unreachable (e.g. a scroll retry
+                        # already attempted this once and still failed); treat as a
+                        # transient/retryable failure rather than an opaque 500.
                         raise QueryPipelineException(503)
 
                     else:  # unexpected, provide additional information for debug

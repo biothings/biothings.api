@@ -24,12 +24,25 @@ dict_keys(['taxid', 'symbol', 'name', ... ])
 import asyncio
 import logging
 
-from elasticsearch import NotFoundError, RequestError
+from elasticsearch import ApiError, NotFoundError, RequestError
 from elasticsearch.dsl import MultiSearch, Search
 
 from biothings.web.query.builder import ESScrollID
 
 logger = logging.getLogger(__name__)
+
+
+def _scroll_failure_root_causes(exc):
+    """
+    Return the set of ES root-cause exception types reported for a failed
+    scroll call, e.g. {"search_context_missing_exception"}. Empty if the
+    error body doesn't have the expected shape.
+    """
+    try:
+        error = exc.info.get("error", {})
+        return {cause.get("type") for cause in error.get("root_cause", [])}
+    except (AttributeError, TypeError):
+        return set()
 
 
 class ResultInterrupt(Exception):
@@ -106,6 +119,43 @@ class AsyncESQueryBackend(ESQueryBackend):
         # #hits-total-now-object-search-response
         self.total_hits_as_int = total_hits_as_int
 
+    async def _scroll(self, scroll_id, _retry=True):
+        try:
+            return await self.client.scroll(
+                scroll_id=scroll_id, scroll=self.scroll_time, rest_total_hits_as_int=self.total_hits_as_int
+            )
+        except (
+            RequestError,  # the id is not in the correct format of a context id
+            NotFoundError,  # the id does not correspond to any search context
+        ):
+            raise ValueError("Invalid or stale scroll_id.")
+        except ApiError as exc:
+            # note: must catch ApiError, not TransportError - elasticsearch-py
+            # 8.x/9.x raises ApiError (elastic_transport.ApiError) for a plain
+            # 500 like search_phase_execution_exception; TransportError
+            # (elastic_transport.TransportError) is a disjoint hierarchy for
+            # client/connection-level failures and is never raised here.
+            error = getattr(exc, "info", None) or {}
+            error_type = error.get("error", {}).get("type") if isinstance(error, dict) else None
+            root_causes = _scroll_failure_root_causes(exc)
+
+            if error_type != "search_phase_execution_exception" or not root_causes:
+                raise  # unrecognized shape, let the caller's generic handler classify it
+
+            if "illegal_state_exception" in root_causes and _retry:
+                # a cluster node was briefly unreachable while the scroll context
+                # lived partly on it; elasticsearch-py doesn't retry scroll calls
+                # on its own, so retry once before giving up
+                logger.warning("Scroll hit an unavailable node, retrying once: %s", exc)
+                return await self._scroll(scroll_id, _retry=False)
+
+            if root_causes == {"search_context_missing_exception"}:
+                # same outcome as NotFoundError above, just reported by ES as a
+                # partial-shard failure instead of a clean 404
+                raise ValueError("Invalid or stale scroll_id.")
+
+            raise
+
     async def execute(self, query, **options):
         """
         Execute the corresponding query. Must return an awaitable.
@@ -128,30 +178,22 @@ class AsyncESQueryBackend(ESQueryBackend):
         )
 
         if isinstance(query, ESScrollID):
-            try:
-                res = await self.client.scroll(
-                    scroll_id=query.data, scroll=self.scroll_time, rest_total_hits_as_int=self.total_hits_as_int
-                )
-            except (
-                RequestError,  # the id is not in the correct format of a context id
-                NotFoundError,  # the id does not correspond to any search context
-            ):
-                raise ValueError("Invalid or stale scroll_id.")
-            else:
-                if options.get("raw"):
-                    raise RawResultInterrupt(res)
+            res = await self._scroll(query.data)
 
-                if not res["hits"]["hits"]:
-                    scroll_id=query.data
-                    try:
-                        await self.client.clear_scroll(scroll_id=scroll_id)
-                        logger.info("Scroll context cleared: %s", scroll_id)
-                    except NotFoundError as e:
-                        logger.warning("Scroll context not found (ID: %s): %s", scroll_id, str(e))
-                    # Always raise this exception regardless of whether clear_scroll succeeds
-                    raise EndScrollInterrupt()
+            if options.get("raw"):
+                raise RawResultInterrupt(res)
 
-                return res
+            if not res["hits"]["hits"]:
+                scroll_id = query.data
+                try:
+                    await self.client.clear_scroll(scroll_id=scroll_id)
+                    logger.info("Scroll context cleared: %s", scroll_id)
+                except NotFoundError as e:
+                    logger.warning("Scroll context not found (ID: %s): %s", scroll_id, str(e))
+                # Always raise this exception regardless of whether clear_scroll succeeds
+                raise EndScrollInterrupt()
+
+            return res
 
         # everything below require us to know which indices to query
         index = self.indices[options.get("biothing_type")]
