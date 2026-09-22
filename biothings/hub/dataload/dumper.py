@@ -1490,7 +1490,8 @@ class DumperManager(BaseSourceManager):
                     if klass.SCHEDULE:
                         crontab = klass.SCHEDULE
                     else:
-                        raise DumperException("Missing scheduling information")
+                        logging.warning("Skipping %s: missing scheduling information", klass.__name__)
+                        continue
                 job = self.job_manager.submit(
                     partial(
                         self.create_and_dump,
