@@ -145,13 +145,7 @@ class _FakeMetadata:
 
 
 class TestExistsAliasRewrite:
-    """
-    '_exists_:<object field>' is expanded by ES into a disjunction over every
-    leaf below the object, which is orders of magnitude more expensive than an
-    exists query on one subfield that every matching document has. The hub
-    records which subfield qualifies in the index _meta; the builder looks it
-    up and substitutes it.
-    """
+    """The builder replaces '_exists_:<object field>' with the subfield alias from the index _meta."""
 
     @staticmethod
     def _query_string(q, aliases=None, **options):

@@ -612,10 +612,9 @@ class ESQueryBuilder:
 
     def _rewrite_exists(self, q, options):
         """
-        Replace '_exists_:<object field>' with '_exists_:<subfield>' per the
-        alias map the hub derives per build and stores in the index metadata
-        (see hub/dataindex/exists_alias.py). A no-op if no alias is recorded
-        for the field.
+        Replace '_exists_:<object field>' with '_exists_:<subfield>' using the
+        alias map the hub stores in the index metadata (see
+        hub/dataindex/exists_alias.py). Fields without an alias are unchanged.
         """
         if not isinstance(q, str) or "_exists_:" not in q or self.metadata is None:
             return q

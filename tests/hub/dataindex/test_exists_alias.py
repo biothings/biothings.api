@@ -1,9 +1,9 @@
 """
 Tests for deriving '_exists_:<object field>' aliases.
 
-TestMappingWalk covers picking the candidate object fields out of a mapping;
-TestDeriveAliases checks, against a real Elasticsearch, that a derived alias
-really matches the same documents as the object query it replaces.
+TestMappingWalk tests how object fields are picked from a mapping.
+TestDeriveAliases checks, against a real Elasticsearch, that an alias returns
+the same documents as the object query it replaces.
 """
 
 import pytest
@@ -50,8 +50,7 @@ class TestMappingWalk:
             "gnomad_genome.alt",
             "gnomad_genome.chrom",
         ]
-        # 'index: false' cannot be matched by an exists query, so it is useless
-        # as an alias
+        # 'index: false' fields cannot be matched by an exists query
         assert "gnomad_genome.notindexed" not in subfields
 
     @pytest.mark.parametrize(
@@ -81,7 +80,7 @@ class TestMappingWalk:
         [(2, 4), (3, 2), (7, 0)],  # 7 > the 6 subfields of the largest object
         ids=["keep_all", "skip_the_small_ones", "skip_everything"],
     )
-    def test_min_subfields_keeps_the_scan_off_cheap_objects(self, min_subfields, expected):
+    def test_min_subfields_filter(self, min_subfields, expected):
         assert len(_objects_to_scan(PROPERTIES, min_subfields, None)) == expected
 
     @pytest.mark.parametrize(
@@ -112,8 +111,7 @@ class TestDeriveAliases:
 
     @pytest.mark.asyncio
     async def test_only_a_subfield_present_on_every_document_is_chosen(self, es_client, index_name):
-        # 'chrom' is on every doc holding the object; 'alt' is missing on doc 2,
-        # so choosing it would silently drop that doc from results
+        # 'chrom' is on every doc that has the object; 'alt' is missing on doc 2
         await self._load(
             es_client,
             index_name,
@@ -126,7 +124,7 @@ class TestDeriveAliases:
         aliases = await derive_exists_field_aliases(es_client, index_name, min_subfields=2, max_depth=0)
 
         assert aliases == {"gnomad_genome": "gnomad_genome.chrom"}
-        # the whole point: the same documents, in the same order
+        # both queries return the same documents, in the same order
         assert await self._ids(es_client, index_name, "gnomad_genome") == ["1", "2"]
         assert await self._ids(es_client, index_name, "gnomad_genome.chrom") == ["1", "2"]
 

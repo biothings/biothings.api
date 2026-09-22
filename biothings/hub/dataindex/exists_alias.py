@@ -1,16 +1,12 @@
 """
-Derive '_exists_:<object field>' aliases for a freshly built index.
+Derive '_exists_:<object field>' aliases for a newly built index.
 
-An exists query on an object field expands into a disjunction over every
-leaf below it, which is expensive on wide objects. When one subfield is
-populated on every document that has the object, querying that subfield
-instead returns the identical result set for a fraction of the cost. This
-module measures which subfield (if any) qualifies and writes the result to
-the index's `_meta.exists_field_aliases`, where the web tier applies it.
-
-Correctness rests on subfield ⊆ object: a subfield can only have a value on
-documents where its parent exists, so count(subfield) == count(object)
-proves the two queries match the same documents.
+Elasticsearch runs an exists query on an object field as an OR over every
+leaf field under it. If a subfield is present in every document that has the
+object, an exists query on that subfield returns the same documents, with a
+fraction of the cost. This module finds that subfield for each object field
+and saves the result in the index's `_meta.exists_field_aliases`, where the
+web tier uses it to rewrite the query.
 """
 
 import logging
@@ -20,13 +16,10 @@ logger = logging.getLogger(__name__)
 
 META_KEY = "exists_field_aliases"
 
-# minimum subfield count worth scanning for; payoff scales with subfield
-# count but the scan cost per object field is fixed.
+# object fields with fewer subfields than this are not scanned
 DEFAULT_MIN_SUBFIELDS = 8
 
-# how many nested levels to scan, counted from the root (0 = root only,
-# None = unlimited). Each level costs one slow query per object field found
-# at that level. 1 covers the nested objects seen in slow-query logs.
+# how many nested levels to scan, from the root (0 = root only, None = all).
 MAX_OBJECT_DEPTH = 1
 
 # subfield counts requested per _msearch batch
@@ -58,7 +51,7 @@ def _object_fields(properties, max_depth, prefix="", depth=0):
         if not isinstance(spec, dict) or spec.get("enabled") is False:
             continue
         if "properties" not in spec:
-            continue  # a leaf: exists queries on it are already cheap
+            continue  # leaf field, no alias needed
         path = f"{prefix}{name}"
         objects.append((path, _collect_subfields(spec["properties"], f"{path}.")))
         if max_depth is None or depth < max_depth:
@@ -67,7 +60,7 @@ def _object_fields(properties, max_depth, prefix="", depth=0):
 
 
 def _objects_to_scan(mapping_properties, min_subfields, max_depth=MAX_OBJECT_DEPTH):
-    """Object fields worth deriving an alias for, largest first."""
+    """Object fields with at least min_subfields subfields, largest first."""
     objects = [
         (path, subfields)
         for path, subfields in _object_fields(mapping_properties, max_depth)
@@ -100,13 +93,13 @@ def _pick_alias(candidates):
 
 
 async def _derive_one_alias(client, index, field, subfields, logger):
-    """Measure one object field against its subfields; return the alias to use, or None. Logs the outcome."""
+    """Return the subfield to use as the alias for one object field, or None if none matches."""
     started = time.time()
     counts = await _count_subfields(client, index, subfields)
     if not counts:
         return None
 
-    # the expensive reference query the subfield counts must match
+    # number of documents that have the object
     response = await client.search(
         index=index, body={"query": {"exists": {"field": field}}, "size": 0, "track_total_hits": True}
     )
@@ -114,7 +107,7 @@ async def _derive_one_alias(client, index, field, subfields, logger):
     elapsed = time.time() - started
 
     if any(count > total for count in counts.values()):
-        # a subfield can't outnumber its parent; mapping/data disagree, so skip
+        # a subfield cannot have more documents than its parent; the mapping is stale
         logger.warning("Skipping '%s': subfield count exceeds object count, mapping may be stale", field)
         return None
 
@@ -150,12 +143,11 @@ async def derive_exists_field_aliases(
     logger=logger,
 ):
     """
-    Return {object_field: equivalent_subfield} for one index. Costs one
-    slow exists-on-object query per scanned field; meant to run once against
-    a new index before it takes traffic.
+    Return {object_field: subfield} for one index. Runs one exists query per
+    scanned object field, so it should run once, right after indexing.
     """
     mappings = await client.indices.get_mapping(index=index)
-    # the index pattern resolves to one concrete index here
+    # the index name resolves to one concrete index
     properties = next(iter(mappings.values()))["mappings"].get("properties", {})
 
     targets = _objects_to_scan(properties, min_subfields, max_depth)
@@ -176,10 +168,7 @@ async def derive_exists_field_aliases(
 
 
 async def store_exists_field_aliases(client, index, aliases, logger=logger):
-    """
-    Record the derived map in the index's `_meta`, preserving whatever else is
-    already there.
-    """
+    """Save the alias map in the index `_meta`, keeping the other keys."""
     mappings = await client.indices.get_mapping(index=index)
     meta = next(iter(mappings.values()))["mappings"].get("_meta", {})
     meta[META_KEY] = aliases

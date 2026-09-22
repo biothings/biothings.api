@@ -61,11 +61,9 @@ async def test_mongo():
 
 class TestExistsAliasMetadata:
     """
-    The hub records the '_exists_' alias map it derived at build time in the
-    index _meta; the web tier reads it back and only honors entries it can
-    verify against the mapping. A stale or hand-edited _meta must not be able
-    to redirect a query somewhere else -- that would silently return the wrong
-    documents, which is worse than the slow query being optimized away.
+    The web tier reads the '_exists_' alias map from the index _meta and keeps
+    only entries that match the mapping, so a stale or hand-edited _meta
+    cannot point a query to the wrong field.
     """
 
     MAPPING = {
@@ -97,7 +95,7 @@ class TestExistsAliasMetadata:
             ({"gnomad_genome": 1}, {}),  # value is not a field name
             ({1: "gnomad_genome.chrom"}, {}),  # key is not a field name
             ({"gnomad_genome": "somewhere.else"}, {}),  # not a subfield of the key
-            ({"gnomad_genome": "gnomad_genome"}, {}),  # the object itself, no gain
+            ({"gnomad_genome": "gnomad_genome"}, {}),  # alias is the object itself
             ({"chrom": "chrom.x"}, {}),  # key is a leaf, not an object
             ({"absent": "absent.x"}, {}),  # key is not in this mapping
             ({"gnomad_genome": "gnomad_genome.gone"}, {}),  # target is not in this mapping
