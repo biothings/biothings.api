@@ -55,6 +55,9 @@ ES_DEFAULT_SIZE = 10
 
 _ID_FIELDDATA_ERROR = "Cannot {operation} the '_id' field: it is not available for sorting or aggregation."
 
+# matches the field name in each '_exists_:<field>' occurrence in a query string
+_EXISTS_FIELD_PATTERN = re.compile(r"(?<=_exists_:)[A-Za-z0-9_.*\-]+")
+
 
 class RawQueryInterrupt(Exception):
     def __init__(self, data):
@@ -607,12 +610,29 @@ class ESQueryBuilder:
         search = self.apply_extras(search, options)
         return search
 
+    def _rewrite_exists(self, q, options):
+        """
+        Replace '_exists_:<object field>' with '_exists_:<subfield>' using the
+        alias map the hub stores in the index metadata (see
+        hub/dataindex/exists_alias.py). Fields without an alias are unchanged.
+        """
+        if not isinstance(q, str) or "_exists_:" not in q or self.metadata is None:
+            return q
+        try:
+            aliases = self.metadata.get_exists_aliases(options.biothing_type)
+        except Exception:  # a metadata backend that does not support it
+            return q
+        if not aliases:
+            return q
+        return _EXISTS_FIELD_PATTERN.sub(lambda match: aliases.get(match.group(), match.group()), q)
+
     def _build_string_query(self, q, options):
         """q + options -> query object
 
         options:
             userquery
         """
+        q = self._rewrite_exists(q, options)
         search = Search()
         userquery = options.userquery or ""
 
@@ -842,13 +862,13 @@ class ESQueryBuilder:
         # apply extra filter (as query_string query) to filter results
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/query-dsl-bool-query.html
         if options.filter:
-            search = search.filter("query_string", query=options.filter)
+            search = search.filter("query_string", query=self._rewrite_exists(options.filter, options))
 
         # Feature: post_filter
         # -- implementation using query string matching
         # Ref: https://www.elastic.co/guide/en/elasticsearch/reference/8.10/filter-search-results.html#post-filter
         if options.post_filter:
-            search = search.post_filter("query_string", query=options["post_filter"])
+            search = search.post_filter("query_string", query=self._rewrite_exists(options["post_filter"], options))
 
         return search
 

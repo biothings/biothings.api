@@ -261,6 +261,15 @@ AUTO_SNAPSHOT_CLEANUP_CONFIG = {
     }
 """
 
+# Hub-wide default for deriving '_exists_:<object field>' aliases after
+# indexing (see hub.dataindex.exists_alias). A build config's own
+# "exists_field_alias_scan" overrides this per build config.
+EXISTS_FIELD_ALIAS_SCAN = ConfigurationDefault(
+    default=False,
+    desc="Derive '_exists_' object-field aliases after indexing (bool, or int "
+    "for the minimum subfield count). Overridable per build config.",
+)
+
 # reporting diff results, number of IDs to consider (to avoid too much mem usage)
 MAX_REPORTED_IDS = 1000
 # for diff updates, number of IDs randomly picked as examples when rendering the report
