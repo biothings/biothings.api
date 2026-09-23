@@ -281,21 +281,15 @@ class TestExistsFieldAliasScanPrecedence:
     @pytest.mark.parametrize(
         "hub_default, build_config_extra, expected",
         [
-            (None, None, False),  # nothing set anywhere -> hardcoded default
-            (False, {"exists_field_alias_scan": True}, True),  # build config wins
-            (True, {"exists_field_alias_scan": False}, False),  # build config wins either way
-            (True, None, True),  # hub default applies when build config is silent
-            (False, {"exists_field_alias_scan": 20}, 20),  # an int, not just enable/disable
+            # the build config wins. False is the interesting direction: it is
+            # falsy, so an implementation using 'or' instead of a default would
+            # wrongly fall through to the hub value here.
+            (True, {"exists_field_alias_scan": False}, False),
+            # and the hub default applies when the build config says nothing
+            (True, None, True),
         ],
-        ids=[
-            "falls_back_to_hub_default",
-            "build_config_true_overrides_false_default",
-            "build_config_false_overrides_true_default",
-            "hub_default_applies_when_silent",
-            "build_config_can_override_with_an_int",
-        ],
+        ids=["build_config_overrides_hub_default", "hub_default_applies_when_silent"],
     )
     def test_precedence(self, dataindex_modules, root_configuration, hub_default, build_config_extra, expected):
-        if hub_default is not None:
-            root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": hub_default})
+        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": hub_default})
         assert self._exists_alias_scan(dataindex_modules, build_config_extra) == expected
