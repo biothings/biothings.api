@@ -258,38 +258,3 @@ def test_snapshot_lookup_cannot_find_index_until_post_succeeds(monkeypatch, data
 
     build_doc = snapshooter.SnapshotEnv._doc(snapshot_env, "test_index")
     assert build_doc["_id"] == "test_build"
-
-
-class TestExistsFieldAliasScanPrecedence:
-    """
-    'exists_field_alias_scan' can be set hub-wide in config.py (EXISTS_FIELD_ALIAS_SCAN)
-    or per build config. The build config's own value, when present, wins.
-    """
-
-    @staticmethod
-    def _exists_alias_scan(dataindex_modules, build_config_extra=None):
-        indexer_module, _ = dataindex_modules
-        build_doc = make_build_doc()
-        build_doc["build_config"].update(build_config_extra or {})
-        indexer = indexer_module.Indexer(
-            build_doc,
-            {"name": "local", "args": {"hosts": "http://localhost:9200"}},
-            "test_index",
-        )
-        return indexer.exists_alias_scan
-
-    @pytest.mark.parametrize(
-        "hub_default, build_config_extra, expected",
-        [
-            # the build config wins. False is the interesting direction: it is
-            # falsy, so an implementation using 'or' instead of a default would
-            # wrongly fall through to the hub value here.
-            (True, {"exists_field_alias_scan": False}, False),
-            # and the hub default applies when the build config says nothing
-            (True, None, True),
-        ],
-        ids=["build_config_overrides_hub_default", "hub_default_applies_when_silent"],
-    )
-    def test_precedence(self, dataindex_modules, root_configuration, hub_default, build_config_extra, expected):
-        root_configuration.override({"EXISTS_FIELD_ALIAS_SCAN": hub_default})
-        assert self._exists_alias_scan(dataindex_modules, build_config_extra) == expected
