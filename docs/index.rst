@@ -23,6 +23,13 @@ BioThings Studio
 *BioThings Studio* is a buildin, pre-configured environment used to build and administer BioThings API. At its core is the *Hub*,
 a backend service responsible for maintaining data up-to-date, producing data releases and update API frontends.
 
+.. warning::
+
+   Hub and Studio are administrative services. Restrict access to trusted
+   administrators and authorized automation before starting them, and keep their
+   ports and databases off the public internet. See
+   :doc:`tutorial/hub_deployment` for access requirements and Docker port mappings.
+
 
 Installation
 ------------
@@ -56,6 +63,7 @@ We recommend to follow `this tutorial <tutorial/studio.html>`_ to develop your f
     :caption: Products
 
     tutorial/studio
+    tutorial/hub_deployment
     tutorial/cli
     tutorial/standalone
     tutorial/hub_tutorial

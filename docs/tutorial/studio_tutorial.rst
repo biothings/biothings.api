@@ -5,6 +5,13 @@ A. Tutorial
 This tutorial will guide you through **BioThings Studio** by showing, in a first part, how to convert a simple flat file
 to a fully operational BioThings API. In a second part, this API will enrich for more data.
 
+.. warning::
+
+   Studio and Hub are intended for a trusted administrative environment. Anyone
+   allowed to reach the Hub administrative API must be trusted to administer it.
+   Read :doc:`hub_deployment` and restrict access before starting this tutorial's
+   services.
+
 .. note:: You may also want to read the `developer's guide <studio_guide.html>`_ for more detailed informations.
 
 .. note:: The following tutorial uses a docker-compose file to run the **BioThings Studio** and **Hub**. This file is available `here <https://github.com/biothings/biothings_docker>`_
@@ -64,6 +71,14 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
 
 .. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+
+.. warning::
+
+   Review and restrict these host-port mappings before running the command below.
+   For access from the Docker host, replace administrative mappings such as
+   ``7080:7080`` with ``127.0.0.1:7080:7080`` and remove mappings you do not need.
+   Apply the same review to Studio, databases, and management tools. See
+   :doc:`hub_deployment` for remote access and verification instructions.
 
 .. code:: bash
 
@@ -1164,8 +1179,10 @@ to extend our API, specifically:
 So far APIs are running from within **BioThings Studio**, and data still isn't exposed to the public. The next step to publish this data and make the API available
 for everyone.
 
-.. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
-   it's not recommended to expose any ports, including API ports, to public-facing internet.
+.. note:: **BioThings Studio** is a backend service for preparing, testing, and releasing APIs
+   in a trusted administrative environment. Keep its administrative services and databases
+   off the public internet. Deploy the query API for its intended data consumers with
+   separate access rules, as described in :doc:`hub_deployment`.
 
 
 ===============
