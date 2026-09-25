@@ -30,6 +30,11 @@ UNORDERED_LIST = False
 # we can't patch a doc multiple time
 USE_LIST_OPS = False
 
+_DICT_MARKER = object()
+_LIST_MARKER = object()
+_ATOM_MARKER = object()
+_SAFE_SCALAR_TYPES = (type(None), bool, int, float, str)
+
 
 __all__ = [
     "make",
@@ -233,6 +238,58 @@ def _path_join(path, key):
     return path
 
 
+class _Unindexable(Exception):
+    """Raised when a value cannot safely use the unordered-list index."""
+
+    pass
+
+
+def _make_hashable(value, active=None):
+    """Build an equality-preserving key for an acyclic, plain JSON value."""
+
+    value_type = type(value)
+    if value_type in _SAFE_SCALAR_TYPES:
+        return (_ATOM_MARKER, value)
+    if value_type is not dict and value_type is not list:
+        raise _Unindexable
+
+    if active is None:
+        active = set()
+    identity = id(value)
+    if identity in active:
+        raise _Unindexable
+    active.add(identity)
+    try:
+        if value_type is dict:
+            return (
+                _DICT_MARKER,
+                frozenset(
+                    (_make_hashable(key, active), _make_hashable(item, active)) for key, item in value.items()
+                ),
+            )
+        return (_LIST_MARKER, tuple(_make_hashable(item, active) for item in value))
+    finally:
+        active.remove(identity)
+
+
+def _all_list_items_in(src, dst):
+    """Return whether every source item occurs in dst, using an index when safe."""
+
+    def original():
+        return all(item in dst for item in src)
+
+    if type(src) is not list or type(dst) is not list:
+        return original()
+    try:
+        dst_index = {_make_hashable(item) for item in dst}
+        for item in src:
+            if _make_hashable(item) not in dst_index:
+                return False
+        return True
+    except (_Unindexable, RecursionError):
+        return original()
+
+
 def _item_added(path, key, info, item):
     index = _take_index(info.removed, item)
     if index != None:
@@ -303,16 +360,8 @@ def _compare_lists(path, info, src, dst):
     else:
         if len_src != len_dst or (not UNORDERED_LIST and src != dst):
             _item_replaced(path, None, info, dst)
-        else:
-            found_diff = False
-            # lengths are the same so we just need to compare src against dst
-            # (dst against src isn't necessary)
-            for e in src:
-                if not e in dst:
-                    found_diff = True
-                    break
-            if found_diff:
-                _item_replaced(path, None, info, dst)
+        elif not _all_list_items_in(src, dst):
+            _item_replaced(path, None, info, dst)
 
 
 def _compare_values(path, key, info, src, dst):
