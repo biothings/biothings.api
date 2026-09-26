@@ -272,22 +272,46 @@ def _make_hashable(value, active=None):
         active.remove(identity)
 
 
-def _all_list_items_in(src, dst):
-    """Return whether every source item occurs in dst, using an index when safe."""
+def _lists_equal_by_matching(src, dst):
+    """Compare list values one-to-one without hashing them."""
 
-    def original():
-        return all(item in dst for item in src)
+    if len(src) != len(dst):
+        return False
 
-    if type(src) is not list or type(dst) is not list:
-        return original()
+    matched = [False] * len(dst)
+    for item in src:
+        for index, candidate in enumerate(dst):
+            if not matched[index] and (candidate is item or candidate == item):
+                matched[index] = True
+                break
+        else:
+            return False
+    return True
+
+
+def _lists_equal_unordered(src, dst):
+    """Return whether two lists contain equal values with equal multiplicities."""
+
+    if len(src) != len(dst):
+        return False
     try:
-        dst_index = {_make_hashable(item) for item in dst}
+        dst_counts = {}
+        for item in dst:
+            key = _make_hashable(item)
+            dst_counts[key] = dst_counts.get(key, 0) + 1
+
         for item in src:
-            if _make_hashable(item) not in dst_index:
+            key = _make_hashable(item)
+            count = dst_counts.get(key, 0)
+            if count == 0:
                 return False
-        return True
+            if count == 1:
+                del dst_counts[key]
+            else:
+                dst_counts[key] = count - 1
+        return not dst_counts
     except (_Unindexable, RecursionError):
-        return original()
+        return _lists_equal_by_matching(src, dst)
 
 
 def _item_added(path, key, info, item):
@@ -358,9 +382,11 @@ def _compare_lists(path, info, src, dst):
             else:
                 _item_added(path, key, info, dst[key])
     else:
-        if len_src != len_dst or (not UNORDERED_LIST and src != dst):
+        if len_src != len_dst:
             _item_replaced(path, None, info, dst)
-        elif not _all_list_items_in(src, dst):
+        elif UNORDERED_LIST and not _lists_equal_unordered(src, dst):
+            _item_replaced(path, None, info, dst)
+        elif not UNORDERED_LIST and src != dst:
             _item_replaced(path, None, info, dst)
 
 
