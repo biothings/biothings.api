@@ -5,14 +5,20 @@ Utils to compare two list of gene documents, requires to setup Biothing Hub.
 import os
 import os.path
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 # from ..hub.databuild.backend import create_backend
 from .backend import DocMongoDBBackend
 from .common import dump, filter_dict, get_timestamp, timesofar
-from .diff_common import full_diff_doc
+from .diff_common import _index_documents_by_id, _validate_matching_document_ids, full_diff_doc
 
 # from .es import ESIndexer
 from .jsondiff import make as jsondiff
+
+
+def _load_documents_by_id(backend, ids, backend_name):
+    documents = backend.mget_from_ids(ids, asiter=True)
+    return _index_documents_by_id(documents, backend_name)
 
 
 def two_docs_iterator(b1, b2, id_list, step=10000, verbose=False):
@@ -22,11 +28,22 @@ def two_docs_iterator(b1, b2, id_list, step=10000, verbose=False):
         t1 = time.time()
         if verbose:
             print("Processing %d-%d documents..." % (i + 1, min(i + step, n)), end="")
-        _ids = id_list[i : i + step]
-        iter1 = sorted([d for d in b1.mget_from_ids(_ids, asiter=True)], key=lambda a: a["_id"])
-        iter2 = sorted([d for d in b2.mget_from_ids(_ids, asiter=True)], key=lambda a: a["_id"])
-        for doc1, doc2 in zip(iter1, iter2):
-            yield doc1, doc2
+        _ids = list(dict.fromkeys(id_list[i : i + step]))
+
+        # if documents are loaded from MongoDB, we can use threads to load them in parallel
+        if isinstance(b1, DocMongoDBBackend) and isinstance(b2, DocMongoDBBackend):
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="diff-reader") as executor:
+                docs1_future = executor.submit(_load_documents_by_id, b1, _ids, "first")
+                docs2_future = executor.submit(_load_documents_by_id, b2, _ids, "second")
+                docs1 = docs1_future.result()
+                docs2 = docs2_future.result()
+        else:
+            docs1 = _load_documents_by_id(b1, _ids, "first")
+            docs2 = _load_documents_by_id(b2, _ids, "second")
+        _validate_matching_document_ids(docs1, docs2, set(_ids))
+        for _id in _ids:
+            if _id in docs1:
+                yield docs1[_id], docs2[_id]
         if verbose:
             print("Done.[%.1f%%,%s]" % (i * 100.0 / n, timesofar(t1)))
     if verbose:
@@ -178,12 +195,12 @@ def diff_collections(b1, b2, use_parallel=True, step=10000):
 
 
 def get_backend(uri, db, col, bk_type):
-    if bk_type != "mongodb":
+    if bk_type not in (DocMongoDBBackend.name, "mongodb"):
         raise NotImplementedError("Backend type '%s' not supported" % bk_type)
     from biothings.utils.mongo import _cached_client
 
-    colobj = _cached_client(uri)[db][col]
-    return DocMongoDBBackend(colobj)
+    dbobj = _cached_client(uri)[db]
+    return DocMongoDBBackend(dbobj, dbobj[col])
 
 
 def diff_collections_batches(b1, b2, result_dir, step=10000):
