@@ -56,6 +56,7 @@ def test_valid_manifest_validation(manifest: str, temporary_data_storage: pathli
         ("malformed_manifest3.json", ManifestMissingPropertyException),
         ("malformed_manifest4.json", ManifestIncorrectEnumException),
         ("malformed_manifest5.json", ManifestMinimumRequiredItemsException),
+        ("malformed_manifest7.json", ManifestTypeException),
     ],
 )
 def test_invalid_manifest_validation(manifest: str, manifest_error: Exception, temporary_data_storage: pathlib.Path):
@@ -71,6 +72,7 @@ def test_invalid_manifest_validation(manifest: str, manifest_error: Exception, t
     3) missing a required property (dumper) at the root of the manifest (missing properties)
     4) incorrect literal value for uploader.on_duplicates (incorrect literal value)
     5) unpopulated list (dumper.data_url) that expects at least one value (empty list)
+    7) dumper.data_url is null instead of a string or an array (type error)
     """
     plugin_name = "turbographicsfx"
 
@@ -90,3 +92,20 @@ def test_invalid_manifest_validation(manifest: str, manifest_error: Exception, t
     except jsonschema.exceptions.ValidationError as validation_error:
         assert isinstance(validation_error, manifest_error)
         logger.info("Explicit Error Message [%s]", validation_error.message)
+
+
+def test_data_url_type_error_message(temporary_data_storage: pathlib.Path):
+    """
+    dumper.data_url accepts either a string or an array (oneOf in the schema), so a
+    wrong type has to point to the data_url section rather than to exclusive properties
+    """
+    manifest_file = temporary_data_storage.joinpath("manifests", "malformed_manifest7.json")
+    with open(manifest_file, "r", encoding="utf-8") as manifest_handle:
+        manifest_contents = json.load(manifest_handle)
+
+    manifest_loader = ManifestBasedPluginLoader(plugin_name="turbographicsfx")
+    with pytest.raises(ManifestTypeException) as validation_error:
+        manifest_loader.validate_manifest(manifest_contents)
+
+    assert "['dumper', 'data_url']" in validation_error.value.message
+    assert "Expected type <string | array> | Discovered type <null>" in validation_error.value.message

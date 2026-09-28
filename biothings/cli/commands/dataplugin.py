@@ -301,7 +301,8 @@ def validate_manifest(
     """
     [red][bold](experimental)[/bold][/red] Validate a provided manifest file via JSONSchema
 
-    Performs jsonschema validation against the manifest file.
+    Performs jsonschema validation against the manifest file (manifest.json or manifest.yaml)
+    and exits with code 1 if it's invalid.
     Will not perform validation against the potential loading of modules
     within the manifest
 
@@ -315,6 +316,8 @@ def validate_manifest(
     For a reference about jsonschema itself, see the following:
     https://json-schema.org/
     """
-    asyncio.run(operations.validate_manifest(plugin_name=plugin_name))
+    manifest_valid = asyncio.run(operations.validate_manifest(plugin_name=plugin_name))
     if show_schema:
         asyncio.run(operations.display_schema())
+    if not manifest_valid:
+        raise typer.Exit(code=1)
