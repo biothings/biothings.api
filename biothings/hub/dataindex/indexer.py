@@ -338,9 +338,7 @@ class Indexer:
         self.build_name = _build_doc.build_name
 
         # opt-in per build config; truthy enables, an int overrides the minimum subfield count
-        self.exists_alias_scan = _build_doc.build_config.get(
-            "exists_field_alias_scan", btconfig.EXISTS_FIELD_ALIAS_SCAN
-        )
+        self.exists_alias_scan = _build_doc.build_config.get("exists_field_alias_scan", False)
 
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
