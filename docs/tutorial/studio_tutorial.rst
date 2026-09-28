@@ -1347,7 +1347,10 @@ application.
 
 The "Terminal" (click on the bottom left button) gives access to commands you can manually type from the web application. Basically, any action performed clicking on the application
 is converted into a command call. You can even see what commands were launched and which ones are running. This terminal also gives access to more commands, and advanced options that may
-be useful to troubleshoot an issue. Typing ``help()``, or even passing a command name such as ``help(dump)`` will print documentation on available commands and how to use them.
+be useful to troubleshoot an issue. Typing ``help`` lists the available commands, built in the Hub or defined by `hooks <studio_guide.html#hooks-and-custom-commands>`_,
+and ``help dump`` shows how to use a command. Commands can be typed with a shell-like syntax (eg. ``dump all``, ``dump mygene --force``) or as python calls
+(eg. ``dump("mygene", force=True)``). Commands running in background are followed until they finish, ``Tab`` completes command names and ``Up``/``Down`` browse the history.
+The same commands can be run from a shell with ``biothings-cli hub`` (see `BioThings CLI <cli.html#run-commands-on-a-running-hub>`_).
 
 .. image:: ../_static/term.png
    :width: 500px

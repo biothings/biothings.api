@@ -34,6 +34,13 @@ biothings.hub.api.handlers.shell
    :undoc-members:
    :show-inheritance:
 
+biothings.hub.api.handlers.terminal
+-----------------------------------
+.. automodule:: biothings.hub.api.handlers.terminal
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 biothings.hub.api.handlers.upload
 ---------------------------------
 .. automodule:: biothings.hub.api.handlers.upload

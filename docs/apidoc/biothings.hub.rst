@@ -24,6 +24,13 @@ Modules
    biothings.hub.datatransform
    biothings.hub.standalone
 
+biothings.hub.terminal
+----------------------
+
+.. automodule:: biothings.hub.terminal
+   :members:
+   :show-inheritance:
+
 Commands
 -----------
 

@@ -6,6 +6,7 @@
 import asyncio
 import copy
 import datetime
+import inspect
 import io
 import json
 import os
@@ -191,6 +192,22 @@ class HubShell(InteractiveShell):
         # (self.user_ns.update(...) can be used otherwise, self.user_ns is IPython
         # internal namespace dict
 
+    def add_command(self, name, command, hidden=False, tracked=True):
+        """
+        Register a command once the shell is set up (eg. a command defined in a hook file),
+        replacing any existing command with the same name. Returns the replaced command, if any.
+        """
+        if isinstance(command, CommandDefinition):
+            hidden = command.get("hidden", hidden)
+            tracked = command.get("tracked", tracked)
+            command = command["command"]
+        previous = self.commands.get(name)
+        self.commands[name] = command
+        self.hidden[name] = hidden
+        self.tracked[name] = tracked
+        self.extra_ns[name] = command
+        return previous
+
     def stop(self, force=False):
         return self.restart(force=force, stop=True)
 
@@ -234,6 +251,9 @@ class HubShell(InteractiveShell):
         """
         Display help on given function/object or list all available commands
         """
+        if isinstance(func, str) and func.replace("-", "_") in self.commands:
+            # command given by its name, eg. help("dump")
+            func = self.commands[func.replace("-", "_")]
         if not func:
             cmds = "\nAvailable commands:\n\n"
             for k in self.commands:
@@ -353,6 +373,15 @@ class HubShell(InteractiveShell):
         # poor man's singleton...
         if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
+        # shell-like command line typed in the console, eg. "dump mygene --force" (see biothings.hub.terminal)
+        terminal = getattr(getattr(self, "server", None), "terminal", None)
+        if not secure and terminal is not None and terminal.is_terminal_syntax(line):
+            outputs = terminal.console(line)
+            self.last_std_contents = None  # already part of outputs
+            if self.__class__.pending_outputs:
+                outputs.extend(self.__class__.pending_outputs.values())
+                self.__class__.pending_outputs = {}
+            return outputs
         # is it a hub command, in which case, intercept and run the actual declared cmd
         # IMPORTANT !!! this is where we allow the command or not when secure=True IMPORTANT !!!
         # the logic is following:
@@ -360,8 +389,8 @@ class HubShell(InteractiveShell):
         # - parenthesis are mandatory
         # - no '&&' operator allowed
         if secure:
-            # command must be alpha only, argument with "," and "=", or no arg at all
-            pat = r'^([A-Za-z_]+)\(["\'\w\s=,.-]*\)$'
+            # command must be alphanumeric only, argument with "," and "=", or no arg at all
+            pat = r'^([A-Za-z_][A-Za-z0-9_]*)\(["\'\w\s=,.-]*\)$'
         else:
             pat = r"(.*)\(.*\)"  # more permissive
         m = re.match(pat, line)
@@ -402,7 +431,7 @@ class HubShell(InteractiveShell):
             self.last_std_contents = redirect_stream.get_std_contents()
 
         if not r.success:
-            raise CommandError("%s\n" % repr(r.error_in_exec))
+            raise CommandError("%s\n" % repr(r.error_in_exec or r.error_before_exec))
         else:
             # command was a success, now get the results:
             if r.result is None:
@@ -416,7 +445,11 @@ class HubShell(InteractiveShell):
                 self.buf.truncate()
             else:
                 # -> we have something returned...
-                res = self.register_command(cmd=origline, result=r.result)
+                result = r.result
+                if inspect.iscoroutine(result):
+                    # eg. a command defined with "async def" in a hook file, run it as a job
+                    result = self.job_manager.loop.create_task(result)
+                res = self.register_command(cmd=origline, result=result)
                 # if type(res) != CommandInformation:    # TODO: remove this line
                 if not isinstance(res, CommandInformation):
                     # if type(res) != str:    # TODO: remove this line

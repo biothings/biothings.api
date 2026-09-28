@@ -285,6 +285,52 @@ We can check if all the data is deleted using
 .. image:: ../_static/clilistclean.png
     :width: 100%
 
+=============================
+Run commands on a running Hub
+=============================
+
+The ``biothings-cli hub`` commands connect to a running BioThings Hub (eg. a
+BioThings Studio) through its API, and run the same commands as the terminal in
+BioThings Studio: the built-in commands every hub provides (``dump_all``,
+``upload_all``, ``sync``...), and the commands defined in the hub's hook files
+(see `Hooks and custom commands <studio_guide.html#hooks-and-custom-commands>`_).
+
+.. code:: bash
+
+   # URL of the Hub API, defaults to http://localhost:7080
+   export BIOTHINGS_HUB_URL=http://localhost:7080
+
+   biothings-cli hub commands                      # list the commands available on the hub
+   biothings-cli hub help dump                     # usage and documentation of a command
+   biothings-cli hub run dump all                  # run a command, wait for it to finish
+   biothings-cli hub run --no-wait upload mygene   # run a command in background
+   biothings-cli hub status                        # launched commands, and their status
+   biothings-cli hub status 12                     # status and results of command #12
+   biothings-cli hub hooks                         # hook files loaded by the hub
+   biothings-cli hub shell                         # interactive terminal
+
+A command can be typed with a shell-like syntax, or as a python call:
+
+.. code:: bash
+
+   biothings-cli hub run dump mygene --force
+   biothings-cli hub run "dump('mygene', force=True)"
+
+Multi-word command names can be typed with spaces or hyphens (``dump all`` runs
+``dump_all``), and commands can be chained with ``&&`` (quoted) to run one after
+the other, stopping at the first failure.
+
+Options of ``run`` go before the command name (``--no-wait``, ``--json``,
+``--wait-timeout``...), everything after it is given to the hub command. Some
+commands return their result right away, others start a job in background: by
+default, ``run`` waits for the job to finish and prints its results, while
+``--no-wait`` returns right away with the command ID, to follow it with
+``biothings-cli hub status <ID>``.
+
+If the hub is behind an authentication proxy, an access token can be given with
+``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), it's sent in the
+``X-Biothings-Access-Token`` header.
+
 ==========
 In Summary
 ==========

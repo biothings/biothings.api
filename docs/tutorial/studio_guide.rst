@@ -486,12 +486,24 @@ An example of advanced data plugin can be found at https://github.com/sirloon/mv
 =========================
 
 While it's possible to define custom commands for the Hub console by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
-A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``). When the Hub starts, it inspects this folder and "injects" hook's namespace into its console. Everything
-available from within the hook file becomes available in the console. On the other hand, hook can use any commands available in the Hub console.
+A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``, created if it doesn't exist). When the Hub starts, it runs each hook file, in alphabetical order, in its
+console namespace: a hook can use any command available in the Hub console, and everything defined in a hook becomes available in the console.
+
+Functions defined in a hook file become **Hub commands**: they're listed by ``help``, and can be run from the terminal in BioThings Studio, with ``biothings-cli hub``
+(see `Run commands on a running Hub <cli.html#run-commands-on-a-running-hub>`_), and from the Hub console:
+
+- a command can be a regular function, returning its result right away, or a coroutine (``async def``), which runs in background and is tracked like other Hub jobs
+  (see ``commands`` and ``command <id>``).
+- the function's docstring documents the command: its first line is shown by ``help``, the whole docstring by ``help <command>``.
+- functions whose name starts with an underscore are private helpers, and names imported by the hook (eg. ``from os.path import join``) aren't commands. A hook can also define
+  ``__all__``, listing exactly which names are commands (eg. to include a ``functools.partial``).
+
+The ``hooks`` command lists the hook files loaded, with the commands they define, and the ones which failed to load with their error (also found in the Hub logs).
+Changes to hook files are taken into account when the Hub restarts (automatically when ``USE_RELOADER`` is set).
 
 **Hooks** provide an easy way to "program" the Hub, based on existing commands. The following example defines a new command, which will archive any builds older than X days. Code can be
 found at https://github.com/sirloon/auto_archive_hook.git. File ``auto_archive.py`` should be copied into ``./hooks/`` folder. Upon restart, a new command named ``auto_archive`` is now
-part of the Hub. It's also been scheduled automatically using ``schedule(...)`` command at the end of the hook.
+part of the Hub. It's also been scheduled automatically using ``schedule(...)`` command at the end of the hook, and exposed as an API endpoint with ``expose(...)``.
 
 The ``auto_archive`` function uses several existing Hub commands:
 
@@ -500,8 +512,11 @@ The ``auto_archive`` function uses several existing Hub commands:
 - ``bm.build_info``: ``bm`` isn't a command, but a shortcut for **build_manager** instance. From this instance, we can call ``build_info`` method which, given a build name, returns information
   about it, including the ``build_date`` field we're interested in.
 
+Once loaded, the command can be run from the terminal or the CLI, eg. ``auto_archive covid19 --days 30 --no-dryrun``, same as ``auto_archive("covid19", days=30, dryrun=False)``.
+
 .. note:: Hub console is actually a python interpreter. When connecting to the Hub using SSH, the connection "lands" into that interpreter. That's why it's possible to inject python code
-   into the console.
+   into the console. The terminal in BioThings Studio and ``biothings-cli hub`` only run Hub commands, with literal arguments (strings, numbers, lists...), not python code.
 
 .. note:: Be careful. User-defined hooks can be conflicting with existing commands and may break the Hub. Ex: if a hook defines a command "dump", it will replace, and potentially break
-   existing one!
+   existing one! Such replacements are logged as warnings, and reported by the ``hooks`` command. Note the Hub also provides a built-in ``auto_archive`` command (``auto_archive``
+   feature, configured with ``AUTO_ARCHIVE_CONFIG``), which the example hook replaces.

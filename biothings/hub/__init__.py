@@ -105,6 +105,7 @@ _config_for_app()
 #     _config_for_app(_config)
 
 
+from biothings.hub.terminal import HubTerminal  # noqa: E402
 from biothings.utils.common import get_class_from_classpath  # noqa: E402
 from biothings.utils.hub import (  # noqa: E402
     AlreadyRunningException,
@@ -422,6 +423,7 @@ class HubServer:
         self.api_endpoints = {}
         self.readonly_api_endpoints = None
         self.shell = None
+        self.terminal = None  # runs shell commands for the webapp terminal and the CLI
         self.commands = None  # default "public" commands
         self.extra_commands = None  # "hidden" commands, but still useful for advanced usage
         self.hook_files = None  # user-defined commands as hook files
@@ -479,6 +481,7 @@ class HubServer:
         self.shell.register_managers(self.managers)
         self.shell.server = self  # propagate server instance in shell
         # so it's accessible from the console if needed
+        self.terminal = HubTerminal(self.shell, hooks_folder=getattr(config, "HOOKS_FOLDER", "./hooks"))
         self.configure_remaining_features()
         self.configure_commands()
         self.configure_extra_commands()
@@ -873,7 +876,7 @@ class HubServer:
         if not os.path.exists(hooks_folder):
             self.logger.info("Hooks folder '%s' doesn't exist, creating it" % hooks_folder)
             os.makedirs(hooks_folder)
-        self.hook_files = glob.glob(os.path.join(hooks_folder, "*.py"))
+        self.hook_files = sorted(glob.glob(os.path.join(hooks_folder, "*.py")))
 
     def ingest_hooks(self):
         if not self.hook_files:
@@ -886,9 +889,11 @@ class HubServer:
                 self.logger.exception("Can't process hook file: %s" % e)
 
     def process_hook_file(self, hook_file):
-        strcode = open(hook_file).read()
-        code = compile(strcode, "<string>", "exec")
-        eval(code, self.shell.extra_ns, self.shell.extra_ns)
+        """
+        Run a hook file in the hub namespace. Functions it defines become hub commands,
+        available from the console, the webapp terminal and the CLI (see HubTerminal.load_hook)
+        """
+        return self.terminal.load_hook(hook_file)
 
     def configure_managers(self):
         if self.managers is not None:
@@ -1041,6 +1046,11 @@ class HubServer:
 
         shell_endpoint = ("/shell", ShellHandler, {"shell": self.shell, "shellog": shell_logger})
         self.routes.append(shell_endpoint)
+        # commands catalog and runner used by the webapp terminal and "biothings-cli hub"
+        from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
+
+        self.routes.append(("/terminal/commands", TerminalCommandsHandler, {"terminal": self.terminal}))
+        self.routes.append(("/terminal/run", TerminalRunHandler, {"terminal": self.terminal, "shellog": shell_logger}))
 
     def configure_dataupload_feature(self):
         assert "ws" in self.features, "'dataupload' feature requires 'ws'"
@@ -1096,6 +1106,8 @@ class HubServer:
         self.commands["export_command_documents"] = CommandDefinition(
             command=self.export_command_documents, tracked=False
         )
+        if "hooks" in self.features:
+            self.commands["hooks"] = CommandDefinition(command=self.terminal.hooks_summary, tracked=False)
 
         if "config" in self.features:
             self.commands["config"] = CommandDefinition(command=config.show, tracked=False)
