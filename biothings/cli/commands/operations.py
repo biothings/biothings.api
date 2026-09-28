@@ -52,7 +52,6 @@ import multiprocessing
 import os
 import pathlib
 import platform
-import random
 import shutil
 import sys
 import uuid
@@ -63,8 +62,10 @@ import jsonschema
 import rich
 import tornado.template
 import typer
+import yaml
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 from biothings.cli.commands.decorators import cli_system_path, get_biothings_config, operation_mode
@@ -90,6 +91,42 @@ logger = logging.getLogger(name="biothings-cli")
 
 def _load_attr(module_path: str, attr_name: str):
     return getattr(import_module(module_path), attr_name)
+
+
+def _resolve_sub_source_name(
+    plugin_name: str, valid_sources: list, sub_source_name: Optional[str], command: str
+) -> str:
+    """
+    Returns the uploader (sub source) name the command should operate on
+
+    The --sub-source-name can be omitted when the plugin has a single uploader,
+    otherwise it has to be one of the plugin uploader names
+    """
+    if not sub_source_name and len(valid_sources) == 1:
+        return valid_sources[0]
+    if sub_source_name in valid_sources:
+        return sub_source_name
+
+    if sub_source_name:
+        reason = f'Unknown sub source "{sub_source_name}" for {plugin_name} data-plugin.'
+    else:
+        reason = (
+            f"Multiple uploaders exist for {plugin_name} data-plugin, so --sub-source-name (-s) "
+            f"must be provided to specify which source you want to {command}."
+        )
+    logger.error(
+        (
+            "%s\n"
+            "\t>>> Supported values for --sub-source-name: %s\n"
+            "\t>>> Example: `biothings-cli dataplugin %s --name %s --sub-source-name %s`"
+        ),
+        reason,
+        valid_sources,
+        command,
+        plugin_name,
+        valid_sources[0],
+    )
+    raise typer.Exit(code=2)
 
 
 # do not apply operation_mode decorator since this operation means to create a new plugin
@@ -123,7 +160,7 @@ def do_create(plugin_name: str, multi_uploaders: bool = False, parallelizer: boo
     os.unlink(f"{new_plugin_directory}/manifest.yaml.tpl")
     if not parallelizer:
         os.unlink(f"{new_plugin_directory}/parallelizer.py")
-    logger.info("Successfully created data plugin template at: %s\n", new_plugin_directory)
+    rich.print(f"[green]Successfully created data plugin template at: [bold]{new_plugin_directory}[/bold][/green]")
 
 
 @cli_system_path
@@ -405,20 +442,7 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
     uploader_manager = assistant_instance.uploader_manager
 
     valid_sources = [uploader.name for uploader in uploader_manager[assistant_instance.plugin_name]]
-    if len(valid_sources) > 1 and sub_source_name is None or sub_source_name not in valid_sources:
-        logger.error(
-            (
-                "Multiple uploaders exist for %s data-plugin, so --sub-source-name (-s) "
-                "must be provided to specify which source you want to index.\n"
-                "\t>>> Supported values for --sub-source-name: %s\n"
-                "\t>>> Example: `biothings-cli dataplugin index --plugin-name %s --sub-source-name %s"
-            ),
-            assistant_instance.plugin_name,
-            valid_sources,
-            assistant_instance.plugin_name,
-            random.choice(valid_sources),
-        )
-        raise typer.Exit(code=2)
+    sub_source_name = _resolve_sub_source_name(assistant_instance.plugin_name, valid_sources, sub_source_name, "index")
 
     plugin_identifier = uuid.uuid4()
     build_configuration_name = f"{assistant_instance.plugin_name}-{plugin_identifier}-configuration"
@@ -428,9 +452,7 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
     build_config_params = {"num_shards": 1, "num_replicas": 0}
 
     builder_class = "biothings.hub.databuild.builder.LinkDataBuilder"
-    sources = [assistant_instance.plugin_name]
-    if sub_source_name is not None:
-        sources = [sub_source_name]
+    sources = [sub_source_name]
 
     document_type = "temporary"
     assistant_instance.build_manager.create_build_configuration(
@@ -541,20 +563,9 @@ async def do_inspect(  # pylint: disable=too-many-arguments,too-many-positional-
     uploader_classes = assistant_instance.get_uploader_class()
 
     valid_sources = [uploader.name for uploader in uploader_classes]
-    if len(valid_sources) > 1 and sub_source_name is None or sub_source_name not in valid_sources:
-        logger.error(
-            (
-                "Multiple uploaders exist for %s data-plugin, so --sub-source-name (-s) "
-                "must be provided to specify which source you want to inspect.\n"
-                "\t>>> Supported values for --sub-source-name: %s\n"
-                "\t>>> Example: `biothings-cli dataplugin inspect --plugin-name %s --sub-source-name %s"
-            ),
-            assistant_instance.plugin_name,
-            valid_sources,
-            assistant_instance.plugin_name,
-            random.choice(valid_sources),
-        )
-        raise typer.Exit(code=2)
+    sub_source_name = _resolve_sub_source_name(
+        assistant_instance.plugin_name, valid_sources, sub_source_name, "inspect"
+    )
 
     logger.info(
         'Inspecting data plugin "%s" (sub_source_name="%s", mode="%s", limit=%s)',
@@ -564,27 +575,12 @@ async def do_inspect(  # pylint: disable=too-many-arguments,too-many-positional-
         limit,
     )
 
-    table_space = [item.name for item in uploader_classes]
-    if sub_source_name and sub_source_name not in table_space:
-        logger.error('Your source name "%s" does not exits', sub_source_name)
-        raise typer.Exit(code=1)
-
-    if sub_source_name:
-        inspection_mapping = process_inspect(sub_source_name, mode, limit, merge)
-        display_inspection_table(
-            source_name=sub_source_name, mode=mode, inspection_mapping=inspection_mapping, validate=True
-        )
-        if output is not None:
-            write_mapping_to_file(output, inspection_mapping)
-    else:
-        for source_index, source_name in enumerate(table_space):
-            inspection_mapping = process_inspect(source_name, mode, limit, merge)
-            display_inspection_table(
-                source_name=source_name, mode=mode, inspection_mapping=inspection_mapping, validate=True
-            )
-            if output is not None:
-                sub_output = f"{output}{source_index}"
-                write_mapping_to_file(sub_output, inspection_mapping)
+    inspection_mapping = process_inspect(sub_source_name, mode, limit, merge)
+    display_inspection_table(
+        source_name=sub_source_name, mode=mode, inspection_mapping=inspection_mapping, validate=True
+    )
+    if output is not None:
+        write_mapping_to_file(output, inspection_mapping)
 
 
 @cli_system_path
@@ -670,53 +666,61 @@ async def display_schema():
 
 @cli_system_path
 @operation_mode
-async def validate_manifest(plugin_name: Optional[str] = None):
+async def validate_manifest(plugin_name: Optional[str] = None) -> bool:
     """
-    Loads the manifest file and validates it against the schema file
+    Loads the manifest file (manifest.json or manifest.yaml) and validates it against the schema file
     If an error exists it will display the error to the enduser
+
+    Returns True if the manifest is valid
     """
     ManifestBasedPluginLoader = _load_attr("biothings.hub.dataplugin.loaders.loader", "ManifestBasedPluginLoader")
+    plugin_directory = pathlib.Path.cwd().resolve().absolute()
     if plugin_name is None:
-        plugin_directory = pathlib.Path.cwd().resolve().absolute()
         plugin_name = plugin_directory.name
-        manifest_file = plugin_directory.joinpath("manifest.json")
     else:
-        calling_directory = pathlib.Path.cwd().resolve().absolute()
-        plugin_directory = calling_directory.joinpath(plugin_name)
-        manifest_file = plugin_directory.joinpath("manifest.json")
+        plugin_directory = plugin_directory.joinpath(plugin_name)
+
+    # same lookup order as the ManifestBasedPluginLoader
+    manifest_file = None
+    for manifest_name in ("manifest.json", "manifest.yaml"):
+        if plugin_directory.joinpath(manifest_name).exists():
+            manifest_file = plugin_directory.joinpath(manifest_name)
+            break
 
     manifest_loader = ManifestBasedPluginLoader(plugin_name=plugin_name)
     manifest_state = {"path": manifest_file, "valid": False, "repr": None, "error": None}
 
-    try:
-        with open(manifest_file, "r", encoding="utf-8") as manifest_handle:
-            manifest = load_json(manifest_handle.read())
-    except JSONDecodeError as decode_error:
-        logger.exception(decode_error)
-        manifest_state["error"] = f"{manifest_file} is not valid JSON"
-        return
-
-    manifest_state["repr"] = to_json(manifest, indent=True)
-
-    try:
-        manifest_loader.validate_manifest(manifest)
-    except Exception as gen_exc:
-        logger.exception(gen_exc)
-        manifest_state["error"] = f"{manifest_file} doesn't conform to the schema"
+    if manifest_file is None:
+        manifest_state["error"] = f"No manifest.json or manifest.yaml found in {plugin_directory}"
     else:
-        manifest_state["valid"] = True
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as manifest_handle:
+                if manifest_file.suffix == ".json":
+                    manifest = load_json(manifest_handle.read())
+                else:
+                    manifest = yaml.safe_load(manifest_handle)
+        except (JSONDecodeError, yaml.YAMLError) as decode_error:
+            manifest_state["error"] = f"{manifest_file.name} could not be parsed: {decode_error}"
+        else:
+            manifest_state["repr"] = to_json(manifest, indent=True)
+            try:
+                manifest_loader.validate_manifest(manifest)
+            except jsonschema.ValidationError as validation_error:
+                manifest_state["error"] = validation_error.message
+            else:
+                manifest_state["valid"] = True
 
     console = Console()
     panel_message = (
-        f"* [bold green]Plugin Name[/bold green]: {plugin_name}\n"
-        f"* [bold green]Manifest Path[/bold green]: {manifest_state['path']}\n"
+        f"* [bold green]Plugin Name[/bold green]: {escape(plugin_name)}\n"
+        f"* [bold green]Manifest Path[/bold green]: {escape(str(manifest_state['path']))}\n"
         f"* [bold green]Valid Manifest[/bold green]: {manifest_state['valid']}\n"
     )
 
     if manifest_state["error"] is not None:
-        panel_message += f"* [bold green]Manifest Error[/bold green]: {manifest_state['error']}\n"
-    elif manifest_state["error"] is None and manifest_state["repr"] is not None:
-        panel_message += f"* [bold green]Manifest Contents[/bold green]:\n{manifest_state['repr']}\n"
+        panel_message += f"* [bold green]Manifest Error[/bold green]: {escape(manifest_state['error'])}\n"
+    elif manifest_state["repr"] is not None:
+        panel_message += f"* [bold green]Manifest Contents[/bold green]:\n{escape(manifest_state['repr'])}\n"
 
     panel = Panel(
         renderable=panel_message,
@@ -727,3 +731,4 @@ async def validate_manifest(plugin_name: Optional[str] = None):
         box=box.ROUNDED,
     )
     console.print(panel)
+    return manifest_state["valid"]
