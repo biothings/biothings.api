@@ -1229,6 +1229,7 @@ but we will not be using all of the parameters for this tutorial:
 Now we will need to clone the tutorial onto your local computer and switch to pharmgkb_v7.
 
 .. code:: bash
+
    git clone https://github.com/biothings/tutorials.git
    cd tutorials
    git checkout pharmgkb_v7
@@ -1236,6 +1237,7 @@ Now we will need to clone the tutorial onto your local computer and switch to ph
 Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub dev environemt.
 
 .. code:: bash
+
    python -m venv .venv
    source ./venv/bin/activate
    pip install "biothings[dev]"
@@ -1244,6 +1246,7 @@ Just like our original pharmgkb plugin, we have a manifest and a parser file wit
 Lets have a quick look at the manifest file.
 
 .. code:: yaml
+
    version: '0.3'
    name: 'tutorials'
    requires:
@@ -1275,12 +1278,14 @@ Lets try to dump using this manifest file to see what happens!
 Lets first build our docker file. As shown in our manifest, the data url has ``image=annotations`` so when we build we have to make sure to name our image accordingly.
 
 .. code:: bash
+
    docker build -t annotations .
 
 Now we can finally test our source using the Biothings CLI. Since our document size is small we can directly use the dump_and_upload.
 If you are working with a larger source you will need need to use them separately and specify the ``--batch-limit`` flag when uploading:
 
 .. code:: bash
+
    biothings-cli dataplugin dump_and_upload
 
 We have now successfully dumped and uploaded our source. Why did we not see any of the expected errors for missing parameters?
@@ -1291,6 +1296,7 @@ We have now successfully dumped and uploaded our source. Why did we not see any 
 To answer this question, we have to take a look at the Dockerfile.
 
 .. code::
+
    FROM praqma/network-multitool:latest
    LABEL "path"="/tmp/annotations.zip"
    LABEL "dump_command"="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"
@@ -1313,6 +1319,7 @@ the latter holding our uploaded data.
 With our uploaded data in our database, we can finally serve this data on our localhost.
 
 .. code:: bash
+
    biothings-cli dataplugin serve
 
 The result should look something similar to this:
