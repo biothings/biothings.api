@@ -535,31 +535,26 @@ class DataTransformEdge:
         """setup the logger member variable"""
         self.logger, _ = get_logger("datatransform")
 
-    def prepare(self, state=None):
-        # pylint: disable=W0102
+    def prepare(self):
         """Prepare class state objects (pickleable objects)"""
-        state = state or {}
         if self.prepared:
             return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
-            return
         self.setup_log()
+        self.prepared = True
 
-    def unprepare(self):
+    def __getstate__(self):
         """
-        reset anything that's not picklable (so self can be pickled)
-        return what's been reset as a dict, so self can be restored
-        once pickled
+        Blank _state and the prepared flag for pickling.
+
+        An edge is pickled along with whatever holds it when a job is deferred to a
+        worker process, and _state can hold an unpicklable handle: MongoDBEdge keeps
+        a pymongo collection there, BiothingsAPIEdge a client. The worker rebuilds
+        what it needs on first use through the lazy properties, which only run while
+        prepared is False. Keys a subclass adds in init_state() are covered.
         """
-        state = {
-            "logger": self._state["logger"],
-        }
-        for k in state:
-            self._state[k] = None
-        self.prepared = False
+        state = self.__dict__.copy()
+        state["_state"] = dict.fromkeys(self._state)
+        state["prepared"] = False
         return state
 
 

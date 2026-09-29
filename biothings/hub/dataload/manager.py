@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Union
 
 from biothings import config
-from biothings.hub.manager import BaseManager, UnknownResource, ResourceError
+from biothings.hub.manager import BaseManager, ResourceError, UnknownResource
 from biothings.utils.hub_db import get_src_conn
 from biothings.utils.manager import JobManager
 
@@ -169,4 +169,4 @@ class BaseSourceManager(BaseManager):
             except (UnknownResource, ResourceError) as register_error:
                 logger.exception(register_error)
                 logger.error(traceback.format_exc())
-                logger.warning("Unable to register source {src}. Skipping source registration ...")
+                logger.warning("Unable to register source %s. Skipping source registration ...", src)

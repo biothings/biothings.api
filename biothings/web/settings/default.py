@@ -143,7 +143,7 @@ QUERY_KWARGS = {
         "scroll_id": {"type": str},
     },
     "POST": {
-        "q": {"type": list, "required": True},
+        "q": {"type": list, "required": True, "max": 5000},
         "scopes": {"type": list, "default": ["_id"], "max": 1000},
         "with_total": {"type": bool},
         "analyzer": {"type": str},  # any of built-in analyzer (overrides default index-time analyzer)

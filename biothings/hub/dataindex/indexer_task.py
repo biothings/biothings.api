@@ -236,16 +236,6 @@ class IndexingTask:
         clients.mongo = self.backend.mongo()
         return clients
 
-    def _close_clients(self, clients):
-        es_client = getattr(clients.es, "client", None)
-        if es_client and hasattr(es_client, "close"):
-            es_client.close()
-
-        mongo_database = getattr(clients.mongo, "database", None)
-        mongo_client = getattr(mongo_database, "client", None)
-        if mongo_client and hasattr(mongo_client, "close"):
-            mongo_client.close()
-
     def dispatch(self):
         if self.mode in (Mode.INDEX, Mode.PURGE):
             return self.index()
@@ -256,11 +246,8 @@ class IndexingTask:
 
     def index(self):
         clients = self._get_clients()
-        try:
-            count_docs = self._index_ids(clients, self.ids)
-            return count_docs + len(self.invalid_ids)
-        finally:
-            self._close_clients(clients)
+        count_docs = self._index_ids(clients, self.ids)
+        return count_docs + len(self.invalid_ids)
 
     def _index_ids(self, clients, ids):
         if not ids:
@@ -276,50 +263,44 @@ class IndexingTask:
 
     def merge(self):
         clients = self._get_clients()
-        try:
-            upd_cnt, docs_old = 0, {}
-            new_cnt, docs_new = 0, {}
+        upd_cnt, docs_old = 0, {}
+        new_cnt, docs_new = 0, {}
 
-            # populate docs_old
-            for doc in clients.es.mget(self.ids):
-                docs_old[doc["_id"]] = doc
+        # populate docs_old
+        for doc in clients.es.mget(self.ids):
+            docs_old[doc["_id"]] = doc
 
-            # populate docs_new
-            for doc in doc_feeder(
-                clients.mongo,
-                step=len(self.ids),
-                inbatch=False,
-                query={"_id": {"$in": self.ids}},
-            ):
-                docs_new[doc["_id"]] = doc
-                doc.pop("_timestamp", None)
+        # populate docs_new
+        for doc in doc_feeder(
+            clients.mongo,
+            step=len(self.ids),
+            inbatch=False,
+            query={"_id": {"$in": self.ids}},
+        ):
+            docs_new[doc["_id"]] = doc
+            doc.pop("_timestamp", None)
 
-            # merge existing ids
-            for key in list(docs_new):
-                if key in docs_old:
-                    docs_old[key].update(docs_new[key])
-                    del docs_new[key]
+        # merge existing ids
+        for key in list(docs_new):
+            if key in docs_old:
+                docs_old[key].update(docs_new[key])
+                del docs_new[key]
 
-            # updated docs (those existing in col *and* index)
-            upd_cnt = clients.es.mindex(docs_old.values())
-            self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
+        # updated docs (those existing in col *and* index)
+        upd_cnt = clients.es.mindex(docs_old.values())
+        self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
 
-            # new docs (only in col, *not* in index)
-            new_cnt = clients.es.mindex(docs_new.values())
-            self.logger.info("%s: %d new documents.", self.name, new_cnt)
+        # new docs (only in col, *not* in index)
+        new_cnt = clients.es.mindex(docs_new.values())
+        self.logger.info("%s: %d new documents.", self.name, new_cnt)
 
-            return upd_cnt + new_cnt
-        finally:
-            self._close_clients(clients)
+        return upd_cnt + new_cnt
 
     def resume(self):
         clients = self._get_clients()
-        try:
-            count_ids = len(self.ids) + len(self.invalid_ids)
-            missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
-            self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
-            if missing_ids:
-                self._index_ids(clients, missing_ids)
-            return count_ids
-        finally:
-            self._close_clients(clients)
+        count_ids = len(self.ids) + len(self.invalid_ids)
+        missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
+        self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
+        if missing_ids:
+            self._index_ids(clients, missing_ids)
+        return count_ids

@@ -132,11 +132,7 @@ class InspectorManager(BaseManager):
         """
         # /!\ attention: this piece of code is critical and not easy to understand...
         # Depending on the source of data to inspect, this method will create an
-        # uploader or a builder. These objects don't be behave the same while they
-        # pass through pickle: uploader needs to be "unprepare()"ed so it can be
-        # pickled (remove some db connection, socket), while builder must *not* be
-        # unprepare() because it would reset the underlying target_name (the actual
-        # target collection). Also, the way results and statuses are registered is
+        # uploader or a builder. The way results and statuses are registered is
         # different for uploader and builder...
         # So, there are lots of "if", be careful if you want to modify that code.
         #
@@ -210,14 +206,6 @@ class InspectorManager(BaseManager):
                     nonlocal batch_size
                     batch_size = min(batch_size, limit)
                     self.logger.info("Inspecting only %s documents", limit)
-                # make it pickleable
-                if data_provider_type == "source":
-                    # because register_obj is also used to fetch data, it has to be unprepare() for pickling
-                    registerer_obj.unprepare()
-                else:
-                    # NOTE: do not unprepare() the builder, we'll loose the target name
-                    # (it's be randomly generated again) and we won't be able to register results
-                    pass
 
                 cnt = 0
                 doccnt = 0

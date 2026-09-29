@@ -1,3 +1,13 @@
+v1.1.4 (2026/09/10)
+    biothings.web improvements:
+        - Rejected `_id` as a sort or aggregation field with an actionable error message instead of an Elasticsearch fielddata failure. ([1747825](https://github.com/biothings/biothings.api/commit/17478250478b8e45458b56ca0ca8f8fa174ced97))
+        - Reduced Sentry noise for Elasticsearch query-parse failures caused by malformed user queries, covering both single-node and multi-node cluster error shapes. ([#466](https://github.com/biothings/biothings.api/pull/466), [9d71063](https://github.com/biothings/biothings.api/commit/9d710634c71d9a8580901fc46f138a10e5903775))
+        - Limited POST query batches to a maximum of 5000 query terms. ([e733d28](https://github.com/biothings/biothings.api/commit/e733d28987b7ca5f67347573c2b584f4cd146537))
+        - Lowered query-object parser logging from INFO to DEBUG. ([9d71063](https://github.com/biothings/biothings.api/commit/9d710634c71d9a8580901fc46f138a10e5903775))
+
+    Misc improvements:
+        - Added tests covering POST query batch limits. ([c5e00b8](https://github.com/biothings/biothings.api/commit/c5e00b88daaedca4f65ce6c5220b5a918887088f))
+
 v1.1.3 (2026/08/13)
     biothings.web improvements:
         - Reduced Sentry noise for known Elasticsearch mapping errors by logging them below ERROR while preserving error reporting for unexpected responses. ([3257d21](https://github.com/biothings/biothings.api/commit/3257d212baca228164318339157e84dd40daf8df), [371122c](https://github.com/biothings/biothings.api/commit/371122c78121c742e1608dddbd5edc79b27c575c))
