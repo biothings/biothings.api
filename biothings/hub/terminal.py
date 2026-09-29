@@ -1000,5 +1000,8 @@ class HubTerminal:
             if info["error"]:
                 lines.append("  %s: failed to load, %s" % (info["name"], info["error"].strip().splitlines()[-1]))
             else:
-                lines.append("  %s: %s" % (info["name"], ", ".join(info["commands"]) or "no command defined"))
+                line = "  %s: %s" % (info["name"], ", ".join(info["commands"]) or "no command defined")
+                if info["overrides"]:
+                    line += " (replaces: %s)" % ", ".join(info["overrides"])
+                lines.append(line)
         return "\n".join(lines)

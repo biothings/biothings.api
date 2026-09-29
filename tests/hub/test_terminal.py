@@ -467,6 +467,7 @@ def test_hook_overriding_a_command_is_reported(tmp_path):
     terminal, shell, _ = make_terminal()
     path = write_hook(tmp_path, "override.py", "def upload(src):\n    return 'custom upload'\n")
     assert terminal.load_hook(path)["overrides"] == ["upload"]
+    assert "override.py: upload (replaces: upload)" in terminal.hooks_summary()
     assert terminal.run("upload mygene")["result"] == "custom upload"
     assert shell.commands["upload"] is shell.extra_ns["upload"]
 
