@@ -303,7 +303,8 @@ def param_type(param):
 def parse_literal(raw):
     """
     Parse a value typed in a terminal, without type information: numbers, booleans, none,
-    and python/JSON lists, dicts, tuples or quoted strings. Anything else is kept as a string.
+    python/JSON lists, dicts, tuples or quoted strings, and lists of unquoted words ([a,b]).
+    Anything else is kept as a string.
     """
     lowered = raw.lower()
     if lowered == "true":
@@ -325,6 +326,9 @@ def parse_literal(raw):
             return json.loads(raw)
         except ValueError:
             pass
+        if raw[0] == "[" and raw[-1] == "]":
+            # a list whose quotes were removed by shell-like parsing, eg. --sources ["a","b"] typed unquoted
+            return [parse_literal(item.strip()) for item in raw[1:-1].split(",") if item.strip()]
     return raw
 
 

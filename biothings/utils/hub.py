@@ -263,7 +263,7 @@ class HubShell(InteractiveShell):
             cmds += "\nType: 'help(command)' for more\n"
             return cmds
         elif isinstance(func, partial):
-            docstr = "\n" + pydoc.render_doc(func.func, title="Hub documentation: %s")
+            docstr = "\n" + pydoc.render_doc(func.func, title="Hub documentation: %s", renderer=pydoc.plaintext)
             docstr += "\nDefined et as a partial, with:\nargs:%s\nkwargs:%s\n" % (
                 repr(func.args),
                 repr(func.keywords),
@@ -274,7 +274,7 @@ class HubShell(InteractiveShell):
             return docstr
         else:
             try:
-                return "\n" + pydoc.render_doc(func, title="Hub documentation: %s")
+                return "\n" + pydoc.render_doc(func, title="Hub documentation: %s", renderer=pydoc.plaintext)
             except ImportError:
                 return "\nHelp not available for this command\n"
 

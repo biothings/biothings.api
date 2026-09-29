@@ -131,6 +131,9 @@ def test_multi_word_and_hyphenated_command_names():
 
 def test_argv_is_parsed_like_a_command_line():
     terminal, _, _ = make_terminal()
+    # a list typed without quotes around it, the shell-like parsing removes the inner quotes
+    (invocation,) = terminal.parse('dump mygene --sources ["a","b"]')
+    assert invocation.kwargs == {"sources": ["a", "b"]}
     (invocation,) = terminal.parse(argv=["dump", "my source", "--force"])
     assert (invocation.args, invocation.kwargs) == (["my source"], {"force": True})
     (invocation,) = terminal.parse(argv=["dump('mygene', force=True)"])
@@ -211,6 +214,7 @@ def test_value_conversions():
     assert parse_literal('{"a": true}') == {"a": True}
     assert parse_literal("'42'") == "42"
     assert parse_literal("[oops") == "[oops"
+    assert parse_literal("[fruits, veggies]") == ["fruits", "veggies"]  # quotes removed by the shell
     assert convert("yes", bool) is True
     assert convert("a, b", list) == ["a", "b"]
     assert convert("12", str) == "12"
@@ -569,6 +573,7 @@ def test_hubshell_add_command_and_help_by_name():
     assert shell.extra_ns["dump"] == sources.dump_all
     assert "Run all dumpers" in shell.help("dump")
     assert "Run all dumpers" in shell.help("dump-all")
+    assert "\x08" not in shell.help("dump")  # plain text, no terminal bold
 
 
 def test_hubshell_console_accepts_terminal_syntax():
