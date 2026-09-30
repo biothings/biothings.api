@@ -938,14 +938,14 @@ class IndexManager(BaseManager):
             index_name = ("hub_tmp_%s" % get_random_string()).lower()
             try:
                 return await client.indices.create(
-                    index_name,
+                    index=index_name,
                     body={
                         "settings": (await indexer.es_index_settings.finalize(client)),
                         "mappings": (await indexer.es_index_mappings.finalize(client)),
                     },
                 )
             finally:
-                await client.indices.delete(index_name, ignore_unavailable=True)
+                await client.indices.delete(index=index_name, ignore_unavailable=True)
                 await client.close()
 
         job = self.job_manager.loop.create_task(_validate_mapping())

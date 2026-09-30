@@ -809,13 +809,15 @@ class UploaderManager(BaseSourceManager):
     def upload_all(self, raise_on_error=False, **kwargs):
         """
         Trigger upload processes for all registered resources.
-        `**kwargs` are passed to upload_src() method
+        `**kwargs` are passed to upload_src() method. Unless raise_on_error, an upload failing
+        doesn't fail the whole: once they're all done, their results are returned, with the
+        exceptions of the uploads which failed.
         """
         jobs = []
         for src in self.register:
             job = self.upload_src(src, **kwargs)
             jobs.extend(job)
-        return asyncio.gather(*jobs)
+        return asyncio.gather(*jobs, return_exceptions=not raise_on_error)
 
     def upload_src(self, src, validate=False, *args, **kwargs):
         """

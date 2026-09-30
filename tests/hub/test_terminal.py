@@ -26,6 +26,7 @@ from biothings.hub.terminal import (
     ConfirmationRequired,
     UnknownCommand,
     convert,
+    json_safe,
     parse_literal,
     render,
     split_chain,
@@ -354,6 +355,12 @@ def test_commands_deleting_data_must_be_confirmed():
 class Thing:
     def __repr__(self):
         return "<Thing>"
+
+
+def test_errors_in_results_are_rendered_as_text():
+    # eg. jobs gathered with return_exceptions=True, like upload_all()
+    assert json_safe([None, ValueError("no data")]) == [None, "ValueError: no data"]
+    assert json_safe(KeyError("umls")) == "KeyError: 'umls'"
 
 
 def test_run_renders_non_json_results_as_text():

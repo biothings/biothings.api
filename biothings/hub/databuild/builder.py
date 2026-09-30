@@ -1146,7 +1146,7 @@ class BuilderManager(BaseManager):
 
             # assemble the whole
             klass = self.get_builder_class(build_name)
-            self.logger.info("Build config '%s' will use builder class %s", build_name, klass)
+            self.logger.debug("Build config '%s' will use builder class %s", build_name, klass)
             bdr = klass(
                 build_name,
                 source_backend=self.source_backend,

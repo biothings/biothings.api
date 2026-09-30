@@ -359,6 +359,11 @@ def render(value):
 
 def json_safe(value):
     """Return value if it can be serialized as JSON, its text representation otherwise"""
+    if isinstance(value, BaseException):
+        return "%s: %s" % (type(value).__name__, value)
+    if isinstance(value, list) and any(isinstance(item, BaseException) for item in value):
+        # eg. results of jobs run with asyncio.gather(..., return_exceptions=True)
+        value = [json_safe(item) if isinstance(item, BaseException) else item for item in value]
     try:
         to_json(value)
         return value
