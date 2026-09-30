@@ -14,6 +14,7 @@ some examples.
 """
 
 import asyncio
+import contextvars
 import logging
 import os
 from functools import partial, wraps
@@ -272,6 +273,8 @@ class ChangeWatcher(object):
     listeners = set()
     event_queue = asyncio.Queue()
     do_publish = False
+    # entity whose change is being monitored in the current call, if any
+    monitoring = contextvars.ContextVar("monitoring", default=None)
 
     col_entity = {
         "src_dump": "source",
@@ -309,6 +312,11 @@ class ChangeWatcher(object):
     def monitor(cls, func, entity, op):
         @wraps(func)
         def func_wrapper(*args, **kwargs):
+            # monitored methods can call other monitored ones (eg. save() calls replace_one()),
+            # only the outer call sends an event (the inner one would send a duplicate, with
+            # the query as data, instead of the document)
+            if cls.monitoring.get() == entity:
+                return func(*args, **kwargs)
             # don't speak alone in the immensity of the void
             if cls.listeners:
                 # try to narrow down the event to a doc
@@ -327,7 +335,11 @@ class ChangeWatcher(object):
                     event = {"obj": entity, "op": op}
                     cls.event_queue.put_nowait(event)
 
-            return func(*args, **kwargs)
+            token = cls.monitoring.set(entity)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                cls.monitoring.reset(token)
 
         return func_wrapper
 

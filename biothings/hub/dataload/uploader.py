@@ -380,6 +380,10 @@ class BaseSourceUploader:
                 last_success = last_upload_info.get("started_at")
             if last_success:
                 upload_info["last_success"] = last_success
+            # the collection keeps its documents until the new ones replace it (on success only),
+            # keep its count meanwhile (eg. so BioThings Studio doesn't show 0 documents)
+            if "count" in last_upload_info and "count" not in upload_info:
+                upload_info["count"] = last_upload_info["count"]
 
             self.src_dump.update_one({"_id": self.main_source}, {"$set": {job_key: upload_info}})
         else:

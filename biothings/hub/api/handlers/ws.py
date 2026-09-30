@@ -35,7 +35,17 @@ class WebSocketConnection(sockjs.tornado.SockJSConnection):
         super(WebSocketConnection, self).__init__(session)
 
     def publish(self, message):
-        self.broadcast(self.__class__.clients, message)
+        io_loop = self.session.server.io_loop
+        try:
+            on_loop = asyncio.get_running_loop() is io_loop.asyncio_loop
+        except RuntimeError:
+            on_loop = False
+        if on_loop:
+            self.broadcast(self.__class__.clients, message)
+        else:
+            # eg. log statements from a thread (see job_manager.defer_to_thread()): tornado isn't
+            # thread-safe, the message is sent from the IOLoop's thread
+            io_loop.add_callback(self.broadcast, self.__class__.clients, message)
 
     def on_open(self, info):
         # Send that someone joined

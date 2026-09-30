@@ -23,9 +23,9 @@ class DefaultHandler(RequestHandler):
             #     "result": result,
             #     "status": "ok"
             # }, iso_dates=True)
-            serializer.to_json({
-                "result": result, "status": "ok"
-            })
+            # naive dates (eg. from MongoDB) are UTC: say so, so clients (eg. BioThings Studio)
+            # don't read them as local time
+            serializer.to_json({"result": result, "status": "ok"}, naive_utc=True)
         )
 
     def write_error(self, status_code, **kwargs):

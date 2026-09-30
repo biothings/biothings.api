@@ -8,7 +8,7 @@ import tempfile
 import pytest
 import requests
 
-from biothings.hub.dataload.dumper import BaseDumper, HTTPDumper
+from biothings.hub.dataload.dumper import BaseDumper, DumperManager, HTTPDumper
 
 
 def test_base_dumper():
@@ -92,3 +92,17 @@ def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
             local_file = pathlib.Path(pathlib.Path(temp_local_file.name))
             assert local_file.exists()
             assert local_file.stat().st_size > 0
+
+
+@pytest.mark.asyncio
+async def test_dump_all_skips_private_dumpers(monkeypatch):
+    """
+    dump_all() runs data sources' dumpers, not the private ones ("__" names), eg. the code
+    upgrade dumpers, which would pull new code for the hub application and the BioThings SDK
+    """
+    manager = DumperManager(job_manager=None)
+    manager.register = {"mondo": [], "hpo": [], "__biothings_sdk": [], "__application": []}
+    dumped = []
+    monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: dumped.append(src) or [])
+    await manager.dump_all()
+    assert dumped == ["mondo", "hpo"]

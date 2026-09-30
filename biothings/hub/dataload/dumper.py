@@ -439,13 +439,18 @@ class BaseDumper:
                 except (AttributeError, KeyError):
                     # no src_doc or no download info
                     pass
-                # TODO: blocking call for now, FTP client can't be properly set in thread after
                 if inspect.iscoroutinefunction(self.create_todump_list):
                     await self.create_todump_list(force=force, job_manager=job_manager, **kwargs)
                 else:
-                    self.create_todump_list(force=force, **kwargs)
+                    # checking for a new release can take a while (eg. HTTP requests to a slow
+                    # server), run it in a thread so the hub (API, websocket...) isn't blocked meanwhile
+                    job = await job_manager.defer_to_thread(
+                        pinfo, partial(self.create_todump_list, force=force, **kwargs)
+                    )
+                    await job
                 # make sure we release (disconnect) client so we don't keep an open
-                # connection for nothing
+                # connection for nothing (the client used for checks isn't shared with downloads,
+                # which prepare their own client, in the process they run in)
                 self.release_client()
                 if self.to_dump:
                     if check_only:
@@ -1462,10 +1467,13 @@ class DumperManager(BaseSourceManager):
 
     def dump_all(self, force=False, **kwargs):
         """
-        Run all dumpers, except manual ones
+        Run all dumpers, except manual ones, and private ones (named "__..."), such as the ones
+        pulling new code for the hub's "upgrade" command (see biothings.hub.upgrade)
         """
         jobs = []
         for src in self.register:
+            if src.startswith("__"):
+                continue
             job = self.dump_src(src, force=force, skip_manual=True, **kwargs)
             jobs.extend(job)
         return asyncio.gather(*jobs)

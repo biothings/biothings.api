@@ -58,10 +58,26 @@ def _stringify_keys(obj):
     return obj
 
 
-def to_json(data, indent=False, sort_keys=False, return_bytes=False):
+def _naive_as_utc(obj):
+    """Make naive datetimes UTC ones, recursively (only called with naive_utc=True)"""
+    if isinstance(obj, datetime.datetime):
+        return obj.replace(tzinfo=datetime.timezone.utc) if obj.tzinfo is None else obj
+    if isinstance(obj, (UserDict, UserList)):
+        obj = obj.data
+    if isinstance(obj, dict):
+        return {k: _naive_as_utc(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_naive_as_utc(v) for v in obj]
+    return obj
+
+
+def to_json(data, indent=False, sort_keys=False, return_bytes=False, naive_utc=False):
     # msgspec handles non-string dictionary keys (e.g. integer), inf/nan
     # (encoded as null) and datetimes natively. Note: unlike orjson with
-    # OPT_NAIVE_UTC, naive datetimes are encoded without a UTC offset suffix.
+    # OPT_NAIVE_UTC, naive datetimes are encoded without a UTC offset suffix,
+    # unless naive_utc is set: they're then considered UTC (eg. dates from MongoDB).
+    if naive_utc:
+        data = _naive_as_utc(data)
     order = "sorted" if sort_keys else None
     try:
         byte_dump = msgspec.json.encode(data, enc_hook=json_enc_hook, order=order)
