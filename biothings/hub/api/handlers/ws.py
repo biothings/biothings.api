@@ -88,9 +88,13 @@ class HubDBListener(ChangeListener):
     websocket instance
     """
 
+    def __init__(self):
+        self.socket = None
+
     def read(self, event):
-        # self.socket is set while initalizing the websocket connection
-        self.socket.publish(event)
+        # self.socket is set while initalizing the websocket connection (none until a client connects)
+        if self.socket:
+            self.socket.publish(event)
 
 
 class LogListener(ChangeListener):

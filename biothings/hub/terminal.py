@@ -138,9 +138,9 @@ BUILTIN_HELP = {
     # data plugins
     "register_url": (
         "Register a data plugin from a git repository",
-        ["register_url https://github.com/biothings/mvcgi.git"],
+        ["register_url https://github.com/sirloon/mvcgi.git"],
     ),
-    "unregister_url": ("Unregister a data plugin", ["unregister_url --name mvcgi"]),
+    "unregister_url": ("Unregister a data plugin, and delete its code", ["unregister_url --name mvcgi"]),
     "dump_plugin": ("Download (git clone/pull) the code of a data plugin", ["dump_plugin mvcgi"]),
     "export_plugin": ("Export a data plugin as python code", ["export_plugin mvcgi"]),
     # builds
@@ -165,7 +165,10 @@ BUILTIN_HELP = {
     ),
     "sync": (
         "Apply the differences between two builds (see diff) to a target, Elasticsearch (es) or MongoDB (mongo)",
-        ["sync es mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
+        [
+            "sync es mygene_20240101_abcdefgh mygene_20240201_ijklmnop "
+            "--target-backend [localhost:9200,mygene_20240101_abcdefgh,gene]"
+        ],
     ),
     # indices, snapshots and releases
     "index": (
@@ -176,7 +179,10 @@ BUILTIN_HELP = {
         "Delete older indices, keeping the most recent ones (dry run unless --no-dryrun)",
         ["index_cleanup", "index_cleanup local --keep 3 --no-dryrun"],
     ),
-    "indexes_by_name": ("Find indices by name", ["indexes_by_name mygene"]),
+    "indexes_by_name": (
+        "Find indices by name (wildcards allowed) in the Elasticsearch environments (see INDEX_CONFIG)",
+        ["indexes_by_name", "indexes_by_name mygene*"],
+    ),
     "snapshot": (
         "Snapshot an index in a snapshot environment (see SNAPSHOT_CONFIG)",
         ["snapshot s3_env mygene_20240101_abcdefgh"],

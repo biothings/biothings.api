@@ -390,9 +390,9 @@ class AssistantManager(BaseSourceManager):
         assert plugin_name  # avoid deleting the whole export folder when purge=True...
         dp = get_data_plugin()
         plugin = dp.find_one({"_id": plugin_name})
-        plugin_path_name = os.path.basename(plugin["download"]["data_folder"])
         if not plugin:
             raise Exception(f"Data plugin {plugin_name} does not exist!")
+        plugin_path_name = os.path.basename(plugin["download"]["data_folder"])
         folder = os.path.join(folder, plugin_path_name)
         if purge:
             shutil.rmtree(folder)

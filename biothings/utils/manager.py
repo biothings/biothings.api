@@ -589,7 +589,7 @@ class JobManager:
         schedule is a string representing a cron schedule, task will then be scheduled
         accordingly.
         """
-        logger.info("Building task: %s", pfunc)
+        logger.debug("Building task: %s", pfunc)
         if schedule:
             logger.info("Scheduling task %s: %s", pfunc, schedule)
             cron = aiocron.crontab(schedule, func=pfunc, start=True, loop=self.loop)

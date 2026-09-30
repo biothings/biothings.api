@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from tornado.ioloop import IOLoop
 
-from biothings.hub.api.handlers.ws import WebSocketConnection
+from biothings.hub.api.handlers.ws import HubDBListener, WebSocketConnection
 
 
 @pytest.mark.asyncio
@@ -25,3 +25,12 @@ async def test_publish_sends_from_the_ioloop_thread(monkeypatch):
         (loop_thread, {"op": "log", "msg": "from the loop"}),
         (loop_thread, {"op": "log", "msg": "from a thread"}),
     ]
+
+
+def test_hub_db_events_without_websocket_client():
+    listener = HubDBListener()
+    listener.read({"_id": "mygene", "obj": "source", "op": "save"})  # nobody to send it to (yet)
+    sent = []
+    listener.socket = SimpleNamespace(publish=sent.append)  # a client connected
+    listener.read({"_id": "mygene", "obj": "source", "op": "save"})
+    assert sent == [{"_id": "mygene", "obj": "source", "op": "save"}]

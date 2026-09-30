@@ -1281,7 +1281,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         steps=("pre", "reset", "upload", "meta", "post"),
     ):
         if publisher_env not in self.release_config.get("env", {}):
-            raise ValueError(f"Unknonw release environment '{publisher_env}'")
+            raise ValueError(f"Unknown release environment '{publisher_env}' (see RELEASE_CONFIG)")
         publisher = self[("diff", publisher_env)]
         return publisher.publish(
             build_name=build_name,
@@ -1298,7 +1298,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         steps=("pre", "meta", "post"),
     ):
         if publisher_env not in self.release_config.get("env", {}):
-            raise ValueError(f"Unknonw release environment '{publisher_env}'")
+            raise ValueError(f"Unknown release environment '{publisher_env}' (see RELEASE_CONFIG)")
         publisher = self[("snapshot", publisher_env)]
         return publisher.publish(
             snapshot=snapshot,
