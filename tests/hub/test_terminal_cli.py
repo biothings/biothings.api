@@ -239,6 +239,7 @@ def test_unreachable_and_older_hubs():
         result = CliRunner().invoke(hub_application, ["--url", url, "commands"])
         assert result.exit_code == 1
         assert "doesn't provide the terminal API" in result.output
+        assert "biothings-cli hub status" in result.output
     finally:
         stop()
 

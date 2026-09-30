@@ -87,8 +87,8 @@ class HubClient:
         if response.status_code == 404 and endpoint.startswith("/terminal"):
             raise HubAPIError(
                 payload.get("error")
-                or "This hub doesn't provide the terminal API (it requires a more recent BioThings version, "
-                "with the 'terminal' feature enabled)",
+                or "This hub doesn't provide the terminal API: it runs an older BioThings version, or without "
+                "the 'terminal' feature. Its commands can still be followed with 'biothings-cli hub status'",
                 status=404,
                 payload=payload,
             )
