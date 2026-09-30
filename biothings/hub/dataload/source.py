@@ -380,7 +380,8 @@ class SourceManager(BaseSourceManager):
             src_dump doc (_id=mysource), under key "upload", for sub-source named "mysubsource"
 
         "key" can be either 'download', 'upload' or 'inspect'. Because there's no such notion of subkey for
-        dumpers (ie. 'download', subkey is optional.
+        dumpers (ie. 'download', subkey is optional. For 'upload' and 'inspect', subkey defaults to the
+        source name (sources without sub-sources).
         """
         doc = self.src_dump.find_one({"_id": name})
         if not doc:
@@ -388,7 +389,7 @@ class SourceManager(BaseSourceManager):
         try:
             # nested
             if key in ["upload", "inspect"]:
-                del doc[key]["jobs"][subkey]
+                del doc[key]["jobs"][subkey or name]
             # not nested
             elif key == "download":
                 del doc[key]

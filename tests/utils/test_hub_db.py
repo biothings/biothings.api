@@ -29,6 +29,10 @@ class FakeMongoCollection:
     def delete_one(self, query, **kwargs):
         self.docs.pop(query["_id"], None)
 
+    def delete_many(self, query, **kwargs):
+        for _id in [_id for _id in self.docs if query.get("_id", _id) == _id]:
+            del self.docs[_id]
+
     def find_one(self, query):
         return self.docs.get(query["_id"])
 
@@ -63,3 +67,14 @@ def test_one_event_per_change(backend, events, tmp_path):
         {"_id": "1", "obj": "event", "op": "update", "data": {"_id": "1"}},
         {"_id": "1", "obj": "event", "op": "remove", "data": {"_id": "1"}},
     ]
+
+
+def test_mongo_remove_deletes_all_matching_documents():
+    # like pymongo 3's remove(), which it replaces (eg. "resetconf" without name, "restore --drop")
+    col = FakeMongoCollection()
+    for _id in ("1", "2", "3"):
+        col.insert_one({"_id": _id})
+    col.remove({"_id": "1"}, multi=False)
+    assert sorted(col.docs) == ["2", "3"]
+    col.remove({})
+    assert col.docs == {}

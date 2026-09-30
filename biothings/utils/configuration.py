@@ -172,10 +172,11 @@ class ConfigurationWrapper:
         # like MyClass.CLS_ATTR
         return self.__getattr__(name)
 
-    def show(self):
+    def show(self, name=None):
         # correspond to /config endpoint
         # the result strcture is designed to
         # maintain compatibility with the frontend
+        # (or one parameter only, given its name)
 
         _config = {}
         _class = {}
@@ -227,6 +228,11 @@ class ConfigurationWrapper:
         # transient parameters on self._module are
         # not shown here, like self._module.logger
 
+        if name is not None:
+            if name not in _config:
+                raise ValueError("No configuration parameter named '%s'" % name)
+            return _config[name]
+
         # class attr superseding
         for doc in self._db.find():
             key = doc["_id"]
@@ -243,13 +249,14 @@ class ConfigurationWrapper:
         }
 
     def reset(self, name=None):
+        # (what remove() returns depends on the hub db backend, eg. a pymongo DeleteResult)
         if not name:  # global reset
             self._modified = False
-            return self._db.remove({})
+            self._db.remove({})
+            return True
 
-        res = self._db.remove({"_id": name})
-        # res = {'n': 1, 'ok': 1.0}
-        return res["ok"]
+        self._db.remove({"_id": name})
+        return True
 
     def store_value_to_db(self, name, value):
         if not self._db:
@@ -263,10 +270,13 @@ class ConfigurationWrapper:
         if name == "CONFIG_READONLY":  # False -> True also not allowed.
             raise RuntimeError("Runtime modification not allowed.")
 
-        try:  # already json?
-            json.loads(value)
-        except JSONDecodeError:
-            value = json.dumps(value)
+        if not isinstance(value, str):
+            value = json.dumps(value)  # a python value, eg. "setconf HUB_MAX_WORKERS 4" in the hub terminal
+        else:
+            try:  # already json?
+                json.loads(value)
+            except JSONDecodeError:
+                value = json.dumps(value)
 
         res = self._db.update_one(
             {"_id": name},

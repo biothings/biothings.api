@@ -1587,7 +1587,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
 
     def release_info(self, env=None, remote=False):
         res = copy.deepcopy(self.release_config)
-        for kenv in self.release_config["env"]:
+        for kenv in self.release_config.get("env", {}):
             if env and env != kenv:
                 continue
             if remote:

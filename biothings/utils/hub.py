@@ -160,11 +160,11 @@ class HubShell(InteractiveShell):
         # update with ssh server default commands
         register(basic_commands)
         # don't track this calls
-        register({"restart": CommandDefinition(command=self.restart, track=True)})
-        register({"stop": CommandDefinition(command=self.stop, track=True)})
-        register({"backup": CommandDefinition(command=backup, track=True)})
-        register({"restore": CommandDefinition(command=restore, track=True)})
-        register({"help": CommandDefinition(command=self.help, track=False)})
+        register({"restart": CommandDefinition(command=self.restart, tracked=True)})
+        register({"stop": CommandDefinition(command=self.stop, tracked=True)})
+        register({"backup": CommandDefinition(command=backup, tracked=True)})
+        register({"restore": CommandDefinition(command=restore, tracked=True)})
+        register({"help": CommandDefinition(command=self.help, tracked=False)})
         register({"commands": CommandDefinition(command=self.command_info, tracked=False)})
         register(
             {
