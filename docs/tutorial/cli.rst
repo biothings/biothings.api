@@ -327,6 +327,12 @@ default, ``run`` waits for the job to finish and prints its results, while
 ``--no-wait`` returns right away with the command ID, to follow it with
 ``biothings-cli hub status <ID>``.
 
+What a command logs while it's called (eg. ``logger.info(...)``) is printed on
+stderr, its results on stdout. Commands deleting or changing data (eg. ``rmmerge``,
+``archive``, ``resetconf``, or ``auto_archive`` when it's not a dry run) must be
+confirmed: ``run`` asks for it from an interactive terminal, ``--yes`` confirms right
+away (eg. in scripts).
+
 If the hub is behind an authentication proxy, an access token can be given with
 ``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), it's sent in the
 ``X-Biothings-Access-Token`` header.

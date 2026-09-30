@@ -4,20 +4,26 @@ and the HTTP handlers used by BioThings Studio's terminal and "biothings-cli hub
 """
 
 import asyncio
+import datetime
 import json
+import logging
 import textwrap
+import threading
+from functools import partial
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import tornado.testing
 import tornado.web
-from terminal_fakes import make_terminal
+from terminal_fakes import FakeShell, make_terminal
 
 from biothings.hub import HubServer
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
 from biothings.hub.terminal import (
     CommandUsageError,
+    ConfirmationRequired,
     UnknownCommand,
     convert,
     parse_literal,
@@ -245,6 +251,7 @@ def test_run_sync_command():
         "result": "Hello world!",
         "stdout": "saying hello\n",
         "stderr": "",
+        "logs": [],
     }
     # tracked commands are kept in the command history, others aren't
     assert [cmd["cmd"] for cmd in shell.launched_commands.values()] == ["hello('world', excited=True)"]
@@ -263,6 +270,85 @@ def test_run_failing_command():
     assert response["error"] == "ValueError: bad input"
     assert "in boom" in response["traceback"]
     assert not shell.launched_commands
+
+
+def test_run_returns_what_commands_log():
+    logger = logging.getLogger("test_terminal.archive")
+    logger.setLevel(logging.DEBUG)
+
+    def archive_old(days=3):
+        """Report through logging, like many hub commands and hooks"""
+        logger.info("Archiving builds older than %s days", days)
+        logger.warning("Build %s has no date", "covid19_2")
+        logger.debug("details")
+        # a job running in another thread meanwhile
+        thread = threading.Thread(target=logger.info, args=("from another thread",))
+        thread.start()
+        thread.join()
+
+    terminal, _, _ = make_terminal(archive_old=archive_old)
+    handlers = list(logging.getLogger().handlers)
+    response = terminal.run("archive_old --days 30")
+    assert response["logs"] == ["Archiving builds older than 30 days", "WARNING: Build covid19_2 has no date"]
+    assert logging.getLogger().handlers == handlers
+    assert terminal.console("archive_old") == [
+        "Archiving builds older than 3 days\nWARNING: Build covid19_2 has no date"
+    ]
+
+
+def test_arguments_preset_by_a_command_are_not_shown():
+    calls = []
+
+    def dump(src, force=False, check_only=False):
+        """Dump a source"""
+        calls.append((src, force, check_only))
+
+    terminal, shell, _ = make_terminal()
+    shell.add_command("check", partial(dump, check_only=True))
+    check = terminal.describe("check")
+    assert check["usage"] == "check <src> [--force]"
+    assert check["signature"] == "check(src, force=False)"
+    assert [param["name"] for param in check["params"]] == ["src", "force"]
+    with pytest.raises(CommandUsageError) as error:
+        terminal.parse("check")
+    assert error.value.usage == "check <src> [--force]"
+    terminal.run("check mygene")
+    assert calls == [("mygene", False, True)]
+
+
+def test_commands_deleting_data_must_be_confirmed():
+    deleted = []
+
+    def rmmerge(merge_name):
+        deleted.append(merge_name)
+
+    def auto_archive(build_config_name, days=3, dryrun=True):
+        return "would archive" if dryrun else "archived"
+
+    def purge(days=30):
+        """Delete old data (a hook command asking for a confirmation)"""
+        return "purged"
+
+    purge.confirm = True
+    terminal, _, _ = make_terminal(rmmerge=rmmerge, auto_archive=auto_archive, purge=purge)
+    with pytest.raises(ConfirmationRequired) as error:
+        terminal.run("rmmerge mygene_1")
+    assert error.value.reasons == ["rmmerge('mygene_1'): Delete a build"]
+    assert deleted == []
+    terminal.run("rmmerge mygene_1", confirmed=True)
+    assert deleted == ["mygene_1"]
+    # only when it's not a dry run
+    assert terminal.run("auto_archive mygene")["result"] == "would archive"
+    with pytest.raises(ConfirmationRequired):
+        terminal.run("auto_archive mygene --no-dryrun")
+    with pytest.raises(ConfirmationRequired) as error:
+        terminal.run("status && purge --days 3")
+    assert error.value.reasons == ["purge(days=3): Delete old data (a hook command asking for a confirmation)"]
+    confirm = {command["name"]: command["confirm"] for command in terminal.catalog()["commands"]}
+    assert [confirm[name] for name in ("rmmerge", "auto_archive", "purge", "dump")] == [True, "dryrun", True, None]
+    # the hub console runs any python code already
+    terminal.console("rmmerge mygene_2")
+    assert deleted == ["mygene_1", "mygene_2"]
 
 
 class Thing:
@@ -529,7 +615,10 @@ def test_outbreak_auto_archive_hook(tmp_path):
     assert description["usage"] == "auto_archive <build_config_name> [--days <value>] [--no-dryrun]"
     assert terminal.run("auto_archive covid19 --days 30")["failed"] is False
     assert archived == []  # dry run by default
-    response = terminal.run("auto archive covid19 --days 30 --no-dryrun")
+    with pytest.raises(ConfirmationRequired):  # a hook replacing a built-in command inherits its confirmation
+        terminal.run("auto archive covid19 --days 30 --no-dryrun")
+    assert archived == []
+    response = terminal.run("auto archive covid19 --days 30 --no-dryrun", confirmed=True)
     assert response["cmd"] == "auto_archive('covid19', days=30, dryrun=False)"
     assert archived == ["covid19_1"]
 
@@ -606,6 +695,20 @@ def test_hubserver_hook_files_are_loaded_by_terminal(tmp_path):
     assert terminal.run("hello")["result"] == "hi"
 
 
+@pytest.mark.parametrize("version_urls, hidden", [([], True), ([{"name": "mygene.info", "url": "..."}], False)])
+def test_hubserver_hides_data_release_commands_without_releases(version_urls, hidden):
+    server = HubServer(source_list=[], name="Test Hub")
+    server.features = ["autohub"]
+    server.managers = {"dump_manager": MagicMock(), "upload_manager": MagicMock()}
+    server.autohub_feature = SimpleNamespace(version_urls=version_urls, list_biothings=list, install=print)
+    server.configure_commands()
+    shell = FakeShell(server.commands)
+    release_commands = ["list", "versions", "info", "download", "apply", "install", "backend", "reset_backend"]
+    assert [shell.hidden[name] for name in release_commands] == [hidden] * len(release_commands)
+    assert shell.hidden["check"] is False  # works for any source
+    assert shell.hidden["dump"] is False
+
+
 # -------------------------------------------------------------------------------------
 # HTTP handlers
 # -------------------------------------------------------------------------------------
@@ -617,7 +720,12 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
             await asyncio.sleep(0.01)
             return "done " + name
 
-        self.terminal, self.shell, _ = make_terminal(slow=slow)
+        def last_update():
+            return {"started_at": datetime.datetime(2026, 9, 1, 18, 47, 24)}  # naive, as read from MongoDB
+
+        self.terminal, self.shell, _ = make_terminal(
+            slow=slow, last_update=last_update, rmmerge=lambda merge_name: "deleted %s" % merge_name
+        )
         self.inputs = []
         shellog = SimpleNamespace(input=self.inputs.append)
         routes = [
@@ -630,6 +738,12 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
     def run_command(self, payload):
         response = self.fetch("/terminal/run", method="POST", body=json.dumps(payload), raise_error=False)
         return response.code, json.loads(response.body)
+
+    def test_commands_deleting_data_must_be_confirmed(self):
+        code, body = self.run_command({"cmd": "rmmerge mygene_1"})
+        assert (code, body["confirm"]) == (428, ["rmmerge('mygene_1'): Delete a build"])
+        code, body = self.run_command({"cmd": "rmmerge mygene_1", "confirmed": True})
+        assert (code, body["result"]["result"]) == (200, "deleted mygene_1")
 
     def test_commands_catalog(self):
         response = self.fetch("/terminal/commands")
@@ -659,6 +773,10 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
         assert code == 400
         response = self.fetch("/terminal/run", method="POST", body="{oops", raise_error=False)
         assert response.code == 400
+
+    def test_naive_dates_are_sent_as_utc(self):
+        code, body = self.run_command({"cmd": "last_update"})
+        assert body["result"]["result"] == {"started_at": "2026-09-01T18:47:24Z"}
 
     def test_async_command_can_be_followed(self):
         code, body = self.run_command({"cmd": "slow mygene"})

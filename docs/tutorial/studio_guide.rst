@@ -497,6 +497,10 @@ Functions defined in a hook file become **Hub commands**: they're listed by ``he
 - the function's docstring documents the command: its first line is shown by ``help``, the whole docstring by ``help <command>``.
 - functions whose name starts with an underscore are private helpers, and names imported by the hook (eg. ``from os.path import join``) aren't commands. A hook can also define
   ``__all__``, listing exactly which names are commands (eg. to include a ``functools.partial``).
+- what a command logs while it's called (eg. ``logger.info(...)``) is shown with its result, in the terminal and the CLI.
+- a command deleting or changing data can ask for a confirmation before running, like built-in commands such as ``rmmerge`` or ``archive``: set its ``confirm``
+  attribute to ``True`` (eg. ``purge.confirm = True`` after ``def purge(...)``), or to the name of its dry-run parameter to only ask when it's not a dry run
+  (eg. ``auto_archive.confirm = "dryrun"``).
 
 The ``hooks`` command lists the hook files loaded, with the commands they define, and the ones which failed to load with their error (also found in the Hub logs).
 Changes to hook files are taken into account when the Hub restarts (automatically when ``USE_RELOADER`` is set).
@@ -512,7 +516,8 @@ The ``auto_archive`` function uses several existing Hub commands:
 - ``bm.build_info``: ``bm`` isn't a command, but a shortcut for **build_manager** instance. From this instance, we can call ``build_info`` method which, given a build name, returns information
   about it, including the ``build_date`` field we're interested in.
 
-Once loaded, the command can be run from the terminal or the CLI, eg. ``auto_archive covid19 --days 30 --no-dryrun``, same as ``auto_archive("covid19", days=30, dryrun=False)``.
+Once loaded, the command can be run from the terminal or the CLI, eg. ``auto_archive covid19 --days 30 --no-dryrun``, same as ``auto_archive("covid19", days=30, dryrun=False)``
+(which asks for a confirmation, as it's not a dry run).
 
 .. note:: Hub console is actually a python interpreter. When connecting to the Hub using SSH, the connection "lands" into that interpreter. That's why it's possible to inject python code
    into the console. The terminal in BioThings Studio and ``biothings-cli hub`` only run Hub commands, with literal arguments (strings, numbers, lists...), not python code.

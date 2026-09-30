@@ -21,7 +21,7 @@ from terminal_fakes import make_terminal
 from typer.testing import CliRunner
 
 import biothings.cli
-from biothings.cli.commands.hub import hub_application, render
+from biothings.cli.commands.hub import hub_application, print_response, render
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.base import RootHandler
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
@@ -82,7 +82,7 @@ def hub(tmp_path):
         """Always fail"""
         raise ValueError("bad %s" % what)
 
-    terminal, shell, sources = make_terminal(slow=slow, boom=boom)
+    terminal, shell, sources = make_terminal(slow=slow, boom=boom, rmmerge=lambda merge_name: "deleted %s" % merge_name)
     hook = tmp_path / "greetings.py"
     hook.write_text(textwrap.dedent('''
             def greet(name, excited=False):
@@ -191,6 +191,15 @@ def test_run_failures(hub):
     assert "Usage: dump <src> [--force] [--skip-manual] [--<option> <value>...]" in result.output
 
 
+def test_run_asks_for_a_confirmation(hub):
+    result = cli(hub, "run", "rmmerge", "mygene_1")
+    assert result.exit_code == 2  # can't be asked: not an interactive terminal
+    assert "rmmerge('mygene_1'): Delete a build" in result.output
+    assert "use --yes" in result.output
+    result = cli(hub, "run", "--yes", "rmmerge", "mygene_1")
+    assert (result.exit_code, result.stdout) == (0, "deleted mygene_1\n")
+
+
 def test_hooks(hub):
     result = cli(hub, "hooks")
     assert result.exit_code == 1  # a hook failed to load
@@ -209,6 +218,15 @@ def test_interactive_shell(hub):
     assert "Hello world" in result.output
     assert "Unknown command 'dump_al'" in result.output
     assert "] slow('mygene', delay=0.01) running in background" in result.output
+
+
+def test_interactive_shell_asks_for_confirmations(hub):
+    lines = ["rmmerge mygene_1", "y", "rmmerge mygene_2", "n", "exit"]
+    result = cli(hub, "shell", input="\n".join(lines) + "\n")
+    assert result.exit_code == 0, result.output
+    assert result.output.count("Delete a build") == 2
+    assert "deleted mygene_1" in result.output
+    assert "deleted mygene_2" not in result.output
 
 
 def test_unreachable_and_older_hubs():
@@ -243,3 +261,11 @@ def test_render_hides_empty_results():
     assert render([]) == "[]"
     assert render({"a": 1}) == '{\n  "a": 1\n}'
     assert render("text") == "text"
+
+
+def test_logs_are_printed_on_stderr(capsys):
+    response = {"logs": ["Archiving build covid19_1"], "stdout": "", "stderr": "", "failed": False, "result": "done"}
+    assert print_response(response) is True
+    captured = capsys.readouterr()
+    assert captured.out == "done\n"
+    assert "Archiving build covid19_1" in captured.err

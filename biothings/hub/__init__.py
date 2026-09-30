@@ -1104,7 +1104,7 @@ class HubServer:
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status, self.managers), tracked=False)
         self.commands["export_command_documents"] = CommandDefinition(
-            command=self.export_command_documents, tracked=False
+            command=self.export_command_documents, tracked=False, hidden=True
         )
         if "hooks" in self.features:
             self.commands["hooks"] = CommandDefinition(command=self.terminal.hooks_summary, tracked=False)
@@ -1181,7 +1181,10 @@ class HubServer:
         # inspector
         if self.managers.get("inspect_manager"):
             self.commands["inspect"] = self.managers["inspect_manager"].inspect
-            self.commands["flatten_inspection_data"] = self.managers["inspect_manager"].flatten
+            # used by BioThings Studio to display inspection results
+            self.commands["flatten_inspection_data"] = CommandDefinition(
+                command=self.managers["inspect_manager"].flatten, hidden=True
+            )
         # data plugins
         if self.managers.get("assistant_manager"):
             self.commands["register_url"] = partial(self.managers["assistant_manager"].register_url)
@@ -1191,18 +1194,35 @@ class HubServer:
             self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
 
         if "autohub" in self.features:
-            self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
+            # installing data releases published by other hubs (see VERSION_URLS): without any, these
+            # commands only apply to sources which can't use them, they're hidden (still callable)
+            hidden = not self.autohub_feature.version_urls
+            self.commands["list"] = CommandDefinition(
+                command=self.autohub_feature.list_biothings, tracked=False, hidden=hidden
+            )
             # dump commands
-            self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
+            self.commands["versions"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].call, method_name="versions"), hidden=hidden
+            )
+            # works for any source
             self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
-            self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
-            self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
+            self.commands["info"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].call, method_name="info"), hidden=hidden
+            )
+            self.commands["download"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].dump_src), hidden=hidden
+            )
             # upload commands
-            self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
-            self.commands["install"] = partial(self.autohub_feature.install)
-            self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
-            self.commands["reset_backend"] = partial(
-                self.managers["dump_manager"].call, method_name="reset_target_backend"
+            self.commands["apply"] = CommandDefinition(
+                command=partial(self.managers["upload_manager"].upload_src), hidden=hidden
+            )
+            self.commands["install"] = CommandDefinition(command=partial(self.autohub_feature.install), hidden=hidden)
+            self.commands["backend"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].call, method_name="get_target_backend"), hidden=hidden
+            )
+            self.commands["reset_backend"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].call, method_name="reset_target_backend"),
+                hidden=hidden,
             )
 
         logging.info("Registered commands: %s", list(self.commands.keys()))

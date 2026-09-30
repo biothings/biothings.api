@@ -103,8 +103,11 @@ class HubClient:
     def catalog(self):
         return self.request("GET", "/terminal/commands")
 
-    def run(self, line=None, argv=None):
+    def run(self, line=None, argv=None, confirmed=False):
         body = {"cmd": line} if line is not None else {"argv": list(argv)}
+        if confirmed:
+            # commands deleting or changing data must be confirmed (otherwise: 428 error)
+            body["confirmed"] = True
         return self.request("POST", "/terminal/run", json=body)
 
     def command(self, command_id):
@@ -159,8 +162,15 @@ def print_error(error):
         print_text("Usage: %s" % payload["usage"], stderr=True)
 
 
+def print_logs(response):
+    """Print what a command logged while it was called, on stderr to keep stdout for its outputs"""
+    for line in response.get("logs") or []:  # not sent by older hubs
+        print_text(line, style="dim", stderr=True)
+
+
 def print_response(response, verbose=False):
     """Print the outcome of a command run synchronously (done), returns False if it failed"""
+    print_logs(response)
     print_text(response.get("stdout"))
     print_text(response.get("stderr"), stderr=True)
     if response.get("failed"):
@@ -170,6 +180,12 @@ def print_response(response, verbose=False):
         return False
     print_text(render(response.get("result")))
     return True
+
+
+def show_confirmation(error):
+    """What a command would delete or change, as reported by the hub when it must be confirmed (428 error)"""
+    for reason in error.payload.get("confirm") or [str(error)]:
+        print_text(reason, style="yellow", stderr=True)
 
 
 def print_command_results(info):
@@ -292,6 +308,9 @@ def print_command_help(cmd):
     console.print("[bold]Python:[/bold] %s" % escape(cmd["signature"]), soft_wrap=True)
     if cmd.get("is_async"):
         console.print("Runs in background (asynchronous command)")
+    if cmd.get("confirm"):  # not sent by older hubs
+        unless = "" if cmd["confirm"] is True else ", unless it's a dry run"
+        console.print("Asks for a confirmation before running%s (see run --yes)" % unless)
     if cmd.get("examples"):
         console.print("[bold]Examples:[/bold]")
         for example in cmd["examples"]:
@@ -329,9 +348,14 @@ def run_command(
     interval: Annotated[float, typer.Option("--interval", help="Seconds between status checks while waiting")] = 1.0,
     as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Print the traceback when a command fails")] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Don't ask for a confirmation (commands deleting or changing data)"),
+    ] = False,
 ):
     """
     Run a command on the hub. Options for [bold]run[/bold] itself go before the command name.
+    Commands deleting or changing data (eg. rmmerge) ask for a confirmation, unless [bold]--yes[/bold] is given.
 
     Examples:
 
@@ -339,11 +363,22 @@ def run_command(
 
       biothings-cli hub run --no-wait upload mygene
 
-      biothings-cli hub run auto_archive covid19 --days 3 --no-dryrun
+      biothings-cli hub run --yes auto_archive covid19 --days 3 --no-dryrun
     """
     client = get_client(ctx)
     try:
-        response = client.run(argv=argv)
+        try:
+            response = client.run(argv=argv, confirmed=yes)
+        except HubAPIError as e:
+            if e.status != 428:
+                raise
+            show_confirmation(e)
+            if not sys.stdin.isatty():
+                print_text("Not run: this command must be confirmed, use --yes", style="red", stderr=True)
+                raise typer.Exit(2)
+            if not typer.confirm("Run it?", default=False, err=True):
+                raise typer.Exit(1)
+            response = client.run(argv=argv, confirmed=True)
     except HubAPIError as e:
         print_error(e)
         raise typer.Exit(2 if e.status in (400, 403, 404, 409) else 1)
@@ -360,10 +395,13 @@ def run_command(
         if as_json:
             print_json(response)
         else:
+            print_logs(response)
             print_text("[#%s] %s started" % (response["id"], response["cmd"]))
             print_text("Follow it with: biothings-cli hub status %s" % response["id"], style="dim")
         return
 
+    if not as_json:
+        print_logs(response)
     try:
         if as_json:
             info = client.wait(response["id"], timeout=wait_timeout, interval=interval)
@@ -509,13 +547,22 @@ def interactive_shell(ctx: typer.Context):
                     print_text("No command running in background")
                 continue
             try:
-                response = client.run(line=line)
+                try:
+                    response = client.run(line=line)
+                except HubAPIError as e:
+                    if e.status != 428:
+                        raise
+                    show_confirmation(e)
+                    if not typer.confirm("Run it?", default=False, err=True):
+                        continue
+                    response = client.run(line=line, confirmed=True)
             except HubAPIError as e:
                 print_error(e)
                 continue
             if response["is_done"]:
                 print_response(response)
             else:
+                print_logs(response)
                 running[response["id"]] = response["cmd"]
                 print_text("[#%s] %s running in background" % (response["id"], response["cmd"]), style="dim")
     finally:

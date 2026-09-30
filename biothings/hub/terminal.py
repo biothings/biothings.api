@@ -22,7 +22,8 @@ In the shell-like syntax, values are converted according to the parameter they'r
 
 Commands returning a job (asyncio task, future, coroutine...) run in the background and are
 tracked like any other hub command (see ``commands()`` and ``command(id)``), other commands
-return their result right away.
+return their result right away. What a command prints and logs while it's called is returned
+too (outputs and log statements of jobs running in the background go to the hub logs).
 """
 
 import ast
@@ -32,9 +33,11 @@ import difflib
 import inspect
 import json
 import keyword
+import logging
 import os
 import re
 import shlex
+import threading
 import traceback
 import types
 import typing
@@ -88,33 +91,50 @@ BUILTIN_HELP = {
     "commands": ("Commands launched on the hub, with their status", ["commands", "commands --running true"]),
     "command": ("Status and results of a launched command", ["command 12"]),
     "hooks": ("Hook files loaded from the hooks folder, with the commands they define", ["hooks"]),
-    "config": ("Hub configuration", ["config"]),
-    "setconf": ("Change a configuration parameter (saved in the hub database)", []),
-    "resetconf": ("Reset a configuration parameter to its default value", ["resetconf HUB_NAME"]),
+    "config": ("Hub configuration, or one of its parameters", ["config", "config HUB_MAX_WORKERS"]),
+    "setconf": (
+        "Change a configuration parameter, saved in the hub database (requires CONFIG_READONLY = False)",
+        ["setconf HUB_MAX_WORKERS 4"],
+    ),
+    "resetconf": (
+        "Reset a configuration parameter to its default value, or all of them if no name is given",
+        ["resetconf HUB_MAX_WORKERS"],
+    ),
     "restart": ("Restart the hub", ["restart"]),
     "stop": ("Stop the hub", ["stop"]),
-    "backup": ("Backup the hub database (sources, builds, commands...) to a file", ["backup"]),
-    "restore": ("Restore the hub database from a backup file", []),
+    "backup": (
+        "Backup the hub database (sources, builds, commands...) to a file, in the hub's folder by default",
+        ["backup", "backup --folder /data/backups"],
+    ),
+    "restore": (
+        "Restore the hub database from a backup file (see backup)",
+        ["restore biothings_backup_20240101_abcdefgh.pyobj"],
+    ),
     "upgrade": ("Update the code of the application or of the BioThings SDK (git pull)", ["upgrade application"]),
     "top": ("Jobs running in the job manager", ["top"]),
     "sch": ("Scheduled jobs", ["sch"]),
     # data sources
     "dump": ("Download the data of a source", ["dump mygene", "dump mygene --force"]),
     "dump_all": ("Download the data of all the sources, except manual ones", ["dump all", "dump all --force"]),
+    "check": ("Check if a new release of a source is available, without downloading it", ["check mygene"]),
     "mark_dump_success": (
-        "Mark a source as downloaded, without downloading anything",
-        ["mark_dump_success mygene --no-dry-run"],
+        "Mark a source as downloaded, without downloading anything (dry run unless --no-dry-run)",
+        ["mark_dump_success mygene", "mark_dump_success mygene --no-dry-run"],
     ),
     "upload": ("Upload the downloaded data of a source (or sub-source) to the source database", ["upload mygene"]),
     "upload_all": ("Upload the downloaded data of all the sources", ["upload all"]),
     "update_source_meta": ("Update the metadata of a source (version, license...)", ["update_source_meta mygene"]),
     "sources": ("All the sources, with their dump and upload information", ["sources"]),
     "source_info": ("Details about a source: dump, upload, mapping...", ["source_info mygene"]),
-    "source_reset": ("Reset the information stored about a source's upload (or dump)", ["source_reset mygene"]),
-    "inspect": (
-        "Inspect data to report its structure, stats or mapping",
-        ['inspect(("src", "mygene"), mode="mapping")'],
+    "source_reset": (
+        "Delete the information stored about a source's upload (or its dump, or inspection)",
+        ["source_reset mygene", "source_reset mygene download"],
     ),
+    "inspect": (
+        "Inspect the data of a source or a build to report its structure, stats or mapping",
+        ["inspect [src,mygene] --mode mapping", "inspect mygene_20240101_abcdefgh --mode stats"],
+    ),
+    "flatten_inspection_data": ("Inspection results of a source or a build, flattened (used by BioThings Studio)", []),
     # data plugins
     "register_url": (
         "Register a data plugin from a git repository",
@@ -139,41 +159,111 @@ BUILTIN_HELP = {
         "Compute the differences between two builds",
         ["diff jsondiff-selfcontained mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
     ),
-    "report": ("Report about the differences between two builds", []),
-    "sync": ("Apply the differences between two builds to a target (Elasticsearch index, MongoDB collection)", []),
+    "report": (
+        "Report about the differences between two builds (see diff)",
+        ["report mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
+    ),
+    "sync": (
+        "Apply the differences between two builds (see diff) to a target, Elasticsearch (es) or MongoDB (mongo)",
+        ["sync es mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
+    ),
     # indices, snapshots and releases
     "index": (
         "Index a build in an Elasticsearch environment (see INDEX_CONFIG)",
         ["index local mygene_20240101_abcdefgh"],
     ),
-    "index_cleanup": ("Delete older indices, keeping the most recent ones", ["index_cleanup --keep 3 --no-dryrun"]),
+    "index_cleanup": (
+        "Delete older indices, keeping the most recent ones (dry run unless --no-dryrun)",
+        ["index_cleanup", "index_cleanup local --keep 3 --no-dryrun"],
+    ),
     "indexes_by_name": ("Find indices by name", ["indexes_by_name mygene"]),
     "snapshot": (
         "Snapshot an index in a snapshot environment (see SNAPSHOT_CONFIG)",
         ["snapshot s3_env mygene_20240101_abcdefgh"],
     ),
     "snapshot_cleanup": (
-        "Delete older snapshots, keeping the most recent ones",
-        ["snapshot_cleanup --keep 3 --no-dryrun"],
+        "Delete older snapshots, keeping the most recent ones (dry run unless --no-dryrun)",
+        ["snapshot_cleanup", "snapshot_cleanup --keep 3 --no-dryrun"],
     ),
     "list_snapshots": ("List the snapshots", ["list_snapshots"]),
-    "delete_snapshots": ("Delete snapshots", []),
-    "validate_snapshots": ("Check the registered snapshots still exist", ["validate_snapshots"]),
+    "delete_snapshots": (
+        "Delete snapshots, given by snapshot environment",
+        ['delete_snapshots \'{"s3_env": ["mygene_20240101_abcdefgh"]}\''],
+    ),
+    "validate_snapshots": (
+        "Delete the records of the snapshots which don't exist anymore in their environment",
+        ["validate_snapshots"],
+    ),
     "list_mongo_builds": ("List the build collections in MongoDB", ["list_mongo_builds"]),
-    "delete_mongo_builds": ("Delete build collections in MongoDB", []),
-    "validate_mongo_builds": ("Check the registered builds still have a MongoDB collection", ["validate_mongo_builds"]),
+    "delete_mongo_builds": (
+        "Delete builds: their MongoDB collections and their records",
+        ["delete_mongo_builds [mygene_20240101_abcdefgh]"],
+    ),
+    "validate_mongo_builds": (
+        "Delete the records of the builds whose MongoDB collection doesn't exist anymore (archived builds are kept)",
+        ["validate_mongo_builds"],
+    ),
     "create_release_note": (
         "Create the release note between two builds",
         ["create_release_note mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
     ),
-    "get_release_note": ("Release note between two builds", []),
-    "publish": ("Publish a release to a release environment (see RELEASE_CONFIG)", []),
+    "get_release_note": (
+        "Release note between two builds (see create_release_note)",
+        ["get_release_note mygene_20240101_abcdefgh mygene_20240201_ijklmnop"],
+    ),
+    "publish": (
+        "Publish a release, full (snapshot) or incremental (diff), to a release environment (see RELEASE_CONFIG)",
+        ["publish s3_env mygene_20240201_ijklmnop"],
+    ),
     "publish_diff": (
         "Publish an incremental release (diff) of a build",
         ["publish_diff s3_env mygene_20240201_ijklmnop"],
     ),
-    "publish_snapshot": ("Publish a full release (snapshot) of a build", []),
+    "publish_snapshot": (
+        "Publish a full release (snapshot) of a build",
+        ["publish_snapshot s3_env mygene_20240201_ijklmnop"],
+    ),
     "quick_index": ("Build and index a single source, to quickly test it", []),
+    # installing data releases published by other hubs (see VERSION_URLS)
+    "list": ("BioThings APIs whose data releases can be installed (see VERSION_URLS)", ["list"]),
+    "versions": ("Data releases available for a BioThings API", ["versions mygene.info"]),
+    "info": ("Release note of a data release, the latest one by default", ["info mygene.info"]),
+    "install": (
+        "Install a data release, the latest one by default, applying full and incremental updates as needed",
+        ["install mygene.info", "install mygene.info --dry"],
+    ),
+    "download": ("Download a data release, without installing it (see install)", ["download mygene.info"]),
+    "apply": ("Install a downloaded data release (see download)", ["apply mygene.info"]),
+    "backend": ("Elasticsearch index a BioThings API's data releases are installed in", ["backend mygene.info"]),
+    "reset_backend": (
+        "Delete the Elasticsearch index a BioThings API's data releases are installed in",
+        ["reset_backend mygene.info"],
+    ),
+    # other
+    "export_command_documents": ("Write the documentation of the hub commands to a file", []),
+}
+
+# Commands deleting or overwriting data, or stopping the hub: terminals ask for a confirmation before
+# running them. True: always, or the name of the parameter making it a dry run: unless it's a dry run.
+# A hook command can ask for one too, with a "confirm" attribute (eg. "purge.confirm = True").
+CONFIRM = {
+    "rmmerge": True,
+    "archive": True,
+    "auto_archive": "dryrun",
+    "delete_mongo_builds": True,
+    "validate_mongo_builds": True,
+    "delete_snapshots": True,
+    "validate_snapshots": True,
+    "index_cleanup": "dryrun",
+    "snapshot_cleanup": "dryrun",
+    "source_reset": True,
+    "mark_dump_success": "dry_run",
+    "unregister_url": True,
+    "reset_backend": True,
+    "resetconf": True,
+    "restore": True,
+    "upgrade": True,
+    "stop": True,
 }
 
 
@@ -195,6 +285,15 @@ class CommandUsageError(CommandError):
     def __init__(self, message, usage=None):
         self.usage = usage
         super().__init__(message)
+
+
+class ConfirmationRequired(CommandError):
+    """Raised when a command line must be confirmed before running (see CONFIRM)"""
+
+    def __init__(self, reasons):
+        # what must be confirmed, one line per command
+        self.reasons = reasons
+        super().__init__("Confirmation required: %s" % "; ".join(reasons))
 
 
 @dataclass
@@ -273,6 +372,20 @@ def unwrap(command):
     while isinstance(command, partial):
         command = command.func
     return inspect.unwrap(command)
+
+
+def public_signature(command, signature):
+    """
+    Signature shown to users, without the arguments a command gives itself, ie. the keywords
+    of a functools.partial (eg. check_only=True for "check", which is dump_src(check_only=True))
+    """
+    preset = set()
+    while isinstance(command, partial):
+        preset.update(command.keywords)
+        command = command.func
+    if signature is None or not preset:
+        return signature
+    return signature.replace(parameters=[p for p in signature.parameters.values() if p.name not in preset])
 
 
 def param_type(param):
@@ -406,6 +519,44 @@ async def json_safe_result(job):
     return json_safe(await job)
 
 
+class CapturedLogs(logging.Handler):
+    """
+    Log statements of a command while it runs in the current thread, so terminals can show
+    them with its outputs (eg. hook commands reporting what they do with logger.info())
+    """
+
+    def __init__(self, limit=200):
+        super().__init__(logging.INFO)
+        self.thread = threading.get_ident()
+        self.limit = limit
+        self.lines = []
+        self.skipped = 0
+
+    def emit(self, record):
+        if record.thread != self.thread:
+            return  # eg. a job running in a thread meanwhile
+        if len(self.lines) >= self.limit:
+            self.skipped += 1
+            return
+        try:
+            message = record.getMessage()
+        except Exception:  # arguments not matching the message's format
+            message = str(record.msg)
+        self.lines.append(message if record.levelno <= logging.INFO else "%s: %s" % (record.levelname, message))
+
+    def __enter__(self):
+        logging.getLogger().addHandler(self)
+        return self
+
+    def __exit__(self, *exc_info):
+        logging.getLogger().removeHandler(self)
+
+    def get_lines(self):
+        if self.skipped:
+            return self.lines + ["... %s more lines in the hub logs" % self.skipped]
+        return list(self.lines)
+
+
 class HubTerminal:
     """
     Parse, run and describe the commands registered in a hub shell (HubShell instance),
@@ -451,7 +602,7 @@ class HubTerminal:
             doc = "Composite command, runs: %s" % command.cmd
         else:
             doc = inspect.getdoc(unwrap(command)) or ""
-            signature = get_signature(command)
+            signature = public_signature(command, get_signature(command))
         if signature is not None:
             for param in signature.parameters.values():
                 params.append(
@@ -478,7 +629,33 @@ class HubTerminal:
             "hidden": bool(self.shell.hidden.get(name, False)),
             "is_async": inspect.iscoroutinefunction(unwrap(command)) if callable(command) else False,
             "composite": command.cmd if isinstance(command, CompositeCommand) else None,
+            "confirm": self.confirmation(name, command),
         }
+
+    def confirmation(self, name, command):
+        """
+        When a command asks for a confirmation before running (see CONFIRM): True (always), the name
+        of the parameter making it a dry run (unless it's a dry run), or None (never)
+        """
+        rule = getattr(unwrap(command), "confirm", None) if callable(command) else None
+        if rule is True or isinstance(rule, str):
+            return rule
+        return CONFIRM.get(name)
+
+    def needs_confirmation(self, invocation):
+        """True if a command, called with these arguments, must be confirmed before running"""
+        rule = self.confirmation(invocation.name, invocation.command)
+        if rule is None or rule is True:
+            return bool(rule)
+        signature = get_signature(invocation.command)
+        if signature is None or rule not in signature.parameters:
+            return True
+        try:
+            arguments = signature.bind(*invocation.args, **invocation.kwargs)
+        except TypeError:
+            return True
+        arguments.apply_defaults()
+        return not arguments.arguments[rule]
 
     def catalog(self):
         """Commands available from the terminal and hook files loaded, as consumed by terminal clients"""
@@ -551,7 +728,7 @@ class HubTerminal:
             try:
                 signature.bind(*args, **kwargs)
             except TypeError as e:
-                raise CommandUsageError("%s: %s" % (name, e), usage(name, signature))
+                raise CommandUsageError("%s: %s" % (name, e), usage(name, public_signature(command, signature)))
         return Invocation(name, command, args, kwargs, format_call(name, arg_texts, kwarg_texts, signature))
 
     def parse_python_call(self, text):
@@ -638,7 +815,7 @@ class HubTerminal:
                 raise CommandUsageError("'%s' is a composite command, it takes no argument" % name)
             return self.composite(name, command, depth)
         signature = get_signature(command)
-        cmd_usage = usage(name, signature)
+        cmd_usage = usage(name, public_signature(command, signature))
         try:
             positionals, options = self.parse_options(name, signature, tokens)
             args, kwargs = self.arrange(signature, positionals, options)
@@ -785,11 +962,12 @@ class HubTerminal:
     # Execution
     # ---------------------------------------------------------------------------------
 
-    def run(self, line=None, argv=None):
+    def run(self, line=None, argv=None, confirmed=False):
         """
         Run a command line (see parse()) and return a JSON-serializable description of the
         outcome: the result when the command is done, or the ID of the command running in
-        background, which can then be followed with command(id)
+        background, which can then be followed with command(id). Commands deleting or
+        overwriting data only run once confirmed (see CONFIRM), ConfirmationRequired otherwise.
         """
         invocations = self.parse(line=line, argv=argv)
         cmdline = " && ".join(invocation.display for invocation in invocations)
@@ -797,22 +975,31 @@ class HubTerminal:
             if info.get("cmd") == cmdline and not info.get("is_done"):
                 raise AlreadyRunningException("'%s' is already running (command #%s)" % (cmdline, info.get("id")))
         steps = [step for invocation in invocations for step in (invocation.steps or [invocation])]
+        if not confirmed:
+            reasons = [
+                "%s: %s" % (step.display, self.describe(step.name)["summary"])
+                for step in steps
+                if self.needs_confirmation(step)
+            ]
+            if reasons:
+                raise ConfirmationRequired(reasons)
         if len(steps) == 1:
             return self.run_one(cmdline, steps[0])
         return self.run_chain(cmdline, steps)
 
     def run_one(self, cmdline, invocation):
         streams = RedirectStdStreams()
+        logs = CapturedLogs()
         try:
-            with streams:
+            with streams, logs:
                 result = invocation.command(*invocation.args, **invocation.kwargs)
         except Exception as e:
             logger.info("Terminal command '%s' failed: %s", cmdline, e)
-            return self.failed(cmdline, e, streams.get_std_contents())
+            return self.failed(cmdline, e, streams.get_std_contents(), logs.get_lines())
         std = streams.get_std_contents()
         job = self.as_job(result)
         if job is not None:
-            return self.started(self.shell.register_command(cmdline, job, force=True), std)
+            return self.started(self.shell.register_command(cmdline, job, force=True), std, logs.get_lines())
         try:
             # keep track in the command history (unless the command isn't tracked)
             self.shell.register_command(cmdline, result)
@@ -826,6 +1013,7 @@ class HubTerminal:
             "result": json_safe(result),
             "stdout": std["stdout"],
             "stderr": std["stderr"],
+            "logs": logs.get_lines(),
         }
 
     def run_chain(self, cmdline, steps):
@@ -872,7 +1060,7 @@ class HubTerminal:
         except RuntimeError:
             return self.shell.job_manager.loop
 
-    def started(self, cmdinfo, std):
+    def started(self, cmdinfo, std, logs=None):
         if not isinstance(cmdinfo, CommandInformation):
             raise CommandError("Job couldn't be tracked in the command history")
         std = std or {}
@@ -884,9 +1072,10 @@ class HubTerminal:
             "started_at": cmdinfo["started_at"],
             "stdout": std.get("stdout", ""),
             "stderr": std.get("stderr", ""),
+            "logs": logs or [],
         }
 
-    def failed(self, cmdline, error, std):
+    def failed(self, cmdline, error, std, logs=None):
         return {
             "cmd": cmdline,
             "id": None,
@@ -896,6 +1085,7 @@ class HubTerminal:
             "traceback": "".join(traceback.format_exception(type(error), error, error.__traceback__)),
             "stdout": std["stdout"],
             "stderr": std["stderr"],
+            "logs": logs or [],
         }
 
     def is_terminal_syntax(self, line):
@@ -918,12 +1108,13 @@ class HubTerminal:
     def console(self, line):
         """Run a shell-like command line from the hub console, returning the outputs to display"""
         try:
-            response = self.run(line=line)
+            # the console runs any python code already, no confirmation asked
+            response = self.run(line=line, confirmed=True)
         except (NoSuchCommand, CommandNotAllowed) as e:
             raise CommandError(str(e))
         if response["failed"]:
             raise CommandError(response["error"])
-        outputs = [response["stdout"], response["stderr"]]
+        outputs = ["\n".join(response["logs"]), response["stdout"], response["stderr"]]
         if response["is_done"]:
             outputs.append(render(response["result"]))
         # else: running in background, progress is reported by the console like other commands

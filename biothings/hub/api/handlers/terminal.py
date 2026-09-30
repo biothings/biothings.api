@@ -2,7 +2,7 @@ import json.decoder
 
 import tornado.escape
 
-from biothings.hub.terminal import CommandUsageError, UnknownCommand
+from biothings.hub.terminal import CommandUsageError, ConfirmationRequired, UnknownCommand
 from biothings.utils.hub import AlreadyRunningException, CommandError, CommandNotAllowed, NoSuchCommand
 
 from .base import DefaultHandler
@@ -28,6 +28,9 @@ class TerminalRunHandler(DefaultHandler):
 
     Returns the command's result when it's done, or its ID when it runs in background (follow it
     with GET /command/<id>). A failing command isn't an HTTP error, it's reported with "failed": true.
+
+    Commands deleting or overwriting data (see biothings.hub.terminal.CONFIRM) only run with
+    "confirmed": true, otherwise the response is a 428 error listing what must be confirmed ("confirm").
     """
 
     def initialize(self, terminal, shellog=None, **kwargs):
@@ -42,10 +45,11 @@ class TerminalRunHandler(DefaultHandler):
         if not isinstance(body, dict) or ("cmd" in body) == ("argv" in body):
             return self.error(400, "Expecting either 'cmd' (a command line) or 'argv' (a list of arguments)")
         line, argv = body.get("cmd"), body.get("argv")
+        confirmed = body.get("confirmed") is True
         if self.shellog:
             self.shellog.input(line if line is not None else " ".join(map(str, argv or [])))
         try:
-            result = self.terminal.run(line=line, argv=argv)
+            result = self.terminal.run(line=line, argv=argv, confirmed=confirmed)
         except UnknownCommand as e:
             return self.error(404, str(e), suggestions=e.suggestions)
         except NoSuchCommand as e:
@@ -56,6 +60,8 @@ class TerminalRunHandler(DefaultHandler):
             return self.error(409, str(e))
         except CommandUsageError as e:
             return self.error(400, str(e), usage=e.usage)
+        except ConfirmationRequired as e:
+            return self.error(428, str(e), confirm=e.reasons)
         except CommandError as e:
             return self.error(400, str(e))
         self.write(result)
