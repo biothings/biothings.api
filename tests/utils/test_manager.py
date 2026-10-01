@@ -356,7 +356,9 @@ class TestJobManager:
             shutdown(manager)
 
     @pytest.mark.skipif(
-        not sysconfig.get_config_var("Py_GIL_DISABLED") or os.environ.get("PYTHON_GIL") == "1",
+        not sysconfig.get_config_var("Py_GIL_DISABLED")
+        or not hasattr(sys, "_is_gil_enabled")
+        or sys._is_gil_enabled(),
         reason="requires a free-threaded Python runtime with the GIL disabled",
     )
     @pytest.mark.asyncio
