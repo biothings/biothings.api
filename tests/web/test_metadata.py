@@ -28,9 +28,7 @@ def test_es():
 
 @pytest.mark.asyncio
 async def test_mongo():
-    # mongomock stands in for a real server: BiothingsMongoMetadata only needs
-    # estimated_document_count(), and requiring a reachable mongod (it used to
-    # point at su05) made this untestable off the internal network.
+    # Use mongomock to test document counts without a MongoDB server.
     collections = {
         "old": "mygene_allspecies_20210510_yqynv8db",
         "new": "mygene_allspecies_20210517_04usbghm",
@@ -41,8 +39,6 @@ async def test_mongo():
 
     metadata = BiothingsMongoMetadata(collections, database)
 
-    # refresh() is a coroutine, so it has to be awaited -- and per
-    # biothing_type, since it looks the name up in 'collections'
     for biothing_type in collections:
         await metadata.refresh(biothing_type)
 
@@ -51,8 +47,7 @@ async def test_mongo():
     assert metadata.get_metadata("new")["stats"]["total"] == 11
     assert metadata.get_metadata("old")["biothing_type"] == "old"
 
-    # a document database has no schema to report, and licence info is left to
-    # the metadata storage
+    # This backend does not provide mappings or licenses.
     assert metadata.get_mappings("old") == {"__N/A__": True}
     assert metadata.get_licenses("old") == {}
 
@@ -61,9 +56,7 @@ async def test_mongo():
 
 class TestExistsAliasMetadata:
     """
-    The web tier reads the '_exists_' alias map from the index _meta and keeps
-    only entries that match the mapping, so a stale or hand-edited _meta
-    cannot point a query to the wrong field.
+    Test alias validation against mappings and agreement across indices.
     """
 
     MAPPING = {
@@ -87,7 +80,6 @@ class TestExistsAliasMetadata:
     @pytest.mark.parametrize(
         "entry, expected",
         [
-            # valid, at any depth: kept as is
             (
                 {"gnomad_genome": "gnomad_genome.chrom", "gnomad_genome.hom": "gnomad_genome.hom.hom"},
                 {"gnomad_genome": "gnomad_genome.chrom", "gnomad_genome.hom": "gnomad_genome.hom.hom"},
@@ -120,8 +112,7 @@ class TestExistsAliasMetadata:
 
     @staticmethod
     def _index_info(properties, aliases):
-        """One entry of the dict '_BiothingsESMetadataReader' expects, shaped
-        like the per-index value 'client.indices.get()' returns."""
+        """Return one index entry in the format returned by client.indices.get()."""
         return {
             "aliases": {},
             "settings": {"index": {"creation_date": "1700000000000", "version": {"created": "8000099"}}},
@@ -131,8 +122,7 @@ class TestExistsAliasMetadata:
     @pytest.mark.parametrize(
         "per_index, expected",
         [
-            # a field missing entirely from an index (mygeneset-shaped: a
-            # curated index plus a structurally different one) can't veto
+            # An index without the object field does not block its alias.
             (
                 {
                     "curated": (
@@ -146,7 +136,7 @@ class TestExistsAliasMetadata:
                 },
                 {"msigdb": "msigdb.id", "go": "go.id"},
             ),
-            # both map the field, but only one verified an alias for it
+            # Both indices map the field, so both must provide the same alias.
             (
                 {
                     "curated": ({"genes": {"properties": {"taxid": {"type": "integer"}}}}, {"genes": "genes.taxid"}),
@@ -154,7 +144,7 @@ class TestExistsAliasMetadata:
                 },
                 {},
             ),
-            # two indices proposing different subfields for the same field
+            # Conflicting aliases are excluded.
             (
                 {
                     "one": ({"x": {"properties": {"a": {"type": "keyword"}}}}, {"x": "x.a"}),

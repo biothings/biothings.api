@@ -1,8 +1,5 @@
 """
-Tests for deriving '_exists_:<object field>' aliases.
-
-These run against a real Elasticsearch, via the es_client/index_name fixtures,
-and assert on the derived map rather than on the internals that produce it.
+Test exists alias derivation and storage against Elasticsearch.
 """
 
 import pytest
@@ -27,7 +24,7 @@ class TestDeriveAliases:
 
     @pytest.mark.asyncio
     async def test_only_a_subfield_present_on_every_document_is_chosen(self, es_client, index_name):
-        # 'chrom' is on every doc that has the object; 'alt' is missing on doc 2
+        # Only 'chrom' is present in every document containing 'gnomad_genome'.
         await self._load(
             es_client,
             index_name,
@@ -40,14 +37,13 @@ class TestDeriveAliases:
         aliases = await derive_exists_field_aliases(es_client, index_name, min_subfields=2, max_depth=0)
 
         assert aliases == {"gnomad_genome": "gnomad_genome.chrom"}
-        # both queries return the same documents, in the same order
+        # The object and its alias must match the same documents.
         assert await self._ids(es_client, index_name, "gnomad_genome") == ["1", "2"]
         assert await self._ids(es_client, index_name, "gnomad_genome.chrom") == ["1", "2"]
 
     @pytest.mark.asyncio
     async def test_alias_choice_is_deterministic(self, es_client, index_name):
-        # every subfield here qualifies, so the tie-break decides: the
-        # shallowest wins, then the shortest, then alphabetical
+        # All subfields qualify; depth, length, and alphabetical order select src.yy.
         await self._load(
             es_client,
             index_name,
@@ -61,9 +57,7 @@ class TestDeriveAliases:
 
     @pytest.mark.asyncio
     async def test_nested_object_gets_its_own_alias(self, es_client, index_name):
-        # doc 3 has the parent object but not 'hom', so parent and child match
-        # genuinely different documents and each needs its own alias.
-        # max_depth decides whether the child is scanned at all.
+        # Document 3 has the parent but no 'hom', so they need separate aliases.
         await self._load(
             es_client,
             index_name,
@@ -85,14 +79,13 @@ class TestDeriveAliases:
 
         for object_field, alias in aliases.items():
             assert await self._ids(es_client, index_name, object_field) == await self._ids(es_client, index_name, alias)
-        # and the child really is narrower than the parent
+        # The child object matches only the first two documents.
         assert await self._ids(es_client, index_name, "gnomad_genome") == ["1", "2", "3"]
         assert await self._ids(es_client, index_name, "gnomad_genome.hom") == ["1", "2"]
 
     @pytest.mark.asyncio
     async def test_min_subfields_skips_small_objects(self, es_client, index_name):
-        # 'big' has 3 subfields, 'small' has 2. Raising the threshold above an
-        # object's subfield count leaves it unscanned, so it gets no alias.
+        # 'big' has three leaf fields; 'small' has two.
         await self._load(
             es_client,
             index_name,
@@ -110,8 +103,7 @@ class TestDeriveAliases:
 
     @pytest.mark.asyncio
     async def test_no_alias_when_no_subfield_qualifies(self, es_client, index_name):
-        # every subfield is missing on at least one document holding the
-        # object, so the field is left alone rather than rewritten unsafely
+        # Neither subfield is present in every document containing the object.
         await self._load(
             es_client,
             index_name,

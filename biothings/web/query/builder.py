@@ -55,7 +55,7 @@ ES_DEFAULT_SIZE = 10
 
 _ID_FIELDDATA_ERROR = "Cannot {operation} the '_id' field: it is not available for sorting or aggregation."
 
-# matches the field name in each '_exists_:<field>' occurrence in a query string
+# Match field names immediately after '_exists_:' in query strings.
 _EXISTS_FIELD_PATTERN = re.compile(r"(?<=_exists_:)[A-Za-z0-9_.*\-]+")
 
 
@@ -612,15 +612,15 @@ class ESQueryBuilder:
 
     def _rewrite_exists(self, q, options):
         """
-        Replace '_exists_:<object field>' with '_exists_:<subfield>' using the
-        alias map the hub stores in the index metadata (see
-        hub/dataindex/exists_alias.py). Fields without an alias are unchanged.
+        Rewrite '_exists_' fields using aliases from index metadata.
+
+        Leave fields without an alias unchanged.
         """
         if not isinstance(q, str) or "_exists_:" not in q or self.metadata is None:
             return q
         try:
             aliases = self.metadata.get_exists_aliases(options.biothing_type)
-        except Exception:  # a metadata backend that does not support it
+        except Exception:  # Keep the original query if alias lookup fails.
             return q
         if not aliases:
             return q

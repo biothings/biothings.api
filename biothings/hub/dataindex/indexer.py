@@ -337,7 +337,7 @@ class Indexer:
         self.conf_name = _build_doc.build_config.get("name")
         self.build_name = _build_doc.build_name
 
-        # opt-in per build config; truthy enables, an int overrides the minimum subfield count
+        # Enable with True; an integer sets the minimum subfield count. Zero disables the scan.
         self.exists_alias_scan = _build_doc.build_config.get("exists_field_alias_scan", False)
 
         self.setup_log()
@@ -564,7 +564,7 @@ class Indexer:
         return {"count": total, "created_at": datetime.now().astimezone()}
 
     async def post_index(self, *_args, **_kwargs):
-        """Derive and store the '_exists_' alias map for the new index. Opt-in per build config."""
+        """Derive and store exists aliases when enabled in the build config."""
         if not self.exists_alias_scan:
             return {}
 
@@ -577,7 +577,7 @@ class Indexer:
             )
             await store_exists_field_aliases(client, self.es_index_name, aliases, logger=self.logger)
         except Exception as exc:
-            # never fail the build over this
+            # Alias scan failures should not fail the build.
             self.logger.exception("Could not derive _exists_ aliases: %s", exc)
             return {}
         finally:

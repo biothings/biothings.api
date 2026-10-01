@@ -43,7 +43,7 @@ async def es_client():
 
 @pytest_asyncio.fixture
 async def index_name(es_client):
-    """An empty index, removed again once the test is done."""
+    """Create an empty index and delete it after the test."""
     name = "biothings-exists-alias-test"
     await es_client.options(ignore_status=404).indices.delete(index=name)
     await es_client.indices.create(index=name)

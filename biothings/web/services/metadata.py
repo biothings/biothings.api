@@ -47,12 +47,7 @@ class BiothingsMetadata:
         #     "gene": { ... }
         # }
         self.biothing_exists_aliases = defaultdict(dict)
-        # {
-        #     "variant": {
-        #         'gnomad_genome': 'gnomad_genome.chrom',
-        #         'dbnsfp': 'dbnsfp.alt', ... }
-        #     "gene": { ... }
-        # }
+        # Maps each biothing type to {object field: subfield} aliases.
 
     def get_metadata(self, biothing_type):  # hub
         return self.biothing_metadata[biothing_type]
@@ -256,18 +251,9 @@ class _BiothingsESMetadataReader:
 
     def get_exists_aliases(self):
         """
-        Object field - equivalent subfield pairs, recorded in the index
-        metadata by the hub's post-index step, combined across every index
-        this biothing_type spans. Example:
-        {
-            'gnomad_genome': 'gnomad_genome.chrom',
-            'gnomad_genome.hom': 'gnomad_genome.hom.hom',
-            'dbnsfp': 'dbnsfp.alt',
-            ...
-        }
+        Return aliases shared by all indices that map the object field.
 
-        An alias survives the merge only if every index that maps the field
-        agrees on it; an index that doesn't map the field at all has no say.
+        Indices without that field do not affect alias selection.
         """
         per_index = [(info.mappings, info.get_exists_aliases().aliases) for info in self.indices_info.values()]
 
@@ -418,7 +404,7 @@ class _ESIndexMappings:
         return licenses
 
     def _resolve(self, path):
-        """The mapping spec for a dotted field path (any depth), or None if not mapped."""
+        """Return the mapping for a dotted field path, or None if absent."""
         spec = {"properties": self.properties}
         for part in path.split("."):
             properties = spec.get("properties") if isinstance(spec, dict) else None
@@ -428,14 +414,14 @@ class _ESIndexMappings:
         return spec if isinstance(spec, dict) else None
 
     def has_field(self, path):
-        """Whether this index's mapping defines the dotted field path at all."""
+        """Return whether the dotted field path exists in the mapping."""
         return self._resolve(path) is not None
 
     def extract_exists_aliases(self):
         """
-        Object field - equivalent subfield pairs from the index's _meta.
-        Only entries naming a real object field and one of its own subfields
-        are kept, so a stale or hand-edited _meta can't redirect a query.
+        Return aliases whose object and descendant field exist in the mapping.
+
+        This checks field paths, not whether their document counts still match.
         """
         aliases = self.metadata.get("exists_field_aliases") or {}
         if not isinstance(aliases, dict):

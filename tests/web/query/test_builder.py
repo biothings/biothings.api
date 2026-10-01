@@ -130,7 +130,7 @@ def test_elasticsearch_querybuilder_aggs_reject_id():
 
 
 class _FakeMetadata:
-    """Stands in for BiothingsESMetadata, which reads the map from index _meta."""
+    """Provide exists aliases by biothing type."""
 
     ALIASES = {
         None: {"gnomad_genome": "gnomad_genome.chrom", "dbnsfp": "dbnsfp.alt"},
@@ -145,7 +145,7 @@ class _FakeMetadata:
 
 
 class TestExistsAliasRewrite:
-    """The builder replaces '_exists_:<object field>' with the subfield alias from the index _meta."""
+    """Test exists alias rewriting in queries and filters."""
 
     @staticmethod
     def _query_string(q, aliases=None, **options):
@@ -156,22 +156,17 @@ class TestExistsAliasRewrite:
         "q, expected",
         [
             ("_exists_:gnomad_genome", "_exists_:gnomad_genome.chrom"),
-            # several occurrences in one query string
             (
                 "_exists_:gnomad_genome AND _exists_:dbnsfp",
                 "_exists_:gnomad_genome.chrom AND _exists_:dbnsfp.alt",
             ),
-            # ... including through negation and grouping
             (
                 "chr1:100-200 AND NOT (_exists_:gnomad_genome OR _exists_:dbnsfp)",
                 "chr1:100-200 AND NOT (_exists_:gnomad_genome.chrom OR _exists_:dbnsfp.alt)",
             ),
-            # no recorded alias: left exactly as it was
             ("_exists_:cadd", "_exists_:cadd"),
-            # matching is on the whole field name, so a nested field does not
-            # inherit its parent's alias
+            # A child field does not inherit its parent's alias.
             ("_exists_:gnomad_genome.af", "_exists_:gnomad_genome.af"),
-            # and only directly after '_exists_:'
             ("gnomad_genome:1", "gnomad_genome:1"),
             ("_missing_:gnomad_genome", "_missing_:gnomad_genome"),
         ],
@@ -189,7 +184,6 @@ class TestExistsAliasRewrite:
         assert self._query_string(q) == expected
 
     def test_map_is_per_biothing_type(self):
-        # each index gets its own build, so each has its own map
         assert self._query_string("_exists_:gnomad_genome") == "_exists_:gnomad_genome.chrom"
         assert self._query_string("_exists_:gnomad_genome", biothing_type="hg38") == "_exists_:gnomad_genome.alt"
         assert self._query_string("_exists_:dbnsfp", biothing_type="hg38") == "_exists_:dbnsfp"
@@ -220,5 +214,4 @@ class TestExistsAliasRewrite:
         ids=["match_all", "match_none"],
     )
     def test_non_string_queries_are_untouched(self, q, expected_clause):
-        # the rewrite must not disturb the __all__/empty-q paths
         assert expected_clause in ESQueryBuilder(metadata=_FakeMetadata()).build(q).to_dict()["query"]
