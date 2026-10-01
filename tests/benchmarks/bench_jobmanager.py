@@ -1,7 +1,7 @@
 """Benchmark JobManager CPU-bound workers: fork process pool vs free-threaded thread pool.
 
-Runs merge_struct-heavy batches (the hub's merge pipeline hot loop) through
-JobManager.defer_to_process and reports wall time and peak RSS.
+Runs merge_struct- or jsondiff-heavy batches through JobManager.defer_to_process
+and reports wall time and peak RSS. Select a workload with ``--workload``.
 
 Three configurations to compare, all runnable on a single 3.14t build
 (PYTHON_GIL=1 re-enables the GIL to emulate a regular build):
@@ -13,13 +13,16 @@ Three configurations to compare, all runnable on a single 3.14t build
   (c) control, thread pool with the GIL on (should be ~serial):
       PYTHON_GIL=1 BENCH_FT_WORKERS=1 python tests/benchmarks/bench_jobmanager.py
 
-Acceptance (from the asyncio-modernization plan): (b) within ~1.3x of (a)
-wall time, with materially lower RSS; (c) shows little to no speedup over a
-single worker, proving the win comes from disabling the GIL.
+For the original merge workload, the asyncio-modernization plan's acceptance
+target is (b) within ~1.3x of (a) wall time, with materially lower RSS; (c)
+should show little to no speedup over a single worker.  The jsondiff workload
+is diagnostic: record its throughput and RSS independently rather than applying
+the merge workload's timing target to it.
 """
 
 import argparse
 import asyncio
+import gc
 import logging
 import os
 import sys
@@ -64,7 +67,8 @@ def setup_config(workers):
 def make_doc(key, width):
     return {
         "_id": "doc%s" % key,
-        "source_%s" % key: {
+        "source_%s"
+        % key: {
             "values": list(range(width)),
             "nested": {"tags": ["tag%d" % i for i in range(width)], "props": {"k%d" % i: i for i in range(width)}},
         },
@@ -82,6 +86,53 @@ def merge_batch(num_docs, width, batch_num):
     return num_docs
 
 
+class MemoryBackend:
+    def __init__(self, documents):
+        self.documents = {document["_id"]: document for document in documents}
+
+    def mget_from_ids(self, ids, asiter=False):
+        documents = (self.documents[_id] for _id in ids if _id in self.documents)
+        return documents if asiter else list(documents)
+
+
+def make_diff_doc(key, width, version):
+    return {
+        "_id": "doc%s" % key,
+        "metadata": {
+            "field_%d"
+            % i: {
+                "value": i + version if i % 3 == 0 else i,
+                "label": "value-%d" % i,
+                "properties": {"even": i % 2 == 0, "bucket": i % 5},
+            }
+            for i in range(width)
+        },
+        "unchanged": {"values": list(range(width)), "batch": key // 100000},
+    }
+
+
+def jsondiff_batch(num_docs, width, batch_num):
+    from biothings.utils.diff import diff_docs_jsonpatch
+    from biothings.utils.jsonpatch import apply_patch
+
+    offset = batch_num * 100000
+    old_documents = [make_diff_doc(offset + i, width, 0) for i in range(num_docs)]
+    new_documents = [make_diff_doc(offset + i, width, 1) for i in range(num_docs)]
+    ids = [document["_id"] for document in old_documents]
+    old_by_id = {document["_id"]: document for document in old_documents}
+    new_by_id = {document["_id"]: document for document in new_documents}
+    updates = diff_docs_jsonpatch(MemoryBackend(old_documents), MemoryBackend(new_documents), ids)
+
+    if len(updates) != num_docs:
+        raise AssertionError("updates=%s expected=%s" % (len(updates), num_docs))
+    for update in updates:
+        document_id = update["_id"]
+        patched = apply_patch(old_by_id[document_id], update["patch"])
+        if patched != new_by_id[document_id]:
+            raise AssertionError("jsondiff patch did not reproduce %s" % document_id)
+    return len(updates)
+
+
 def peak_rss_sampler(stop, result):
     import psutil
 
@@ -97,8 +148,9 @@ def peak_rss_sampler(stop, result):
     result["peak_rss"] = peak
 
 
-async def run_bench(jm, batches, num_docs, width):
-    pinfo = {"category": "bench", "source": "bench", "step": "merge", "description": ""}
+async def run_bench(jm, workload, batches, num_docs, width):
+    worker = {"merge": merge_batch, "jsondiff": jsondiff_batch}[workload]
+    pinfo = {"category": "bench", "source": "bench", "step": workload, "description": ""}
     done = 0
 
     async def watch(job):
@@ -111,7 +163,7 @@ async def run_bench(jm, batches, num_docs, width):
     t0 = time.time()
     async with asyncio.TaskGroup() as tg:
         for b in range(batches):
-            job = await jm.defer_to_process(dict(pinfo), partial(merge_batch, num_docs, width, b))
+            job = await jm.defer_to_process(dict(pinfo), partial(worker, num_docs, width, b))
             tg.create_task(watch(job))
     elapsed = time.time() - t0
     assert done == batches * num_docs, "done=%s expected=%s" % (done, batches * num_docs)
@@ -121,38 +173,59 @@ async def run_bench(jm, batches, num_docs, width):
 async def main(args):
     import concurrent.futures
 
+    import biothings.utils.manager as manager_module
     from biothings.utils.manager import JobManager
+
+    # The benchmark doesn't use dynamic configuration. Avoid carrying the
+    # temporary SQLite configuration handle across a fork in process mode.
+    manager_module.config._db = None
+    gc.collect()
 
     loop = asyncio.get_running_loop()
     process_queue = None
     gil_on = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
-    if os.environ.get("BENCH_FT_WORKERS") and gil_on:
+    free_threaded_workers = bool(os.environ.get("BENCH_FT_WORKERS"))
+    require_gil_disabled = free_threaded_workers and os.environ.get("PYTHON_GIL") != "1"
+    if require_gil_disabled and gil_on:
+        raise RuntimeError("BENCH_FT_WORKERS requested, but an imported dependency enabled the GIL")
+    if free_threaded_workers and gil_on:
         # control config (c): force a thread pool although the GIL is on;
         # JobManager itself refuses this combination by design, so inject it
-        process_queue = concurrent.futures.ThreadPoolExecutor(
-            max_workers=args.workers, thread_name_prefix="FTWorker"
-        )
+        process_queue = concurrent.futures.ThreadPoolExecutor(max_workers=args.workers, thread_name_prefix="FTWorker")
     jm = JobManager(
         loop, process_queue=process_queue, num_workers=args.workers, num_threads=args.workers, auto_recycle=False
     )
+    if free_threaded_workers:
+        assert isinstance(jm.process_queue, concurrent.futures.ThreadPoolExecutor)
+    else:
+        assert isinstance(jm.process_queue, concurrent.futures.ProcessPoolExecutor)
 
     # warmup (pool spinup, imports in workers)
-    await run_bench(jm, args.workers, 50, 10)
+    await run_bench(jm, args.workload, args.workers, min(args.docs, 50), min(args.width, 10))
+    if require_gil_disabled and sys._is_gil_enabled():
+        raise RuntimeError("the workload's imports enabled the GIL during warmup")
 
     import threading
 
     stop, mem = threading.Event(), {}
     sampler = threading.Thread(target=peak_rss_sampler, args=(stop, mem), daemon=True)
     sampler.start()
-    elapsed = await run_bench(jm, args.batches, args.docs, args.width)
+    elapsed = await run_bench(jm, args.workload, args.batches, args.docs, args.width)
     stop.set()
     sampler.join()
+    if require_gil_disabled and sys._is_gil_enabled():
+        raise RuntimeError("the workload enabled the GIL during measurement")
+
+    assert jm.jobs == {}
+    assert jm._process_job_ids == set()
+    assert jm._pending_jobs_count() == 0
 
     gil = sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True
     print("\n=== bench_jobmanager results ===")
     print("python          : %s" % sys.version.split()[0])
     print("gil enabled     : %s" % gil)
     print("executor        : %s" % type(jm.process_queue).__name__)
+    print("workload        : %s" % args.workload)
     print("workers         : %d" % args.workers)
     print("batches x docs  : %d x %d (width %d)" % (args.batches, args.docs, args.width))
     print("wall time       : %.2fs" % elapsed)
@@ -164,8 +237,9 @@ async def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workload", choices=("merge", "jsondiff"), default="merge")
     parser.add_argument("--batches", type=int, default=16)
-    parser.add_argument("--docs", type=int, default=2000, help="documents merged per batch")
+    parser.add_argument("--docs", type=int, default=2000, help="documents processed per batch")
     parser.add_argument("--width", type=int, default=20, help="lists/dicts width per document")
     args = parser.parse_args()
     setup_config(args.workers)

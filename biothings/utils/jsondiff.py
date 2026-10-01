@@ -30,6 +30,11 @@ UNORDERED_LIST = False
 # we can't patch a doc multiple time
 USE_LIST_OPS = False
 
+_DICT_MARKER = object()
+_LIST_MARKER = object()
+_ATOM_MARKER = object()
+_SAFE_SCALAR_TYPES = (type(None), bool, int, float, str)
+
 
 __all__ = [
     "make",
@@ -233,6 +238,82 @@ def _path_join(path, key):
     return path
 
 
+class _Unindexable(Exception):
+    """Raised when a value cannot safely use the unordered-list index."""
+
+    pass
+
+
+def _make_hashable(value, active=None):
+    """Build an equality-preserving key for an acyclic, plain JSON value."""
+
+    value_type = type(value)
+    if value_type in _SAFE_SCALAR_TYPES:
+        return (_ATOM_MARKER, value)
+    if value_type is not dict and value_type is not list:
+        raise _Unindexable
+
+    if active is None:
+        active = set()
+    identity = id(value)
+    if identity in active:
+        raise _Unindexable
+    active.add(identity)
+    try:
+        if value_type is dict:
+            return (
+                _DICT_MARKER,
+                frozenset(
+                    (_make_hashable(key, active), _make_hashable(item, active)) for key, item in value.items()
+                ),
+            )
+        return (_LIST_MARKER, tuple(_make_hashable(item, active) for item in value))
+    finally:
+        active.remove(identity)
+
+
+def _lists_equal_by_matching(src, dst):
+    """Compare list values one-to-one without hashing them."""
+
+    if len(src) != len(dst):
+        return False
+
+    matched = [False] * len(dst)
+    for item in src:
+        for index, candidate in enumerate(dst):
+            if not matched[index] and (candidate is item or candidate == item):
+                matched[index] = True
+                break
+        else:
+            return False
+    return True
+
+
+def _lists_equal_unordered(src, dst):
+    """Return whether two lists contain equal values with equal multiplicities."""
+
+    if len(src) != len(dst):
+        return False
+    try:
+        dst_counts = {}
+        for item in dst:
+            key = _make_hashable(item)
+            dst_counts[key] = dst_counts.get(key, 0) + 1
+
+        for item in src:
+            key = _make_hashable(item)
+            count = dst_counts.get(key, 0)
+            if count == 0:
+                return False
+            if count == 1:
+                del dst_counts[key]
+            else:
+                dst_counts[key] = count - 1
+        return not dst_counts
+    except (_Unindexable, RecursionError):
+        return _lists_equal_by_matching(src, dst)
+
+
 def _item_added(path, key, info, item):
     index = _take_index(info.removed, item)
     if index != None:
@@ -301,18 +382,12 @@ def _compare_lists(path, info, src, dst):
             else:
                 _item_added(path, key, info, dst[key])
     else:
-        if len_src != len_dst or (not UNORDERED_LIST and src != dst):
+        if len_src != len_dst:
             _item_replaced(path, None, info, dst)
-        else:
-            found_diff = False
-            # lengths are the same so we just need to compare src against dst
-            # (dst against src isn't necessary)
-            for e in src:
-                if not e in dst:
-                    found_diff = True
-                    break
-            if found_diff:
-                _item_replaced(path, None, info, dst)
+        elif UNORDERED_LIST and not _lists_equal_unordered(src, dst):
+            _item_replaced(path, None, info, dst)
+        elif not UNORDERED_LIST and src != dst:
+            _item_replaced(path, None, info, dst)
 
 
 def _compare_values(path, key, info, src, dst):
