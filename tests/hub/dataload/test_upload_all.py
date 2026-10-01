@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from biothings.hub.autoupdate import BiothingsUploader
 from biothings.hub.dataload.manager import SourcesFailed
 from biothings.hub.dataload.uploader import UploaderManager
 
@@ -17,8 +18,11 @@ async def failed(src):
 
 @pytest.mark.asyncio
 async def test_upload_all_waits_for_every_upload(monkeypatch):
+    class ReleaseUploader(BiothingsUploader):
+        """Installs data releases in the API's Elasticsearch index: not a data source to upload"""
+
     manager = UploaderManager(job_manager=None)
-    manager.register = {"umls": [], "mondo": []}
+    manager.register = {"umls": [], "mondo": [], "mydisease-disease__es9": [ReleaseUploader]}
     uploads = {"umls": failed, "mondo": uploaded}
     monkeypatch.setattr(manager, "upload_src", lambda src, **kwargs: [asyncio.ensure_future(uploads[src](src))])
     with pytest.raises(SourcesFailed) as error:  # once all are done: one failing doesn't stop the others

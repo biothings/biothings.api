@@ -115,14 +115,14 @@ BUILTIN_HELP = {
     "sch": ("Scheduled jobs", ["sch"]),
     # data sources
     "dump": ("Download the data of a source", ["dump mygene", "dump mygene --force"]),
-    "dump_all": ("Download the data of all the sources, except manual ones", ["dump all", "dump all --force"]),
+    "dump_all": ("Download the data of all the data sources, except manual ones", ["dump all", "dump all --force"]),
     "check": ("Check if a new release of a source is available, without downloading it", ["check mygene"]),
     "mark_dump_success": (
         "Mark a source as downloaded, without downloading anything (dry run unless --no-dry-run)",
         ["mark_dump_success mygene", "mark_dump_success mygene --no-dry-run"],
     ),
     "upload": ("Upload the downloaded data of a source (or sub-source) to the source database", ["upload mygene"]),
-    "upload_all": ("Upload the downloaded data of all the sources", ["upload all"]),
+    "upload_all": ("Upload the downloaded data of all the data sources", ["upload all"]),
     "update_source_meta": ("Update the metadata of a source (version, license...)", ["update_source_meta mygene"]),
     "sources": ("All the sources, with their dump and upload information", ["sources"]),
     "source_info": ("Details about a source: dump, upload, mapping...", ["source_info mygene"]),

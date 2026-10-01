@@ -808,12 +808,19 @@ class UploaderManager(BaseSourceManager):
 
     def upload_all(self, raise_on_error=False, **kwargs):
         """
-        Trigger upload processes for all registered resources.
+        Trigger upload processes for all the data sources: not the uploaders installing data
+        releases (see biothings.hub.autoupdate, they update the Elasticsearch indices of the API).
         `**kwargs` are passed to upload_src() method. Unless raise_on_error, an upload failing
         doesn't fail the whole before the others are done: then tells which sources failed
         (see wait_for_sources()).
         """
-        jobs = {src: self.upload_src(src, **kwargs) for src in self.register}
+        from biothings.hub.autoupdate.uploader import BiothingsUploader  # (imports this module)
+
+        jobs = {}
+        for src, klasses in self.register.items():
+            if klasses and all(issubclass(klass, BiothingsUploader) for klass in klasses):
+                continue
+            jobs[src] = self.upload_src(src, **kwargs)
         return wait_for_sources("upload", jobs, raise_on_error=raise_on_error)
 
     def upload_src(self, src, validate=False, *args, **kwargs):

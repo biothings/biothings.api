@@ -1467,14 +1467,18 @@ class DumperManager(BaseSourceManager):
 
     def dump_all(self, force=False, raise_on_error=False, **kwargs):
         """
-        Run all dumpers, except manual ones, and private ones (named "__..."), such as the ones
-        pulling new code for the hub's "upgrade" command (see biothings.hub.upgrade). Unless
-        raise_on_error, a dump failing doesn't fail the whole before the others are done: then
-        tells which sources failed (see wait_for_sources()).
+        Run the dumpers of all the data sources, except manual ones. Not the private ones (named
+        "__..."), such as the ones pulling new code for the hub's "upgrade" command (see
+        biothings.hub.upgrade), nor the ones downloading data releases to install (see
+        biothings.hub.autoupdate, "install" command). Unless raise_on_error, a dump failing doesn't
+        fail the whole before the others are done: then tells which sources failed (see
+        wait_for_sources()).
         """
+        from biothings.hub.autoupdate.dumper import BiothingsDumper  # (imports this module)
+
         jobs = {}
-        for src in self.register:
-            if src.startswith("__"):
+        for src, klasses in self.register.items():
+            if src.startswith("__") or (klasses and all(issubclass(klass, BiothingsDumper) for klass in klasses)):
                 continue
             jobs[src] = self.dump_src(src, force=force, skip_manual=True, **kwargs)
         return wait_for_sources("dump", jobs, raise_on_error=raise_on_error)

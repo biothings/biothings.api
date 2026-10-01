@@ -119,7 +119,7 @@ def test_commands_lists_builtin_and_hook_commands(hub):
     result = cli(hub, "commands")
     assert result.exit_code == 0, result.output
     assert "Built-in commands" in result.output
-    assert "dump_all" in result.output and "Download the data of all the sources" in result.output
+    assert "dump_all" in result.output and "Download the data of all the data sources" in result.output
     assert "Hook commands" in result.output
     assert "greet" in result.output and "(greetings.py)" in result.output
     assert "sch" not in result.output.split()  # hidden command
@@ -131,7 +131,7 @@ def test_help_shows_usage(hub):
     result = cli(hub, "help", "dump-all")
     assert result.exit_code == 0, result.output
     assert "Usage: dump_all [--force] [--<option> <value>...]" in result.output
-    assert "Download the data of all the sources, except manual ones" in result.output
+    assert "Download the data of all the data sources, except manual ones" in result.output
     assert "Examples:\n  dump all\n  dump all --force" in result.output
     assert "Run all dumpers, except manual ones" in result.output  # docstring
     result = cli(hub, "help", "greet")

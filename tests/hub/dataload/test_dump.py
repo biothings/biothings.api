@@ -10,6 +10,7 @@ import tempfile
 import pytest
 import requests
 
+from biothings.hub.autoupdate import BiothingsDumper
 from biothings.hub.dataload.dumper import BaseDumper, DumperManager, HTTPDumper
 from biothings.hub.dataload.manager import SourcesFailed
 
@@ -101,10 +102,22 @@ def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
 async def test_dump_all_skips_private_dumpers(monkeypatch):
     """
     dump_all() runs data sources' dumpers, not the private ones ("__" names), eg. the code
-    upgrade dumpers, which would pull new code for the hub application and the BioThings SDK
+    upgrade dumpers, which would pull new code for the hub application and the BioThings SDK,
+    nor the ones downloading data releases to install (eg. on mydisease's hub, which installs its
+    releases in its API's indices)
     """
+
+    class ReleaseDumper(BiothingsDumper):
+        pass
+
     manager = DumperManager(job_manager=None)
-    manager.register = {"mondo": [], "hpo": [], "__biothings_sdk": [], "__application": []}
+    manager.register = {
+        "mondo": [],
+        "hpo": [],
+        "__biothings_sdk": [],
+        "__application": [],
+        "mydisease-disease__es9": [ReleaseDumper],
+    }
     dumped = []
     monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: dumped.append(src) or [])
     await manager.dump_all()
