@@ -481,7 +481,9 @@ class HubServer:
         self.shell.register_managers(self.managers)
         self.shell.server = self  # propagate server instance in shell
         # so it's accessible from the console if needed
-        self.terminal = HubTerminal(self.shell, hooks_folder=getattr(config, "HOOKS_FOLDER", "./hooks"))
+        # shown as an absolute path: a relative HOOKS_FOLDER depends on the folder the hub was started from
+        hooks_folder = os.path.abspath(getattr(config, "HOOKS_FOLDER", "./hooks"))
+        self.terminal = HubTerminal(self.shell, hooks_folder=hooks_folder)
         self.configure_remaining_features()
         self.configure_commands()
         self.configure_extra_commands()
