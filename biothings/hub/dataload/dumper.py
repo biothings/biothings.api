@@ -34,7 +34,7 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
-from biothings.hub.dataload.manager import BaseSourceManager
+from biothings.hub.dataload.manager import BaseSourceManager, wait_for_sources
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.manager import ResourceError
 from biothings.utils.common import first_exception, open_anyfile, rmdashfr, timesofar, untarall
@@ -1465,18 +1465,19 @@ class DumperManager(BaseSourceManager):
                     logging.error("Can't register class %s: %s" % (klass, e))
                     continue
 
-    def dump_all(self, force=False, **kwargs):
+    def dump_all(self, force=False, raise_on_error=False, **kwargs):
         """
         Run all dumpers, except manual ones, and private ones (named "__..."), such as the ones
-        pulling new code for the hub's "upgrade" command (see biothings.hub.upgrade)
+        pulling new code for the hub's "upgrade" command (see biothings.hub.upgrade). Unless
+        raise_on_error, a dump failing doesn't fail the whole before the others are done: then
+        tells which sources failed (see wait_for_sources()).
         """
-        jobs = []
+        jobs = {}
         for src in self.register:
             if src.startswith("__"):
                 continue
-            job = self.dump_src(src, force=force, skip_manual=True, **kwargs)
-            jobs.extend(job)
-        return asyncio.gather(*jobs)
+            jobs[src] = self.dump_src(src, force=force, skip_manual=True, **kwargs)
+        return wait_for_sources("dump", jobs, raise_on_error=raise_on_error)
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs):
         if src in self.register:

@@ -9,7 +9,7 @@ from typing import Iterable, Optional
 
 from biothings import config
 from biothings.hub import BUILDER_CATEGORY, DUMPER_CATEGORY, UPLOADER_CATEGORY
-from biothings.hub.dataload.manager import BaseSourceManager
+from biothings.hub.dataload.manager import BaseSourceManager, wait_for_sources
 from biothings.hub.manager import ResourceNotFound
 from biothings.utils.common import first_exception, get_random_string, get_timestamp, timesofar
 from biothings.utils.hub_db import get_src_conn, get_src_dump, get_src_master
@@ -810,14 +810,11 @@ class UploaderManager(BaseSourceManager):
         """
         Trigger upload processes for all registered resources.
         `**kwargs` are passed to upload_src() method. Unless raise_on_error, an upload failing
-        doesn't fail the whole: once they're all done, their results are returned, with the
-        exceptions of the uploads which failed.
+        doesn't fail the whole before the others are done: then tells which sources failed
+        (see wait_for_sources()).
         """
-        jobs = []
-        for src in self.register:
-            job = self.upload_src(src, **kwargs)
-            jobs.extend(job)
-        return asyncio.gather(*jobs, return_exceptions=not raise_on_error)
+        jobs = {src: self.upload_src(src, **kwargs) for src in self.register}
+        return wait_for_sources("upload", jobs, raise_on_error=raise_on_error)
 
     def upload_src(self, src, validate=False, *args, **kwargs):
         """

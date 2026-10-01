@@ -14,6 +14,7 @@ import pydoc
 import re
 import sys
 import time
+import traceback
 from collections import OrderedDict, UserDict
 from functools import partial
 from pprint import pformat
@@ -493,6 +494,12 @@ class HubShell(InteractiveShell):
                 cls.launched_commands[num]["is_done"] = True
                 cls.launched_commands[num]["failed"] = has_err and has_err[0] or False
                 cls.launched_commands[num]["results"] = localoutputs
+                if has_err:
+                    # where it failed, for terminals ("biothings-cli hub status <id> --verbose", Studio)
+                    error = next(j.exception() for j in info["jobs"] if j.exception())
+                    cls.launched_commands[num]["traceback"] = "".join(
+                        traceback.format_exception(type(error), error, error.__traceback__)
+                    )
                 cls.launched_commands[num]["finished_at"] = time.time()
                 cls.launched_commands[num]["duration"] = timesofar(
                     t0=cls.launched_commands[num]["started_at"],

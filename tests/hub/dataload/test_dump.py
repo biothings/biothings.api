@@ -2,6 +2,8 @@
 Tests for the various dumper classes
 """
 
+import asyncio
+import logging
 import pathlib
 import tempfile
 
@@ -9,6 +11,7 @@ import pytest
 import requests
 
 from biothings.hub.dataload.dumper import BaseDumper, DumperManager, HTTPDumper
+from biothings.hub.dataload.manager import SourcesFailed
 
 
 def test_base_dumper():
@@ -106,3 +109,29 @@ async def test_dump_all_skips_private_dumpers(monkeypatch):
     monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: dumped.append(src) or [])
     await manager.dump_all()
     assert dumped == ["mondo", "hpo"]
+
+
+@pytest.mark.asyncio
+async def test_dump_all_tells_which_sources_failed(monkeypatch, caplog):
+    manager = DumperManager(job_manager=None)
+    manager.register = {"mondo": [], "mydisease-disease__es9": [], "disgenet": []}
+
+    async def dumped():
+        await asyncio.sleep(0.05)  # still running when the other one fails
+
+    async def failed():
+        raise TypeError("string indices must be integers, not 'str'")
+
+    jobs = {"mondo": [dumped], "mydisease-disease__es9": [failed], "disgenet": []}  # disgenet: disabled dumper
+    monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: [asyncio.ensure_future(job()) for job in jobs[src]])
+    with caplog.at_level(logging.ERROR), pytest.raises(SourcesFailed) as error:
+        await manager.dump_all()
+    assert str(error.value) == (
+        "dump failed for 1 of 3 sources: mydisease-disease__es9 (TypeError: string indices must be integers, "
+        "not 'str'). Done: mondo. Skipped: disgenet"
+    )
+    assert error.value.summary["mondo"] == "done"  # wasn't stopped by the other failing
+    assert "dump failed for mydisease-disease__es9: TypeError" in caplog.text
+    assert "(still running: mondo)" in caplog.text
+    jobs["mydisease-disease__es9"] = [dumped]
+    assert await manager.dump_all() == {"mondo": "done", "mydisease-disease__es9": "done", "disgenet": "skipped"}

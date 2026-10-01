@@ -188,7 +188,7 @@ def show_confirmation(error):
         print_text(reason, style="yellow", stderr=True)
 
 
-def print_command_results(info):
+def print_command_results(info, verbose=False):
     """Print the final state of a command which ran in background, returns False if it failed"""
     results = info.get("results") or []
     failed = bool(info.get("failed"))
@@ -201,6 +201,8 @@ def print_command_results(info):
     )
     for result in results:
         print_text(render(result), style="red" if failed else None, stderr=failed)
+    if failed and verbose and info.get("traceback"):  # not sent by older hubs
+        print_text(info["traceback"].rstrip(), style="dim", stderr=True)
     return not failed
 
 
@@ -418,7 +420,7 @@ def run_command(
         print_json(info)
         ok = not info.get("failed")
     else:
-        ok = print_command_results(info)
+        ok = print_command_results(info, verbose=verbose)
     raise typer.Exit(0 if ok else 1)
 
 
@@ -429,6 +431,9 @@ def command_status(
     running: Annotated[bool, typer.Option("--running", help="Only list commands still running")] = False,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Number of commands to list")] = 20,
     as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Print the traceback when the command failed")
+    ] = False,
 ):
     """
     Show the commands launched on the hub, or the status and results of one of them
@@ -446,7 +451,7 @@ def command_status(
         if not result.get("is_done"):
             print_text("[#%s] %s running" % (result["id"], result["cmd"]))
             return
-        if not print_command_results(result):
+        if not print_command_results(result, verbose=verbose):
             raise typer.Exit(1)
         return
     commands = sorted(result.values(), key=lambda cmd: cmd.get("id", 0), reverse=True)[:limit]

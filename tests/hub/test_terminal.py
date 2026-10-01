@@ -382,6 +382,19 @@ async def wait_done(shell, command_id, timeout=5.0):
 
 
 @pytest.mark.asyncio
+async def test_failed_background_commands_keep_their_traceback():
+    async def explode():
+        await asyncio.sleep(0)
+        raise ValueError("bad data")
+
+    terminal, shell, _ = make_terminal(explode=explode)
+    info = await wait_done(shell, terminal.run("explode")["id"])
+    assert (info["failed"], info["results"]) == (True, ["bad data"])
+    assert "in explode" in info["traceback"]
+    assert "ValueError: bad data" in info["traceback"]
+
+
+@pytest.mark.asyncio
 async def test_run_async_commands_are_tracked():
     async def refresh(source, delay=0.01):
         """Refresh a source (coroutine)"""

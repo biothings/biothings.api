@@ -21,7 +21,7 @@ from terminal_fakes import make_terminal
 from typer.testing import CliRunner
 
 import biothings.cli
-from biothings.cli.commands.hub import hub_application, print_response, render
+from biothings.cli.commands.hub import hub_application, print_command_results, print_response, render
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.base import RootHandler
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
@@ -270,3 +270,12 @@ def test_logs_are_printed_on_stderr(capsys):
     captured = capsys.readouterr()
     assert captured.out == "done\n"
     assert "Archiving build covid19_1" in captured.err
+
+
+def test_verbose_prints_the_traceback_of_failed_commands(capsys):
+    info = {"id": 3, "cmd": "dump_all()", "failed": True, "results": ["dump failed for 1 of 2 sources"]}
+    info["traceback"] = "Traceback (most recent call last):\nTypeError: boom\n"
+    assert print_command_results(info) is False
+    assert "TypeError: boom" not in capsys.readouterr().err
+    assert print_command_results(info, verbose=True) is False
+    assert "TypeError: boom" in capsys.readouterr().err

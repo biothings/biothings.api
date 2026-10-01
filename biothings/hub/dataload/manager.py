@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import os
 import sys
@@ -16,6 +17,79 @@ logger = config.logger
 
 class SourceManagerError(Exception):
     pass
+
+
+def describe_error(error):
+    return "%s: %s" % (type(error).__name__, error)
+
+
+class SourcesFailed(ResourceError):
+    """Raised by commands run on several sources (eg. dump_all) when some of them failed"""
+
+    def __init__(self, action, summary, errors):
+        self.summary = summary  # source name => what happened to it (see wait_for_sources())
+        self.errors = errors  # source name => error
+        failed = "; ".join("%s (%s)" % (name, describe_error(error)) for name, error in errors.items())
+        message = "%s failed for %s of %s sources: %s" % (action, len(errors), len(summary), failed)
+        done = [name for name, outcome in summary.items() if name not in errors and outcome != "skipped"]
+        skipped = [name for name, outcome in summary.items() if outcome == "skipped"]
+        if done:
+            message += ". Done: %s" % ", ".join(done)
+        if skipped:
+            message += ". Skipped: %s" % ", ".join(skipped)
+        super().__init__(message)
+
+
+def wait_for_sources(action, jobs, raise_on_error=False):
+    """
+    Wait for the jobs run on several sources ({source name: [jobs]}, eg. by dump_all()). A source
+    failing doesn't stop the others, unless raise_on_error: its error is logged when it happens, and
+    once they're all done, SourcesFailed tells which sources failed, and how. Otherwise, returns what
+    happened to each source: its job's result, "done" (no result), or "skipped" (no job, eg. a
+    disabled dumper).
+    """
+
+    async def wait():
+        sources = {}
+        for name, source_jobs in jobs.items():
+            for job in source_jobs:
+                sources[asyncio.ensure_future(job)] = name
+        results = {name: [] for name in jobs}
+        errors = {}
+        running = set(sources)
+        while running:
+            done, running = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            for job in done:
+                name = sources[job]
+                error = asyncio.CancelledError("cancelled") if job.cancelled() else job.exception()
+                if error is None:
+                    results[name].append(job.result())
+                    continue
+                if raise_on_error:
+                    raise error
+                errors.setdefault(name, error)
+                still_running = sorted({sources[other] for other in running})
+                logger.error(
+                    "%s failed for %s: %s%s",
+                    action,
+                    name,
+                    describe_error(error),
+                    " (still running: %s)" % ", ".join(still_running) if still_running else "",
+                )
+        summary = {}
+        for name in jobs:
+            outcomes = [result for result in results[name] if result is not None]
+            if name in errors:
+                summary[name] = "failed: %s" % describe_error(errors[name])
+            elif not jobs[name]:
+                summary[name] = "skipped"
+            else:
+                summary[name] = outcomes[0] if len(outcomes) == 1 else (outcomes or "done")
+        if errors:
+            raise SourcesFailed(action, summary, errors) from next(iter(errors.values()))
+        return summary
+
+    return asyncio.ensure_future(wait())
 
 
 class BaseSourceManager(BaseManager):
