@@ -322,9 +322,16 @@ class InspectorManager(BaseManager):
         if data_provider_type == "source":
             src_sources_inspect_data = registerer_obj.src_doc.get("inspect", {}).get("jobs", {})
             for src_source_name, inspect_data in src_sources_inspect_data.items():
+                inspect_results = inspect_data.get("inspect", {}).get("results")
+                if inspect_results is None:
+                    self.logger.debug(
+                        "Skipping inspection data for source '%s': no completed results are available (status: %s)",
+                        src_source_name,
+                        inspect_data.get("status"),
+                    )
+                    continue
                 results[src_source_name] = {
-                    _mode: flatten_and_validate(inspect_data["inspect"]["results"].get(_mode) or {}, do_validate)
-                    for _mode in mode
+                    _mode: flatten_and_validate(inspect_results.get(_mode) or {}, do_validate) for _mode in mode
                 }
         else:
             inspect_data = registerer_obj.src_build.get("inspect", {}).get("results", {})
