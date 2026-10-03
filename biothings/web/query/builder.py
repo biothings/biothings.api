@@ -561,6 +561,9 @@ class ESQueryBuilder:
         """
         options = dotdict(options)
 
+        if options.search_after:
+            self._validate_search_after(q, options)
+
         if options.scroll_id:
             # bypass all query building stages
             return ESScrollID(options.scroll_id)
@@ -790,11 +793,29 @@ class ESQueryBuilder:
             raise ValueError(
                 f"Result window is too large: 'from' ({from_}) + 'size' ({size}) must be "
                 f"less than or equal to {MAX_RESULT_WINDOW}. To retrieve more hits than "
-                "that, use 'fetch_all=true' instead of paging with 'from' and 'size'. The "
-                "response includes a '_scroll_id' that you pass back as 'scroll_id' to "
-                "fetch each subsequent batch of about 1000 hits. Note that 'fetch_all' "
-                "results are unsorted, so 'sort' is ignored, and a scroll session expires "
-                "after 1 minute of inactivity."
+                "that, page with 'search_after' instead of 'from': send the query with "
+                "'search_after=*', then pass the '_search_after' value of each response "
+                "back as 'search_after', along with the same query, to get the next page."
+            )
+
+    @staticmethod
+    def _validate_search_after(q, options):
+        """
+        Reject options that cannot be used with search_after pagination.
+        Each page continues after the last hit of the previous page, in a
+        point in time opened for the search, see AsyncESQueryBackend.
+        """
+        if options.fetch_all or options.scroll_id:
+            raise ValueError("search_after cannot be combined with fetch_all or scroll_id.")
+        if q == "__any__":
+            raise ValueError("search_after cannot be used with q=__any__.")
+        if options.aggs:
+            # aggregations would be computed again for every page
+            raise ValueError("search_after does not support facets, request them in a separate query.")
+        if options.get("from"):
+            raise ValueError(
+                "search_after cannot be combined with 'from', "
+                "each page starts after the last hit of the previous page."
             )
 
     def apply_extras(self, search, options):

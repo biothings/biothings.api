@@ -116,6 +116,15 @@ should return a document like this::
 The most commonly used parameter is the "q" parameter, try http://localhost:8000/v1/query?q=cdk2
 and see all the returned results contain "cdk2", the value specified for the "q" parameter.
 
+To page through more hits than "size" and "from" can reach (10,000), add "search_after=*"
+to the query, for example http://localhost:8000/v1/query?q=cdk2&search_after=*, then send
+the same query with "search_after" set to the "_search_after" value of each response, until
+a response no longer includes it. Each search keeps an Elasticsearch point in time open
+between pages for ``ES_SCROLL_TIME`` (1 minute by default), and pages hold ``ES_SCROLL_SIZE``
+hits (1000 by default) unless "size" is given, both set in ``config.py``. Scrolling with
+"fetch_all" and "scroll_id" still works, but those responses include a "_warning"
+recommending "search_after" instead.
+
 .. note::
 
     For a list of the supporting parameters, visit `Biothings API Specifications <https://biothings.io/specs/>`_.

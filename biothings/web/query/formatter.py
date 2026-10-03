@@ -304,7 +304,7 @@ class ESResultFormatter(ResultFormatter):
         if isinstance(response, dict):
             response = self._Hits(response)
             response.collapse("hits")
-            response.exclude(("_shards", "_node", "timed_out"))
+            response.exclude(("_shards", "_node", "timed_out", "pit_id"))
             response.wrap("hits", self._Doc)
 
             for hit in response["hits"]:

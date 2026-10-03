@@ -128,3 +128,39 @@ def test_elasticsearch_querybuilder_aggs_reject_id():
     # a normal aggregation is unaffected
     assert "aggs" in builder.build("term", aggs=["taxid"]).to_dict()
 
+
+def test_elasticsearch_querybuilder_search_after():
+    builder = ESQueryBuilder()
+
+    # unlike fetch_all, search_after keeps the sort and size
+    query = builder.build("term", search_after="*", sort=["-taxid"], size=25).to_dict()
+    assert query["sort"] == [{"taxid": {"order": "desc"}}]
+    assert query["size"] == 25
+
+    # 'from' 0 is the same as no 'from'
+    builder.build("term", search_after="*", **{"from": 0})
+
+    # options that cannot be used with search_after, rejected
+    # before scroll_id skips building the query
+    for options, message in (
+        ({"fetch_all": True}, "fetch_all or scroll_id"),
+        ({"scroll_id": "FGluY2x1ZGVfY29udGV4dF91dWlk"}, "fetch_all or scroll_id"),
+        ({"aggs": ["taxid"]}, "facets"),
+        ({"from": 10}, "'from'"),
+    ):
+        with pytest.raises(ValueError) as exc_info:
+            builder.build("term", search_after="*", **options)
+        assert message in str(exc_info.value)
+
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("__any__", search_after="*")
+    assert "q=__any__" in str(exc_info.value)
+
+
+def test_elasticsearch_querybuilder_result_window_suggests_search_after():
+    builder = ESQueryBuilder()
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", size=1000, **{"from": 9500})
+    message = str(exc_info.value)
+    assert "Result window is too large" in message
+    assert "search_after=*" in message
