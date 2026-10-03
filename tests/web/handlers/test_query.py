@@ -8,9 +8,12 @@ POST /query
 
 import sys
 
+import elasticsearch
 import pytest
 
 from biothings.tests.web import BiothingsWebAppTest
+from biothings.web.handlers.query import SCROLL_DEPRECATION_WARNING
+from biothings.web.query.engine import SearchAfterCursor
 from biothings.web.settings.configs import ConfigModule
 
 
@@ -597,12 +600,14 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res = self.request("/v1/query?q=__all__&fetch_all").json()
         number_hits = len(res["hits"])
         assert number_hits == 60
+        assert res["_warning"] == SCROLL_DEPRECATION_WARNING
 
         scroll_id = res["_scroll_id"]
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         number_hits = len(res["hits"])
         assert number_hits == 40
+        assert res["_warning"] == SCROLL_DEPRECATION_WARNING
 
         scroll_id = res["_scroll_id"]
 
@@ -807,6 +812,113 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res_0 = self.request("/v1/query?q=_exists_:accession&fields=accession").json()
         res_1 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
         assert res_0["hits"] == res_1["hits"]
+
+    def search_after_pages(self, **params):
+        """
+        Request every page of a search_after search,
+        starting with search_after=*, return the pages.
+        """
+        pages = []
+        params["search_after"] = "*"
+        while True:
+            res = self.request("/v1/query", params=params)
+            assert "Cache-Control" not in res.headers
+            page = res.json()
+            assert "_warning" not in page
+            assert "pit_id" not in page  # it is inside the _search_after value
+            pages.append(page)
+            if "_search_after" not in page:
+                return pages
+            params["search_after"] = page["_search_after"]
+
+    def test_40_search_after(self):
+        """GET /v1/query?q=__all__&search_after=*
+        {
+            "_search_after": ...,
+            "total": 100,
+            "hits": [ ... 60 hits ... ]
+        }
+        GET /v1/query?q=__all__&search_after=<_search_after>
+        {
+            "total": 100,
+            "hits": [ ... 40 hits ... ]
+        }
+        """
+        pages = self.search_after_pages(q="__all__")
+        # the default page size is ES_SCROLL_SIZE
+        assert [len(page["hits"]) for page in pages] == [60, 40]
+        assert [page["total"] for page in pages] == [100, 100]
+        assert len({hit["_id"] for page in pages for hit in page["hits"]}) == 100
+
+    def test_41_search_after_size(self):
+        # the last page is full, the total tells it is the last
+        pages = self.search_after_pages(q="__all__", size=25)
+        assert [len(page["hits"]) for page in pages] == [25, 25, 25, 25]
+        assert [page["total"] for page in pages] == [100, 100, 100, 100]
+        assert len({hit["_id"] for page in pages for hit in page["hits"]}) == 100
+
+    def test_42_search_after_sort(self):
+        # taxid has ties, ordered by the _shard_doc tiebreaker
+        pages = self.search_after_pages(q="__all__", sort="taxid", size=7, fields="taxid")
+        hits = [hit for page in pages for hit in page["hits"]]
+        assert len({hit["_id"] for hit in hits}) == 100
+        taxids = [hit["taxid"] for hit in hits]
+        assert taxids == sorted(taxids)
+
+    def test_43_search_after_sort_missing(self):
+        # the sort values of the 18 documents without type_of_gene are null
+        pages = self.search_after_pages(q="__all__", sort="-type_of_gene", size=10, fields="type_of_gene")
+        hits = [hit for page in pages for hit in page["hits"]]
+        assert len({hit["_id"] for hit in hits}) == 100
+        assert ["type_of_gene" in hit for hit in hits] == [True] * 82 + [False] * 18
+
+    def test_44_search_after_invalid(self):
+        res = self.request("/v1/query?q=__all__&search_after=<invalid>", expect=400).json()
+        assert res["success"] is False
+        assert "search_after=*" in res["details"]
+
+        # options that cannot be used with search_after
+        for params in (
+            {"fetch_all": "true"},
+            {"scroll_id": "FGluY2x1ZGVfY29udGV4dF91dWlk"},
+            {"from": 10},
+            {"aggs": "taxid"},
+            {"q": "__any__"},
+        ):
+            res = self.request("/v1/query", params={"q": "__all__", "search_after": "*", **params}, expect=400)
+            assert res.json()["success"] is False
+
+        # size 0 only counts the hits, there is no page to continue after
+        page = self.request("/v1/query", params={"q": "__all__", "size": 0, "search_after": "*"}).json()
+        assert page["total"] == 100
+        assert page["hits"] == []
+        assert "_search_after" not in page
+
+        # from 0 is the same as no from
+        page = self.request("/v1/query", params={"q": "__all__", "from": 0, "size": 10, "search_after": "*"}).json()
+        assert len(page["hits"]) == 10
+        assert "_search_after" in page
+
+    def test_45_search_after_other_query(self):
+        page = self.request("/v1/query", params={"q": "__all__", "size": 10, "search_after": "*"}).json()
+        cursor = page["_search_after"]
+
+        for params in ({"q": "cdk2"}, {"q": "__all__", "sort": "taxid"}, {"q": "__all__", "filter": "taxid:9606"}):
+            res = self.request("/v1/query", params={**params, "size": 10, "search_after": cursor}, expect=400)
+            assert "different query" in res.json()["details"]
+
+        # the fields returned and the page size may change between pages
+        res = self.request("/v1/query", params={"q": "__all__", "fields": "symbol", "size": 5, "search_after": cursor})
+        assert len(res.json()["hits"]) == 5
+
+    def test_46_search_after_expired(self):
+        page = self.request("/v1/query", params={"q": "__all__", "search_after": "*"}).json()
+        client = elasticsearch.Elasticsearch(hosts=self.config.ES_HOST)
+        client.close_point_in_time(id=SearchAfterCursor.decode(page["_search_after"]).pit)
+
+        params = {"q": "__all__", "search_after": page["_search_after"]}
+        res = self.request("/v1/query", params=params, expect=400).json()
+        assert "expired" in res["details"]
 
 
 class TestQueryString(BiothingsWebAppTest):
