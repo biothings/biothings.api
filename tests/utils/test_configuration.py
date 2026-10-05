@@ -70,3 +70,10 @@ def test_reset_parameters(config):
     config.store_value_to_db("HUB_NAME", "renamed")
     assert config.reset() is True  # all of them
     assert config._db.docs == {}
+
+
+def test_hidden_secrets_are_not_stored(config):
+    # eg. a value copied from the hub's API or Studio, which hide secrets
+    with pytest.raises(ValueError, match="hidden secrets"):
+        config.store_value_to_db("HUB_MAX_WORKERS", {"cloud": {"secret_key": "********"}})
+    assert config._db.docs == {}

@@ -4,6 +4,7 @@ import tornado.escape
 
 from biothings.hub.terminal import CommandUsageError, ConfirmationRequired, UnknownCommand
 from biothings.utils.hub import AlreadyRunningException, CommandError, CommandNotAllowed, NoSuchCommand
+from biothings.utils.redact import redact_secrets
 
 from .base import DefaultHandler
 
@@ -71,4 +72,4 @@ class TerminalRunHandler(DefaultHandler):
         payload = {"status": "error", "code": code, "error": message}
         payload.update({key: value for key, value in details.items() if value})
         # bypass DefaultHandler.write(), which reports the payload as a successful result
-        super(DefaultHandler, self).write(payload)
+        super(DefaultHandler, self).write(redact_secrets(payload))

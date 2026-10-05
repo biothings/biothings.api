@@ -11,6 +11,7 @@ from json import JSONDecodeError
 from biothings.utils.dataload import dict_traverse
 from biothings.utils.jsondiff import make as jsondiff
 from biothings.utils.loggers import setup_default_log
+from biothings.utils.redact import REDACTED
 
 
 class ConfigurationError(Exception):
@@ -277,6 +278,9 @@ class ConfigurationWrapper:
                 json.loads(value)
             except JSONDecodeError:
                 value = json.dumps(value)
+        if REDACTED in value:
+            # eg. a value copied from the hub's API or Studio, which hide secrets
+            raise ValueError("The value contains hidden secrets (%s), give their actual value" % REDACTED)
 
         res = self._db.update_one(
             {"_id": name},

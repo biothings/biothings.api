@@ -86,7 +86,14 @@ PARAM_KINDS = {
 # Other commands (eg. defined in hook files) are described by their docstring.
 BUILTIN_HELP = {
     # hub
-    "status": ("Summary of the hub: number of sources, documents, builds and APIs", ["status"]),
+    "status": (
+        "Summary of the hub: number of sources, documents, builds and APIs (launched commands: see commands)",
+        ["status"],
+    ),
+    "envs": (
+        "Index, snapshot and release environments (INDEX_CONFIG, SNAPSHOT_CONFIG, RELEASE_CONFIG), secrets hidden",
+        ["envs"],
+    ),
     "help": ("Help about a command, or list all commands", ["help", "help dump"]),
     "commands": ("Commands launched on the hub, with their status", ["commands", "commands --running true"]),
     "command": ("Status and results of a launched command", ["command 12"]),
@@ -126,6 +133,10 @@ BUILTIN_HELP = {
     "update_source_meta": ("Update the metadata of a source (version, license...)", ["update_source_meta mygene"]),
     "sources": ("All the sources, with their dump and upload information", ["sources"]),
     "source_info": ("Details about a source: dump, upload, mapping...", ["source_info mygene"]),
+    "source_summary": (
+        "Download and upload status of each data source: release, dates, documents, errors",
+        ["source_summary"],
+    ),
     "source_reset": (
         "Delete the information stored about a source's upload (or its dump, or inspection)",
         ["source_reset mygene", "source_reset mygene download"],
@@ -148,6 +159,14 @@ BUILTIN_HELP = {
     "builds": ("All the builds", ["builds"]),
     "build": ("Details about a build", ["build mygene_20240101_abcdefgh"]),
     "lsmerge": ("List the builds, optionally for a build configuration only", ["lsmerge", "lsmerge mygene"]),
+    "build_summary": (
+        "Summary of a build: configuration, sources, steps, index, snapshot, release, pending actions (secrets hidden)",
+        ["build_summary mygene_20240101_abcdefgh"],
+    ),
+    "build_config": (
+        "Build configurations, or one of them, with their builds",
+        ["build_config", "build_config mygene"],
+    ),
     "merge": ("Create a new build from a build configuration", ["merge mygene"]),
     "rmmerge": ("Delete a build", ["rmmerge mygene_20240101_abcdefgh"]),
     "archive": ("Archive a build: delete its data but keep its metadata", ["archive mygene_20240101_abcdefgh"]),
@@ -247,6 +266,51 @@ BUILTIN_HELP = {
     ),
     # other
     "export_command_documents": ("Write the documentation of the hub commands to a file", []),
+}
+
+# More about the commands of a build's release, shown by "help <command>" before their docstring
+BUILTIN_DETAILS = {
+    "merge": (
+        "Merges the sources of a build configuration into a new build, in the target database, named "
+        "<configuration>_<version>_<random>: its version is the date (YYYYMMDD) unless the configuration's "
+        "build_version says otherwise. Its sources must have been uploaded successfully. If the configuration "
+        "automates the next steps (autobuild, see build_config), they're queued once merged: diff and/or "
+        "snapshot (pending, see build_summary). Otherwise: index it, then snapshot it, and/or diff it against "
+        "a previous build."
+    ),
+    "diff": (
+        "Computes the differences between two builds, in DIFF_PATH: used by report, sync and publish_diff. "
+        "Then, in background, the new build's release note is created (pending: release_note, see build_summary)."
+    ),
+    "index": (
+        "Indexes a build in an environment of INDEX_CONFIG (see envs), in an index named after the build "
+        "(unless --index-name). Then: snapshot <environment> <index>."
+    ),
+    "snapshot": (
+        "Snapshots an index in the repository of an environment of SNAPSHOT_CONFIG (see envs), eg. an S3 "
+        "bucket, named after the index (unless --snapshot). Then, in background, the build's release note is "
+        "created against the previous build (pending: release_note, see build_summary), which publish_snapshot "
+        "waits for."
+    ),
+    "publish_snapshot": (
+        "Publishes a full release from a build's snapshot, to an environment of RELEASE_CONFIG (see envs): "
+        "uploads the build's release note (created after the snapshot) and the release's metadata (<version>.json, "
+        "versions.json and latest.json updated) to the release bucket. The snapshot data stays in its repository."
+    ),
+    "publish_diff": (
+        "Publishes an incremental release from a build's diff against a previous build (see diff), to an "
+        "environment of RELEASE_CONFIG (see envs): uploads the diff files to the diff bucket, then the release "
+        "note and the release's metadata (<version>.json, versions.json, latest.json) to the release bucket."
+    ),
+    "publish": (
+        "Runs publish_snapshot for a snapshot, or publish_diff for a build with a diff. A build with both a "
+        "snapshot and a diff is ambiguous: use publish_snapshot or publish_diff."
+    ),
+    "create_release_note": (
+        "Creates the release note between two builds (source versions, document counts, fields added and removed, "
+        "and with a diff, the documents added, updated and deleted), in RELEASE_PATH. Created automatically "
+        "after a snapshot or a diff, against the previous build."
+    ),
 }
 
 # Commands deleting or overwriting data, or stopping the hub: terminals ask for a confirmation before
@@ -627,6 +691,9 @@ class HubTerminal:
                     }
                 )
         summary, examples = BUILTIN_HELP.get(name, (None, [])) if name not in self.origins else (None, [])
+        details = BUILTIN_DETAILS.get(name) if name not in self.origins else None
+        if details:
+            doc = details + ("\n\n" + doc if doc else "")
         return {
             "name": name,
             "summary": summary or (doc.strip().splitlines()[0] if doc.strip() else ""),
@@ -1054,7 +1121,10 @@ class HubTerminal:
         asynchronous (coroutine, future, list of futures...), None otherwise.
         """
         if inspect.iscoroutine(result) or asyncio.isfuture(result):
-            return self.loop().create_task(json_safe_result(result))
+            task = self.loop().create_task(json_safe_result(result))
+            # eg. dump_all(): which sources are done, see biothings.hub.dataload.manager.wait_for_sources()
+            task.progress = getattr(result, "progress", None)
+            return task
         if isinstance(result, concurrent.futures.Future):
             return self.loop().create_task(json_safe_result(asyncio.wrap_future(result)))
         if isinstance(result, (list, tuple)) and result:

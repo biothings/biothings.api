@@ -25,6 +25,7 @@ from biothings.cli.commands.hub import hub_application, print_command_results, p
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.base import RootHandler
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
+from biothings.utils.hub import CommandDefinition
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +83,27 @@ def hub(tmp_path):
         """Always fail"""
         raise ValueError("bad %s" % what)
 
-    terminal, shell, sources = make_terminal(slow=slow, boom=boom, rmmerge=lambda merge_name: "deleted %s" % merge_name)
+    def dump_sources(delay=0.05):
+        """Dump some sources, telling which ones are done (like dump_all)"""
+
+        async def wait():
+            for line in ["mondo done (1/2)", "hpo done (2/2)"]:
+                await asyncio.sleep(delay)
+                progress.append(line)
+            return "dumped"
+
+        progress = ["dump mondo, hpo"]
+        task = asyncio.ensure_future(wait())
+        task.progress = progress
+        return task
+
+    terminal, shell, sources = make_terminal(
+        slow=slow,
+        boom=boom,
+        dump_sources=dump_sources,
+        rmmerge=lambda merge_name: "deleted %s" % merge_name,
+        inspection=CommandDefinition(command=lambda name: {"inspected": name}, hidden=True),  # eg. used by Studio
+    )
     hook = tmp_path / "greetings.py"
     hook.write_text(textwrap.dedent('''
             def greet(name, excited=False):
@@ -159,21 +180,59 @@ def test_run_waits_for_async_commands(hub):
     assert '"slow": "mygene"' in result.output
 
 
-def test_run_no_wait_and_status(hub):
+def test_run_no_wait_and_history(hub):
     result = cli(hub, "run", "--no-wait", "slow", "mygene", "--delay", "1")
     assert result.exit_code == 0, result.output
     assert "[#1] slow('mygene', delay=1.0) started" in result.output
-    status = cli(hub, "status", "--running")
-    assert "running" in status.output and "slow('mygene', delay=1.0)" in status.output
-    assert "running" in cli(hub, "status", "1").output
+    assert "Follow it with: biothings-cli hub history 1" in result.output
+    history = cli(hub, "history", "--running")
+    assert "running" in history.output and "slow('mygene', delay=1.0)" in history.output
+    assert "running" in cli(hub, "history", "1").output
     for _ in range(500):
         if hub.shell.launched_commands[1].get("is_done"):
             break
         time.sleep(0.02)
-    result = cli(hub, "status", "1")
+    result = cli(hub, "history", "1")
     assert result.exit_code == 0, result.output
     assert "[#1] slow('mygene', delay=1.0) done" in result.output
-    assert "done" in cli(hub, "status").output
+    assert "done" in cli(hub, "history").output
+
+
+def test_history_filters(hub):
+    for line in ["dump mygene", "upload mygene", "inspection mygene", "upload myvariant"]:
+        assert cli(hub, "run", line).exit_code == 0
+    result = cli(hub, "history")
+    assert result.exit_code == 0, result.output
+    assert "dump('mygene')" in result.output and "upload('myvariant')" in result.output
+    assert "inspection" not in result.output  # a hidden command
+    assert "inspection('mygene')" in cli(hub, "history", "--all").output
+    result = cli(hub, "history", "--search", "UPLOAD")
+    assert "upload('mygene')" in result.output and "upload('myvariant')" in result.output
+    assert "dump" not in result.output
+    assert "No command found" in cli(hub, "history", "-s", "nothing").output
+    assert len(json.loads(cli(hub, "history", "--json", "-s", "mygene").output)) == 2
+    # its former name, easily mixed up with "run status"
+    assert "upload('myvariant')" in cli(hub, "status").output
+
+
+def test_run_prints_progress(hub):
+    result = cli(hub, "run", "--interval", "0.01", "dump_sources")
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines.index("dump mondo, hpo") < lines.index("mondo done (1/2)") < lines.index("hpo done (2/2)")
+    assert "dumped" in lines
+    # and "history <id>" while it runs
+    command_id = json.loads(cli(hub, "run", "--no-wait", "--json", "dump_sources", "--delay", "0.3").output)["id"]
+    for _ in range(100):
+        if "mondo done (1/2)" in (hub.shell.launched_commands[command_id].get("progress") or []):
+            break
+        time.sleep(0.02)
+    output = cli(hub, "history", str(command_id)).output
+    assert "[#%s] dump_sources(delay=0.3) running\ndump mondo, hpo\nmondo done (1/2)" % command_id in output
+    for _ in range(100):
+        if hub.shell.launched_commands[command_id].get("is_done"):
+            break
+        time.sleep(0.02)
 
 
 def test_run_failures(hub):
@@ -239,7 +298,7 @@ def test_unreachable_and_older_hubs():
         result = CliRunner().invoke(hub_application, ["--url", url, "commands"])
         assert result.exit_code == 1
         assert "doesn't provide the terminal API" in result.output
-        assert "biothings-cli hub status" in result.output
+        assert "biothings-cli hub history" in result.output
     finally:
         stop()
 

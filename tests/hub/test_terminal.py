@@ -18,10 +18,12 @@ import tornado.testing
 import tornado.web
 from terminal_fakes import FakeShell, make_terminal
 
-from biothings.hub import HubServer
+from biothings.hub import HubServer, overview
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
 from biothings.hub.terminal import (
+    BUILTIN_DETAILS,
+    BUILTIN_HELP,
     CommandUsageError,
     ConfirmationRequired,
     UnknownCommand,
@@ -38,6 +40,7 @@ from biothings.utils.hub import (
     CommandNotAllowed,
     CompositeCommand,
 )
+from biothings.utils.redact import REDACTED
 
 # -------------------------------------------------------------------------------------
 # Parsing
@@ -395,6 +398,38 @@ async def test_failed_background_commands_keep_their_traceback():
 
 
 @pytest.mark.asyncio
+async def test_progress_of_background_commands():
+    """eg. dump_all(): which sources are done, while it runs (see wait_for_sources())"""
+    release = asyncio.Event()
+
+    def dump_sources():
+        async def wait():
+            progress.append("mondo done (1/2)")
+            await release.wait()
+            progress.append("hpo done (2/2)")
+            return {"mondo": "done", "hpo": "done"}
+
+        progress = ["dump mondo, hpo"]
+        task = asyncio.ensure_future(wait())
+        task.progress = progress
+        return task
+
+    async def refresh_sources():
+        return "refreshed"  # no progress
+
+    terminal, shell, _ = make_terminal(dump_sources=dump_sources, refresh_sources=refresh_sources)
+    command_id = terminal.run("dump_sources")["id"]
+    await asyncio.sleep(0.01)
+    shell.refresh_commands()
+    assert shell.command_info(id=command_id)["progress"] == ["dump mondo, hpo", "mondo done (1/2)"]
+    release.set()
+    info = await wait_done(shell, command_id)
+    assert info["progress"] == ["dump mondo, hpo", "mondo done (1/2)", "hpo done (2/2)"]
+    assert info["results"] == [{"mondo": "done", "hpo": "done"}]
+    assert "progress" not in await wait_done(shell, terminal.run("refresh_sources")["id"])
+
+
+@pytest.mark.asyncio
 async def test_run_async_commands_are_tracked():
     async def refresh(source, delay=0.01):
         """Refresh a source (coroutine)"""
@@ -674,6 +709,20 @@ def test_catalog_describes_runnable_commands():
     json.dumps(catalog)  # served as JSON
 
 
+def test_release_commands_tell_more():
+    """Built-in commands of a build's release: what they need, what they do, what comes next"""
+
+    def snapshot(snapshot_env, index, snapshot=None):
+        """Create a snapshot of an index"""
+
+    terminal, _, _ = make_terminal(snapshot=snapshot)
+    described = terminal.describe("snapshot")
+    assert described["summary"] == BUILTIN_HELP["snapshot"][0]
+    assert described["doc"] == BUILTIN_DETAILS["snapshot"] + "\n\nCreate a snapshot of an index"
+    assert "publish_snapshot waits for" in described["doc"]
+    assert set(BUILTIN_DETAILS) <= set(BUILTIN_HELP)
+
+
 def test_hubshell_add_command_and_help_by_name():
     terminal, shell, sources = make_terminal()
     previous = shell.add_command("dump", CommandDefinition(command=sources.dump_all, tracked=False))
@@ -729,6 +778,33 @@ def test_hubserver_hides_data_release_commands_without_releases(version_urls, hi
     assert shell.hidden["dump"] is False
 
 
+def test_hubserver_overview_commands(monkeypatch):
+    """Readable summaries of the hub's state: read-only, not tracked (they would clutter the history)"""
+    monkeypatch.setattr(overview, "config", SimpleNamespace())  # no index, snapshot nor release environments
+    server = HubServer(source_list=[], name="Test Hub")
+    server.features = ["autohub"]
+    server.managers = {
+        "dump_manager": MagicMock(register={}),
+        "upload_manager": MagicMock(register={}),
+        "build_manager": MagicMock(),
+    }
+    server.autohub_feature = SimpleNamespace(
+        version_urls=[{"name": "mygene.info", "url": "..."}], list_biothings=lambda: ["mygene.info"], install=print
+    )
+    server.configure_commands()
+    shell = FakeShell(server.commands)
+    names = ["envs", "source_summary", "build_summary", "build_config", "lsmerge"]
+    assert [shell.tracked[name] for name in names] == [False] * len(names)
+    assert [shell.hidden[name] for name in names] == [False] * len(names)
+    assert shell.commands["envs"]() == {
+        "index": {},
+        "snapshot": {},
+        "release": {},
+        "release_installers": ["mygene.info"],
+    }
+    assert shell.commands["source_summary"]() == {}
+
+
 # -------------------------------------------------------------------------------------
 # HTTP handlers
 # -------------------------------------------------------------------------------------
@@ -743,8 +819,18 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
         def last_update():
             return {"started_at": datetime.datetime(2026, 9, 1, 18, 47, 24)}  # naive, as read from MongoDB
 
+        def snapshot_conf():
+            return {"cloud": {"access_key": "AKIA123", "secret_key": "s3cr3t", "region": "us-west-2"}}
+
+        def connect():
+            raise ConnectionError("can't reach mongodb://user:pass@su09:27017")
+
         self.terminal, self.shell, _ = make_terminal(
-            slow=slow, last_update=last_update, rmmerge=lambda merge_name: "deleted %s" % merge_name
+            slow=slow,
+            last_update=last_update,
+            rmmerge=lambda merge_name: "deleted %s" % merge_name,
+            snapshot_conf=snapshot_conf,
+            connect=connect,
         )
         self.inputs = []
         shellog = SimpleNamespace(input=self.inputs.append)
@@ -793,6 +879,21 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
         assert code == 400
         response = self.fetch("/terminal/run", method="POST", body="{oops", raise_error=False)
         assert response.code == 400
+
+    def test_secrets_are_hidden(self):
+        code, body = self.run_command({"cmd": "snapshot_conf"})
+        assert body["result"]["result"] == {
+            "cloud": {"access_key": REDACTED, "secret_key": REDACTED, "region": "us-west-2"}
+        }
+        code, body = self.run_command({"cmd": "connect"})
+        assert body["result"]["error"] == "ConnectionError: can't reach mongodb://%s@su09:27017" % REDACTED
+        # errors too
+        code, body = self.run_command({"cmd": "slow mongodb://user:pass@su09"})
+        command_id = body["result"]["id"]
+        code, body = self.run_command({"cmd": "slow mongodb://user:pass@su09"})
+        assert code == 409
+        assert body["error"] == "'slow('mongodb://%s@su09')' is already running (command #%s)" % (REDACTED, command_id)
+        self.io_loop.run_sync(lambda: wait_done(self.shell, command_id))
 
     def test_naive_dates_are_sent_as_utc(self):
         code, body = self.run_command({"cmd": "last_update"})

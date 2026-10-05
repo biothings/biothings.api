@@ -484,6 +484,10 @@ class HubShell(InteractiveShell):
                 continue
             # is_done = set([j.done() for j in info["jobs"]]) == set([True])   # TODO: remove this line
             is_done = {j.done() for j in info["jobs"]} == {True}
+            # eg. dump_all(): which sources are done (see wait_for_sources()), followed by terminals
+            progress = [line for j in info["jobs"] for line in getattr(j, "progress", None) or []]
+            if progress:
+                cls.launched_commands[num]["progress"] = progress
             has_err = is_done and [True for j in info["jobs"] if j.exception()] or None
             localoutputs = (
                 is_done

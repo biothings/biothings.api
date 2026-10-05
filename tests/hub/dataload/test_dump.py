@@ -12,7 +12,7 @@ import requests
 
 from biothings.hub.autoupdate import BiothingsDumper
 from biothings.hub.dataload.dumper import BaseDumper, DumperManager, HTTPDumper
-from biothings.hub.dataload.manager import SourcesFailed
+from biothings.hub.dataload.manager import SourcesFailed, wait_for_sources
 
 
 def test_base_dumper():
@@ -148,3 +148,26 @@ async def test_dump_all_tells_which_sources_failed(monkeypatch, caplog):
     assert "(still running: mondo)" in caplog.text
     jobs["mydisease-disease__es9"] = [dumped]
     assert await manager.dump_all() == {"mondo": "done", "mydisease-disease__es9": "done", "disgenet": "skipped"}
+
+
+@pytest.mark.asyncio
+async def test_wait_for_sources_progress():
+    """The progress of commands run on several sources (eg. dump_all), shown by terminals while they run"""
+
+    async def done(delay):
+        await asyncio.sleep(delay)
+
+    async def failed():
+        await asyncio.sleep(0.01)
+        raise TypeError("string indices must be integers, not 'str'")
+
+    # hpo: 2 jobs (eg. sub-sources), done once both are
+    task = wait_for_sources("dump", {"mondo": [failed()], "hpo": [done(0.02), done(0.04)], "disgenet": []})
+    assert task.progress == ["dump mondo, hpo (skipped: disgenet)"]
+    with pytest.raises(SourcesFailed):
+        await task
+    assert task.progress == [
+        "dump mondo, hpo (skipped: disgenet)",
+        "mondo failed (1/2): TypeError: string indices must be integers, not 'str'",
+        "hpo done (2/2)",
+    ]

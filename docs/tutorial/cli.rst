@@ -304,8 +304,8 @@ BioThings Studio: the built-in commands every hub provides (``dump_all``,
    biothings-cli hub help dump                     # usage and documentation of a command
    biothings-cli hub run dump all                  # run a command, wait for it to finish
    biothings-cli hub run --no-wait upload mygene   # run a command in background
-   biothings-cli hub status                        # launched commands, and their status
-   biothings-cli hub status 12                     # status and results of command #12
+   biothings-cli hub history                       # launched commands, and their status
+   biothings-cli hub history 12                    # status and results of command #12
    biothings-cli hub hooks                         # hook files loaded by the hub
    biothings-cli hub shell                         # interactive terminal
 
@@ -325,13 +325,25 @@ Options of ``run`` go before the command name (``--no-wait``, ``--json``,
 commands return their result right away, others start a job in background: by
 default, ``run`` waits for the job to finish and prints its results, while
 ``--no-wait`` returns right away with the command ID, to follow it with
-``biothings-cli hub status <ID>``.
+``biothings-cli hub history <ID>``.
 
 What a command logs while it's called (eg. ``logger.info(...)``) is printed on
 stderr, its results on stdout. Commands deleting or changing data (eg. ``rmmerge``,
 ``archive``, ``resetconf``, or ``auto_archive`` when it's not a dry run) must be
 confirmed: ``run`` asks for it from an interactive terminal, ``--yes`` confirms right
 away (eg. in scripts).
+
+To see the hub's state: ``run source_summary`` (each data source's download and upload),
+``run build_config <name>``, ``run build_summary <build>`` (its steps, index, snapshot,
+release note, what's pending...) and ``run envs`` (the index, snapshot and release
+environments to give to ``index``, ``snapshot`` and ``publish``). Secrets, such as the
+cloud credentials of release environments, are hidden in all the hub's API responses.
+While ``dump all`` and ``upload all`` run, ``run`` prints each source as it's done.
+``history`` lists the commands launched since the hub started: ``--search`` filters them,
+``--all`` includes the calls to advanced commands (eg. made by BioThings Studio). The help
+of the release commands (``help merge``, ``help snapshot``, ``help publish``...) tells what
+they need, what they do and what comes next: eg. ``publish`` waits for the release note
+created in background after a snapshot.
 
 If the hub is behind an authentication proxy, an access token can be given with
 ``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), it's sent in the

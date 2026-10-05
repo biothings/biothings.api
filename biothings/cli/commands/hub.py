@@ -9,13 +9,14 @@ in the hub's hook files (python files in the hub's HOOKS_FOLDER)
 > biothings-cli hub help dump                    usage and documentation of a command
 > biothings-cli hub run dump all                 run a command, wait for it to finish
 > biothings-cli hub run --no-wait upload mygene  run a command in background
-> biothings-cli hub status [ID]                  launched commands and their results
+> biothings-cli hub history [ID]                 launched commands and their results
 > biothings-cli hub hooks                        hook files loaded by the hub
 > biothings-cli hub shell                        interactive terminal
 """
 
 import json
 import os
+import re
 import sys
 import time
 from typing import List, Optional
@@ -88,7 +89,7 @@ class HubClient:
             raise HubAPIError(
                 payload.get("error")
                 or "This hub doesn't provide the terminal API: it runs an older BioThings version, or without "
-                "the 'terminal' feature. Its commands can still be followed with 'biothings-cli hub status'",
+                "the 'terminal' feature. Its commands can still be followed with 'biothings-cli hub history'",
                 status=404,
                 payload=payload,
             )
@@ -116,11 +117,19 @@ class HubClient:
     def commands(self, running=False):
         return self.request("GET", "/commands", params={"running": 1} if running else None)
 
-    def wait(self, command_id, timeout=None, interval=1.0):
-        """Poll a command running in background until it's done, returning its final state"""
+    def wait(self, command_id, timeout=None, interval=1.0, on_progress=None):
+        """
+        Poll a command running in background until it's done, returning its final state. on_progress
+        is called with its new progress lines, if any (eg. dump_all: which sources are done)
+        """
         started = time.time()
+        reported = 0
         while True:
             info = self.command(command_id)
+            progress = info.get("progress") or []  # not sent by older hubs
+            if on_progress and len(progress) > reported:
+                on_progress(progress[reported:])
+                reported = len(progress)
             if info.get("is_done"):
                 return info
             if timeout is not None and time.time() - started > timeout:
@@ -399,7 +408,7 @@ def run_command(
         else:
             print_logs(response)
             print_text("[#%s] %s started" % (response["id"], response["cmd"]))
-            print_text("Follow it with: biothings-cli hub status %s" % response["id"], style="dim")
+            print_text("Follow it with: biothings-cli hub history %s" % response["id"], style="dim")
         return
 
     if not as_json:
@@ -409,7 +418,12 @@ def run_command(
             info = client.wait(response["id"], timeout=wait_timeout, interval=interval)
         else:
             with console.status("[#%s] %s running..." % (response["id"], escape(response["cmd"]))):
-                info = client.wait(response["id"], timeout=wait_timeout, interval=interval)
+                info = client.wait(
+                    response["id"],
+                    timeout=wait_timeout,
+                    interval=interval,
+                    on_progress=lambda lines: [print_text(line, style="dim", stderr=True) for line in lines],
+                )
     except KeyboardInterrupt:
         print_text("Stopped waiting, command #%s keeps running on the hub" % response["id"], stderr=True)
         raise typer.Exit(130)
@@ -424,11 +438,24 @@ def run_command(
     raise typer.Exit(0 if ok else 1)
 
 
-@hub_application.command(name="status")
-def command_status(
+def command_name(cmd):
+    """Name of the command called by a command line from the history, eg. dump for "dump('mygene')" """
+    match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)", cmd or "")
+    return match.group(1) if match else None
+
+
+@hub_application.command(name="history")
+def command_history(
     ctx: typer.Context,
     command_id: Annotated[Optional[int], typer.Argument(help="ID of a command, as returned by 'run'")] = None,
     running: Annotated[bool, typer.Option("--running", help="Only list commands still running")] = False,
+    search: Annotated[
+        Optional[str], typer.Option("--search", "-s", help="Only list commands containing this text")
+    ] = None,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", "-a", help="Also list the calls to advanced commands (eg. made by BioThings Studio)"),
+    ] = False,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Number of commands to list")] = 20,
     as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
     verbose: Annotated[
@@ -436,7 +463,7 @@ def command_status(
     ] = False,
 ):
     """
-    Show the commands launched on the hub, or the status and results of one of them
+    Show the commands launched on the hub (since it started), or the status and results of one of them
     """
     client = get_client(ctx)
     try:
@@ -444,19 +471,34 @@ def command_status(
     except HubAPIError as e:
         print_error(e)
         raise typer.Exit(1)
+    if command_id is None:
+        hidden = set()
+        if not show_all:
+            try:
+                hidden = {cmd["name"] for cmd in client.catalog()["commands"] if cmd["hidden"]}
+            except HubAPIError:  # older hubs: no terminal API
+                pass
+        result = {
+            key: cmd
+            for key, cmd in result.items()
+            if command_name(cmd.get("cmd")) not in hidden
+            and (not search or search.lower() in cmd.get("cmd", "").lower())
+        }
     if as_json:
         print_json(result)
         return
     if command_id is not None:
         if not result.get("is_done"):
             print_text("[#%s] %s running" % (result["id"], result["cmd"]))
+            for line in result.get("progress") or []:  # eg. dump_all: which sources are done
+                print_text(line, style="dim")
             return
         if not print_command_results(result, verbose=verbose):
             raise typer.Exit(1)
         return
     commands = sorted(result.values(), key=lambda cmd: cmd.get("id", 0), reverse=True)[:limit]
     if not commands:
-        console.print("No command %s" % ("running" if running else "launched yet"))
+        console.print("No command %s" % ("running" if running else "found"))
         return
     table = Table(box=box.SIMPLE)
     table.add_column("id", justify="right")
@@ -472,6 +514,10 @@ def command_status(
             status = "[green]done[/green]"
         table.add_row(str(cmd.get("id")), status, cmd.get("duration") or "", escape(cmd.get("cmd", "")))
     console.print(table)
+
+
+# its previous name, easily mixed up with "run status" (the hub's summary)
+hub_application.command(name="status", hidden=True)(command_history)
 
 
 @hub_application.command(name="hooks")

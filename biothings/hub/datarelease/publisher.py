@@ -24,6 +24,7 @@ from biothings.utils.hub import publish_data_version, template_out
 from biothings.utils.hub_db import get_src_build
 from biothings.utils.loggers import get_logger
 from biothings.utils.mongo import get_previous_collection
+from biothings.utils.redact import redact_secrets
 
 from .releasenote import ReleaseNoteSource, ReleaseNoteSrcBuildReader
 
@@ -355,6 +356,32 @@ class SnapshotPublisher(BasePublisher):
     def run_pre_publish_snapshot(self, snapshot_name, repo_conf, build_doc):
         return self.run_pre_post("snapshot", "pre", snapshot_name, repo_conf, build_doc)
 
+    async def wait_for_release_note(self, build_name, timeout=120, interval=2):
+        """
+        Wait for a build's release note, created in background after its snapshot (see
+        set_pending_to_release_note()), against the previous build
+        """
+        self.logger.info("Waiting for the release note of '%s' (created after its snapshot)", build_name)
+        waited = 0
+        while True:
+            # registered once created, or once failed (without its changes then)
+            notes = (get_src_build().find_one({"_id": build_name}) or {}).get("release_note")
+            if notes:
+                if not any("changes" in (note or {}) for note in notes.values()):
+                    raise PublisherException(
+                        "The release note of '%s' failed (see build_summary): create it again with "
+                        "create_release_note %s %s" % (build_name, next(iter(notes)), build_name)
+                    )
+                return
+            if waited >= timeout:
+                raise PublisherException(
+                    "No release note for '%s' after %ss (it's created after its snapshot, against the previous "
+                    "build): create it with create_release_note <previous build> %s, or give previous_build"
+                    % (build_name, timeout, build_name)
+                )
+            await asyncio.sleep(interval)
+            waited += interval
+
     def publish(self, snapshot, build_name=None, previous_build=None, steps=("pre", "meta", "post")):
         """
         Publish snapshot metadata to S3. If snapshot repository is of type "s3", data isn't actually
@@ -393,6 +420,15 @@ class SnapshotPublisher(BasePublisher):
 
         # instantiate publishing environment
         self.envconf = self.template_out_conf(bdoc)
+
+        if previous_build is None and not bdoc.get("release_note"):
+            # a build's release note is created in background after its snapshot, against the previous
+            # build (pending "release_note", see post_snapshot()): publish once it's there
+            async def publish_with_release_note():
+                await self.wait_for_release_note(bdoc["_id"])
+                return await self.publish(snapshot, build_name=bdoc["_id"], previous_build=None, steps=steps)
+
+            return self.job_manager.loop.create_task(publish_with_release_note())
 
         # check if a release note is associated to the build document
         release_folder = None
@@ -434,7 +470,7 @@ class SnapshotPublisher(BasePublisher):
                         publish={
                             "full": {
                                 snapshot: {
-                                    "conf": self.envconf,
+                                    "conf": redact_secrets(self.envconf),
                                     step: {"err": str(e)},
                                 }
                             }
@@ -448,7 +484,7 @@ class SnapshotPublisher(BasePublisher):
                     job={"step": step, "result": res},
                     publish={
                         "full": {
-                            snapshot: {"conf": self.envconf, step: res},
+                            snapshot: {"conf": redact_secrets(self.envconf), step: res},
                         }
                     },
                 )
@@ -568,7 +604,7 @@ class SnapshotPublisher(BasePublisher):
                                 publish={
                                     "full": {
                                         snapshot: {
-                                            "conf": self.envconf,
+                                            "conf": redact_secrets(self.envconf),
                                             "release-note": {
                                                 "base_dir": s3basedir,
                                                 "bucket": s3_release_bucket,
@@ -587,7 +623,7 @@ class SnapshotPublisher(BasePublisher):
                                 publish={
                                     "full": {
                                         snapshot: {
-                                            "conf": self.envconf,
+                                            "conf": redact_secrets(self.envconf),
                                             "release-note": {
                                                 "err": str(e),
                                                 # TODO: set value to s3basedir in case it not defined before
@@ -663,7 +699,7 @@ class SnapshotPublisher(BasePublisher):
                         job={"step": "metadata"},
                         publish={
                             "full": {
-                                snapshot: {"conf": self.envconf, "metadata": full_info},
+                                snapshot: {"conf": redact_secrets(self.envconf), "metadata": full_info},
                             }
                         },
                     )
@@ -679,7 +715,7 @@ class SnapshotPublisher(BasePublisher):
                         publish={
                             "full": {
                                 snapshot: {
-                                    "conf": self.envconf,
+                                    "conf": redact_secrets(self.envconf),
                                     "metadata": {"err": str(e)},
                                 }
                             }
@@ -854,7 +890,7 @@ class DiffPublisher(BasePublisher):
                         job={"step": step, "err": str(e)},
                         publish={
                             "incremental": {
-                                previous_build: {"conf": self.envconf, step: {"err": str(e)}},
+                                previous_build: {"conf": redact_secrets(self.envconf), step: {"err": str(e)}},
                             }
                         },
                     )
@@ -866,7 +902,7 @@ class DiffPublisher(BasePublisher):
                     job={"step": step, "result": res},
                     publish={
                         "incremental": {
-                            previous_build: {"conf": self.envconf, step: res},
+                            previous_build: {"conf": redact_secrets(self.envconf), step: res},
                         }
                     },
                 )
@@ -1053,7 +1089,7 @@ class DiffPublisher(BasePublisher):
                         publish={
                             "incremental": {
                                 previous_build: {
-                                    "conf": self.envconf,
+                                    "conf": redact_secrets(self.envconf),
                                     "metadata": diff_info,
                                 }
                             }
@@ -1069,7 +1105,7 @@ class DiffPublisher(BasePublisher):
                         publish={
                             "incremental": {
                                 previous_build: {
-                                    "conf": self.envconf,
+                                    "conf": redact_secrets(self.envconf),
                                     "metadata": {"err": str(e)},
                                 }
                             }
@@ -1352,9 +1388,8 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
         if snapshot_doc and diff_doc:
             # so we have 2 releases associated, we can't know which one user wants
             raise PublisherException(
-                "'%s' is associated to 2 different releases " % snapshot_or_build_name
-                + "(document _id '%s' and '%s'" % (snapshot_doc["_id"], diff_doc["_id"])
-                + "use publish_snapshot() or publish_diff()"
+                "'%s' is associated to 2 different releases, a snapshot (build '%s') and a diff (build '%s'): "
+                "use publish_snapshot or publish_diff" % (snapshot_or_build_name, snapshot_doc["_id"], diff_doc["_id"])
             )
         elif snapshot_doc:
             self.logger.info("'%s' associated to a snapshot/full release" % snapshot_or_build_name)

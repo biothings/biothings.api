@@ -46,14 +46,20 @@ def wait_for_sources(action, jobs, raise_on_error=False):
     failing doesn't stop the others, unless raise_on_error: its error is logged when it happens, and
     once they're all done, SourcesFailed tells which sources failed, and how. Otherwise, returns what
     happened to each source: its job's result, "done" (no result), or "skipped" (no job, eg. a
-    disabled dumper).
+    disabled dumper). Meanwhile, the returned task's "progress" (a list of lines) tells which
+    sources are done, or failed (followed by terminals, see HubShell.refresh_commands()).
     """
+    started = [name for name, source_jobs in jobs.items() if source_jobs]
+    skipped = [name for name, source_jobs in jobs.items() if not source_jobs]
+    progress = ["%s %s%s" % (action, ", ".join(started), " (skipped: %s)" % ", ".join(skipped) if skipped else "")]
 
     async def wait():
         sources = {}
         for name, source_jobs in jobs.items():
             for job in source_jobs:
                 sources[asyncio.ensure_future(job)] = name
+        left = {name: len(source_jobs) for name, source_jobs in jobs.items()}
+        finished = 0
         results = {name: [] for name in jobs}
         errors = {}
         running = set(sources)
@@ -61,12 +67,19 @@ def wait_for_sources(action, jobs, raise_on_error=False):
             done, running = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
             for job in done:
                 name = sources[job]
+                left[name] -= 1
                 error = asyncio.CancelledError("cancelled") if job.cancelled() else job.exception()
                 if error is None:
                     results[name].append(job.result())
+                    if not left[name] and name not in errors:
+                        finished += 1
+                        progress.append("%s done (%s/%s)" % (name, finished, len(started)))
                     continue
                 if raise_on_error:
                     raise error
+                if name not in errors:
+                    finished += 1
+                    progress.append("%s failed (%s/%s): %s" % (name, finished, len(started), describe_error(error)))
                 errors.setdefault(name, error)
                 still_running = sorted({sources[other] for other in running})
                 logger.error(
@@ -89,7 +102,9 @@ def wait_for_sources(action, jobs, raise_on_error=False):
             raise SourcesFailed(action, summary, errors) from next(iter(errors.values()))
         return summary
 
-    return asyncio.ensure_future(wait())
+    task = asyncio.ensure_future(wait())
+    task.progress = progress
+    return task
 
 
 class BaseSourceManager(BaseManager):
