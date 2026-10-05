@@ -40,27 +40,17 @@ def data_sources(dump_manager=None, upload_manager=None):
     return sorted(names)
 
 
+def records(value):
+    """The records of a mapping, eg. a build's indices (name => record), without its other values (eg. dates)"""
+    return {key: record for key, record in value.items() if isinstance(record, dict)} if isinstance(value, dict) else {}
+
+
 def build_summary(name):
     """Summary of a build: configuration, sources, documents, steps, index, snapshot, release, pending actions"""
     doc = get_src_build().find_one({"_id": name})
     if not doc:
         raise ValueError("No build named '%s' (see lsmerge)" % name)
     meta = doc.get("_meta") or {}
-    snapshots = {}
-    for snapshot, info in (doc.get("snapshot") or {}).items():
-        snapshots[snapshot] = compact(
-            environment=info.get("environment"),
-            index=info.get("index_name"),
-            created_at=info.get("created_at"),
-            repository=repository_summary((info.get("conf") or {}).get("repository")),
-        )
-    publish = {
-        kind: {
-            release: {step: result for step, result in steps.items() if step != "conf"}
-            for release, steps in items.items()
-        }
-        for kind, items in (doc.get("publish") or {}).items()
-    }
     summary = compact(
         name=doc["_id"],
         build_config=(doc.get("build_config") or {}).get("_id"),
@@ -69,31 +59,51 @@ def build_summary(name):
         started_at=doc.get("started_at"),
         version=meta.get("build_version"),
         documents=(meta.get("stats") or {}).get("total", doc.get("count")),
-        sources={source: (info or {}).get("version") for source, info in (meta.get("src") or {}).items()},
+        sources={source: info.get("version") for source, info in records(meta.get("src")).items()},
         steps=[
             compact(
                 step=job.get("step"),
                 status=job.get("status"),
                 time=job.get("time"),
-                started_at=job.get("started_at"),
-                error=last_line(job.get("err")),
+                started_at=job.get("step_started_at"),
+                # why it failed: an error, or its details (eg. snapshots)
+                error=last_line(job.get("err")) or (job.get("detail") if job.get("status") == "failed" else None),
             )
             for job in doc.get("jobs") or []
+            if isinstance(job, dict)
         ],
         index={
             index: compact(
                 environment=info.get("environment"), created_at=info.get("created_at"), count=info.get("count")
             )
-            for index, info in (doc.get("index") or {}).items()
+            for index, info in records(doc.get("index")).items()
         },
-        snapshot=snapshots,
-        diff={old: compact(folder=(info or {}).get("diff_folder")) for old, info in (doc.get("diff") or {}).items()},
+        snapshot={
+            snapshot: compact(
+                environment=info.get("environment"),
+                index=info.get("index_name"),
+                created_at=info.get("created_at"),
+                repository=repository_summary((info.get("conf") or {}).get("repository")),
+            )
+            for snapshot, info in records(doc.get("snapshot")).items()
+        },
+        diff={old: compact(folder=info.get("diff_folder")) for old, info in records(doc.get("diff")).items()},
         # builds the release notes were made against
         release_note={
-            old: compact(folder=(info or {}).get("release_folder"))
-            for old, info in (doc.get("release_note") or {}).items()
+            old: compact(folder=info.get("release_folder")) for old, info in records(doc.get("release_note")).items()
         },
-        publish=publish,
+        # full (snapshot) and incremental (diff) releases: each step's result, and when it was last published
+        publish={
+            kind: {
+                release: (
+                    {step: result for step, result in steps.items() if step != "conf"}
+                    if isinstance(steps, dict)
+                    else steps
+                )
+                for release, steps in releases.items()
+            }
+            for kind, releases in records(doc.get("publish")).items()
+        },
         # actions queued, eg. the release note created after a snapshot
         pending=doc.get("pending"),
     )

@@ -42,8 +42,13 @@ def test_build_summary(hub_db):
             },
             "mapping": {"mondo": {"properties": {}}},  # bulky, left out
             "jobs": [
-                {"step": "merge", "status": "success", "time": "1m", "started_at": CREATED},
+                {"step": "merge", "status": "success", "time": "1m", "step_started_at": CREATED},
                 {"step": "index", "status": "failed", "err": "Traceback (most recent call last):\nValueError: boom\n"},
+                {
+                    "step": "pre-snapshot",
+                    "status": "failed",
+                    "detail": [{"error": "repository_verification_exception"}],
+                },
             ],
             "index": {"disease_20261001_ilfkgzsv": {"environment": "local", "count": 1234, "created_at": CREATED}},
             "snapshot": {
@@ -65,7 +70,8 @@ def test_build_summary(hub_db):
                     "disease_20261001_ilfkgzsv": {
                         "conf": {"cloud": SNAPSHOT_CONF["cloud"]},
                         "metadata": {"url": "https://biothings-releases.s3.amazonaws.com/mydisease.info/20261001.json"},
-                    }
+                    },
+                    "created_at": CREATED,  # when it was last published
                 }
             },
             "pending": ["publish"],
@@ -76,7 +82,9 @@ def test_build_summary(hub_db):
     assert summary["version"] == "20261001"
     assert summary["documents"] == 1234
     assert summary["sources"] == {"mondo": "2026-09-01", "hpo": "2026-08-01"}
+    assert summary["steps"][0] == {"step": "merge", "status": "success", "time": "1m", "started_at": CREATED}
     assert summary["steps"][1] == {"step": "index", "status": "failed", "error": "ValueError: boom"}
+    assert summary["steps"][2]["error"] == [{"error": "repository_verification_exception"}]
     assert summary["index"] == {
         "disease_20261001_ilfkgzsv": {"environment": "local", "count": 1234, "created_at": CREATED}
     }
@@ -99,7 +107,8 @@ def test_build_summary(hub_db):
         "full": {
             "disease_20261001_ilfkgzsv": {
                 "metadata": {"url": "https://biothings-releases.s3.amazonaws.com/mydisease.info/20261001.json"}
-            }
+            },
+            "created_at": CREATED,
         }
     }
     assert summary["pending"] == ["publish"]
