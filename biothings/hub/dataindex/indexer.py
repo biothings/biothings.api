@@ -31,6 +31,11 @@ from biothings.utils.mongo import DatabaseClient, id_feeder
 from biothings.utils.manager import JobManager
 
 
+from biothings.hub.dataindex.exists_alias import (
+    DEFAULT_MIN_SUBFIELDS,
+    derive_exists_field_aliases,
+    store_exists_field_aliases,
+)
 from biothings.hub.dataindex.indexer_cleanup import Cleaner
 from biothings.hub.dataindex.indexer_payload import (
     DEFAULT_INDEX_MAPPINGS,
@@ -332,6 +337,9 @@ class Indexer:
         self.conf_name = _build_doc.build_config.get("name")
         self.build_name = _build_doc.build_name
 
+        # Enable with True; an integer sets the minimum subfield count. Zero disables the scan.
+        self.exists_alias_scan = _build_doc.build_config.get("exists_field_alias_scan", False)
+
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
@@ -555,7 +563,27 @@ class Indexer:
         self.logger.notify(schedule)
         return {"count": total, "created_at": datetime.now().astimezone()}
 
-    async def post_index(self, *args, **kwargs): ...
+    async def post_index(self, *_args, **_kwargs):
+        """Derive and store exists aliases when enabled in the build config."""
+        if not self.exists_alias_scan:
+            return {}
+
+        scan = self.exists_alias_scan
+        min_subfields = scan if isinstance(scan, int) and not isinstance(scan, bool) else DEFAULT_MIN_SUBFIELDS
+        client = AsyncElasticsearch(**self.es_client_args)
+        try:
+            aliases = await derive_exists_field_aliases(
+                client, self.es_index_name, min_subfields=min_subfields, logger=self.logger
+            )
+            await store_exists_field_aliases(client, self.es_index_name, aliases, logger=self.logger)
+        except Exception as exc:
+            # Alias scan failures should not fail the build.
+            self.logger.exception("Could not derive _exists_ aliases: %s", exc)
+            return {}
+        finally:
+            await client.close()
+
+        return {"exists_field_aliases": aliases}
 
 
 class ColdHotIndexer:

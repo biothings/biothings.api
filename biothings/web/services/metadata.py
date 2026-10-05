@@ -46,6 +46,8 @@ class BiothingsMetadata:
         #         'chebi': 'http://bit.ly/2KAUCAm', ... }
         #     "gene": { ... }
         # }
+        self.biothing_exists_aliases = defaultdict(dict)
+        # Maps each biothing type to {object field: subfield} aliases.
 
     def get_metadata(self, biothing_type):  # hub
         return self.biothing_metadata[biothing_type]
@@ -55,6 +57,9 @@ class BiothingsMetadata:
 
     def get_licenses(self, biothing_type):
         return self.biothing_licenses[biothing_type]
+
+    def get_exists_aliases(self, biothing_type):
+        return self.biothing_exists_aliases[biothing_type]
 
     async def refresh(self, biothing_type):
         pass
@@ -109,6 +114,7 @@ class BiothingsESMetadata(BiothingsMetadata):
         self.biothing_metadata[biothing_type] = reader.get_metadata()
         self.biothing_mappings[biothing_type] = reader.get_mappings()
         self.biothing_licenses[biothing_type] = reader.get_licenses()
+        self.biothing_exists_aliases[biothing_type] = reader.get_exists_aliases()
 
     def refresh(self, biothing_type: str = None):
 
@@ -243,6 +249,24 @@ class _BiothingsESMetadataReader:
         licenses = reduce(add, licenses).to_dict() if licenses else {}
         return licenses
 
+    def get_exists_aliases(self):
+        """
+        Return aliases shared by all indices that map the object field.
+
+        Indices without that field do not affect alias selection.
+        """
+        per_index = [(info.mappings, info.get_exists_aliases().aliases) for info in self.indices_info.values()]
+
+        candidates = {}
+        for _, aliases in per_index:
+            candidates.update(aliases)
+
+        return {
+            field: alias
+            for field, alias in candidates.items()
+            if all(aliases.get(field) == alias or not mapping.has_field(field) for mapping, aliases in per_index)
+        }
+
     def get_metadata(self):
         """
         Provide description about the data under this type. Example:
@@ -298,6 +322,9 @@ class _ESIndex:
 
     def get_licenses(self):
         return BiothingLicenses(self.mappings.extract_licenses())
+
+    def get_exists_aliases(self):
+        return BiothingExistsAliases(self.mappings.extract_exists_aliases())
 
     def get_mappings(self):
         return BiothingMappings(self.mappings.properties)
@@ -376,6 +403,48 @@ class _ESIndexMappings:
                 licenses[src] = info["license_url"]
         return licenses
 
+    def _resolve(self, path):
+        """Return the mapping for a dotted field path, or None if absent."""
+        spec = {"properties": self.properties}
+        for part in path.split("."):
+            properties = spec.get("properties") if isinstance(spec, dict) else None
+            if not isinstance(properties, dict) or part not in properties:
+                return None
+            spec = properties[part]
+        return spec if isinstance(spec, dict) else None
+
+    def has_field(self, path):
+        """Return whether the dotted field path exists in the mapping."""
+        return self._resolve(path) is not None
+
+    def extract_exists_aliases(self):
+        """
+        Return aliases whose object and descendant field exist in the mapping.
+
+        This checks field paths, not whether their document counts still match.
+        """
+        aliases = self.metadata.get("exists_field_aliases") or {}
+        if not isinstance(aliases, dict):
+            logger.warning("Ignoring malformed '_meta.exists_field_aliases': %s", aliases)
+            return {}
+
+        verified = {}
+        for field, alias in aliases.items():
+            if not isinstance(field, str) or not isinstance(alias, str):
+                continue
+            if not alias.startswith(f"{field}."):
+                logger.warning("Ignoring _exists_ alias '%s' -> '%s': not a subfield of it", field, alias)
+                continue
+            field_spec = self._resolve(field)
+            if field_spec is None or "properties" not in field_spec:
+                logger.warning("Ignoring _exists_ alias for '%s': not an object field in this index", field)
+                continue
+            if self._resolve(alias) is None:
+                logger.warning("Ignoring _exists_ alias '%s' -> '%s': target not in this index", field, alias)
+                continue
+            verified[field] = alias
+        return verified
+
 
 class BiothingMetaProp:
     def __add__(self, other):
@@ -401,6 +470,14 @@ class BiothingLicenses(BiothingMetaProp):
 
     def to_dict(self):
         return dict(self.licenses)
+
+
+class BiothingExistsAliases(BiothingMetaProp):
+    def __init__(self, aliases):
+        self.aliases = aliases
+
+    def to_dict(self):
+        return dict(self.aliases)
 
 
 class BiothingMappings(BiothingMetaProp):
