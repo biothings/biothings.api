@@ -656,15 +656,19 @@ def list_jobs(
     jobs = running_jobs(state)
     pending = sum(len(queue.get("pending") or []) for queue in (state.get("queue") or {}).values())
     if jobs:
+        for job in jobs:
+            job["memory"] = human_size(job["memory"]) if job.get("memory") else ""
+        # (without the columns empty for all the jobs, eg. descriptions: tables fit narrow terminals)
+        columns = [
+            key
+            for key in ("worker", "category", "source", "step", "description", "duration", "memory")
+            if any(job.get(key) for job in jobs)
+        ]
         table = Table(box=box.SIMPLE)
-        for column in ("worker", "category", "source", "step", "description", "duration", "memory"):
+        for column in columns:
             table.add_column(column)
         for job in jobs:
-            table.add_row(
-                *[escape(str(job.get(key) or "")) for key in ("worker", "category", "source", "step", "description")],
-                job.get("duration") or "",
-                human_size(job["memory"]) if job.get("memory") else "",
-            )
+            table.add_row(*[escape(str(job.get(key) or "")) for key in columns])
         console.print(table)
     console.print("%s job(s) running, %s pending" % (len(jobs), pending))
     console.print("Commands launched on the hub: biothings-cli hub history --running", style="dim")
