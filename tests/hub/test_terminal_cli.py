@@ -4,6 +4,7 @@ handlers with an in-memory hub shell, see terminal_fakes.py)
 """
 
 import asyncio
+import http.server
 import json
 import logging
 import sys
@@ -21,7 +22,15 @@ from terminal_fakes import make_terminal
 from typer.testing import CliRunner
 
 import biothings.cli
-from biothings.cli.commands.hub import hub_application, print_command_results, print_response, render
+from biothings.cli.commands.hub import (
+    HubAPIError,
+    HubClient,
+    HubTimeout,
+    hub_application,
+    print_command_results,
+    print_response,
+    render,
+)
 from biothings.hub.api import EndpointDefinition, generate_api_routes
 from biothings.hub.api.handlers.base import RootHandler
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
@@ -72,6 +81,39 @@ def serve(routes, shell=None):
     return "http://127.0.0.1:%s" % state["port"], stop
 
 
+JOB_MANAGER = {  # the state of a hub's job manager, as returned by its API
+    "queue": {
+        "process": {
+            "running": [24195],
+            "pending": ["a", "b"],
+            "all": {
+                "24195": {
+                    "memory": {"size": 397095731},
+                    "job": {
+                        "category": "uploader",
+                        "source": "ctd",
+                        "step": "update_data",
+                        "description": "CTD_diseases.tsv.gz",
+                        "started_at": 1759700000,
+                        "duration": "5.26s",
+                    },
+                },
+                "24196": {"memory": {"size": 1310720}},  # idle
+            },
+        },
+        "thread": {"running": [], "pending": [], "all": {"Thread-1": {"is_alive": True}}},
+    },
+}
+
+
+class JobManagerHandler(RootHandler):
+    def initialize(self):
+        pass
+
+    def get(self):
+        self.write(JOB_MANAGER)
+
+
 @pytest.fixture
 def hub(tmp_path):
     async def slow(name, delay=0.05):
@@ -97,9 +139,15 @@ def hub(tmp_path):
         task.progress = progress
         return task
 
+    def busy(seconds=1.0):
+        """Keep the hub busy: it can't answer meanwhile"""
+        time.sleep(seconds)
+        return "done"
+
     terminal, shell, sources = make_terminal(
         slow=slow,
         boom=boom,
+        busy=busy,
         dump_sources=dump_sources,
         rmmerge=lambda merge_name: "deleted %s" % merge_name,
         inspection=CommandDefinition(command=lambda name: {"inspected": name}, hidden=True),  # eg. used by Studio
@@ -117,6 +165,7 @@ def hub(tmp_path):
         terminal.load_hook(str(broken))
     routes = [
         ("/", RootHandler, {"features": ["terminal", "ws"], "hub_name": "Test Hub"}),
+        ("/job_manager", JobManagerHandler),
         ("/terminal/commands", TerminalCommandsHandler, {"terminal": terminal}),
         ("/terminal/run", TerminalRunHandler, {"terminal": terminal}),
     ]
@@ -338,3 +387,67 @@ def test_verbose_prints_the_traceback_of_failed_commands(capsys):
     assert "TypeError: boom" not in capsys.readouterr().err
     assert print_command_results(info, verbose=True) is False
     assert "TypeError: boom" in capsys.readouterr().err
+
+
+def test_hub_timeouts_are_not_outages():
+    """The hub was reached but didn't answer in time: unlike an unreachable hub, what was asked may be done"""
+
+    class Slow(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            time.sleep(0.5)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        client = HubClient("http://127.0.0.1:%s" % server.server_address[1], timeout=0.1)
+        with pytest.raises(HubTimeout, match=r"didn't answer within 0.1s \(it may be busy\)"):
+            client.run(line="upload umls")
+    finally:
+        server.shutdown()
+    with pytest.raises(HubAPIError, match="Can't reach the hub") as error:
+        HubClient("http://127.0.0.1:9").run(line="upload umls")
+    assert not isinstance(error.value, HubTimeout)
+
+
+def test_timeouts_say_the_command_may_have_started(hub):
+    # (the hub runs in this process: while it runs "busy", what the CLI prints on stderr is captured
+    # by the hub, as a command's output, until it's done)
+    result = cli(hub, "run", "--timeout", "0.3", "busy", "--seconds", "1.5")
+    assert result.exit_code == 1
+    assert "The command may have started anyway" in result.output
+    assert "[#1] busy(seconds=1.5) done" in result.output  # it did: no need to run it again
+    assert "run --timeout <seconds>" in result.output
+    result = cli(hub, "run", "--timeout", "60", "busy", "--seconds", "0")
+    assert (result.exit_code, result.stdout) == (0, "done\n")
+
+
+def test_run_options_go_before_the_command(hub):
+    result = cli(hub, "run", "--timeoutt", "60", "dump", "all")
+    assert result.exit_code == 2
+    assert "Unknown option '--timeoutt' for run" in result.output
+    assert hub.sources.calls == []  # not sent to the hub
+
+
+def test_history_wait(hub):
+    result = cli(hub, "run", "--no-wait", "dump_sources", "--delay", "0.1")
+    assert "Follow it with: biothings-cli hub history 1 --wait" in result.output
+    result = cli(hub, "history", "1", "--wait", "--interval", "0.01")
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines.index("dump mondo, hpo") < lines.index("hpo done (2/2)")
+    assert lines[-2].startswith("[#1] dump_sources(delay=0.1) done in") and lines[-1] == "dumped"
+    assert cli(hub, "history", "1", "--wait").exit_code == 0  # already done: its results
+    result = cli(hub, "history", "--wait")
+    assert (result.exit_code, "--wait needs the ID of a command" in result.output) == (2, True)
+
+
+def test_jobs(hub):
+    result = cli(hub, "jobs", env={"COLUMNS": "200"})
+    assert result.exit_code == 0, result.output
+    row = next(line for line in result.output.splitlines() if "pid 24195" in line).split()
+    assert row == ["pid", "24195", "uploader", "ctd", "update_data", "CTD_diseases.tsv.gz", "5.26s", "378.7", "MiB"]
+    assert "1 job(s) running, 2 pending" in result.output
+    assert json.loads(cli(hub, "jobs", "--json").output) == JOB_MANAGER

@@ -129,7 +129,11 @@ BUILTIN_HELP = {
         ["mark_dump_success mygene", "mark_dump_success mygene --no-dry-run"],
     ),
     "upload": ("Upload the downloaded data of a source (or sub-source) to the source database", ["upload mygene"]),
-    "upload_all": ("Upload the downloaded data of all the data sources", ["upload all"]),
+    "upload_all": (
+        "Upload the downloaded data of all the data sources, skipping the ones which can't be uploaded yet "
+        "(eg. their last download failed: they keep their last upload) and dummy uploaders",
+        ["upload all"],
+    ),
     "update_source_meta": ("Update the metadata of a source (version, license...)", ["update_source_meta mygene"]),
     "sources": ("All the sources, with their dump and upload information", ["sources"]),
     "source_info": ("Details about a source: dump, upload, mapping...", ["source_info mygene"]),
@@ -167,7 +171,10 @@ BUILTIN_HELP = {
         "Build configurations, or one of them, with their builds",
         ["build_config", "build_config mygene"],
     ),
-    "merge": ("Create a new build from a build configuration", ["merge mygene"]),
+    "merge": (
+        "Create a new build from a build configuration (--check: only check that its sources are ready)",
+        ["merge mygene", "merge mygene --check"],
+    ),
     "rmmerge": ("Delete a build", ["rmmerge mygene_20240101_abcdefgh"]),
     "archive": ("Archive a build: delete its data but keep its metadata", ["archive mygene_20240101_abcdefgh"]),
     "auto_archive": (
@@ -250,8 +257,15 @@ BUILTIN_HELP = {
     ),
     "quick_index": ("Build and index a single source, to quickly test it", []),
     # installing data releases published by other hubs (see VERSION_URLS)
-    "list": ("BioThings APIs whose data releases can be installed (see VERSION_URLS)", ["list"]),
-    "versions": ("Data releases available for a BioThings API", ["versions mygene.info"]),
+    "list": (
+        "BioThings APIs whose data releases can be installed (see VERSION_URLS), and their environments",
+        ["list"],
+    ),
+    "versions": (
+        "Data releases available for a BioThings API (installed in several environments: give one of them, "
+        "<name>__<environment>, see list)",
+        ["versions mygene.info", "versions mygene.info__es8"],
+    ),
     "info": ("Release note of a data release, the latest one by default", ["info mygene.info"]),
     "install": (
         "Install a data release, the latest one by default, applying full and incremental updates as needed",
@@ -273,7 +287,8 @@ BUILTIN_DETAILS = {
     "merge": (
         "Merges the sources of a build configuration into a new build, in the target database, named "
         "<configuration>_<version>_<random>: its version is the date (YYYYMMDD) unless the configuration's "
-        "build_version says otherwise. Its sources must have been uploaded successfully. If the configuration "
+        "build_version says otherwise. Its sources must have been uploaded successfully: merge <configuration> "
+        "--check tells which ones weren't, and why, without merging. If the configuration "
         "automates the next steps (autobuild, see build_config), they're queued once merged: diff and/or "
         "snapshot (pending, see build_summary). Otherwise: index it, then snapshot it, and/or diff it against "
         "a previous build."

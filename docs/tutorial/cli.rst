@@ -306,6 +306,8 @@ BioThings Studio: the built-in commands every hub provides (``dump_all``,
    biothings-cli hub run --no-wait upload mygene   # run a command in background
    biothings-cli hub history                       # launched commands, and their status
    biothings-cli hub history 12                    # status and results of command #12
+   biothings-cli hub history 12 --wait             # wait for command #12 to finish
+   biothings-cli hub jobs                          # jobs running on the hub's workers
    biothings-cli hub hooks                         # hook files loaded by the hub
    biothings-cli hub shell                         # interactive terminal
 
@@ -321,11 +323,18 @@ Multi-word command names can be typed with spaces or hyphens (``dump all`` runs
 the other, stopping at the first failure.
 
 Options of ``run`` go before the command name (``--no-wait``, ``--json``,
-``--wait-timeout``...), everything after it is given to the hub command. Some
-commands return their result right away, others start a job in background: by
+``--wait-timeout``, ``--timeout``...), everything after it is given to the hub command.
+Some commands return their result right away, others start a job in background: by
 default, ``run`` waits for the job to finish and prints its results, while
 ``--no-wait`` returns right away with the command ID, to follow it with
-``biothings-cli hub history <ID>``.
+``biothings-cli hub history <ID> --wait``. ``jobs`` shows what the hub's workers are
+doing meanwhile: the source, step (eg. an index batch, ``#12/40``), file and duration
+of each job.
+
+The CLI waits up to 2 minutes for each answer of the hub (``--timeout``, given to ``run``
+or before it). A busy hub may not answer in time while it starts a command, which may
+start anyway: ``run`` then lists the commands the hub started meanwhile, to follow one
+with ``history <ID> --wait`` rather than running it twice.
 
 What a command logs while it's called (eg. ``logger.info(...)``) is printed on
 stderr, its results on stdout. Commands deleting or changing data (eg. ``rmmerge``,
@@ -344,6 +353,15 @@ While ``dump all`` and ``upload all`` run, ``run`` prints each source as it's do
 of the release commands (``help merge``, ``help snapshot``, ``help publish``...) tells what
 they need, what they do and what comes next: eg. ``publish`` waits for the release note
 created in background after a snapshot.
+
+A merge needs every source of its build configuration uploaded successfully: ``run merge
+<configuration> --check`` lists the sources which aren't, and why, without merging.
+``upload all`` skips the sources which can't be uploaded yet (eg. their last download
+failed: they keep their last upload, and can still be merged) and the dummy uploaders.
+
+If ``biothings-cli hub`` says ``No such command 'hub'``, an older BioThings version comes
+first in your ``PATH`` (eg. a project's virtual environment): ``which -a biothings-cli``
+lists them.
 
 If the hub is behind an authentication proxy, an access token can be given with
 ``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), it's sent in the

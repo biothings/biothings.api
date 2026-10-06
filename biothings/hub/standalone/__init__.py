@@ -14,6 +14,7 @@ from functools import partial
 from biothings import config as btconfig
 from biothings.hub import HubServer
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
+from biothings.hub.manager import ResourceNotFound
 from biothings.hub.standalone.validators import AutoHubValidator
 from biothings.utils.backend import DocESBackend
 from biothings.utils.es import ESIndexer
@@ -90,6 +91,10 @@ class AutoHubFeature(object):
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
         """
+        # a data release installed in several environments is named <release>__<environment>
+        if self.managers["dump_manager"].find_source(src_name) is None:
+            raise ResourceNotFound(self.managers["dump_manager"].unknown_source(src_name))
+        src_name = self.managers["dump_manager"].find_source(src_name)
 
         async def do(version):
             try:

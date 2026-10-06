@@ -1484,10 +1484,10 @@ class DumperManager(BaseSourceManager):
         return wait_for_sources("dump", jobs, raise_on_error=raise_on_error)
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs):
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)  # eg. a data release installed in one environment
+        klasses = self.register[src]
 
         jobs = []
         try:
@@ -1523,10 +1523,10 @@ class DumperManager(BaseSourceManager):
             raise
 
     def mark_success(self, src: str, dry_run: bool = True):
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)
+        klasses = self.register[src]
 
         result = []
         for _, klass in enumerate(klasses):
@@ -1540,10 +1540,10 @@ class DumperManager(BaseSourceManager):
         with given arguments. Used to create arbitrary calls on a dumper.
         "method_name" within dumper definition must a coroutine.
         """
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)
+        klasses = self.register[src]
 
         jobs = []
         try:

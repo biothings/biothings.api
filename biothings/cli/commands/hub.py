@@ -10,6 +10,8 @@ in the hub's hook files (python files in the hub's HOOKS_FOLDER)
 > biothings-cli hub run dump all                 run a command, wait for it to finish
 > biothings-cli hub run --no-wait upload mygene  run a command in background
 > biothings-cli hub history [ID]                 launched commands and their results
+> biothings-cli hub history ID --wait            wait for a command running in background
+> biothings-cli hub jobs                         jobs running on the hub's workers
 > biothings-cli hub hooks                        hook files loaded by the hub
 > biothings-cli hub shell                        interactive terminal
 """
@@ -30,6 +32,8 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 DEFAULT_HUB_URL = "http://localhost:7080"
+DEFAULT_TIMEOUT = 120.0  # seconds to wait for the hub's answers (eg. while a command starts)
+CONNECT_TIMEOUT = 10.0  # ... but not that long to connect to it
 TOKEN_HEADER = "X-Biothings-Access-Token"
 HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_history")
 
@@ -64,21 +68,30 @@ class HubAPIError(Exception):
         self.payload = payload or {}
 
 
+class HubTimeout(HubAPIError):
+    """The hub was reached, but didn't answer in time: what was asked may still be done (eg. a command started)"""
+
+
 class HubClient:
     """Minimal client for the Hub API endpoints used by the terminal"""
 
-    def __init__(self, url, token=None, timeout=30.0):
+    def __init__(self, url, token=None, timeout=DEFAULT_TIMEOUT):
         self.url = url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
         if token:
             self.session.headers[TOKEN_HEADER] = token
 
-    def request(self, method, endpoint, **kwargs):
+    def request(self, method, endpoint, timeout=None, **kwargs):
         url = self.url + endpoint
+        timeout = timeout or self.timeout
         try:
             # custom token header must not be sent to another host through redirects
-            response = self.session.request(method, url, timeout=self.timeout, allow_redirects=False, **kwargs)
+            response = self.session.request(
+                method, url, timeout=(min(CONNECT_TIMEOUT, timeout), timeout), allow_redirects=False, **kwargs
+            )
+        except requests.ReadTimeout:
+            raise HubTimeout("The hub at %s didn't answer within %ss (it may be busy)" % (self.url, timeout))
         except requests.RequestException as e:
             raise HubAPIError("Can't reach the hub at %s (%s)" % (self.url, e))
         try:
@@ -111,8 +124,8 @@ class HubClient:
             body["confirmed"] = True
         return self.request("POST", "/terminal/run", json=body)
 
-    def command(self, command_id):
-        return self.request("GET", "/command/%s" % command_id)
+    def command(self, command_id, timeout=None):
+        return self.request("GET", "/command/%s" % command_id, timeout=timeout)
 
     def commands(self, running=False):
         return self.request("GET", "/commands", params={"running": 1} if running else None)
@@ -125,7 +138,10 @@ class HubClient:
         started = time.time()
         reported = 0
         while True:
-            info = self.command(command_id)
+            try:
+                info = self.command(command_id)
+            except HubTimeout:
+                info = {}  # the hub is busy, the command still runs: try again
             progress = info.get("progress") or []  # not sent by older hubs
             if on_progress and len(progress) > reported:
                 on_progress(progress[reported:])
@@ -234,7 +250,10 @@ def hub_options(
             help="Access token, sent in the X-Biothings-Access-Token header (hub behind an authentication proxy)",
         ),
     ] = None,
-    timeout: Annotated[float, typer.Option("--timeout", help="Timeout for each request to the hub, in seconds")] = 30.0,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", help="Seconds to wait for each answer of the hub (eg. while a command starts)"),
+    ] = DEFAULT_TIMEOUT,
 ):
     """
     Run commands on a running BioThings Hub
@@ -363,6 +382,14 @@ def run_command(
         bool,
         typer.Option("--yes", "-y", help="Don't ask for a confirmation (commands deleting or changing data)"),
     ] = False,
+    timeout: Annotated[
+        Optional[float],
+        typer.Option(
+            "--timeout",
+            help="Seconds to wait for each answer of the hub, eg. while the command starts "
+            "(default: the hub option, %ss)" % int(DEFAULT_TIMEOUT),
+        ),
+    ] = None,
 ):
     """
     Run a command on the hub. Options for [bold]run[/bold] itself go before the command name.
@@ -377,6 +404,18 @@ def run_command(
       biothings-cli hub run --yes auto_archive covid19 --days 3 --no-dryrun
     """
     client = get_client(ctx)
+    if timeout:
+        client.timeout = timeout
+    if argv[0].startswith("-"):
+        # an option given after another option's value, or misspelled: it would be taken as the command
+        print_text(
+            "Unknown option '%s' for run: see biothings-cli hub run --help (options of run go before the command "
+            "name, --url and --token before run)" % argv[0],
+            style="red",
+            stderr=True,
+        )
+        raise typer.Exit(2)
+    started = time.time()
     try:
         try:
             response = client.run(argv=argv, confirmed=yes)
@@ -389,7 +428,12 @@ def run_command(
                 raise typer.Exit(2)
             if not typer.confirm("Run it?", default=False, err=True):
                 raise typer.Exit(1)
+            started = time.time()
             response = client.run(argv=argv, confirmed=True)
+    except HubTimeout as e:
+        print_error(e)
+        report_started(client, started)
+        raise typer.Exit(1)
     except HubAPIError as e:
         print_error(e)
         raise typer.Exit(2 if e.status in (400, 403, 404, 409) else 1)
@@ -408,34 +452,66 @@ def run_command(
         else:
             print_logs(response)
             print_text("[#%s] %s started" % (response["id"], response["cmd"]))
-            print_text("Follow it with: biothings-cli hub history %s" % response["id"], style="dim")
+            print_text("Follow it with: biothings-cli hub history %s --wait" % response["id"], style="dim")
         return
 
     if not as_json:
         print_logs(response)
+    raise typer.Exit(follow_command(client, response["id"], response["cmd"], wait_timeout, interval, as_json, verbose))
+
+
+def report_started(client, since):
+    """
+    After the hub didn't answer in time when asked to run a command: it may have started it anyway,
+    tell which commands it started since then, rather than letting the user run it twice
+    """
+    try:
+        commands = client.request("GET", "/commands", timeout=CONNECT_TIMEOUT) or {}
+    except HubAPIError:
+        commands = {}
+    # (a margin for the difference between the clocks of the hub and of this computer)
+    recent = [cmd for cmd in commands.values() if (cmd.get("started_at") or 0) >= since - 60]
+    if recent:
+        print_text("The command may have started anyway, commands the hub started recently:", stderr=True)
+        for cmd in sorted(recent, key=lambda cmd: cmd.get("id", 0)):
+            status = "running" if not cmd.get("is_done") else ("failed" if cmd.get("failed") else "done")
+            print_text("  [#%s] %s %s" % (cmd.get("id"), cmd.get("cmd"), status), stderr=True)
+        print_text(
+            "Follow one with 'biothings-cli hub history <id> --wait' rather than running it again",
+            style="dim",
+            stderr=True,
+        )
+    else:
+        print_text(
+            "The command may have started anyway: check with 'biothings-cli hub history' before running it again",
+            stderr=True,
+        )
+    print_text("To wait longer for the hub's answers: run --timeout <seconds>", style="dim", stderr=True)
+
+
+def follow_command(client, command_id, cmd, wait_timeout=None, interval=1.0, as_json=False, verbose=False):
+    """Wait for a command running in background, printing its progress then its results: returns an exit code"""
     try:
         if as_json:
-            info = client.wait(response["id"], timeout=wait_timeout, interval=interval)
+            info = client.wait(command_id, timeout=wait_timeout, interval=interval)
         else:
-            with console.status("[#%s] %s running..." % (response["id"], escape(response["cmd"]))):
+            with console.status("[#%s] %s running..." % (command_id, escape(str(cmd)))):
                 info = client.wait(
-                    response["id"],
+                    command_id,
                     timeout=wait_timeout,
                     interval=interval,
                     on_progress=lambda lines: [print_text(line, style="dim", stderr=True) for line in lines],
                 )
     except KeyboardInterrupt:
-        print_text("Stopped waiting, command #%s keeps running on the hub" % response["id"], stderr=True)
-        raise typer.Exit(130)
+        print_text("Stopped waiting, command #%s keeps running on the hub" % command_id, stderr=True)
+        return 130
     except (TimeoutError, HubAPIError) as e:
         print_error(e)
-        raise typer.Exit(1)
+        return 1
     if as_json:
         print_json(info)
-        ok = not info.get("failed")
-    else:
-        ok = print_command_results(info, verbose=verbose)
-    raise typer.Exit(0 if ok else 1)
+        return 1 if info.get("failed") else 0
+    return 0 if print_command_results(info, verbose=verbose) else 1
 
 
 def command_name(cmd):
@@ -461,16 +537,32 @@ def command_history(
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Print the traceback when the command failed")
     ] = False,
+    wait: Annotated[
+        bool,
+        typer.Option("--wait", "-w", help="Wait for the command (given its ID) to finish, printing its progress"),
+    ] = False,
+    wait_timeout: Annotated[
+        Optional[float],
+        typer.Option("--wait-timeout", help="With --wait: maximum time to wait, in seconds"),
+    ] = None,
+    interval: Annotated[float, typer.Option("--interval", help="With --wait: seconds between status checks")] = 1.0,
 ):
     """
     Show the commands launched on the hub (since it started), or the status and results of one of them
     """
     client = get_client(ctx)
+    if wait and command_id is None:
+        print_text("--wait needs the ID of a command, eg. history 12 --wait", style="red", stderr=True)
+        raise typer.Exit(2)
     try:
         result = client.command(command_id) if command_id is not None else client.commands(running=running)
     except HubAPIError as e:
         print_error(e)
         raise typer.Exit(1)
+    if wait and not result.get("is_done"):
+        raise typer.Exit(
+            follow_command(client, command_id, result.get("cmd"), wait_timeout, interval, as_json, verbose)
+        )
     if command_id is None:
         hidden = set()
         if not show_all:
@@ -492,6 +584,7 @@ def command_history(
             print_text("[#%s] %s running" % (result["id"], result["cmd"]))
             for line in result.get("progress") or []:  # eg. dump_all: which sources are done
                 print_text(line, style="dim")
+            print_text("Wait for it with: biothings-cli hub history %s --wait" % result["id"], style="dim")
             return
         if not print_command_results(result, verbose=verbose):
             raise typer.Exit(1)
@@ -518,6 +611,63 @@ def command_history(
 
 # its previous name, easily mixed up with "run status" (the hub's summary)
 hub_application.command(name="status", hidden=True)(command_history)
+
+
+def human_size(size):
+    """eg. 378.7 MiB, for a size in bytes"""
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return "%d B" % size if unit == "B" else "%.1f %s" % (size, unit)
+        size /= 1024
+
+
+def running_jobs(job_manager):
+    """The jobs running on the hub's workers (processes and threads), from its job manager's state"""
+    jobs = []
+    for kind, queue in (job_manager.get("queue") or {}).items():
+        for worker, state in (queue.get("all") or {}).items():
+            if state.get("job"):
+                memory = (state.get("memory") or {}).get("size") if kind == "process" else None
+                jobs.append(
+                    dict(state["job"], worker="pid %s" % worker if kind == "process" else worker, memory=memory)
+                )
+    return sorted(jobs, key=lambda job: job.get("started_at") or 0)
+
+
+@hub_application.command(name="jobs")
+def list_jobs(
+    ctx: typer.Context,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the raw JSON response (the job manager's state)")
+    ] = False,
+):
+    """
+    Show the jobs running on the hub's workers (downloads, uploads, merge steps, index batches...): their
+    source, step, description (eg. the file being downloaded) and duration, and how many are pending
+    """
+    try:
+        state = get_client(ctx).request("GET", "/job_manager")
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if as_json:
+        print_json(state)
+        return
+    jobs = running_jobs(state)
+    pending = sum(len(queue.get("pending") or []) for queue in (state.get("queue") or {}).values())
+    if jobs:
+        table = Table(box=box.SIMPLE)
+        for column in ("worker", "category", "source", "step", "description", "duration", "memory"):
+            table.add_column(column)
+        for job in jobs:
+            table.add_row(
+                *[escape(str(job.get(key) or "")) for key in ("worker", "category", "source", "step", "description")],
+                job.get("duration") or "",
+                human_size(job["memory"]) if job.get("memory") else "",
+            )
+        console.print(table)
+    console.print("%s job(s) running, %s pending" % (len(jobs), pending))
+    console.print("Commands launched on the hub: biothings-cli hub history --running", style="dim")
 
 
 @hub_application.command(name="hooks")
@@ -594,6 +744,12 @@ def interactive_shell(ctx: typer.Context):
             if line == "jobs":
                 for command_id, cmd in sorted(running.items()):
                     print_text("[#%s] %s running" % (command_id, cmd))
+                    try:
+                        progress = client.command(command_id, timeout=CONNECT_TIMEOUT).get("progress") or []
+                    except HubAPIError:
+                        progress = []
+                    for progress_line in progress:  # eg. dump_all: which sources are done
+                        print_text("  %s" % progress_line, style="dim")
                 if not running:
                     print_text("No command running in background")
                 continue
@@ -637,7 +793,7 @@ def report_finished(client, running):
     """Print the results of the commands running in background which are now done"""
     for command_id in list(running):
         try:
-            info = client.command(command_id)
+            info = client.command(command_id, timeout=CONNECT_TIMEOUT)  # (don't hold the prompt for long)
         except HubAPIError:
             continue
         if info.get("is_done"):

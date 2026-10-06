@@ -23,6 +23,11 @@ def describe_error(error):
     return "%s: %s" % (type(error).__name__, error)
 
 
+def is_skipped(outcome):
+    """True if a source was skipped by a command run on several sources (see wait_for_sources())"""
+    return isinstance(outcome, str) and outcome.startswith("skipped")
+
+
 class SourcesFailed(ResourceError):
     """Raised by commands run on several sources (eg. dump_all) when some of them failed"""
 
@@ -31,8 +36,8 @@ class SourcesFailed(ResourceError):
         self.errors = errors  # source name => error
         failed = "; ".join("%s (%s)" % (name, describe_error(error)) for name, error in errors.items())
         message = "%s failed for %s of %s sources: %s" % (action, len(errors), len(summary), failed)
-        done = [name for name, outcome in summary.items() if name not in errors and outcome != "skipped"]
-        skipped = [name for name, outcome in summary.items() if outcome == "skipped"]
+        done = [name for name, outcome in summary.items() if name not in errors and not is_skipped(outcome)]
+        skipped = [name for name, outcome in summary.items() if is_skipped(outcome)]
         if done:
             message += ". Done: %s" % ", ".join(done)
         if skipped:
@@ -40,17 +45,22 @@ class SourcesFailed(ResourceError):
         super().__init__(message)
 
 
-def wait_for_sources(action, jobs, raise_on_error=False):
+def wait_for_sources(action, jobs, raise_on_error=False, skipped=None, skip_errors=()):
     """
     Wait for the jobs run on several sources ({source name: [jobs]}, eg. by dump_all()). A source
     failing doesn't stop the others, unless raise_on_error: its error is logged when it happens, and
     once they're all done, SourcesFailed tells which sources failed, and how. Otherwise, returns what
-    happened to each source: its job's result, "done" (no result), or "skipped" (no job, eg. a
-    disabled dumper). Meanwhile, the returned task's "progress" (a list of lines) tells which
-    sources are done, or failed (followed by terminals, see HubShell.refresh_commands()).
+    happened to each source: its job's result, "done" (no result), or "skipped": no job (eg. a disabled
+    dumper), not run for a reason ({source name: reason} in skipped), or its jobs failed with one of
+    skip_errors before doing anything (eg. ResourceNotReady: a source which can't be uploaded yet).
+    Meanwhile, the returned task's "progress" (a list of lines) tells which sources are done, failed
+    or skipped (followed by terminals, see HubShell.refresh_commands()).
     """
+    skipped = dict(skipped or {})  # source name => why (or None)
+    for name, source_jobs in jobs.items():
+        if not source_jobs:
+            skipped.setdefault(name, None)
     started = [name for name, source_jobs in jobs.items() if source_jobs]
-    skipped = [name for name, source_jobs in jobs.items() if not source_jobs]
     progress = ["%s %s%s" % (action, ", ".join(started), " (skipped: %s)" % ", ".join(skipped) if skipped else "")]
 
     async def wait():
@@ -69,11 +79,18 @@ def wait_for_sources(action, jobs, raise_on_error=False):
                 name = sources[job]
                 left[name] -= 1
                 error = asyncio.CancelledError("cancelled") if job.cancelled() else job.exception()
-                if error is None:
-                    results[name].append(job.result())
+                if error is None or isinstance(error, skip_errors):
+                    if error is None:
+                        results[name].append(job.result())
+                    else:
+                        skipped.setdefault(name, str(error))
                     if not left[name] and name not in errors:
                         finished += 1
-                        progress.append("%s done (%s/%s)" % (name, finished, len(started)))
+                        if name in skipped and not results[name]:
+                            progress.append("%s skipped (%s/%s): %s" % (name, finished, len(started), skipped[name]))
+                        else:
+                            skipped.pop(name, None)
+                            progress.append("%s done (%s/%s)" % (name, finished, len(started)))
                     continue
                 if raise_on_error:
                     raise error
@@ -90,12 +107,12 @@ def wait_for_sources(action, jobs, raise_on_error=False):
                     " (still running: %s)" % ", ".join(still_running) if still_running else "",
                 )
         summary = {}
-        for name in jobs:
-            outcomes = [result for result in results[name] if result is not None]
+        for name in list(jobs) + [name for name in skipped if name not in jobs]:
+            outcomes = [result for result in results.get(name, []) if result is not None]
             if name in errors:
                 summary[name] = "failed: %s" % describe_error(errors[name])
-            elif not jobs[name]:
-                summary[name] = "skipped"
+            elif name in skipped:
+                summary[name] = "skipped: %s" % skipped[name] if skipped[name] else "skipped"
             else:
                 summary[name] = outcomes[0] if len(outcomes) == 1 else (outcomes or "done")
         if errors:

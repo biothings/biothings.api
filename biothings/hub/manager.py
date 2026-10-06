@@ -1,4 +1,5 @@
 import datetime
+import difflib
 import os
 import time
 from functools import partial
@@ -52,6 +53,39 @@ class BaseManager:
     def __repr__(self):
         registered = sorted(list(self.register.keys()))
         return f"<{self.__class__.__name__} [{len(self.register)} registered]: {registered}>"
+
+    def source_environments(self, src_name):
+        """
+        Names of a data release installed in several Elasticsearch environments, one per environment:
+        <release>__<environment> (see biothings.hub.standalone)
+        """
+        return sorted(name for name in self.register if name.startswith("%s__" % src_name))
+
+    def find_source(self, src_name):
+        """
+        Registered name of a source: src_name, or the name of a data release installed in one environment
+        only (<release>__<environment>). None if there's no such source (see unknown_source())
+        """
+        if src_name in self.register:
+            return src_name
+        environments = self.source_environments(src_name)
+        return environments[0] if len(environments) == 1 else None
+
+    def unknown_source(self, src_name):
+        """Why a source can't be found, and the names it could have"""
+        environments = self.source_environments(src_name)
+        if environments:
+            return "'%s' is installed in several environments, give one of them: %s" % (
+                src_name,
+                ", ".join(environments),
+            )
+        similar = difflib.get_close_matches(
+            str(src_name), [name for name in self.register if not name.startswith("__")]
+        )
+        return "Can't find '%s' in registered sources (whether as main or sub-source)%s" % (
+            src_name,
+            ", did you mean: %s?" % ", ".join(similar) if similar else "",
+        )
 
     def __getitem__(self, src_name: str):
         try:

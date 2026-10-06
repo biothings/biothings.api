@@ -11,7 +11,7 @@ import pytest
 import requests
 
 from biothings.hub.autoupdate import BiothingsDumper
-from biothings.hub.dataload.dumper import BaseDumper, DumperManager, HTTPDumper
+from biothings.hub.dataload.dumper import BaseDumper, DumperException, DumperManager, HTTPDumper
 from biothings.hub.dataload.manager import SourcesFailed, wait_for_sources
 
 
@@ -171,3 +171,23 @@ async def test_wait_for_sources_progress():
         "mondo failed (1/2): TypeError: string indices must be integers, not 'str'",
         "hpo done (2/2)",
     ]
+
+
+def test_source_names():
+    """
+    Unknown sources come with suggestions, and a data release installed in one environment only can be
+    given by its name (installed in several environments: <release>__<environment>, see list)
+    """
+    manager = DumperManager(job_manager=None)
+    manager.register = {"chembl": [], "mychem.info__es8": [], "mychem.info__es9": [], "mydisease.info__es8": []}
+    assert manager.find_source("chembl") == "chembl"
+    assert manager.find_source("mydisease.info") == "mydisease.info__es8"
+    assert manager.find_source("mychem.info") is None
+    with pytest.raises(DumperException) as error:
+        manager.dump_src("mychem.info")
+    assert str(error.value) == (
+        "'mychem.info' is installed in several environments, give one of them: mychem.info__es8, mychem.info__es9"
+    )
+    with pytest.raises(DumperException, match=r"Can't find 'chembI' in registered sources .*did you mean: chembl\?"):
+        manager.call("chembI", "versions")
+    assert manager.call("mydisease.info", "versions") == []  # (no dumper class registered here)

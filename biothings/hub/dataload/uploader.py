@@ -424,27 +424,28 @@ class BaseSourceUploader:
         - "post"   : will perform post data load operations
         - "master" : will register the master document in src_master
         """
-        try:
-            # check what to do
-            if isinstance(steps, tuple):
-                steps = list(
-                    steps
-                )  # may not be necessary, but previous steps default is a list, so let's be consistent
-            elif isinstance(steps, str):
-                steps = steps.split(",")
+        # check what to do
+        if isinstance(steps, tuple):
+            steps = list(steps)  # may not be necessary, but previous steps default is a list, so let's be consistent
+        elif isinstance(steps, str):
+            steps = steps.split(",")
 
-            update_data = "data" in steps
-            update_master = "master" in steps
-            post_update_data = "post" in steps
-            clean_archives = "clean" in steps
-            strargs = "[steps=%s]" % ",".join(steps)
-            cnt = None
+        update_data = "data" in steps
+        update_master = "master" in steps
+        post_update_data = "post" in steps
+        clean_archives = "clean" in steps
+        strargs = "[steps=%s]" % ",".join(steps)
+        cnt = None
+        # sanity check before running: when not ready (eg. its last download failed, or it's being
+        # uploaded), nothing is done, the source keeps the status of its last upload, and its data
+        # (otherwise, eg. after upload_all, merges would refuse a source whose data is still there)
+        self.prepare()  # (reads the source's download and upload information)
+        self.check_ready(force)
+        try:
             if not self.temp_collection_name:
                 self.make_temp_collection()
             if self.db[self.temp_collection_name]:
                 self.db[self.temp_collection_name].drop()  # drop all existing records just in case.
-            # sanity check before running
-            self.check_ready(force)
             self.logger.info("Uploading '%s' (collection: %s)" % (self.name, self.collection_name))
             self.register_status("uploading")
             if update_data:
@@ -809,29 +810,38 @@ class UploaderManager(BaseSourceManager):
     def upload_all(self, raise_on_error=False, **kwargs):
         """
         Trigger upload processes for all the data sources: not the uploaders installing data
-        releases (see biothings.hub.autoupdate, they update the Elasticsearch indices of the API).
-        `**kwargs` are passed to upload_src() method. Unless raise_on_error, an upload failing
-        doesn't fail the whole before the others are done: then tells which sources failed
+        releases (see biothings.hub.autoupdate, they update the Elasticsearch indices of the API),
+        nor the dummy ones (their data is uploaded separately, see DummySourceUploader). Sources
+        which can't be uploaded yet (eg. their last download failed) are skipped, and keep their
+        last upload. `**kwargs` are passed to upload_src() method. Unless raise_on_error, an upload
+        failing doesn't fail the whole before the others are done: then tells which sources failed
         (see wait_for_sources()).
         """
         from biothings.hub.autoupdate.uploader import BiothingsUploader  # (imports this module)
 
         jobs = {}
+        skipped = {}
         for src, klasses in self.register.items():
             if klasses and all(issubclass(klass, BiothingsUploader) for klass in klasses):
                 continue
+            if klasses and all(issubclass(klass, DummySourceUploader) for klass in klasses):
+                skipped[src] = "dummy uploader, its data is uploaded separately (upload %s --release <release>)" % src
+                continue
             jobs[src] = self.upload_src(src, **kwargs)
-        return wait_for_sources("upload", jobs, raise_on_error=raise_on_error)
+        return wait_for_sources(
+            "upload", jobs, raise_on_error=raise_on_error, skipped=skipped, skip_errors=(ResourceNotReady,)
+        )
 
     def upload_src(self, src, validate=False, *args, **kwargs):
         """
         Trigger upload for registered resource named 'src'.
         Other args are passed to uploader's load() method
         """
+        src = self.find_source(src) or src  # eg. a data release installed in one environment
         try:
             klasses = self[src]
         except KeyError:
-            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+            raise ResourceNotFound(self.unknown_source(src))
 
         jobs = []
         try:
@@ -863,7 +873,7 @@ class UploaderManager(BaseSourceManager):
         try:
             klasses = self[src]
         except KeyError:
-            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)" % src)
+            raise ResourceNotFound(self.unknown_source(src))
 
         jobs = []
         try:
@@ -973,7 +983,7 @@ class UploaderManager(BaseSourceManager):
         try:
             klasses = self[src]
         except KeyError:
-            raise ResourceNotFound(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+            raise ResourceNotFound(self.unknown_source(src))
         jobs = []
         try:
             for _, klass in enumerate(klasses):

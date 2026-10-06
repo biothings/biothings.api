@@ -252,20 +252,44 @@ class DataBuilder:
         if force:
             # don't even bother
             return
+        unready = self.unready_sources()
+        if unready:
+            # all of them, so they can be fixed at once
+            raise ResourceNotReady("; ".join("%s (%s)" % (name, why) for name, why in unready.items()))
+
+    def unready_sources(self):
+        """
+        Sources of the build configuration which can't be merged, because they weren't uploaded
+        successfully: source name => why (eg. its last upload failed)
+        """
         src_build_config = self.source_backend.build_config
         src_dump = self.source_backend.dump
         _cfg = src_build_config.find_one({"_id": self.build_config["name"]})
-        # check if all resources are uploaded
+        unready = {}
         for src_name in _cfg["sources"]:
             fullname = get_source_fullname(src_name)
             if not fullname:
-                raise ResourceNotReady("Can't find source '%s'" % src_name)
+                unready[src_name] = "unknown source"
+                continue
             main_name = fullname.split(".")[0]
             src_doc = src_dump.find_one({"_id": main_name})
             if not src_doc:
-                raise ResourceNotReady("Missing information for source '%s' to start merging" % src_name)
-            if not src_doc.get("upload", {}).get("jobs", {}).get(src_name, {}).get("status") == "success":
-                raise ResourceNotReady("No successful upload found for resource '%s'" % src_name)
+                unready[src_name] = "never downloaded nor uploaded"
+                continue
+            upload = src_doc.get("upload", {}).get("jobs", {}).get(src_name) or {}
+            status = upload.get("status")
+            if status == "success":
+                continue
+            if not status:
+                unready[src_name] = "never uploaded"
+            elif status == "failed":
+                error = str(upload.get("err") or "").strip().splitlines()
+                unready[src_name] = "its last upload failed%s" % (": %s" % error[-1] if error else "")
+            elif status == "uploading":
+                unready[src_name] = "being uploaded"
+            else:
+                unready[src_name] = "its last upload is %s" % status
+        return unready
 
     def get_target_name(self):
         return "{}_{}_{}".format(self.build_name, self.get_build_version(), get_random_string()).lower()
@@ -1304,14 +1328,19 @@ class BuilderManager(BaseManager):
             except Exception as e:
                 logging.exception("Can't extract information from builder class %s: %s" % (repr(klass), e))
 
-    def merge(self, build_name, sources=None, target_name=None, **kwargs):
+    def merge(self, build_name, sources=None, target_name=None, check=False, **kwargs):
         """
         Trigger a merge for build named 'build_name'. Optional list of sources can be
         passed (one single or a list). target_name is the target collection name used
         to store to merge data. If none, each call will generate a unique target_name.
+        check=True only checks whether the merge can start (its sources were all uploaded
+        successfully, otherwise tells which ones weren't and why), without merging.
         """
         try:
             bdr = self[build_name]
+            if check:
+                bdr.check_ready()  # tells which sources aren't ready, and why
+                return "Ready to merge '%s': %s" % (build_name, ", ".join(self.list_sources(build_name)))
             job = bdr.merge(sources, target_name, job_manager=self.job_manager, **kwargs)
             return job
         except KeyError as key_error:
