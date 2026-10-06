@@ -4,6 +4,7 @@ and password hashes of HUB_PASSWD
 """
 
 import asyncio
+import sys
 import warnings
 from unittest import mock
 
@@ -51,6 +52,15 @@ def test_failed_logins_slow_down_password_guessing():
 def test_default_guest_user_without_password():
     assert ssh_login("guest", "", passwords=default_config.HUB_PASSWD)
     assert not ssh_login("guest", "guest", passwords=default_config.HUB_PASSWD)
+
+
+def test_crypt_hashes_without_crypt_module(caplog):
+    # like with Python 3.13+: the logins with older hashes are refused
+    with mock.patch.dict(sys.modules, {"crypt": None}):
+        assert not ssh_login("guest", "", passwords=default_config.HUB_PASSWD)
+        assert not ssh_login("bob", "alice-password")
+    assert "can't check the password of 'guest'" in caplog.text
+    assert "'bob'" not in caplog.text  # unknown user
 
 
 @pytest.mark.skipif(crypt is None, reason="Python 3.13 removed the crypt module")

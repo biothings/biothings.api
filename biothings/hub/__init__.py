@@ -1719,8 +1719,16 @@ class HubSSHServer(asyncssh.SSHServer):
                 return await check_password(username, password, self.__class__.PASSWORDS)
             except TooManyFailedLogins:
                 return False
-        import crypt  # not available on windows, nor in Python 3.13+
-
+        try:
+            import crypt  # not available on windows, nor in Python 3.13+
+        except ImportError:
+            if username in self.__class__.PASSWORDS:
+                logging.warning(
+                    "Hub SSH console: can't check the password of %r without Python's crypt module, "
+                    "make a new password hash with 'python -m biothings.utils.passwords'",
+                    username,
+                )
+            return False
         return crypt.crypt(password, pw) == pw
 
 
