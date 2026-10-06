@@ -491,7 +491,8 @@ class HubServer:
             self.configure_api_endpoints()
 
             from biothings.hub.api import generate_api_routes
-            from biothings.hub.api.handlers.base import RootHandler
+            from biothings.hub.api.handlers.auth import check_users
+            from biothings.hub.api.handlers.base import LoginHandler, RootHandler
 
             # First deal with read-only API
             if "readonly" in self.features:
@@ -518,6 +519,7 @@ class HubServer:
 
             self.routes.append(("/logs/(.*)", HubLogDirHandler, {"path": config.LOG_FOLDER}))
             self.routes.append(("/log/(.+)", HubLogFileHandler, {"path": config.LOG_FOLDER}))
+            self.routes.append(("/login", LoginHandler))
             self.routes.append(
                 (
                     "/",
@@ -527,6 +529,11 @@ class HubServer:
                     },
                 )
             )
+            users = check_users()
+            if users:
+                self.logger.info("Hub API: running commands requires a login, for users: %s", ", ".join(users))
+            else:
+                self.logger.info("Hub API: running commands doesn't require a login (no HUB_API_USERS)")
 
         # done
         self.configured = True
@@ -1701,14 +1708,20 @@ class HubSSHServer(asyncssh.SSHServer):
     def password_auth_supported(self):
         return True
 
-    def validate_password(self, username, password):
-        import crypt  # not available on windows
+    async def validate_password(self, username, password):
+        from biothings.hub.api.handlers.auth import TooManyFailedLogins, check_password
+        from biothings.utils.passwords import is_password_hash
 
-        if self.password_auth_supported():
-            pw = self.__class__.PASSWORDS.get(username, "*")
-            return crypt.crypt(password, pw) == pw
-        else:
-            return False
+        pw = self.__class__.PASSWORDS.get(username, "*")
+        if is_password_hash(pw):
+            # made with "python -m biothings.utils.passwords", checked like the Hub API logins
+            try:
+                return await check_password(username, password, self.__class__.PASSWORDS)
+            except TooManyFailedLogins:
+                return False
+        import crypt  # not available on windows, nor in Python 3.13+
+
+        return crypt.crypt(password, pw) == pw
 
 
 class HubSSHServerSession(asyncssh.SSHServerSession):

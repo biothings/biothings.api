@@ -110,11 +110,26 @@ READONLY_HUB_API_PORT = ConfigurationDefault(
     default=ConfigurationValue("HUB_API_PORT+1"), desc='Readonly API port when "readonly" feature is enabled'
 )
 
-# The format is a dictionary of 'username': 'cryptedpassword'
-# Generate crypted passwords with 'openssl passwd -crypt'
+# Users who can log in to the hub's SSH console, as a dictionary of 'username': 'password hash'.
+# The default "guest" user has no password. Get the hash of a password with
+# 'python -m biothings.utils.passwords' (hashes made with 'openssl passwd -crypt' also work,
+# up to Python 3.12)
 # - hide -#
 # - readonly -#
 HUB_PASSWD = {"guest": "9RKfd8gDuNf0Q"}
+
+# Users who can log in to the Hub API. When defined, running commands or changing data
+# through the Hub API (any request other than GET, eg. from BioThings Studio's terminal)
+# requires a login. Otherwise anyone who can reach the Hub API can run commands.
+# The format is a dictionary of 'username': 'password hash'
+# Get the hash of a password with 'python -m biothings.utils.passwords'
+# - hide -#
+# - readonly -#
+HUB_API_USERS = {}
+
+# Number of seconds a login to the Hub API lasts, before users have to log in again
+# - readonly -#
+HUB_API_LOGIN_EXPIRY = 12 * 60 * 60
 
 # Webhook to publish notifications to a Slack channel
 SLACK_WEBHOOK = None
