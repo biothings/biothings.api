@@ -358,7 +358,7 @@ class SourceManager(BaseSourceManager):
         except IndexError:
             subsrc = name
         if dest == "master":
-            m = self.src_master.find_one({"_id": subsrc}) or {"_id": subsrc}
+            m = self.src_master.find_one({"_id": subsrc}) or {"_id": subsrc, "name": subsrc}
             m["mapping"] = mapping
             self.src_master.save(m)
         elif dest == "inspect":
