@@ -3,9 +3,9 @@ Command runner behind the Hub terminal (BioThings Studio's terminal and ``biothi
 
 The terminal runs the commands registered in the hub shell: the built-in commands every hub
 provides according to its features (``dump_all``, ``upload_all``, ``sync``, ``status``, ...) and
-the commands defined by hook files found in ``config.HOOKS_FOLDER``. Unlike the SSH console,
-which is a python interpreter, the terminal only calls registered commands with literal
-arguments, so no arbitrary code can be executed through the Hub API.
+the commands defined by hook files found in ``config.HOOKS_FOLDER``. The terminal only calls
+registered commands with literal arguments, so no arbitrary code can be executed through the
+Hub API.
 
 A command line uses either a python-like or a shell-like syntax. Commands can be chained
 with ``&&`` to run one after the other, stopping at the first failure::

@@ -485,12 +485,12 @@ An example of advanced data plugin can be found at https://github.com/sirloon/mv
 5. Hooks and custom commands
 =========================
 
-While it's possible to define custom commands for the Hub console by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
-A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``, created if it doesn't exist). When the Hub starts, it runs each hook file, in alphabetical order, in its
-console namespace: a hook can use any command available in the Hub console, and everything defined in a hook becomes available in the console.
+While it's possible to define custom commands for the Hub by deriving class ``biothings.hub.HubServer``, there's also an easy way to enrich existing commands using **hooks**.
+A **hook** is a python file located in ``HOOKS_FOLDER`` (defaulting to ``./hooks/``, created if it doesn't exist). When the Hub starts, it runs each hook file, in alphabetical order, in the
+namespace of its commands: a hook can use any command available in the Hub.
 
-Functions defined in a hook file become **Hub commands**: they're listed by ``help``, and can be run from the terminal in BioThings Studio, with ``biothings-cli hub``
-(see `Run commands on a running Hub <cli.html#run-commands-on-a-running-hub>`_), and from the Hub console:
+Functions defined in a hook file become **Hub commands**: they're listed by ``help``, and can be run from the terminal in BioThings Studio and with ``biothings-cli hub``
+(see `Run commands on a running Hub <cli.html#run-commands-on-a-running-hub>`_):
 
 - a command can be a regular function, returning its result right away, or a coroutine (``async def``), which runs in background and is tracked like other Hub jobs
   (see ``commands`` and ``command <id>``).
@@ -519,8 +519,8 @@ The ``auto_archive`` function uses several existing Hub commands:
 Once loaded, the command can be run from the terminal or the CLI, eg. ``auto_archive covid19 --days 30 --no-dryrun``, same as ``auto_archive("covid19", days=30, dryrun=False)``
 (which asks for a confirmation, as it's not a dry run).
 
-.. note:: Hub console is actually a python interpreter. When connecting to the Hub using SSH, the connection "lands" into that interpreter. That's why it's possible to inject python code
-   into the console. The terminal in BioThings Studio and ``biothings-cli hub`` only run Hub commands, with literal arguments (strings, numbers, lists...), not python code.
+.. note:: The terminal in BioThings Studio and ``biothings-cli hub`` only run Hub commands, with literal arguments (strings, numbers, lists...), not python code.
+   Python code is added to the Hub with hook files, or by deriving class ``biothings.hub.HubServer``.
 
 .. note:: Be careful. User-defined hooks can be conflicting with existing commands and may break the Hub. Ex: if a hook defines a command "dump", it will replace, and potentially break
    existing one! Such replacements are logged as warnings, and reported by the ``hooks`` command. Note the Hub also provides a built-in ``auto_archive`` command (``auto_archive``
