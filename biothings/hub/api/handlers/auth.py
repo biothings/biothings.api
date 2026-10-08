@@ -9,9 +9,6 @@ Requests reading data stay open. Without users defined, the whole API is open.
 Clients log in with POST /login, and send the token they get in the X-Biothings-Access-Token
 header. Tokens are JWTs signed with a key derived from the user's password hash, so changing
 a user's password, or removing the user, invalidates the tokens already given out.
-
-The hub's SSH console checks the passwords of its users (HUB_PASSWD) with check_password() too,
-when they are hashes made with "python -m biothings.utils.passwords".
 """
 
 import asyncio

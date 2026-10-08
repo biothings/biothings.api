@@ -82,9 +82,9 @@ def test_09_value_hidden(base_config):
 
 def test_10_read_only(base_config):
     base_config = base_config.show()["scope"]["config"]
-    assert base_config["HUB_SSH_PORT"]["value"] == "123"
-    assert base_config["HUB_SSH_PORT"]["readonly"]
-    assert base_config["HUB_SSH_PORT"]["desc"] == "SSH port for hub console"
+    assert base_config["HUB_API_PORT"]["value"] == 123
+    assert base_config["HUB_API_PORT"]["readonly"]
+    assert base_config["HUB_API_PORT"]["desc"] == "API port"
 
 
 @pytest.mark.xfail(reason="There is no hidden variable in default_config")
@@ -124,7 +124,7 @@ def test_16_edit(base_config):
 
 def test_14_readonly_not_editable(base_config):
     with pytest.raises(RuntimeError):
-        base_config.store_value_to_db("HUB_SSH_PORT", "trying anyway")
+        base_config.store_value_to_db("HUB_API_PORT", "trying anyway")
 
 
 @pytest.mark.xfail(reason="There is no INVISIBLE variable in default_config")

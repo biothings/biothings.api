@@ -32,7 +32,7 @@ def test_non_ascii_password():
         None,
         "",
         "s3cret",  # a password instead of its hash
-        "9RKfd8gDuNf0Q",  # a crypt hash, like in HUB_PASSWD
+        "9RKfd8gDuNf0Q",  # a DES crypt hash
         "pbkdf2_sha256$1000$salt",
         "pbkdf2_sha256$many$salt$digest",
         "pbkdf2_sha256$0$salt$digest",

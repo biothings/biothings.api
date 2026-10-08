@@ -55,7 +55,6 @@ Clone the repository to your local.
 A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
 * **7081**: **BioThings Hub** REST API port, read-only access
 * **9200**: ElasticSearch port
@@ -63,7 +62,7 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
 
-.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+.. note:: Ports 8080, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
 
 .. code:: bash
 
@@ -1361,7 +1360,7 @@ be useful to troubleshoot an issue. Typing ``help()``, or even passing a command
 
 On a lower level, make sure all services are running in the docker container. Enter the container with
 ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
-(see usual running `services <studio_guide.html#services-check>`_). If services on ports 7080 and 7022 aren't running, it means the
+(see usual running `services <studio_guide.html#services-check>`_). If the service on port 7080 isn't running, it means the
 **Hub** has not started. If you just started the instance, wait a little more as services may take a while
 before they're fully started and ready.
 

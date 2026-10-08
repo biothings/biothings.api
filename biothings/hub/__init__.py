@@ -15,12 +15,9 @@ from types import SimpleNamespace
 
 try:
     import aiocron
-    import asyncssh
 except ImportError:
     # Suppress import error when we just run CLI
-    class asyncssh:
-        SSHServer = object
-        SSHServerSession = object  # noqa
+    pass
 
 
 from biothings.utils.common import DummyConfig, get_loop, get_random_string, get_timestamp
@@ -107,9 +104,7 @@ _config_for_app()
 
 from biothings.utils.common import get_class_from_classpath  # noqa: E402
 from biothings.utils.hub import (  # noqa: E402
-    AlreadyRunningException,
     CommandDefinition,
-    CommandError,
     HubShell,
     get_hub_reloader,
     pending,
@@ -290,32 +285,6 @@ def get_schedule(loop):
             out.append(sch)
 
     return "\n".join(out)
-
-
-async def start_ssh_server(
-    loop, name, passwords, keys=["bin/ssh_host_key"], shell=None, host="", port=8022  # NOQA B006
-):
-    for key in keys:
-        assert os.path.exists(key), "Missing key '%s' (use: 'ssh-keygen -f %s' to generate it" % (
-            key,
-            key,
-        )
-    HubSSHServer.PASSWORDS = passwords
-    HubSSHServer.NAME = name
-    HubSSHServer.SHELL = shell
-    aiocron.crontab(HUB_REFRESH_COMMANDS, func=shell.__class__.refresh_commands, start=True, loop=loop)
-    # yield from asyncssh.create_server(HubSSHServer,
-    #                                   host,
-    #                                   port,
-    #                                   loop=loop,
-    #                                   server_host_keys=keys)
-    await asyncssh.create_server(
-        HubSSHServer,
-        host,
-        port,
-        # loop=loop,
-        server_host_keys=keys,
-    )
 
 
 class HubCommands(OrderedDict):
@@ -590,20 +559,17 @@ class HubServer:
         self.start_web_api_server()
         # at this point, everything is ready/set, last call for customizations
         self.before_start()
-        self.logger.info("Starting Hub SSH server on port %s" % config.HUB_SSH_PORT)
+        for name in ("HUB_SSH_PORT", "HUB_PASSWD"):
+            if getattr(config, name, None) is not None:
+                self.logger.warning(
+                    "%s is ignored: the hub's SSH console was removed, its commands can be run "
+                    "from BioThings Studio's terminal",
+                    name,
+                )
 
         loop = self.managers["job_manager"].loop
-        self.ssh_server = start_ssh_server(
-            loop,
-            self.name,
-            passwords=config.HUB_PASSWD,
-            port=config.HUB_SSH_PORT,
-            shell=self.shell,
-        )
-        try:
-            loop.run_until_complete(self.ssh_server)
-        except (OSError, asyncssh.Error) as exc:
-            sys.exit("Error starting server: " + str(exc))
+        # follow the commands launched from the hub's shell: running or done, results...
+        aiocron.crontab(HUB_REFRESH_COMMANDS, func=self.shell.__class__.refresh_commands, start=True, loop=loop)
         loop.run_forever()
 
     def mixargs(self, feat, params=None):
@@ -1035,7 +1001,7 @@ class HubServer:
     def configure_terminal_feature(self):
         assert "ws" in self.features, "'terminal' feature requires 'ws'"
         assert "ws" in self.remaining_features, "'terminal' feature should configured before 'ws'"
-        # shell logger/listener to communicate between webapp and hub ssh console
+        # shell logger/listener to send the hub shell's outputs to the webapp
         import biothings.hub.api.handlers.ws as ws
 
         shell_listener = ws.LogListener()
@@ -1679,124 +1645,3 @@ class HubServer:
                 self.managers["build_manager"].delete_build_configuration(build_configuration_name)
 
         return self.managers["job_manager"].loop.create_task(do())
-
-
-class HubSSHServer(asyncssh.SSHServer):
-    PASSWORDS = {}
-    SHELL = None
-
-    def session_requested(self):
-        return HubSSHServerSession(self.__class__.NAME, self.__class__.SHELL)
-
-    def connection_made(self, connection):
-        self._conn = connection
-        print("SSH connection received from %s." % connection.get_extra_info("peername")[0])
-
-    def connection_lost(self, exc):
-        if exc:
-            print("SSH connection error: " + str(exc), file=sys.stderr)
-        else:
-            print("SSH connection closed.")
-
-    def begin_auth(self, username):
-        try:
-            self._conn.set_authorized_keys("bin/authorized_keys/%s.pub" % username)
-        except IOError:
-            pass
-        return True
-
-    def password_auth_supported(self):
-        return True
-
-    async def validate_password(self, username, password):
-        from biothings.hub.api.handlers.auth import TooManyFailedLogins, check_password
-        from biothings.utils.passwords import is_password_hash
-
-        pw = self.__class__.PASSWORDS.get(username, "*")
-        if is_password_hash(pw):
-            # made with "python -m biothings.utils.passwords", checked like the Hub API logins
-            try:
-                return await check_password(username, password, self.__class__.PASSWORDS)
-            except TooManyFailedLogins:
-                return False
-        try:
-            import crypt  # not available on windows, nor in Python 3.13+
-        except ImportError:
-            if username in self.__class__.PASSWORDS:
-                logging.warning(
-                    "Hub SSH console: can't check the password of %r without Python's crypt module, "
-                    "make a new password hash with 'python -m biothings.utils.passwords'",
-                    username,
-                )
-            return False
-        return crypt.crypt(password, pw) == pw
-
-
-class HubSSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self, name, shell):
-        self.name = name
-        self.shell = shell
-        self._input = ""
-
-    def connection_made(self, chan):
-        self._chan = chan
-
-    def shell_requested(self):
-        return True
-
-    def exec_requested(self, command):
-        self.eval_lines(["%s" % command, "\n"])
-        return True
-
-    def session_started(self):
-        welcome = "\nWelcome to %s, %s!\n" % (self.name, self._chan.get_extra_info("username"))
-        self.shell.shellog.output(welcome)
-        self._chan.write(welcome)
-        prompt = "hub> "
-        self.shell.shellog.output(prompt)
-        self._chan.write(prompt)
-
-    def data_received(self, data, datatype):
-        self._input += data
-        return self.eval_lines(self._input.split("\n"))
-
-    def eval_lines(self, lines):
-        for line in lines[:-1]:
-            try:
-                outs = [out for out in self.shell.eval(line) if out]
-
-                # Prepend the standout out/err
-                last_std_contents = self.shell.last_std_contents or {}
-                if "stdout" in last_std_contents:
-                    outs.append(last_std_contents["stdout"])
-                if "stderr" in last_std_contents:
-                    outs.append(last_std_contents["stderr"])
-
-                # trailing \n if not already there
-                if outs:
-                    strout = "\n".join(outs).strip("\n") + "\n"
-                    self._chan.write(strout)
-                    self.shell.shellog.output(strout)
-            except AlreadyRunningException as e:
-                self._chan.write("AlreadyRunningException: %s" % e)
-            except CommandError as e:
-                self._chan.write("CommandError: %s" % e)
-        self._chan.write("hub> ")
-        # consume passed commands
-        self._input = lines[-1]
-
-    def eof_received(self):
-        self._chan.write("Have a good one...\n")
-        self._chan.exit(0)
-
-    def soft_eof_received(self):
-        # After upgrading asyncssh from 2.5.0 to 2.11.0 or higher,
-        # in order to handle the EOF signal when user trigger a CTRL+D,
-        # the asyncssh calls the soft_eof_received callback instead of eof_received.
-        # This method is simple added to support this change.
-        return self.eof_received()
-
-    def break_received(self, msec):
-        # simulate CR
-        self._chan.write("\n")
-        self.data_received("\n", None)

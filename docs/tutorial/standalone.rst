@@ -181,22 +181,21 @@ create a BioThings standalone instance, ready to be used.
 
 A standalone instance is a pre-configured system containing several parts. BioThings hub is the system used to interact
 with BioThings backend and perform operations such as downloading data and create/update ElasticSearch indices. Those
-indices are used by the actual BioThings web API system to serve data to end-users. The hub can be accessed through a standard
-SSH connection or through REST API calls. In this guide, we'll use the SSH server.
+indices are used by the actual BioThings web API system to serve data to end-users. The hub can be accessed through its REST
+API, for instance from BioThings Studio's terminal, which we'll use in this guide.
 
 A BioThings instance expose several services on different ports:
 
 * **80**: BioThings web API port
-* **7022**: BioThings hub SSH port
 * **7080**: BioThings hub REST API port
 * **9200**: ElasticSearch port
 
 We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
-having to enter the container (eg. hub ssh port here will accessible using port 19022).
+having to enter the container (eg. hub REST API port here will be accessible using port 19090).
 
 .. code:: bash
 
-  $ docker run --name demo_mygene -p 19080:80 -p 19200:9200 -p 19022:7022 -p 19090:7080 -d demo_mygene
+  $ docker run --name demo_mygene -p 19080:80 -p 19200:9200 -p 19090:7080 -d demo_mygene
 
 .. note:: Instance will store ElasticSearch data in `/var/lib/elasticsearch/` directory, and downloaded data and logs
           in ``/data/`` directory. Those two locations could require extra disk space, if needed Docker option ``-v``
@@ -215,7 +214,6 @@ If some services are missing, the troubleshooting section may help.
   Active Internet connections (only servers)
   Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
   tcp        0      0 0.0.0.0:7080            0.0.0.0:*               LISTEN      -
-  tcp        0      0 0.0.0.0:7022            0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      25/nginx
   tcp        0      0 127.0.0.1:8881          0.0.0.0:*               LISTEN      -
   tcp        0      0 127.0.0.1:8882          0.0.0.0:*               LISTEN      -
@@ -226,11 +224,10 @@ If some services are missing, the troubleshooting section may help.
   tcp        0      0 127.0.0.1:8887          0.0.0.0:*               LISTEN      -
   tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      -
   tcp6       0      0 :::7080                 :::*                    LISTEN      -
-  tcp6       0      0 :::7022                 :::*                    LISTEN      -
   tcp6       0      0 :::9200                 :::*                    LISTEN      -
   tcp6       0      0 :::9300                 :::*                    LISTEN      -
 
-We can see the different BioThings services' ports: 7080, 7022 and 7080. All 888x ports
+We can see the different BioThings services' ports: 80 and 7080. All 888x ports
 correspond to Tornado instances running behing Nginx port 80. They shouldn't be accessed directly.
 Ports 9200 and 9300 are ElasticSearch standard ports (9200 one can be used to perform queries directly on ES, if needed)
 
@@ -275,24 +272,17 @@ existing indices in ElasticSearch:
 
 There's only one index, ``hubdb``, which is an internal index used by the hub. No index containing actual biological data...
 
-BioThings hub is a service running inside the instance, it can be accessed through a SSH connection, or using REST API calls.
-For the purpose of the guide, we'll use SSH. Let's connect to the hub (type ``yes`` to accept the key on first connection):
+BioThings hub is a service running inside the instance, it can be accessed using REST API calls. For the purpose of the
+guide, we'll use BioThings Studio's terminal: connect BioThings Studio to the hub's REST API, ``http://localhost:19090``
+from the Docker host (see :doc:`studio_guide`), then open the terminal, at the bottom left of the page:
 
 .. code:: console
 
-  # from Docker host
-  $ ssh guest@localhost -p 19022
-  The authenticity of host '[localhost]:19022 ([127.0.0.1]:19022)' can't be established.
-  RSA key fingerprint is SHA256:j63IEgXc3yJqgv0F4wa35aGliH5YQux84xxABew5AS0.
-  Are you sure you want to continue connecting (yes/no)? yes
-  Warning: Permanently added '[localhost]:19022' (RSA) to the list of known hosts.
-
-  Welcome to Auto-hub, guest!
   hub>
 
-We're now connected to the hub, inside a python shell where the application is actually running. Let's see what commands are available:
+We're now connected to the hub, where the application is actually running. Let's see what commands are available:
 
-.. warning:: the hub console, though accessed through SSH, is **not** a Linux shell (such as `bash`), it's a python interpreter shell.
+.. warning:: the hub's terminal is **not** a Linux shell (such as `bash`), it only runs the hub's commands.
 
 .. code:: bash
 
@@ -323,8 +313,8 @@ We're now connected to the hub, inside a python shell where the application is a
           when it's necessary to bring the API data to a specific version (not the latest one), are considered more advanced,
           and won't be covered in this guide.
 
-.. note:: Because the hub console is actually a python interpreter, we call the commands using parenthesis, just like functions
-          or methods. We can also pass arguments when necessary, just like standard python (remember: it **is** python...)
+.. note:: The commands are called using parenthesis, just like python functions or methods. We can also pass arguments
+          when necessary, just like in python.
 
 .. note:: After each command is typed, we need to press "enter" to get either its status (still running) or the result
 
@@ -447,8 +437,6 @@ Local version is ``20171126``, remote is ``20171126``, we're up-to-date. We can 
 ``Nothing to dump`` means there's no available remote version that can be downloaded. It would otherwise return a version number, meaning
 we would be able to update the API again using command ``update()``.
 
-Press Control-D to exit from the hub console.
-
 Querying ElasticSearch, we can see a new index, named ``biothings_current``, has been created and populated:
 
 .. code:: bash
@@ -563,7 +551,7 @@ We test and make sure, as much as we can, that standalone images are up-to-date 
 data release. But things can still go wrong...
 
 First make sure all services are running. Enter the container and type ``netstat -tnlp``, you should see
-services running on ports (see usual running `services`_). If services running on ports 7080 or 7022 aren't running,
+services running on ports (see usual running `services`_). If the service on port 7080 isn't running,
 it means the hub has not started. If you just started the instance, wait a little more as services may take a while before
 they're fully started and ready.
 

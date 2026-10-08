@@ -98,9 +98,6 @@ _CONFIGURATION_EVAL_SYMBOLS = (logging, set_default_folder)
 HUB_NAME = "Biothings Hub"
 HUB_ICON = None
 
-# SSH port for hub console
-# - readonly -#
-HUB_SSH_PORT = 7022
 # API port
 # - readonly -#
 HUB_API_PORT = 7080
@@ -109,14 +106,6 @@ HUB_API_PORT = 7080
 READONLY_HUB_API_PORT = ConfigurationDefault(
     default=ConfigurationValue("HUB_API_PORT+1"), desc='Readonly API port when "readonly" feature is enabled'
 )
-
-# Users who can log in to the hub's SSH console, as a dictionary of 'username': 'password hash'.
-# The default "guest" user has no password. Get the hash of a password with
-# 'python -m biothings.utils.passwords' (hashes made with 'openssl passwd -crypt' also work,
-# up to Python 3.12)
-# - hide -#
-# - readonly -#
-HUB_PASSWD = {"guest": "9RKfd8gDuNf0Q"}
 
 # Users who can log in to the Hub API. When defined, running commands or changing data
 # through the Hub API (any request other than GET, eg. from BioThings Studio's terminal)

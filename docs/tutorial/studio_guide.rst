@@ -55,7 +55,6 @@ Docker Hub registry, and can be pulled using:
 A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
 * **7081**: **BioThings Hub** read-only REST API port
 * **9200**: ElasticSearch port
@@ -68,7 +67,7 @@ A **BioThings Studio** instance exposes several services on different ports:
 of these services:
 
 * a web application allows interaction with the most used elements of the service (port 8080)
-* a console, accessible through SSH, gives access to more commands, for advanced usage (port 7022)
+* a terminal, in the web application, runs the **Hub**'s commands, for advanced usage (port 8080)
 * a REST API and a websocket (port 7080) can be used to interact with the **Hub**, query the differents objects inside,
   and get real-time notifications when processes are running. This interface is a good choice for third-party integration.
 
@@ -157,16 +156,14 @@ If some services are missing, the troubleshooting section may help.
   tcp        0      0 0.0.0.0:7080            0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:9000            0.0.0.0:*               LISTEN      -
   tcp        0      0 127.0.0.1:27017         0.0.0.0:*               LISTEN      -
-  tcp        0      0 0.0.0.0:7022            0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:9200            0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      166/nginx: master p
   tcp        0      0 0.0.0.0:9300            0.0.0.0:*               LISTEN      -
   tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      416/sshd
   tcp6       0      0 :::7080                 :::*                    LISTEN      -
-  tcp6       0      0 :::7022                 :::*                    LISTEN      -
   tcp6       0      0 :::22                   :::*                    LISTEN      416/sshd
 
-Specifically, BioThings Studio services' ports are: 7080, 7022 and 8080.
+Specifically, BioThings Studio services' ports are: 7080 and 8080.
 
 
 ============================================
