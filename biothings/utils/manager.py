@@ -516,12 +516,12 @@ class JobManager:
         """Number of jobs submitted to the process executor and not done yet
         (including the ones currently running in a worker)."""
         # executors have no public API for this, so read their internals
-        # pylint: disable=protected-access
         if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
             # free-threaded workers mode: the work queue only holds jobs not
             # yet picked up; approximate running ones with the spawned workers
-            return self.process_queue._work_queue.qsize() + len(self.process_queue._threads)
-        return len(self.process_queue._pending_work_items)
+            queued = self.process_queue._work_queue.qsize()  # pylint: disable=protected-access
+            return queued + len(self.process_queue._threads)  # pylint: disable=protected-access
+        return len(self.process_queue._pending_work_items)  # pylint: disable=protected-access
 
     async def _reap(self, fut, job_id, process=False):
         """Await an executor future and clean up the job registry, keeping it
