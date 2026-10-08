@@ -57,7 +57,7 @@ dependencies = [
     "requests>=2.21.0",
     "tornado==6.5.3",
     "gitpython>=3.1.0",
-    "elasticsearch[async]>=8, <9",
+    "elasticsearch[async]>=8.18,<9",
     "jmespath>=0.7.1,<2.0.0",  # support jmespath query parameter
     "PyYAML>=5.1",
     "msgspec>=0.21.1",  # fast json lib supporting inf/nan and datetime; ships free-threaded (cp314t) wheels (replaced orjson, which re-enables the GIL on 3.14t)
