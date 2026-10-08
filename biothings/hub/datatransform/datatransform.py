@@ -396,11 +396,12 @@ class DataTransform:
         Some hits (e.g. gene documents from MyGene.info) store an
         intermediate field as a list of dicts instead of a single dict
         when the document maps to more than one value (e.g. a gene
-        with multiple Ensembl IDs) - the first match found across the
-        list is returned.
+        with multiple Ensembl IDs) - the rest of the path is looked up
+        in every item of the list, and all values found are returned.
         :param doc: document to perform lookup on
         :param field: period delimited list of fields
-        :return:
+        :return: the value as a string, a list of strings if more than
+            one value is found, or None if no value is found
         """
         value = doc
         keys = field.split(".")
@@ -408,11 +409,18 @@ class DataTransform:
             for i, k in enumerate(keys):
                 if isinstance(value, (list, tuple)):
                     remaining = ".".join(keys[i:])
+                    values = []
                     for item in value:
+                        if isinstance(item, dict) and item.get(k) is None:
+                            continue
                         result = DataTransform._nested_lookup(item, remaining)
-                        if result is not None:
-                            return result
-                    return None
+                        if isinstance(result, list):
+                            values.extend(result)
+                        elif result is not None:
+                            values.append(result)
+                    if not values:
+                        return None
+                    return values if len(values) > 1 else values[0]
                 value = value[k]
         except (KeyError, TypeError):
             return None
