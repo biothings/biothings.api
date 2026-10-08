@@ -257,7 +257,8 @@ def anyfile(infile, mode="r"):
         import zipfile
 
         zip_file = zipfile.ZipFile(infile, mode)  # pylint: disable=consider-using-with
-        in_f = _closing_parent(io.TextIOWrapper(zip_file.open(rawfile, mode)), zip_file)
+        member = zip_file.open(rawfile, mode)  # pylint: disable=consider-using-with
+        in_f = _closing_parent(io.TextIOWrapper(member), zip_file)
     elif filetype == ".xz":
         import lzma
 

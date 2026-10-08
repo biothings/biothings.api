@@ -89,11 +89,11 @@ def track(func):
         try:
             _id = None
             if ptype == "thread":
-                _id = "%s" % threading.current_thread().name
+                _id = threading.current_thread().name
             elif multiprocessing.current_process().name == "MainProcess":
                 # free-threaded workers mode: "process" jobs actually run in
                 # threads of the hub process, the pid alone would collide
-                _id = "%s-%s" % (os.getpid(), threading.current_thread().name)
+                _id = f"{os.getpid()}-{threading.current_thread().name}"
             else:
                 _id = os.getpid()
             # add random chars: 2 jobs handled by the same slot (pid or thread)
@@ -178,7 +178,8 @@ class JobManager:
         processes (HUB_FREE_THREADED_WORKERS)."""
         if not getattr(config, "HUB_FREE_THREADED_WORKERS", False):
             return False
-        return hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()
+        # sys._is_gil_enabled() is CPython's documented check, despite the underscore
+        return hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()  # pylint: disable=protected-access
 
     def _get_process_executor(self):
         if self._free_threaded_mode():
@@ -324,7 +325,7 @@ class JobManager:
     def clean_staled(self):
         # clean old/staled files
         children_pids = {p.pid for p in self.pchildren}
-        active_tids = {t.name for t in self.thread_queue._threads}
+        active_tids = {t.name for t in self.thread_queue._threads}  # pylint: disable=protected-access
         ft_active = {t.name for t in getattr(self.process_queue, "_threads", None) or []}
         ft_pat = re.compile(r"(?P<pid>\d+)-(?P<tid>FTWorker_\d+)")
 
@@ -514,11 +515,13 @@ class JobManager:
     def _pending_jobs_count(self):
         """Number of jobs submitted to the process executor and not done yet
         (including the ones currently running in a worker)."""
+        # executors have no public API for this, so read their internals
         if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
             # free-threaded workers mode: the work queue only holds jobs not
             # yet picked up; approximate running ones with the spawned workers
-            return self.process_queue._work_queue.qsize() + len(self.process_queue._threads)
-        return len(self.process_queue._pending_work_items)
+            queued = self.process_queue._work_queue.qsize()  # pylint: disable=protected-access
+            return queued + len(self.process_queue._threads)  # pylint: disable=protected-access
+        return len(self.process_queue._pending_work_items)  # pylint: disable=protected-access
 
     async def _reap(self, fut, job_id, process=False):
         """Await an executor future and clean up the job registry, keeping it
@@ -536,7 +539,7 @@ class JobManager:
             if process:
                 self._process_job_ids.discard(job_id)
 
-    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_process(self, pinfo, func, *args, **kwargs):
         """Submit func to the process executor, as soon as job constraints
         (memory, queue depth, predicates) allow it. Blocks until the job is
         admitted and submitted, then returns an asyncio.Task resolving to the
@@ -561,7 +564,7 @@ class JobManager:
             # the worker process gets killed unexpectedly
         return asyncio.create_task(self._reap(fut, job_id, process=True))
 
-    async def defer_to_thread(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_thread(self, pinfo, func, *args, **kwargs):
         """Same as defer_to_process, but runs func in the thread executor."""
         skip_check = pinfo.get("__skip_check__", False)
 
@@ -841,10 +844,10 @@ class JobManager:
 
     def get_thread_summary(self):
         running_tids = self.get_thread_files()
-        tchildren = list(self.thread_queue._threads)
+        tchildren = list(self.thread_queue._threads)  # pylint: disable=protected-access
         if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
             # free-threaded workers mode: report CPU-bound worker threads too
-            tchildren += list(self.process_queue._threads)
+            tchildren += list(self.process_queue._threads)  # pylint: disable=protected-access
         res = {}
         for child in tchildren:
             res[child.name] = {
@@ -894,7 +897,7 @@ class JobManager:
 
     def get_pending_summary(self, getstr=False):
         running = len(self.get_pid_files())
-        return "%d pending job(s)" % (self._pending_jobs_count() - running)
+        return f"{self._pending_jobs_count() - running} pending job(s)"
 
     def get_pending_processes(self):
         if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):

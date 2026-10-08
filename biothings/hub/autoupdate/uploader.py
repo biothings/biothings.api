@@ -244,9 +244,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             try:
                 res = await job
             except Exception as e:
-                self.logger.error("Error while launching %s: %s" % (step, e))
+                self.logger.error("Error while launching %s: %s", step, e)
                 raise
-            self.logger.info("%s launched: %s" % (step, res))
+            self.logger.info("%s launched: %s", step, res)
 
         self.logger.info(
             "Restoring snapshot '%s' to index '%s' on host '%s'" % (snapshot_name, index_name, idxr.es_host)
