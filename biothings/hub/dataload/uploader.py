@@ -300,7 +300,7 @@ class BaseSourceUploader:
         )
         res = await job
         if not isinstance(res, int):
-            raise Exception(f"upload error (should have a int as returned value got {repr(res)}")
+            raise ResourceError(f"upload error (should have a int as returned value got {repr(res)}")
         self.switch_collection()
 
     def generate_doc_src_master(self):
@@ -665,7 +665,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                 if max_upload:
                     max_upload.release()
             if not isinstance(res, int):
-                raise Exception("Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, res))
+                raise ResourceError(f"Batch #{batch_num} failed while uploading source '{name}' [{res}]")
 
         submitted = False
         try:

@@ -19,14 +19,14 @@ class CLIJobManager:
     def __init__(self, loop=None):
         self.loop = loop or get_loop()
 
-    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_process(self, pinfo, func, *args, **kwargs):
         """keep the same signature as JobManager.defer_to_process. The passed pinfo is ignored.
         defer_to_process will still run func in the thread using defer_to_thread method.
         """
         fut = await self.defer_to_thread(pinfo, func, *args, **kwargs)
         return fut
 
-    async def defer_to_thread(self, pinfo=None, func=None, *args, **kwargs):
+    async def defer_to_thread(self, pinfo, func, *args, **kwargs):
         """keep the same signature as JobManager.defer_to_thread. The passed pinfo is ignored"""
 
         async def run(fut, func, *args, **kwargs):
