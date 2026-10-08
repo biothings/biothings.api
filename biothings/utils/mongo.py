@@ -2,8 +2,10 @@ import datetime
 import glob
 import inspect
 import io
+import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Iterable
 from functools import partial, wraps
@@ -175,6 +177,54 @@ def requires_config(func):
     return func_wrapper
 
 
+# MongoClient (DatabaseClient) instances hold a connection pool and are meant to be
+# created once and shared, not instantiated per call. get_conn()/get_hub_db_conn()/
+# get_target_conn() used to create a brand new client (and socket pool) on every call.
+# That's harmless for short-lived forked workers (the OS reclaims the fds on process
+# exit), but a fd leak anywhere these are called from the long-lived hub/web process -
+# e.g. uploader/job code running as threads under HUB_FREE_THREADED_WORKERS, or plain
+# web request handlers (build_info, flatten_inspection_data, ...) that call
+# get_target_db()/create_backend() on every request - since nothing ever closes those
+# clients.
+# The cache is keyed by (key, pid) so that a forked child never reuses a client created by its
+# parent (MongoClient/sockets are not fork-safe) - it lazily reconnects on first use instead.
+_client_cache_lock = threading.Lock()
+_client_cache = {}  # key -> (pid, client)
+
+
+def kwargs_cache_key(tag, kwargs):
+    """Build a hashable cached_client() key from a tag and a client-constructor kwargs
+    dict that may itself contain unhashable values (e.g. a ``hosts`` list for an
+    Elasticsearch client) - a plain ``tuple(sorted(kwargs.items()))`` would raise
+    TypeError in that case.
+    """
+    return (tag, json.dumps(kwargs, sort_keys=True, default=str))
+
+
+def cached_client(key, factory):
+    """Generic pid/thread-safe cache for client-like objects (e.g. MongoClient) that hold
+    a connection pool and are meant to be created once and shared, not per call. ``key``
+    must be hashable and unique to the client's identity (e.g. a connection URI, or a key
+    built by ``kwargs_cache_key()``); ``factory`` is called with no arguments to build a
+    fresh client on a cache miss or after a fork boundary.
+    """
+    pid = os.getpid()
+    cached = _client_cache.get(key)
+    if cached is not None and cached[0] == pid:
+        return cached[1]
+    with _client_cache_lock:
+        cached = _client_cache.get(key)
+        if cached is not None and cached[0] == pid:
+            return cached[1]
+        client = factory()
+        _client_cache[key] = (pid, client)
+        return client
+
+
+def _cached_client(uri):
+    return cached_client(uri, lambda: DatabaseClient(uri))
+
+
 @requires_config
 def get_conn(server, port):
     try:
@@ -182,8 +232,7 @@ def get_conn(server, port):
             uri = f"mongodb://{config.DATA_SRC_SERVER_USERNAME}:{config.DATA_SRC_SERVER_PASSWORD}@{server}:{port}"
         else:
             uri = f"mongodb://{server}:{port}"
-        conn = DatabaseClient(uri)
-        return conn
+        return _cached_client(uri)
     except (AttributeError, ValueError):
         # missing config variables (or invalid), we'll pretend it's a dummy connection to mongo
         # (dummy here means there really shouldn't be any call to get_conn() but mongo is too much tied to the code and needs more work to unlink it)
@@ -192,8 +241,7 @@ def get_conn(server, port):
 
 @requires_config
 def get_hub_db_conn():
-    conn = DatabaseClient(config.HUB_DB_BACKEND["uri"])
-    return conn
+    return _cached_client(config.HUB_DB_BACKEND["uri"])
 
 
 @requires_config
@@ -291,8 +339,7 @@ def get_target_conn():
         )
     else:
         uri = "mongodb://{}:{}".format(config.DATA_TARGET_SERVER, config.DATA_TARGET_PORT)
-    conn = DatabaseClient(uri)
-    return conn
+    return _cached_client(uri)
 
 
 @requires_config

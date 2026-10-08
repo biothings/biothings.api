@@ -1,5 +1,7 @@
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import patch
+
+import pytest
 
 from tornado.httputil import HTTPHeaders
 
@@ -8,8 +10,11 @@ from biothings.web.analytics.notifiers import AnalyticsMixin
 
 
 class DummyNotifier:
+    def __init__(self):
+        self.events = []
+
     async def broadcast(self, event):
-        pass
+        self.events.append(event)
 
 
 class DummyAnalyticsHandler(AnalyticsMixin):
@@ -35,19 +40,18 @@ class DummyAnalyticsHandler(AnalyticsMixin):
         return default
 
 
-def test_analytics_mixin_records_referer_header():
+@pytest.mark.asyncio
+async def test_analytics_mixin_records_referer_header():
     handler = DummyAnalyticsHandler(
         {
             "Referer": "https://data.niaid.nih.gov/",
         }
     )
 
-    with patch("biothings.web.analytics.notifiers.asyncio.get_event_loop", return_value=object()), patch(
-        "biothings.web.analytics.notifiers.asyncio.run_coroutine_threadsafe"
-    ) as schedule:
-        handler.on_finish()
+    handler.on_finish()
+    await asyncio.sleep(0)
 
-    schedule.call_args.args[0].close()
+    assert handler.biothings.notifier.events == [handler.event]
     assert handler.event["__request__"]["referer"] == "https://data.niaid.nih.gov/"
     assert (
         handler.event.to_GA4_payload("GA4_MEASUREMENT_ID")[0]["params"]["page_referrer"]
@@ -55,13 +59,12 @@ def test_analytics_mixin_records_referer_header():
     )
 
 
-def test_analytics_mixin_referer_falls_back_to_referer_header():
+@pytest.mark.asyncio
+async def test_analytics_mixin_referer_falls_back_to_referer_header():
     handler = DummyAnalyticsHandler({"Referer": "https://data.niaid.nih.gov/"})
 
-    with patch("biothings.web.analytics.notifiers.asyncio.get_event_loop", return_value=object()), patch(
-        "biothings.web.analytics.notifiers.asyncio.run_coroutine_threadsafe"
-    ) as schedule:
-        handler.on_finish()
+    handler.on_finish()
+    await asyncio.sleep(0)
 
-    schedule.call_args.args[0].close()
+    assert handler.biothings.notifier.events == [handler.event]
     assert handler.event["__request__"]["referer"] == "https://data.niaid.nih.gov/"

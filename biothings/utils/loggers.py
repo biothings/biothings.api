@@ -116,19 +116,12 @@ class EventRecorder(logging.StreamHandler):
         self.eventcol = get_event()
 
     def emit(self, record):
-        async def aioemit(msg):
-            def recorded(f):
-                # res = f.result()
-                f.result()
-
-            fut = loop.run_in_executor(None, partial(self.eventcol.save, msg))
-            fut.add_done_callback(recorded)
-            await fut
-            return fut
+        def recorded(f):
+            if not f.cancelled() and f.exception():
+                logging.error("Couldn't record event: %s", f.exception())
 
         if record.__dict__.get("notify") or record.__dict__.get("event"):
             try:
-                loop = asyncio.get_event_loop()
                 msg = {
                     "_id": record.created,
                     "asctime": record.asctime,
@@ -138,8 +131,14 @@ class EventRecorder(logging.StreamHandler):
                     "pid": record.process,
                     "pname": record.processName,
                 }
-                fut = aioemit(msg)
-                asyncio.ensure_future(fut)
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # not on the event loop thread, a blocking save is fine here
+                    self.eventcol.save(msg)
+                    return
+                fut = loop.run_in_executor(None, partial(self.eventcol.save, msg))
+                fut.add_done_callback(recorded)
             except Exception as e:
                 logging.error("Couldn't record event: %s", e)
 

@@ -1,6 +1,10 @@
 import pytest
 
-from biothings.hub.datatransform.datatransform_api import DataTransformMyChemInfo, DataTransformMyGeneInfo
+from biothings.hub.datatransform.datatransform_api import (
+    DataTransformAPI,
+    DataTransformMyChemInfo,
+    DataTransformMyGeneInfo,
+)
 
 
 @pytest.mark.xfail()
@@ -74,6 +78,45 @@ def test_mygene_one2many():
     res_cnt = sum(1 for _ in res_lst)
     # assert that at least 5 elements are returned
     assert res_cnt > 5
+
+
+@pytest.mark.parametrize(
+    "doc, field, expected",
+    [
+        ({"ensembl": {"gene": "ENSG1"}}, "ensembl.gene", "ENSG1"),
+        ({"ensembl": [{"gene": "ENSG1"}, {"gene": "ENSG2"}]}, "ensembl.gene", ["ENSG1", "ENSG2"]),
+        ({"ensembl": [{"gene": "ENSG1"}, {"protein": "ENSP1"}, {"gene": None}, "ENSG3"]}, "ensembl.gene", "ENSG1"),
+        ({"a": [{"b": {"c": 1}}, {"b": [{"c": 2}, {"c": 3}]}]}, "a.b.c", ["1", "2", "3"]),
+        ({"ensembl": [{"protein": "ENSP1"}]}, "ensembl.gene", None),
+        ({"ensembl": {"protein": "ENSP1"}}, "ensembl.gene", None),
+        ({"ensembl": "ENSG1"}, "ensembl.gene", None),
+    ],
+    ids=[
+        "nested_dict",
+        "list_returns_every_value",
+        "list_skips_items_without_value",
+        "list_with_deeper_path",
+        "list_without_value",
+        "missing_key",
+        "non_dict_intermediate",
+    ],
+)
+def test_nested_lookup(doc, field, expected):
+    """
+    Test nested lookups, including paths through lists of dicts
+    :return:
+    """
+    assert DataTransformAPI._nested_lookup(doc, field) == expected
+
+
+def test_parse_querymany_one2many_hit():
+    """
+    Test that every value of a one-to-many hit is kept for key conversion
+    :return:
+    """
+    dt = DataTransformMyGeneInfo("symbol", ["ensembl"])
+    query_res = {"out": [{"query": "CDK2", "ensembl": [{"gene": "ENSG1"}, {"gene": "ENSG2"}]}]}
+    assert dt._parse_querymany(query_res) == {"CDK2": ["ENSG1", "ENSG2"]}
 
 
 @pytest.mark.xfail()

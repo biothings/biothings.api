@@ -1,11 +1,8 @@
 import datetime
 import logging
 
-# pandas.io.json encoder to deal with non-json compliant values NaN, Inf
-# (based on ujson, but pandas has its own way to deal with these values)
-# see https://github.com/biothings/biothings.api/commit/59c0d78f758018b0d87836657a2b5d1a700503a1
-# import pandas.io.json as pdjson
-# replace pandas json encoder with orjson:
+# non-json compliant values (NaN, Inf) are handled by utils.serializer,
+# which encodes them as null
 from tornado.web import RequestHandler
 
 from biothings import config

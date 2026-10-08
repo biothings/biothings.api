@@ -392,21 +392,37 @@ class DataTransform:
         """
         Performs a nested lookup of doc using a period (.) delimited
         list of fields.  This is a nested dictionary lookup.
+
+        Some hits (e.g. gene documents from MyGene.info) store an
+        intermediate field as a list of dicts instead of a single dict
+        when the document maps to more than one value (e.g. a gene
+        with multiple Ensembl IDs) - the rest of the path is looked up
+        in every item of the list, and all values found are returned.
         :param doc: document to perform lookup on
         :param field: period delimited list of fields
-        :return:
+        :return: the value as a string, a list of strings if more than
+            one value is found, or None if no value is found
         """
         value = doc
         keys = field.split(".")
         try:
-            for k in keys:
+            for i, k in enumerate(keys):
                 if isinstance(value, (list, tuple)):
-                    # assuming we have a list of dict with k as one of the keys
-                    value = [e[k] for e in value if isinstance(e, dict) and e.get(k) is not None]
-                    # can't descend any further into a list, return the collected values
-                    return [str(v) for v in value]
+                    remaining = ".".join(keys[i:])
+                    values = []
+                    for item in value:
+                        if isinstance(item, dict) and item.get(k) is None:
+                            continue
+                        result = DataTransform._nested_lookup(item, remaining)
+                        if isinstance(result, list):
+                            values.extend(result)
+                        elif result is not None:
+                            values.append(result)
+                    if not values:
+                        return None
+                    return values if len(values) > 1 else values[0]
                 value = value[k]
-        except KeyError:
+        except (KeyError, TypeError):
             return None
 
         return str(value)
@@ -527,31 +543,26 @@ class DataTransformEdge:
         """setup the logger member variable"""
         self.logger, _ = get_logger("datatransform")
 
-    def prepare(self, state=None):
-        # pylint: disable=W0102
+    def prepare(self):
         """Prepare class state objects (pickleable objects)"""
-        state = state or {}
         if self.prepared:
             return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
-            return
         self.setup_log()
+        self.prepared = True
 
-    def unprepare(self):
+    def __getstate__(self):
         """
-        reset anything that's not picklable (so self can be pickled)
-        return what's been reset as a dict, so self can be restored
-        once pickled
+        Blank _state and the prepared flag for pickling.
+
+        An edge is pickled along with whatever holds it when a job is deferred to a
+        worker process, and _state can hold an unpicklable handle: MongoDBEdge keeps
+        a pymongo collection there, BiothingsAPIEdge a client. The worker rebuilds
+        what it needs on first use through the lazy properties, which only run while
+        prepared is False. Keys a subclass adds in init_state() are covered.
         """
-        state = {
-            "logger": self._state["logger"],
-        }
-        for k in state:
-            self._state[k] = None
-        self.prepared = False
+        state = self.__dict__.copy()
+        state["_state"] = dict.fromkeys(self._state)
+        state["prepared"] = False
         return state
 
 

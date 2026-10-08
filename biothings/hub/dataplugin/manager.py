@@ -138,15 +138,15 @@ class AssistantManager(BaseSourceManager):
             assert len(job) == 1, "Expecting one job, got: %s" % job
             job = job.pop()
 
-            def loaded(f):
+            async def loaded():
                 try:
-                    _ = f.result()
+                    await job
                     self.logger.debug("Plugin '%s' downloaded, now loading manifest" % assistant.plugin_name)
                     assistant.loader.load_plugin()
                 except Exception as e:
                     self.logger.exception("Unable to download plugin '%s': %s" % (assistant.plugin_name, e))
 
-            job.add_done_callback(loaded)
+            self.job_manager.loop.create_task(loaded())
             return job
         else:
             raise AssistantException("Could not find any assistant able to handle URL '%s'" % url)

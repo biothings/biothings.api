@@ -122,11 +122,28 @@ class ESIndex(BaseESIndex):
 
 
 def _get_es_client(es_client_args, es_blk_args, es_idx_name):
-    return ESIndex(Elasticsearch(**es_client_args), es_idx_name, **es_blk_args)
+    # Elasticsearch holds an HTTP connection pool and is meant to be created once and
+    # shared, not per batch - same reasoning as _get_mg_client below. Keyed via
+    # kwargs_cache_key() since es_client_args commonly contains a "hosts" list, which
+    # isn't hashable on its own.
+    from biothings.utils.mongo import cached_client, kwargs_cache_key
+
+    key = kwargs_cache_key("indexer_task_es_client", es_client_args)
+    client = cached_client(key, lambda: Elasticsearch(**es_client_args))
+    return ESIndex(client, es_idx_name, **es_blk_args)
 
 
 def _get_mg_client(mg_client_args, mg_dbs_name, mg_col_name):
-    return MongoClient(**mg_client_args)[mg_dbs_name][mg_col_name]
+    # MongoClient holds a connection pool and is meant to be created once and shared, not
+    # per batch: this is called once per indexing batch (potentially thousands per job),
+    # dispatched to worker threads/processes sharing the hub process's fd table under
+    # HUB_FREE_THREADED_WORKERS, so an uncached client here leaks a full connection pool
+    # per batch. Cache keyed on the connection kwargs so distinct targets don't collide.
+    from biothings.utils.mongo import cached_client, kwargs_cache_key
+
+    key = kwargs_cache_key("indexer_task_mg_client", mg_client_args)
+    client = cached_client(key, lambda: MongoClient(**mg_client_args))
+    return client[mg_dbs_name][mg_col_name]
 
 
 # --------------
@@ -219,16 +236,6 @@ class IndexingTask:
         clients.mongo = self.backend.mongo()
         return clients
 
-    def _close_clients(self, clients):
-        es_client = getattr(clients.es, "client", None)
-        if es_client and hasattr(es_client, "close"):
-            es_client.close()
-
-        mongo_database = getattr(clients.mongo, "database", None)
-        mongo_client = getattr(mongo_database, "client", None)
-        if mongo_client and hasattr(mongo_client, "close"):
-            mongo_client.close()
-
     def dispatch(self):
         if self.mode in (Mode.INDEX, Mode.PURGE):
             return self.index()
@@ -239,11 +246,8 @@ class IndexingTask:
 
     def index(self):
         clients = self._get_clients()
-        try:
-            count_docs = self._index_ids(clients, self.ids)
-            return count_docs + len(self.invalid_ids)
-        finally:
-            self._close_clients(clients)
+        count_docs = self._index_ids(clients, self.ids)
+        return count_docs + len(self.invalid_ids)
 
     def _index_ids(self, clients, ids):
         if not ids:
@@ -259,50 +263,44 @@ class IndexingTask:
 
     def merge(self):
         clients = self._get_clients()
-        try:
-            upd_cnt, docs_old = 0, {}
-            new_cnt, docs_new = 0, {}
+        upd_cnt, docs_old = 0, {}
+        new_cnt, docs_new = 0, {}
 
-            # populate docs_old
-            for doc in clients.es.mget(self.ids):
-                docs_old[doc["_id"]] = doc
+        # populate docs_old
+        for doc in clients.es.mget(self.ids):
+            docs_old[doc["_id"]] = doc
 
-            # populate docs_new
-            for doc in doc_feeder(
-                clients.mongo,
-                step=len(self.ids),
-                inbatch=False,
-                query={"_id": {"$in": self.ids}},
-            ):
-                docs_new[doc["_id"]] = doc
-                doc.pop("_timestamp", None)
+        # populate docs_new
+        for doc in doc_feeder(
+            clients.mongo,
+            step=len(self.ids),
+            inbatch=False,
+            query={"_id": {"$in": self.ids}},
+        ):
+            docs_new[doc["_id"]] = doc
+            doc.pop("_timestamp", None)
 
-            # merge existing ids
-            for key in list(docs_new):
-                if key in docs_old:
-                    docs_old[key].update(docs_new[key])
-                    del docs_new[key]
+        # merge existing ids
+        for key in list(docs_new):
+            if key in docs_old:
+                docs_old[key].update(docs_new[key])
+                del docs_new[key]
 
-            # updated docs (those existing in col *and* index)
-            upd_cnt = clients.es.mindex(docs_old.values())
-            self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
+        # updated docs (those existing in col *and* index)
+        upd_cnt = clients.es.mindex(docs_old.values())
+        self.logger.info("%s: %d documents updated.", self.name, upd_cnt)
 
-            # new docs (only in col, *not* in index)
-            new_cnt = clients.es.mindex(docs_new.values())
-            self.logger.info("%s: %d new documents.", self.name, new_cnt)
+        # new docs (only in col, *not* in index)
+        new_cnt = clients.es.mindex(docs_new.values())
+        self.logger.info("%s: %d new documents.", self.name, new_cnt)
 
-            return upd_cnt + new_cnt
-        finally:
-            self._close_clients(clients)
+        return upd_cnt + new_cnt
 
     def resume(self):
         clients = self._get_clients()
-        try:
-            count_ids = len(self.ids) + len(self.invalid_ids)
-            missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
-            self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
-            if missing_ids:
-                self._index_ids(clients, missing_ids)
-            return count_ids
-        finally:
-            self._close_clients(clients)
+        count_ids = len(self.ids) + len(self.invalid_ids)
+        missing_ids = [x.id for x in clients.es.mexists(self.ids) if not x.exists]
+        self.logger.info("%s: %d missing documents.", self.name, len(missing_ids))
+        if missing_ids:
+            self._index_ids(clients, missing_ids)
+        return count_ids

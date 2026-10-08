@@ -416,6 +416,11 @@ MAX_SYNC_WORKERS = HUB_MAX_WORKERS
 # as any pending job will consume some memory).
 MAX_QUEUED_JOBS = os.cpu_count() * 4
 
+# Opt-in: on a free-threaded (no-GIL) Python build, run CPU-bound workers in
+# threads instead of forked processes. Workers then share the hub's memory and
+# jobs aren't pickled. Ignored on regular (GIL) builds.
+HUB_FREE_THREADED_WORKERS = False
+
 # * 7. Hub Internals *#
 DATA_SRC_SERVER = ConfigurationError("Define hostname for source database")
 DATA_SRC_PORT = ConfigurationDefault(default=27017, desc="Define port for source database")

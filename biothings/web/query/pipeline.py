@@ -14,6 +14,7 @@ from elasticsearch.exceptions import (
     TransportError,
 )
 
+from biothings.utils.common import get_loop
 from biothings.web.query.builder import RawQueryInterrupt
 from biothings.web.query.engine import EndScrollInterrupt, RawResultInterrupt
 from biothings.web.query.formatter import ResultFormatterException
@@ -278,7 +279,7 @@ class ESQueryPipeline(QueryPipeline):  # over async client
         super().__init__(builder, backend, formatter, *args, **kwargs)
 
     def _run_coroutine(self, coro, *args, **kwargs):
-        loop = asyncio.get_event_loop()
+        loop = get_loop()
         pipeline = AsyncESQueryPipeline(self.builder, self.backend, self.formatter)
         return loop.run_until_complete(coro(pipeline, *args, **kwargs))
 

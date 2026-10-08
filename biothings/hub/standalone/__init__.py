@@ -132,7 +132,7 @@ class AutoHubFeature(object):
                 self.logger.exception("data install failed")
                 raise
 
-        return asyncio.ensure_future(do(version))
+        return self.managers["job_manager"].loop.create_task(do(version))
 
     def get_folder_name(self, url):
         return os.path.basename(os.path.dirname(url))

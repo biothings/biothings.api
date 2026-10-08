@@ -18,7 +18,7 @@ import logging
 import os
 from functools import partial, wraps
 
-from biothings.utils.common import dump as dumpobj, get_random_string, get_timestamp, loadobj
+from biothings.utils.common import dump as dumpobj, get_loop, get_random_string, get_timestamp, loadobj
 
 
 def get_hub_db_conn():
@@ -297,7 +297,7 @@ class ChangeWatcher(object):
                         # TODO: the log line below was commented out, uncomment it to see it causes any issue
                         logging.error("Can't publish %s to %s: %s", evt, listener, e)
 
-        return asyncio.ensure_future(do())
+        return get_loop().create_task(do())
 
     @classmethod
     def add(cls, listener):

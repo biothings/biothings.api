@@ -208,41 +208,27 @@ class HubShell(InteractiveShell):
                     extra={"event": True},
                 )
                 logging.info("Stopping job manager...")
-                j = self.job_manager.stop(force=force)
-
-                def ok(f):
-                    f.result()  # consume
-                    logging.error("Job manager stopped")
-
-                j.add_done_callback(ok)
-                await j
+                await self.job_manager.stop(force=force)
+                logging.error("Job manager stopped")
             except Exception as e:
                 logging.error("Error while recycling the process queue: %s", e)
                 raise
+            if stop:
+                self.job_manager.hub_process.kill()
+            else:
+                logging.debug("%s %s", [sys.executable], sys.argv)
+                import subprocess
 
-        def start(f):
-            f.result()  # consume future's result to potentially raise exception
-            logging.debug("%s %s", [sys.executable], sys.argv)
-            import subprocess
-
-            subprocess.Popen([sys.executable] + sys.argv)
-            self.job_manager.hub_process.kill()
-            sys.exit(0)
-
-        def autokill(f):
-            f.result()
-            self.job_manager.hub_process.kill()
-
-        fut = asyncio.ensure_future(do())
+                subprocess.Popen([sys.executable] + sys.argv)
+                self.job_manager.hub_process.kill()
+                sys.exit(0)
 
         if stop:
             logging.warning("Stopping hub")
-            fut.add_done_callback(autokill)
         else:
             logging.warning("Restarting hub")
-            fut.add_done_callback(start)
 
-        return fut
+        return self.job_manager.loop.create_task(do())
 
     def help(self, func=None):
         """
@@ -810,7 +796,11 @@ def get_hub_reloader(*args, **kwargs):
             def wrapper():
                 result = func()
                 if isinstance(result, asyncio.Future):
-                    asyncio.get_event_loop().run_until_complete(result)
+                    # reload_func is called from tornado's autoreload hook,
+                    # while the loop is running: run_until_complete would fail
+                    # here, and the returned task is already scheduled anyway.
+                    # Just make sure a potential exception gets retrieved.
+                    result.add_done_callback(lambda f: f.cancelled() or f.exception())
 
             return wrapper
 

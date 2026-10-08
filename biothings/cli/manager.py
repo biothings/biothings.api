@@ -26,16 +26,16 @@ class CLIJobManager:
         fut = await self.defer_to_thread(pinfo, func, *args, **kwargs)
         return fut
 
-    async def defer_to_thread(self, pinfo=None, func=None, *args):
+    async def defer_to_thread(self, pinfo=None, func=None, *args, **kwargs):
         """keep the same signature as JobManager.defer_to_thread. The passed pinfo is ignored"""
 
-        async def run(fut, func, *args):
+        async def run(fut, func, *args, **kwargs):
             try:
-                res = func(*args)
+                res = func(*args, **kwargs)
                 fut.set_result(res)
             except Exception as gen_exc:
                 fut.set_exception(gen_exc)
 
         fut = self.loop.create_future()
-        self.loop.create_task(run(fut, func, *args))
+        self.loop.create_task(run(fut, func, *args, **kwargs))
         return fut

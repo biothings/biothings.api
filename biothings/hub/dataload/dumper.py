@@ -37,7 +37,7 @@ from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_re
 from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.manager import ResourceError
-from biothings.utils.common import open_anyfile, rmdashfr, timesofar, untarall
+from biothings.utils.common import first_exception, open_anyfile, rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 from biothings.utils.parsers import docker_source_info_parser
@@ -323,32 +323,25 @@ class BaseDumper:
         log_folder = os.path.join(btconfig.LOG_FOLDER, "dataload") if btconfig.LOG_FOLDER else None
         self.logger, self.logfile = get_logger("dump_%s" % self.src_name, log_folder=log_folder)
 
-    def prepare(self, state={}):  # noqa: B006
+    def prepare(self):
         if self.prepared:
-            return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
             return
         self.prepare_src_dump()
         self.setup_log()
+        self.prepared = True
 
-    def unprepare(self):
+    def __getstate__(self):
         """
-        reset anything that's not pickable (so self can be pickled)
-        return what's been reset as a dict, so self can be restored
-        once pickled
+        Blank _state and the prepared flag for pickling.
+
+        do_dump() defers download() to a worker process, which pickles self, and
+        _state holds an unpicklable mongo client. The worker rebuilds what it needs
+        on first use through the lazy properties, which only run while prepared is
+        False.
         """
-        state = {
-            "client": self._state["client"],
-            "src_dump": self._state["src_dump"],
-            "logger": self._state["logger"],
-            "src_doc": self._state["src_doc"],
-        }
-        for k in state:
-            self._state[k] = None
-        self.prepared = False
+        state = self.__dict__.copy()
+        state["_state"] = dict.fromkeys(self._state)
+        state["prepared"] = False
         return state
 
     def prepare_src_dump(self):
@@ -463,33 +456,19 @@ class BaseDumper:
                         return self.release
                     # mark the download starts
                     self.register_status("downloading", transient=True)
-                    # unsync to make it pickable
-                    state = self.unprepare()
                     await self.do_dump(job_manager=job_manager)
-                    # then restore state
-                    self.prepare(state)
                 else:
                     # if nothing to dump, don't do post process
                     self.logger.debug("Nothing to dump", extra={"notify": True})
                     return "Nothing to dump"
             if "post" in self.steps:
-                got_error = False
                 pinfo = self.get_pinfo()
                 pinfo["step"] = "post_dump"
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
                 job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
-
-                def postdumped(f):
-                    nonlocal got_error
-                    if f.exception():
-                        got_error = f.exception()
-
-                job.add_done_callback(postdumped)
                 await job
-                if got_error:
-                    raise got_error
                 # set it to success at the very end
                 self.register_status("success")
                 if self.__class__.AUTO_UPLOAD:
@@ -600,50 +579,44 @@ class BaseDumper:
     def current_release(self):
         return self.src_doc.get("download", {}).get("release")
 
+    async def _download_done(self, job, remote, local, max_dump):
+        try:
+            await job
+        except Exception as e:
+            self.logger.exception("Error downloading '%s': %s", remote, e)
+            raise
+        finally:
+            if max_dump:
+                # release even on failure, so remaining downloads aren't stuck
+                max_dump.release()
+        self.post_download(remote, local)
+
     async def do_dump(self, job_manager=None):
         self.logger.info("%d file(s) to download" % len(self.to_dump))
         # should downloads be throttled ?
         max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
         courtesy_wait = self.__class__.SLEEP_BETWEEN_DOWNLOAD
-        got_error = None
-        jobs = []
-        self.unprepare()
-        for todo in self.to_dump:
-            remote = todo["remote"]
-            local = todo["local"]
-
-            def done(f):
-                try:
-                    _ = f.result()
-                    nonlocal max_dump
-                    nonlocal got_error
-                    if max_dump:
-                        # self.logger.debug("Releasing download semaphore: %s" % max_dump)
-                        max_dump.release()
-                    self.post_download(remote, local)
-                except Exception as e:
-                    self.logger.exception("Error downloading '%s': %s", remote, e)
-                    got_error = e
-
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "dump"
-            pinfo["description"] = remote
-            if max_dump:
-                await max_dump.acquire()
-            if courtesy_wait:
-                await asyncio.sleep(courtesy_wait)
-            job = await job_manager.defer_to_process(pinfo, partial(self.download, remote, local))
-            job.add_done_callback(done)
-            jobs.append(job)
-            # raise error as soon as we get it:
+        try:
+            # TaskGroup raises errors as soon as we get them, cancelling the
+            # submission loop and remaining downloads:
             # 1. it prevents from launching things for nothing
-            # 2. if we gather the error at the end of the loop *and* if we
-            #    have more errors than the queue size, we get stuck
-            if got_error:
-                raise got_error
-        await asyncio.gather(*jobs)
-        if got_error:
-            raise got_error
+            # 2. if we gathered errors at the end of the loop *and* if we
+            #    had more errors than the queue size, we'd get stuck
+            async with asyncio.TaskGroup() as tg:
+                for todo in self.to_dump:
+                    remote = todo["remote"]
+                    local = todo["local"]
+                    pinfo = self.get_pinfo()
+                    pinfo["step"] = "dump"
+                    pinfo["description"] = remote
+                    if max_dump:
+                        await max_dump.acquire()
+                    if courtesy_wait:
+                        await asyncio.sleep(courtesy_wait)
+                    job = await job_manager.defer_to_process(pinfo, partial(self.download, remote, local))
+                    tg.create_task(self._download_done(job, remote, local, max_dump))
+        except* Exception as eg:
+            raise first_exception(eg) from eg
         self.logger.info("%s successfully downloaded" % self.SRC_NAME)
         self.to_dump = []
 
@@ -1128,7 +1101,7 @@ class DummyDumper(BaseDumper):
         pinfo = self.get_pinfo()
         pinfo["step"] = "post_dump"
         job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
-        await asyncio.gather(job)  # consume future
+        await job
         self.logger.info("Registering success")
         self.register_status("success")
         if self.__class__.AUTO_UPLOAD:
@@ -1159,16 +1132,12 @@ class ManualDumper(BaseDumper):
     def new_data_folder(self, value):
         self._new_data_folder = value
 
-    def prepare(self, state={}):  # noqa : B006
+    def prepare(self):
         self.setup_log()
         if self.prepared:
             return
-        if state:
-            # let's be explicit, _state takes what it wants
-            for k in self._state:
-                self._state[k] = state[k]
-            return
         self.prepare_src_dump()
+        self.prepared = True
 
     def prepare_client(self):
         self.logger.info("Manual dumper, assuming data will be downloaded manually")
@@ -1195,7 +1164,7 @@ class ManualDumper(BaseDumper):
         pinfo["step"] = "post_dump"
         strargs = "[path=%s,release=%s]" % (self.new_data_folder, self.release)
         job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
-        await asyncio.gather(job)  # consume future
+        await job
         # ok, good to go
         self.register_status("success")
         if self.__class__.AUTO_UPLOAD:
@@ -1378,7 +1347,6 @@ class GitDumper(BaseDumper):
     async def dump(self, release="HEAD", force=False, job_manager=None, **kwargs):
         assert self.__class__.GIT_REPO_URL, "GIT_REPO_URL is not defined"
         # assert self.__class__.ARCHIVE == False, "Git dumper can't keep multiple versions (but can move to a specific commit hash)"
-        got_error = None
         self.release = release
 
         def do():
@@ -1397,20 +1365,13 @@ class GitDumper(BaseDumper):
 
         pinfo = self.get_pinfo()
         job = await job_manager.defer_to_thread(pinfo, partial(do))
-
-        def done(f):
-            nonlocal got_error
-            try:
-                _ = f.result()
-                self.register_status("success")
-            except Exception as e:
-                got_error = e
-                self.logger.exception("failed: %s" % e, extra={"notify": True})
-                self.register_status("failed", download={"err": str(e)})
-                raise
-
-        job.add_done_callback(done)
-        await job
+        try:
+            await job
+        except Exception as e:
+            self.logger.exception("failed: %s" % e, extra={"notify": True})
+            self.register_status("failed", download={"err": str(e)})
+            raise
+        self.register_status("success")
 
     def prepare_client(self):
         """Check if 'git' executable exists"""
@@ -1529,7 +1490,8 @@ class DumperManager(BaseSourceManager):
                     if klass.SCHEDULE:
                         crontab = klass.SCHEDULE
                     else:
-                        raise DumperException("Missing scheduling information")
+                        logging.warning("Skipping %s: missing scheduling information", klass.__name__)
+                        continue
                 job = self.job_manager.submit(
                     partial(
                         self.create_and_dump,
@@ -1574,7 +1536,7 @@ class DumperManager(BaseSourceManager):
         try:
             for _, klass in enumerate(klasses):
                 pfunc = partial(self.create_and_call, klass, method_name, *args, **kwargs)
-                job = asyncio.ensure_future(pfunc())
+                job = self.job_manager.loop.create_task(pfunc())
                 jobs.append(job)
             return jobs
         except Exception as e:
@@ -2290,10 +2252,37 @@ class DockerContainerDumper(BaseDumper):
             return True
         return False
 
-    def generate_remote_file(self):
-        """Execute dump_command to generate the remote file, called in create_todump_list method"""
+    def __getstate__(self):
+        """
+        Also blank the container and volume handles, which hold a live docker client
+        and don't survive pickling. The workers running generate_remote_file() and
+        download() re-get them in ensure_container(). The container config
+        (CONTAINER_NAME, VOLUMES, NAMED_VOLUMES, ...) is plain data and travels.
+        """
+        state = super().__getstate__()
+        state["container"] = None
+        state["volumes"] = None
+        return state
+
+    def ensure_container(self):
+        """
+        Get a handle on the container, connecting the docker client first if needed.
+
+        Called by the methods that run in a worker process, generate_remote_file()
+        and download(): __getstate__ leaves self.container behind, so they have to
+        re-get it.
+        """
         if self.need_prepare():
             self.prepare_client()
+        if not self.container:
+            if not self.CONTAINER_NAME:
+                raise DockerContainerException("CONTAINER_NAME is required to reach the container")
+            self.container = self.client.containers.get(self.CONTAINER_NAME)
+        return self.container
+
+    def generate_remote_file(self):
+        """Execute dump_command to generate the remote file, called in create_todump_list method"""
+        self.ensure_container()
         if self.DUMP_COMMAND:
             self.logger.info(f"Exec the command: sh -c {self.DUMP_COMMAND}")
             exit_code, output = self.container.exec_run(["sh", "-c", self.DUMP_COMMAND])
@@ -2317,39 +2306,17 @@ class DockerContainerDumper(BaseDumper):
         if self.need_prepare():
             self.prepare_client()
         self.prepare_remote_container()
-        # unprepare unpicklable objects so we can use multiprocessing
-        state = self.unprepare()
         # set up job to generate remote file
         if job_manager:
             pinfo = self.get_pinfo()
             pinfo["step"] = "check"
             job = await job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
+            await job
         else:
-            # otherwise, just run it with asyncio loop directly
-            async def run(fut):
-                res = self.generate_remote_file()
-                fut.set_result(res)
-
-            loop = asyncio.get_event_loop()
-            job = loop.create_future()
-            loop.create_task(run(job))
-
-        remote_error = False
-
-        def remote_done(f):
-            nonlocal remote_error
-            remote_error = f.exception() or False
-
-        job.add_done_callback(remote_done)
-        await job
-        if remote_error:
-            raise remote_error
-        # Need to reinit _state b/c of unprepare
-        self.prepare(state)  # reverse of unpreare after async job is done
-        # TODO: test if the following two lines can be removed after we call self.prepare(state) above
+            # otherwise, just run it in the running loop's default executor
+            await asyncio.get_running_loop().run_in_executor(None, self.generate_remote_file)
         if self.need_prepare():
             self.prepare_client()
-        # self.setup_log()    # this line should not needed, since self.prepare calls it already.
 
         self.set_release()
 
@@ -2384,9 +2351,11 @@ class DockerContainerDumper(BaseDumper):
     def download(self, remote_file, local_file):
         # removes local file if exists before downloading remote file to local
         self.prepare_local_folders(local_file)
+        # do_dump() defers this to a worker process, which has no container yet
+        container = self.ensure_container()
         try:
             # get_archive returns a tar datastream and dict with stat info
-            bits, stat = self.container.get_archive(remote_file, encode_stream=True)
+            bits, stat = container.get_archive(remote_file, encode_stream=True)
             if stat.get("size", 0) > 0:
                 tmp_file = f"{local_file}.tar"
                 with open(tmp_file, "wb") as fp:
