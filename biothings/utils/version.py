@@ -31,6 +31,9 @@ def get_biothings_commit():
     try:
         with open(os.path.join(os.path.dirname(biothings.__file__), ".git-info"), "r", encoding="utf-8") as git_file:
             lines = [ln.strip("\n") for ln in git_file.readlines()]
+            # setup.py leaves the commit count empty when there's no local master branch
+            # (e.g. CI tag checkouts), so the file can end after the commit hash
+            lines += [""] * (3 - len(lines))
             return {
                 "repository-url": lines[0],
                 "commit-hash": lines[1],
