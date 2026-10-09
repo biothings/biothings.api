@@ -54,6 +54,13 @@ Docker Hub registry, and can be pulled using:
 
 A **BioThings Studio** instance exposes several services on different ports:
 
+.. warning::
+
+   Restrict administrative services to their intended users before publishing
+   these ports. A private network or VPN must limit access to authorized users;
+   the read-only Hub API also exposes operational information. See
+   :doc:`hub_deployment` for the deployment requirements.
+
 * **8080**: **BioThings Studio** web application port
 * **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port

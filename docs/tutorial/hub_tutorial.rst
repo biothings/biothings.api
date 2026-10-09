@@ -12,6 +12,12 @@ containing all the data of interest, ready to be served as an API, using
 Biothings SDK Web component (covered in another tutorial).
 Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothings.species>`_.
 
+.. warning::
+
+   The Hub is an administrative service. Restrict its interfaces and databases to
+   trusted administrators and required backend clients before starting it.
+   See :doc:`hub_deployment` for deployment and access-control requirements.
+
 Prerequesites
 ^^^^^^^^^^^^^
 

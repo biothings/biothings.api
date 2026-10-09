@@ -62,6 +62,12 @@ using this BioThings SDK.
 administer a BioThings API. At its core is the *Hub*, a backend service responsible for maintaining data up-to-date, producing data releases and
 update API frontends.
 
+**Deployment:** Hub and Studio are administrative services intended for trusted administrators.
+Restrict access before starting them; access to the Hub administrative API grants administrative
+capabilities. Keep administrative services and databases off the public internet. See the
+[deployment and access-control guide](https://docs.biothings.io/en/latest/tutorial/hub_deployment.html)
+for network requirements and Docker port-publishing guidance.
+
 ## Installing BioThings SDK
 
 You can install the latest stable BioThings SDK release with pip from
