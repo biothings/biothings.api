@@ -729,7 +729,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                 try:
                     if max_upload:
                         max_upload.release()
-                    if type(f.result()) != int:
+                    if not isinstance(f.result(), int):
                         got_error = Exception(
                             "Batch #%s failed while uploading source '%s' [%s]" % (batch_num, name, f.result())
                         )

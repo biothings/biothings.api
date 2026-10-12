@@ -9,7 +9,9 @@ import pprint
 import re
 import stat
 import subprocess
+import sys
 import time
+import traceback
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -144,6 +146,47 @@ class BaseDumper:
         if not self._state["src_doc"]:
             self.prepare()
         return self._state["src_doc"]
+
+    @property
+    def new_data_folder(self):
+        """
+        Generate a new data folder path using src_root_folder and
+        specified suffix attribute. Also sync current (aka previous) data
+        folder previously registeted in database.
+
+        This method typically has to be called in create_todump_list()
+        when the dumper actually knows some information about the resource,
+        like the actual release.
+        """
+        if self.archive:
+            if getattr(self, self.__class__.SUFFIX_ATTR) is None:  # defined but not set
+                # if step is "post" only, it means we didn't even check a new version and we
+                # want to run "post" step on current version again
+                if self.steps == ["post"]:
+                    return (
+                        self.current_data_folder
+                    )  # FIXME: this causes a recursive error as current_data_folder calls new_data_folder too in some cases
+                else:
+                    raise DumperException(
+                        "Can't generate new data folder, attribute used for suffix (%s) isn't set"
+                        % self.__class__.SUFFIX_ATTR
+                    )
+            suffix = getattr(self, self.__class__.SUFFIX_ATTR)
+            return os.path.join(self.src_root_folder, suffix)
+        else:
+            return os.path.join(self.src_root_folder, "latest")
+
+    @property
+    def current_data_folder(self):
+        try:
+            return self.src_doc.get("download", {}).get("data_folder") or self.new_data_folder
+        except DumperException:
+            # exception raised from new_data_folder generation, we give up
+            return None
+
+    @property
+    def current_release(self):
+        return self.src_doc.get("download", {}).get("release")
 
     @client.setter
     def client(self, value):
@@ -472,6 +515,7 @@ class BaseDumper:
                     # if nothing to dump, don't do post process
                     self.logger.debug("Nothing to dump", extra={"notify": True})
                     return "Nothing to dump"
+
             if "post" in self.steps:
                 got_error = False
                 pinfo = self.get_pinfo()
@@ -479,29 +523,27 @@ class BaseDumper:
                 # for some reason (like maintaining object's state between pickling).
                 # we can't use process there. Need to use thread to maintain that state without
                 # building an unmaintainable monster
-                job = await job_manager.defer_to_thread(pinfo, partial(self.post_dump, job_manager=job_manager))
+                post_dump_job: asyncio.Task = await job_manager.defer_to_thread(
+                    pinfo, partial(self.post_dump, job_manager=job_manager)
+                )
 
-                def postdumped(f):
-                    nonlocal got_error
-                    if f.exception():
-                        got_error = f.exception()
+                try:
+                    response = await post_dump_job
+                except Exception as gen_exc:
+                    self.logger.exception(gen_exc)
+                    raise gen_exc
 
-                job.add_done_callback(postdumped)
-                await job
-                if got_error:
-                    raise got_error
                 # set it to success at the very end
                 self.register_status("success")
                 if self.__class__.AUTO_UPLOAD:
                     set_pending_to_upload(self.src_name)
                 self.logger.info("success %s" % strargs, extra={"notify": True})
-        except (KeyboardInterrupt, Exception) as e:
-            self.logger.error("Error while dumping source: %s" % e)
-            import traceback
+        except (KeyboardInterrupt, Exception) as gen_exc:
+            self.logger.error("Error while dumping source: %s" % gen_exc)
 
             self.logger.error(traceback.format_exc())
-            self.register_status("failed", download={"err": str(e), "tb": traceback.format_exc()})
-            self.logger.error("failed %s: %s" % (strargs, e), extra={"notify": True})
+            self.register_status("failed", download={"err": str(gen_exc), "tb": traceback.format_exc()})
+            self.logger.error("failed %s: %s" % (strargs, gen_exc), extra={"notify": True})
             raise
         finally:
             if self.client:
@@ -559,92 +601,89 @@ class BaseDumper:
             pinfo["__predicates__"] = preds
         return pinfo
 
-    @property
-    def new_data_folder(self):
-        """
-        Generate a new data folder path using src_root_folder and
-        specified suffix attribute. Also sync current (aka previous) data
-        folder previously registeted in database.
-
-        This method typically has to be called in create_todump_list()
-        when the dumper actually knows some information about the resource,
-        like the actual release.
-        """
-        if self.archive:
-            if getattr(self, self.__class__.SUFFIX_ATTR) is None:  # defined but not set
-                # if step is "post" only, it means we didn't even check a new version and we
-                # want to run "post" step on current version again
-                if self.steps == ["post"]:
-                    return (
-                        self.current_data_folder
-                    )  # FIXME: this causes a recursive error as current_data_folder calls new_data_folder too in some cases
-                else:
-                    raise DumperException(
-                        "Can't generate new data folder, attribute used for suffix (%s) isn't set"
-                        % self.__class__.SUFFIX_ATTR
-                    )
-            suffix = getattr(self, self.__class__.SUFFIX_ATTR)
-            return os.path.join(self.src_root_folder, suffix)
-        else:
-            return os.path.join(self.src_root_folder, "latest")
-
-    @property
-    def current_data_folder(self):
-        try:
-            return self.src_doc.get("download", {}).get("data_folder") or self.new_data_folder
-        except DumperException:
-            # exception raised from new_data_folder generation, we give up
-            return None
-
-    @property
-    def current_release(self):
-        return self.src_doc.get("download", {}).get("release")
-
     async def do_dump(self, job_manager=None):
-        self.logger.info("%d file(s) to download" % len(self.to_dump))
-        # should downloads be throttled ?
-        max_dump = self.__class__.MAX_PARALLEL_DUMP and asyncio.Semaphore(self.__class__.MAX_PARALLEL_DUMP)
-        courtesy_wait = self.__class__.SLEEP_BETWEEN_DOWNLOAD
-        got_error = None
-        jobs = []
+        """Main method for dataplugin file dumping.
+
+        [TODO] should downloads be throttled?
+        """
+        self.logger.info("%s file(s) to download", len(self.to_dump))
+
+        courtesy_wait = float(self.SLEEP_BETWEEN_DOWNLOAD)
+
+        # None yields no limit, set to maximum system size (typically 2^63 - 1 for 64 bit systems)
+        if self.MAX_PARALLEL_DUMP is None:
+            self.MAX_PARALLEL_DUMP = sys.maxsize
+
+        job_limiter = asyncio.Semaphore(self.MAX_PARALLEL_DUMP)
+
         self.unprepare()
-        for todo in self.to_dump:
-            remote = todo["remote"]
-            local = todo["local"]
 
-            def done(f):
+        async def execute_download_job(index: int, dump_task_info: dict, courtesy_wait: float):
+            remote = dump_task_info["remote"]
+            local = dump_task_info["local"]
+
+            async with job_limiter:
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "dump"
+                pinfo["description"] = remote
+
+                self.logger.debug("Creating download task #%s: %s -> %s", index, remote, local)
+                dump_callback = partial(self.download, remote, local)
                 try:
-                    _ = f.result()
-                    nonlocal max_dump
-                    nonlocal got_error
-                    if max_dump:
-                        # self.logger.debug("Releasing download semaphore: %s" % max_dump)
-                        max_dump.release()
-                    self.post_download(remote, local)
-                except Exception as e:
-                    self.logger.exception("Error downloading '%s': %s", remote, e)
-                    got_error = e
+                    await asyncio.sleep(courtesy_wait)
+                    download_task: asyncio.Task = await job_manager.defer_to_thread(pinfo, dump_callback)
+                    download_result = await download_task
+                    return download_result
+                except Exception as gen_exc:
+                    self.logger.exception(gen_exc)
+                    self.logger.error("Download failed for %s -> %s", remote, local)
+                    raise gen_exc
 
-            pinfo = self.get_pinfo()
-            pinfo["step"] = "dump"
-            pinfo["description"] = remote
-            if max_dump:
-                await max_dump.acquire()
-            if courtesy_wait:
-                await asyncio.sleep(courtesy_wait)
-            job = await job_manager.defer_to_process(pinfo, partial(self.download, remote, local))
-            job.add_done_callback(done)
-            jobs.append(job)
-            # raise error as soon as we get it:
-            # 1. it prevents from launching things for nothing
-            # 2. if we gather the error at the end of the loop *and* if we
-            #    have more errors than the queue size, we get stuck
-            if got_error:
-                raise got_error
-        await asyncio.gather(*jobs)
-        if got_error:
-            raise got_error
-        self.logger.info("%s successfully downloaded" % self.SRC_NAME)
+        download_coroutines = [
+            execute_download_job(index, dump_info, courtesy_wait) for index, dump_info in enumerate(self.to_dump)
+        ]
+
+        download_results = await asyncio.gather(*download_coroutines, return_exceptions=True)
+
+        for result in download_results:
+            if isinstance(result, Exception):
+                raise result
+
+        self.logger.info("%s successfully downloaded", self.SRC_NAME)
+        self.to_dump = []
+
+        async def execute_postdownload_job(index: int, dump_task_info: dict, courtesy_wait: float):
+            remote = dump_task_info["remote"]
+            local = dump_task_info["local"]
+
+            async with job_limiter:
+                pinfo = self.get_pinfo()
+                pinfo["step"] = "dump"
+                pinfo["description"] = remote
+
+                self.logger.debug("Creating postdownload task #%s: %s -> %s", index, remote, local)
+                dump_callback = partial(self.post_download, remote, local)
+                try:
+                    await asyncio.sleep(courtesy_wait)
+                    download_task: asyncio.Task = await job_manager.defer_to_thread(pinfo, dump_callback)
+                    download_result = await download_task
+                    return download_result
+                except Exception as gen_exc:
+                    self.logger.exception(gen_exc)
+                    self.logger.error("Post-Download failed for %s -> %s", remote, local)
+                    raise gen_exc
+
+        postdownload_coroutines = [
+            execute_download_job(index, dump_info, courtesy_wait) for index, dump_info in enumerate(self.to_dump)
+        ]
+
+        postdownload_results = await asyncio.gather(*postdownload_coroutines, return_exceptions=True)
+
+        for result in postdownload_results:
+            if isinstance(result, Exception):
+                raise result
+
+        self.logger.info("%s successfully executed post-download method", self.SRC_NAME)
         self.to_dump = []
 
     def prepare_local_folders(self, localfile: Union[str, Path]):
@@ -655,16 +694,6 @@ class BaseDumper:
             except FileExistsError:
                 # ignore, might exist now (parallelization occuring...)
                 pass
-
-
-class AssistedDumper:
-    """
-    Dumper class definition built for the manifest-based
-    dumpers. Built entirely through the MetaDumper metaclass
-    dumper type.
-    """
-
-    DATA_PLUGIN_FOLDER = None
 
 
 class FTPDumper(BaseDumper):
@@ -699,7 +728,7 @@ class FTPDumper(BaseDumper):
         self.client = FTP(self.FTP_HOST, timeout=self.FTP_TIMEOUT)
         self.client.login(self.FTP_USER, self.FTP_PASSWD)
         if self.CWD_DIR:
-            self.client.cwd(self.CWD_DIR)
+            self.client.cwd(self.CWtodoD_DIR)
 
     def need_prepare(self):
         return not self.client or (self.client and not self.client.file)
@@ -1466,7 +1495,7 @@ class DumperManager(BaseSourceManager):
         )
 
     def clean_stale_status(self):
-        # not uysing mongo query capabilities as hub backend could be ES, SQLlite, etc...
+        # not using mongo query capabilities as hub backend could be ES, SQLlite, etc...
         # so manually iterate
         src_dump = get_src_dump()
         srcs = src_dump.find()
