@@ -1401,6 +1401,11 @@ class GitDumper(BaseDumper):
 class DumperManager(BaseSourceManager):
     SOURCE_CLASS = BaseDumper
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # source name -> start time of the dump running for it in this hub
+        self._dumps_in_flight = {}
+
     def get_source_ids(self):
         """
         Return displayable list of registered source names (not private)
@@ -1545,7 +1550,26 @@ class DumperManager(BaseSourceManager):
 
     async def create_and_dump(self, klass, *args, **kwargs):
         inst = self.create_instance(klass)
-        res = await inst.dump(*args, **kwargs)
+        src_name = klass.SRC_NAME
+        started_at = self._dumps_in_flight.get(src_name)
+        if started_at:
+            # two dumps of a source would write to the same data folder, and the
+            # running one, if stuck, would block the upload the new one triggers
+            msg = "Skipping dump, another dump of '%s' has been running for %s (since %s)" % (
+                src_name,
+                timesofar(started_at),
+                datetime.fromtimestamp(started_at).strftime("%Y-%m-%d %H:%M:%S"),
+            )
+            inst.logger.warning(
+                "%s. If it is stuck, restarting the hub will clear it." % msg,
+                extra={"notify": True},
+            )
+            return msg
+        self._dumps_in_flight[src_name] = time.time()
+        try:
+            res = await inst.dump(*args, **kwargs)
+        finally:
+            self._dumps_in_flight.pop(src_name, None)
         return res
 
     async def create_and_call(self, klass, method_name, *args, **kwargs):

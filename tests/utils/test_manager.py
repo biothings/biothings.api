@@ -1,4 +1,9 @@
 import asyncio
+import io
+import logging
+import os
+import sys
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import pytest
@@ -22,6 +27,53 @@ def square(x, offset=0):
 
 def boom():
     raise ValueError("worker failure")
+
+
+def log_in_worker(logger_name):
+    logging.getLogger(logger_name).warning("logged from worker %s", os.getpid())
+    return "logged"
+
+
+def report_worker_streams(handler_names, logger_name):
+    # runs in a forked worker: which stream objects did it end up with?
+    logging.getLogger(logger_name).warning("written by worker")
+    return {
+        "handlers": {name: id(logging._handlers[name].stream) for name in handler_names},
+        "stdout": id(sys.stdout),
+        "__stdout__": id(sys.__stdout__),
+        "__stderr__": id(sys.__stderr__),
+        "last_resort": logging.lastResort.stream is sys.stderr,
+    }
+
+
+class BrokenEncodingStream(io.TextIOWrapper):
+    # a text stream a worker can't replace: reading its encoding fails
+    @property
+    def encoding(self):
+        raise RuntimeError("unreadable encoding")
+
+
+class Redirect:
+    # stands for a std stream redirected to a logger, like the API test runner does
+    def write(self, text):
+        pass
+
+    def flush(self):
+        pass
+
+
+def pipe_reader(read_fd, chunks):
+    # drains a pipe until every write end is closed
+    try:
+        while chunk := os.read(read_fd, 65536):
+            chunks.append(chunk)
+    finally:
+        os.close(read_fd)
+
+
+def kill_workers(manager):
+    for process in list((manager.process_queue._processes or {}).values()):
+        process.kill()
 
 
 def make_manager(**kwargs):
@@ -313,6 +365,127 @@ class TestJobManager:
             assert await job == 4
         finally:
             shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_long_predicate_wait_is_warned(self, monkeypatch, caplog):
+        monkeypatch.setattr(manager_module.config, "HUB_PREDICATE_WAIT_WARNING", 1, raising=False)
+        manager = make_manager()
+        try:
+            calls = []
+
+            def dumper_finished(jm):
+                calls.append(jm)
+                return len(calls) > 1  # fails once, then lets the job run
+
+            pinfo = dict(PINFO, __predicates__=[dumper_finished])
+            with caplog.at_level(logging.WARNING):
+                job = await manager.defer_to_thread(pinfo, square, 3)
+                assert await job == 9
+            warnings = [r for r in caplog.records if "has been waiting" in r.getMessage()]
+            assert len(warnings) == 1
+            assert "dumper_finished" in warnings[0].getMessage()
+            assert warnings[0].notify is True
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("held_stream", ["stderr", "log file"])
+    async def test_forked_worker_logs_while_hub_thread_holds_stream(self, held_stream, monkeypatch, tmp_path):
+        # A hub thread blocked writing to a stream holds that stream's lock while
+        # the pool forks its workers. Each worker gets a copy of the stream whose
+        # lock is held by a thread it doesn't have: logging to it used to hang the
+        # worker forever.
+        read_fd, write_fd = os.pipe()
+        stream = os.fdopen(write_fd, "w")
+        if held_stream == "stderr":
+            monkeypatch.setattr(sys, "__stderr__", stream)
+            handler = logging.StreamHandler(stream)
+        else:
+            handler = logging.FileHandler(tmp_path / "source.log", delay=True)
+            handler.stream = stream
+        log = logging.getLogger("test_manager.held_stream")
+        monkeypatch.setattr(log, "propagate", False)
+        log.addHandler(handler)
+        reader = threading.Thread(target=pipe_reader, args=(read_fd, []), daemon=True)
+        manager = make_manager()
+        logged = False
+        try:
+            # nobody reads the pipe yet: this write blocks, holding the stream's lock
+            threading.Thread(target=log.warning, args=("x" * 1_000_000,), daemon=True).start()
+            await asyncio.sleep(0.5)
+            # forks the workers
+            job = await manager.defer_to_process(dict(PINFO), log_in_worker, log.name)
+            # unblock the hub thread, only the workers' copies of the lock stay held
+            reader.start()
+            assert await asyncio.wait_for(job, timeout=30) == "logged"
+            logged = True
+        finally:
+            if reader.ident is None:  # not started
+                reader.start()
+            if not logged:
+                kill_workers(manager)
+            shutdown(manager)
+            log.removeHandler(handler)
+            handler.close()
+            stream.close()
+
+    @pytest.mark.asyncio
+    async def test_forked_worker_only_replaces_known_streams(self, monkeypatch, tmp_path):
+        read_fd, write_fd = os.pipe()
+        stderr = os.fdopen(write_fd, "w")
+        monkeypatch.setattr(sys, "__stderr__", stderr)
+        redirect = Redirect()
+        handlers = {
+            "test_log_file": logging.FileHandler(tmp_path / "worker.log"),
+            "test_no_stream": logging.FileHandler(tmp_path / "lazy.log", delay=True),
+            "test_closed": logging.FileHandler(tmp_path / "closed.log"),
+            "test_broken": logging.FileHandler(tmp_path / "broken.log", delay=True),
+            "test_in_memory": logging.StreamHandler(io.StringIO()),
+        }
+        handlers["test_closed"].stream.close()
+        handlers["test_broken"].stream = BrokenEncodingStream(open(tmp_path / "broken.log", "ab"))
+        for name, handler in handlers.items():
+            handler.name = name
+        log = logging.getLogger("test_manager.worker_streams")
+        monkeypatch.setattr(log, "propagate", False)
+        log.addHandler(handlers["test_log_file"])
+        before = {name: id(handler.stream) for name, handler in handlers.items()}
+        output = []
+        reader = threading.Thread(target=pipe_reader, args=(read_fd, output), daemon=True)
+        reader.start()
+        manager = make_manager()
+        worker = None
+        try:
+            # set last: pytest's live logging puts its own sys.stdout back whenever
+            # something logs, and nothing logs between here and the fork
+            monkeypatch.setattr(sys, "stdout", redirect)
+            job = await manager.defer_to_process(dict(PINFO), report_worker_streams, list(handlers), log.name)
+            worker = await asyncio.wait_for(job, timeout=30)
+            # let the workers exit, so the pipe is closed once the hub's end is
+            manager.process_queue.shutdown(wait=True)
+        finally:
+            if worker is None:
+                kill_workers(manager)
+            shutdown(manager)
+            stderr.close()
+            log.removeHandler(handlers["test_log_file"])
+            handlers["test_closed"].stream = None
+            for handler in handlers.values():
+                handler.close()
+        reader.join(timeout=10)
+
+        # replaced: the streams worker logs are written to
+        assert worker["handlers"]["test_log_file"] != before["test_log_file"]
+        assert worker["__stderr__"] != id(stderr)
+        assert worker["__stdout__"] != id(sys.__stdout__)
+        assert "written by worker" in (tmp_path / "worker.log").read_text()
+        # left as they were: no stream, closed, not replaceable, not a file
+        for name in ("test_no_stream", "test_closed", "test_broken", "test_in_memory"):
+            assert worker["handlers"][name] == before[name]
+        assert worker["stdout"] == id(redirect)  # still redirected
+        assert worker["last_resort"]
+        # the stream it couldn't replace is reported on the worker's new stderr
+        assert "FileHandler 'test_broken' (RuntimeError)" in b"".join(output).decode()
 
 
 class TestCLIJobManager:
