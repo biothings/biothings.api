@@ -40,7 +40,7 @@ def make_dumper_manager():
 
 
 def shutdown(dumper_manager):
-    dumper_manager.job_manager.process_queue.shutdown(wait=False)
+    dumper_manager.job_manager.worker_queue.shutdown(wait=False)
     dumper_manager.job_manager.thread_queue.shutdown(wait=False)
 
 

@@ -72,7 +72,7 @@ def pipe_reader(read_fd, chunks):
 
 
 def kill_workers(manager):
-    for process in list((manager.process_queue._processes or {}).values()):
+    for process in list((manager.worker_queue._processes or {}).values()):
         process.kill()
 
 
@@ -414,7 +414,7 @@ class TestJobManager:
             threading.Thread(target=log.warning, args=("x" * 1_000_000,), daemon=True).start()
             await asyncio.sleep(0.5)
             # forks the workers
-            job = await manager.defer_to_process(dict(PINFO), log_in_worker, log.name)
+            job = await manager.defer_to_worker(dict(PINFO), log_in_worker, log.name)
             # unblock the hub thread, only the workers' copies of the lock stay held
             reader.start()
             assert await asyncio.wait_for(job, timeout=30) == "logged"
@@ -459,10 +459,10 @@ class TestJobManager:
             # set last: pytest's live logging puts its own sys.stdout back whenever
             # something logs, and nothing logs between here and the fork
             monkeypatch.setattr(sys, "stdout", redirect)
-            job = await manager.defer_to_process(dict(PINFO), report_worker_streams, list(handlers), log.name)
+            job = await manager.defer_to_worker(dict(PINFO), report_worker_streams, list(handlers), log.name)
             worker = await asyncio.wait_for(job, timeout=30)
             # let the workers exit, so the pipe is closed once the hub's end is
-            manager.process_queue.shutdown(wait=True)
+            manager.worker_queue.shutdown(wait=True)
         finally:
             if worker is None:
                 kill_workers(manager)
