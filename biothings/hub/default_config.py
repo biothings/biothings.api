@@ -421,6 +421,11 @@ MAX_QUEUED_JOBS = os.cpu_count() * 4
 # jobs aren't pickled. Ignored on regular (GIL) builds.
 HUB_FREE_THREADED_WORKERS = False
 
+# Warn, with a notification, when a job has been waiting this many seconds for
+# its predicates to let it run (e.g. an upload waiting for its source's dump to
+# finish). While a job waits, no other job can start. None disables the warning.
+HUB_PREDICATE_WAIT_WARNING = 30 * 60
+
 # * 7. Hub Internals *#
 DATA_SRC_SERVER = ConfigurationError("Define hostname for source database")
 DATA_SRC_PORT = ConfigurationDefault(default=27017, desc="Define port for source database")

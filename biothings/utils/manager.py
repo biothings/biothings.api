@@ -3,6 +3,8 @@ import concurrent.futures
 import copy
 import datetime
 import glob
+import io
+import logging
 import multiprocessing
 import os
 import re
@@ -155,6 +157,91 @@ def norm(value, maxlen):
     return value
 
 
+# streams a forked worker inherited from the hub and replaced: kept referenced so
+# they're never flushed, closed or garbage-collected in the worker, as a hub thread
+# may have held their internal lock at fork time, and that thread doesn't exist in
+# the worker to release it
+_inherited_streams = []
+
+
+def _fresh_stream(stream):
+    """Return a new text stream, with its own lock, on stream's file descriptor,
+    or None if stream isn't a text stream backed by one."""
+    if not isinstance(stream, io.TextIOWrapper):
+        return None
+    try:
+        fd = stream.fileno()  # doesn't take the stream's lock
+    except (OSError, ValueError):  # no file descriptor, or closed
+        return None
+    fresh = open(fd, "w", encoding=stream.encoding, errors=stream.errors, closefd=False)
+    fresh.reconfigure(line_buffering=stream.line_buffering, write_through=stream.write_through)
+    return fresh
+
+
+def _reset_inherited_streams():
+    """
+    Process pool initializer for forked workers: replace the stdout/stderr and
+    log file streams inherited from the hub with fresh ones, so a lock held by a
+    hub thread at fork time can't block the worker on its first log write.
+
+    It runs before the worker takes any job, and must never raise (that would
+    break the whole pool) nor write to an inherited stream (that could block).
+    Anything it doesn't recognize is left as is.
+    """
+    swapped = {}  # id(inherited stream) -> fresh stream
+    failed = []
+    stderr = sys.__stderr__
+
+    def swap(inherited, what):
+        if id(inherited) in swapped:
+            return swapped[id(inherited)]
+        try:
+            fresh = _fresh_stream(inherited)
+        except Exception as e:
+            failed.append("%s (%s)" % (what, type(e).__name__))
+            return None
+        if fresh is not None:
+            # referenced before any reference to it is dropped, see above
+            _inherited_streams.append(inherited)
+            swapped[id(inherited)] = fresh
+        return fresh
+
+    # original streams first: sys.stdout/stderr usually are the same objects,
+    # but may be redirected (e.g. to a logger) while the worker is forked
+    for name in ("__stdout__", "__stderr__", "stdout", "stderr"):
+        try:
+            fresh = swap(getattr(sys, name), "sys.%s" % name)
+            if fresh is not None:
+                setattr(sys, name, fresh)
+        except Exception as e:
+            failed.append("sys.%s (%s)" % (name, type(e).__name__))
+
+    for ref in list(getattr(logging, "_handlerList", [])):
+        handler = ref()
+        try:
+            if handler is None or isinstance(getattr(type(handler), "stream", None), property):
+                continue  # e.g. logging.lastResort, which looks up sys.stderr when writing
+            inherited = getattr(handler, "stream", None)
+            if id(inherited) not in swapped and not isinstance(handler, logging.FileHandler):
+                continue  # not writing to stdout/stderr or to a log file
+            fresh = swap(inherited, "%s %r" % (type(handler).__name__, handler.name))
+            if fresh is not None:
+                handler.stream = fresh
+        except Exception as e:
+            failed.append("%s (%s)" % (type(handler).__name__, type(e).__name__))
+
+    if failed and id(stderr) in swapped:
+        try:
+            # created above, so no other thread can be holding its lock
+            swapped[id(stderr)].write(
+                "Worker %s kept streams inherited from the hub, writing to them could block: %s\n"
+                % (os.getpid(), ", ".join(failed))
+            )
+            swapped[id(stderr)].flush()
+        except Exception:
+            pass
+
+
 class JobManager:
     # TODO: Add class docstring
     COLUMNS = [
@@ -197,6 +284,9 @@ class JobManager:
         # TODO: we should consider refactoring the code to be compatible with 'forkserver' context in the future.
         try:
             kwargs["mp_context"] = multiprocessing.get_context("fork")
+            # forked workers inherit the hub's stream objects, including any lock
+            # a hub thread held at that moment: give them fresh ones first
+            kwargs["initializer"] = _reset_inherited_streams
         except ValueError:
             pass
         return concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers, **kwargs)
@@ -459,6 +549,8 @@ class JobManager:
         # finally check custom predicates
         predicates = pinfo and pinfo.get("__predicates__", [])
         failed_predicate = None
+        predicates_t0 = None
+        warn_after = None
         while True:
             for predicate in predicates:
                 if not predicate(self):
@@ -475,8 +567,24 @@ class JobManager:
                     pinfo.get("step"),
                     failed_predicate,
                 )
+                if predicates_t0 is None:
+                    predicates_t0 = time.time()
+                    warn_after = getattr(config, "HUB_PREDICATE_WAIT_WARNING", None)
                 await asyncio.sleep(sleep_time)
                 waited = True
+                if warn_after and time.time() - predicates_t0 >= warn_after:
+                    # this job holds ok_to_run while it waits, no other job can be admitted
+                    logger.warning(
+                        "Job {cat:%s,source:%s,step:%s} has been waiting %s for predicate %s, "
+                        "no other job can start until it does",
+                        pinfo.get("category"),
+                        pinfo.get("source"),
+                        pinfo.get("step"),
+                        timesofar(predicates_t0),
+                        getattr(failed_predicate, "__name__", failed_predicate),
+                        extra={"notify": True},
+                    )
+                    warn_after = None  # once per job
             else:
                 break  # while loop
         if waited:
