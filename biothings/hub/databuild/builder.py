@@ -884,7 +884,7 @@ class DataBuilder:
                             total,
                             (cnt / total * 100.0),
                         )
-                        job = await job_manager.defer_to_process(
+                        job = await job_manager.defer_to_worker(
                             pinfo,
                             partial(
                                 merger_worker,

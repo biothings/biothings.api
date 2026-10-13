@@ -268,7 +268,7 @@ class BaseSyncer(object):
                         )
                         # deepcopy to make we don't embed "self" with unpickleable stuff
                         meta = copy.deepcopy(self._meta)
-                        job = await self.job_manager.defer_to_process(
+                        job = await self.job_manager.defer_to_worker(
                             pinfo,
                             partial(
                                 worker,

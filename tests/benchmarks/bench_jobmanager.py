@@ -1,7 +1,7 @@
 """Benchmark JobManager CPU-bound workers: fork process pool vs free-threaded thread pool.
 
 Runs merge_struct-heavy batches (the hub's merge pipeline hot loop) through
-JobManager.defer_to_process and reports wall time and peak RSS.
+JobManager.defer_to_worker and reports wall time and peak RSS.
 
 Three configurations to compare, all runnable on a single 3.14t build
 (PYTHON_GIL=1 re-enables the GIL to emulate a regular build):
@@ -111,7 +111,7 @@ async def run_bench(jm, batches, num_docs, width):
     t0 = time.time()
     async with asyncio.TaskGroup() as tg:
         for b in range(batches):
-            job = await jm.defer_to_process(dict(pinfo), partial(merge_batch, num_docs, width, b))
+            job = await jm.defer_to_worker(dict(pinfo), partial(merge_batch, num_docs, width, b))
             tg.create_task(watch(job))
     elapsed = time.time() - t0
     assert done == batches * num_docs, "done=%s expected=%s" % (done, batches * num_docs)
@@ -124,16 +124,14 @@ async def main(args):
     from biothings.utils.manager import JobManager
 
     loop = asyncio.get_running_loop()
-    process_queue = None
+    worker_queue = None
     gil_on = not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled()
     if os.environ.get("BENCH_FT_WORKERS") and gil_on:
         # control config (c): force a thread pool although the GIL is on;
         # JobManager itself refuses this combination by design, so inject it
-        process_queue = concurrent.futures.ThreadPoolExecutor(
-            max_workers=args.workers, thread_name_prefix="FTWorker"
-        )
+        worker_queue = concurrent.futures.ThreadPoolExecutor(max_workers=args.workers, thread_name_prefix="FTWorker")
     jm = JobManager(
-        loop, process_queue=process_queue, num_workers=args.workers, num_threads=args.workers, auto_recycle=False
+        loop, worker_queue=worker_queue, num_workers=args.workers, num_threads=args.workers, auto_recycle=False
     )
 
     # warmup (pool spinup, imports in workers)
@@ -152,12 +150,12 @@ async def main(args):
     print("\n=== bench_jobmanager results ===")
     print("python          : %s" % sys.version.split()[0])
     print("gil enabled     : %s" % gil)
-    print("executor        : %s" % type(jm.process_queue).__name__)
+    print("executor        : %s" % type(jm.worker_queue).__name__)
     print("workers         : %d" % args.workers)
     print("batches x docs  : %d x %d (width %d)" % (args.batches, args.docs, args.width))
     print("wall time       : %.2fs" % elapsed)
     print("peak rss        : %.1f MB" % (mem.get("peak_rss", 0) / 1024 / 1024))
-    jm.process_queue.shutdown()
+    jm.worker_queue.shutdown()
     jm.thread_queue.shutdown(wait=False)
 
 

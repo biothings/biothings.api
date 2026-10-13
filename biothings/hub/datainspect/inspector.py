@@ -245,7 +245,7 @@ class InspectorManager(BaseManager):
                             pre_mapping = "mapping" in mode  # we want to generate intermediate mapping so we can merge
                             # all maps later and then generate the ES mapping from there
                             self.logger.info("Creating inspect worker for batch #%s" % cnt)
-                            job = await self.job_manager.defer_to_process(
+                            job = await self.job_manager.defer_to_worker(
                                 pinfo,
                                 partial(
                                     inspect_data, backend_provider, ids, mode=mode, pre_mapping=pre_mapping, **kwargs

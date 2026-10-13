@@ -1211,7 +1211,7 @@ class HubServer:
 
         if self.managers.get("job_manager"):
             self.extra_commands["pqueue"] = CommandDefinition(
-                command=self.managers["job_manager"].process_queue, tracked=False
+                command=self.managers["job_manager"].worker_queue, tracked=False
             )
             self.extra_commands["tqueue"] = CommandDefinition(
                 command=self.managers["job_manager"].thread_queue, tracked=False

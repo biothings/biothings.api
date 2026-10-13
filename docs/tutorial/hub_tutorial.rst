@@ -118,16 +118,16 @@ make sure everything is running fine.
    from biothings.utils.manager import JobManager
 
    loop = asyncio.get_event_loop()
-   process_queue = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+   worker_queue = concurrent.futures.ProcessPoolExecutor(max_workers=2)
    thread_queue = concurrent.futures.ThreadPoolExecutor()
-   loop.set_default_executor(process_queue)
+   loop.set_default_executor(worker_queue)
    jmanager = JobManager(loop,
-                         process_queue, thread_queue,
+                         worker_queue, thread_queue,
                          max_memory_usage=None,
                          )
 
 ``jmanager`` is our JobManager, it’s going to be used everywhere in the hub, each time a parallelized job is created.
-Species hub is a small one, there’s no need for many process workers, two should be fine.
+Species hub is a small one, there’s no need for many workers, two should be fine.
 
 Next, let’s define some basic commands for our new hub:
 
@@ -137,7 +137,7 @@ Next, let’s define some basic commands for our new hub:
    from biothings.utils.hub import schedule, top, pending, done
    COMMANDS = {
            "sch" : partial(schedule,loop),
-           "top" : partial(top,process_queue,thread_queue),
+           "top" : partial(top,worker_queue,thread_queue),
            "pending" : pending,
            "done" : done,
            }

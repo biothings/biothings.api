@@ -83,7 +83,10 @@ def upload_source(
         Optional[bool],
         typer.Option(
             "--parallel",
-            help="Used for uploaders that leverage the ParallelizedUploader source for the plugin",
+            help=(
+                "Used for uploaders that leverage the ParallelizedUploader source for the plugin. "
+                "The CLI still uploads the batches one at a time"
+            ),
         ),
     ] = False,
     show_upload: Annotated[

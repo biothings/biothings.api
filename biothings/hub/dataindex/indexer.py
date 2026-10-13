@@ -531,7 +531,7 @@ class Indexer:
 
                     pinfo = self.pinfo.get_pinfo(schedule.suffix(self.mongo_collection_name))
 
-                    job = await job_manager.defer_to_process(
+                    job = await job_manager.defer_to_worker(
                         pinfo,
                         dispatch,
                         self.mongo_client_args,

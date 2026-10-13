@@ -613,7 +613,7 @@ class BaseDumper:
                         await max_dump.acquire()
                     if courtesy_wait:
                         await asyncio.sleep(courtesy_wait)
-                    job = await job_manager.defer_to_process(pinfo, partial(self.download, remote, local))
+                    job = await job_manager.defer_to_worker(pinfo, partial(self.download, remote, local))
                     tg.create_task(self._download_done(job, remote, local, max_dump))
         except* Exception as eg:
             raise first_exception(eg) from eg
@@ -2310,7 +2310,7 @@ class DockerContainerDumper(BaseDumper):
         if job_manager:
             pinfo = self.get_pinfo()
             pinfo["step"] = "check"
-            job = await job_manager.defer_to_process(pinfo, partial(self.generate_remote_file))
+            job = await job_manager.defer_to_worker(pinfo, partial(self.generate_remote_file))
             await job
         else:
             # otherwise, just run it in the running loop's default executor

@@ -937,7 +937,7 @@ async def aiogunzipall(folder, pattern, job_manager, pinfo):
         async with asyncio.TaskGroup() as tg:
             for f in glob.glob(os.path.join(folder, pattern)):
                 pinfo["description"] = os.path.basename(f)
-                job = await job_manager.defer_to_process(pinfo, partial(gunzip, f, pattern=pattern))
+                job = await job_manager.defer_to_worker(pinfo, partial(gunzip, f, pattern=pattern))
                 tg.create_task(gunzip_one(job, f))
     except* Exception as eg:
         raise first_exception(eg) from eg

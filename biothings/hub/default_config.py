@@ -404,9 +404,11 @@ SYNC_BATCH_SIZE = 10000
 # specified
 HUB_MAX_MEM_USAGE = None
 
-# Max number of *processes* hub can access to run jobs
+# Max number of workers hub can access to run jobs: worker processes, or worker
+# threads in free-threaded mode (see HUB_FREE_THREADED_WORKERS). Also the default
+# size of the job manager's thread queue.
 HUB_MAX_WORKERS = int(os.cpu_count() / 4)
-# Max number of *processes* used when syncing data
+# Max number of workers used when syncing data
 # (applygin diff/incremental data)
 MAX_SYNC_WORKERS = HUB_MAX_WORKERS
 

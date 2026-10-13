@@ -285,7 +285,7 @@ class BaseSourceUploader:
         """
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
-        job = await job_manager.defer_to_process(
+        job = await job_manager.defer_to_worker(
             pinfo,
             partial(
                 upload_worker,
@@ -568,7 +568,7 @@ class BaseSourceUploader:
 
             extra = {"model_file": "/hub" + model_path.split("/hub", 1)[1]}
             self.register_status("validating", subkey="validate", **extra)
-            job = await job_manager.defer_to_process(pinfo, partial(self.validate, model_path, **kwargs))
+            job = await job_manager.defer_to_worker(pinfo, partial(self.validate, model_path, **kwargs))
             await job
 
             self.register_status("success", subkey="validate", err=None, tb=None, **extra)
@@ -686,7 +686,7 @@ class ParallelizedSourceUploader(BaseSourceUploader):
                     upload_worker_db = kwargs.get("db", None)
                     max_batch_num = kwargs.get("max_batch_num", None)
 
-                    job = await job_manager.defer_to_process(
+                    job = await job_manager.defer_to_worker(
                         pinfo,
                         partial(
                             upload_worker,  # pickable worker

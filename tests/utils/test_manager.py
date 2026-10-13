@@ -30,8 +30,8 @@ def make_manager(**kwargs):
 
 
 def shutdown(manager):
-    if manager.process_queue:
-        manager.process_queue.shutdown(wait=False)
+    if manager.worker_queue:
+        manager.worker_queue.shutdown(wait=False)
     manager.thread_queue.shutdown(wait=False)
 
 
@@ -54,13 +54,15 @@ class TestJobManager:
         # Action
         manager = JobManager(
             loop,
-            process_queue=process_executor,
+            worker_queue=process_executor,
             thread_queue=thread_executor,
         )
 
         # Asserts
         assert manager.loop._default_executor == thread_executor
         assert manager.loop._default_executor != process_executor
+        assert manager.worker_queue is process_executor
+        assert manager.worker_mode == "process"
 
     @pytest.mark.asyncio
     async def test_defer_to_thread_result_and_cleanup(self):
@@ -101,16 +103,55 @@ class TestJobManager:
             shutdown(manager)
 
     @pytest.mark.asyncio
-    async def test_defer_to_process_result_and_exception(self):
+    async def test_defer_to_worker_result_and_exception(self):
         manager = make_manager()
         try:
-            job = await manager.defer_to_process(dict(PINFO), square, 5)
+            job = await manager.defer_to_worker(dict(PINFO), square, 5)
             assert await job == 25
-            failing = await manager.defer_to_process(dict(PINFO), boom)
+            failing = await manager.defer_to_worker(dict(PINFO), boom)
             with pytest.raises(ValueError, match="worker failure"):
                 await failing
             assert manager.jobs == {}
-            assert manager._process_job_ids == set()
+            assert manager._worker_job_ids == set()
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_defer_to_process_is_deprecated_alias(self):
+        manager = make_manager()
+        try:
+            with pytest.warns(DeprecationWarning, match="defer_to_worker"):
+                job = await manager.defer_to_process(dict(PINFO), square, 3)
+            assert await job == 9
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_process_queue_names_are_deprecated_aliases(self):
+        executor = ThreadPoolExecutor()
+        with pytest.warns(DeprecationWarning, match="worker_queue"):
+            manager = make_manager(process_queue=executor)
+        try:
+            assert manager.worker_queue is executor
+            with pytest.warns(DeprecationWarning, match="worker_queue"):
+                assert manager.process_queue is executor
+            with pytest.warns(DeprecationWarning), pytest.raises(TypeError):
+                make_manager(worker_queue=executor, process_queue=executor)
+            with pytest.warns(DeprecationWarning, match="recycle_worker_queue"):
+                await manager.recycle_process_queue()
+            assert manager.worker_queue is not executor
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_process_mode_reported_in_job_info(self):
+        manager = make_manager()
+        try:
+            assert manager.worker_mode == "process"
+            queue = manager.job_info()["queue"]
+            # the worker queue keeps its "process" key for API clients (Studio)
+            assert queue["process"]["mode"] == "process"
+            assert queue["process"]["max"] == 2
         finally:
             shutdown(manager)
 
@@ -157,13 +198,13 @@ class TestJobManager:
             shutdown(manager)
 
     @pytest.mark.asyncio
-    async def test_stop_recycling_replaces_process_queue(self):
+    async def test_stop_recycling_replaces_worker_queue(self):
         manager = make_manager()
         try:
-            old_queue = manager.process_queue
+            old_queue = manager.worker_queue
             await manager.stop(recycling=True)
-            assert manager.process_queue is not None
-            assert manager.process_queue is not old_queue
+            assert manager.worker_queue is not None
+            assert manager.worker_queue is not old_queue
         finally:
             shutdown(manager)
 
@@ -175,10 +216,11 @@ class TestJobManager:
         monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
         manager = make_manager()
         try:
-            assert isinstance(manager.process_queue, ThreadPoolExecutor)
+            assert isinstance(manager.worker_queue, ThreadPoolExecutor)
+            assert manager.worker_mode == "thread"
             # recycling is pointless with a shared heap, must be off
             assert manager.auto_recycle is False
-            job = await manager.defer_to_process(dict(PINFO), square, 6)
+            job = await manager.defer_to_worker(dict(PINFO), square, 6)
             assert await job == 36
             # introspection helpers must not raise in thread mode
             manager.get_pending_summary()
@@ -200,7 +242,7 @@ class TestJobManager:
         monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path), raising=False)
         manager = make_manager()
         try:
-            jobs = [await manager.defer_to_process(dict(PINFO), time.sleep, 0.5) for _ in range(2)]
+            jobs = [await manager.defer_to_worker(dict(PINFO), time.sleep, 0.5) for _ in range(2)]
             await asyncio.sleep(0.2)
             run_files = [os.path.basename(f) for f in glob.glob(str(tmp_path / "*.pickle"))]
             # one tracking file per worker thread, named pid-threadname_jobid
@@ -208,6 +250,36 @@ class TestJobManager:
             assert all(f.startswith("%d-FTWorker" % os.getpid()) for f in run_files)
             await asyncio.gather(*jobs)
             assert glob.glob(str(tmp_path / "*.pickle")) == []
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    async def test_free_threaded_jobs_reported_with_worker_queue(self, monkeypatch, tmp_path):
+        import sys
+        import time
+
+        monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
+        monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
+        monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path), raising=False)
+        manager = make_manager()
+        try:
+            job = await manager.defer_to_worker(dict(PINFO), time.sleep, 0.5)
+            await asyncio.sleep(0.2)
+            summary = manager.get_summary()
+            # a worker thread's job counts with the worker queue, not the thread queue
+            assert summary["process"]["mode"] == "thread"
+            assert summary["process"]["running"] == ["FTWorker_0"]
+            assert summary["thread"]["running"] == []
+            # shaped like a worker process entry, the way Studio reads it
+            entry = summary["process"]["all"]["FTWorker_0"]
+            assert entry["cpu"]["status"] == "running"
+            assert entry["memory"]["size"] == 0
+            assert entry["job"]["description"] == PINFO["description"]
+            assert "1 running job(s)" in manager.top()
+            assert manager.get_pending_summary() == "0 pending job(s)"
+            await job
+            # idle worker threads aren't pending jobs
+            assert manager.get_pending_summary() == "0 pending job(s)"
         finally:
             shutdown(manager)
 
@@ -241,3 +313,27 @@ class TestJobManager:
             assert await job == 4
         finally:
             shutdown(manager)
+
+
+class TestCLIJobManager:
+    @pytest.mark.asyncio
+    async def test_defer_to_worker_runs_inline(self):
+        import threading
+
+        pytest.importorskip("typer")  # importing biothings.cli requires it
+        from biothings.cli.manager import CLIJobManager
+
+        manager = CLIJobManager(loop=asyncio.get_running_loop())
+        job = await manager.defer_to_worker(dict(PINFO), threading.get_ident)
+        # CLI jobs run on the event loop's thread, not in a worker
+        assert await job == threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_defer_to_process_is_deprecated_alias(self):
+        pytest.importorskip("typer")  # importing biothings.cli requires it
+        from biothings.cli.manager import CLIJobManager
+
+        manager = CLIJobManager(loop=asyncio.get_running_loop())
+        with pytest.warns(DeprecationWarning, match="defer_to_worker"):
+            job = await manager.defer_to_process(dict(PINFO), square, 3)
+        assert await job == 9

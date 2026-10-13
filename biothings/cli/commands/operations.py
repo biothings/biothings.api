@@ -271,7 +271,7 @@ async def do_parallel_upload(
             pinfo = uploader.get_pinfo()
             pinfo["step"] = "update_data"
             pinfo["description"] = f"{data_load_arguments}"
-            job = await job_manager.defer_to_process(
+            job = await job_manager.defer_to_worker(
                 pinfo,
                 upload_worker,
                 uploader.fullname,  # worker name
@@ -392,7 +392,7 @@ async def do_index(plugin_name: Optional[str] = None, sub_source_name: Optional[
 
     index_job_manager = JobManager(
         loop=asyncio.get_running_loop(),
-        process_queue=None,
+        worker_queue=None,
         thread_queue=None,
         max_memory_usage=None,
         num_workers=os.cpu_count(),

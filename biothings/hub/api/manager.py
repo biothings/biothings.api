@@ -169,7 +169,7 @@ class APIManager(BaseManager):
                 async def run_pytests(path, port):
                     pinfo = self.get_pinfo()
                     pinfo["description"] = "Running API tests"
-                    # defer_to_process leaves the websocket open for unknown reasons when trying to stop the api so we use defer_to_thread
+                    # defer_to_worker leaves the websocket open for unknown reasons when trying to stop the api so we use defer_to_thread
                     job = await self.job_manager.defer_to_thread(
                         pinfo, partial(self.log_pytests, path, "localhost:" + str(port))
                     )

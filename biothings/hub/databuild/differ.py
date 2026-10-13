@@ -347,7 +347,7 @@ class BaseDiffer(object):
                         cnt += 1
                         pinfo["description"] = "batch #%s" % cnt
                         self.logger.info("Creating diff worker for batch #%s" % cnt)
-                        job = await self.job_manager.defer_to_process(
+                        job = await self.job_manager.defer_to_worker(
                             pinfo,
                             partial(
                                 diff_worker_new_vs_old,
@@ -388,7 +388,7 @@ class BaseDiffer(object):
                         cnt += 1
                         pinfo["description"] = "batch #%s" % cnt
                         self.logger.info("Creating diff worker for batch #%s" % cnt)
-                        job = await self.job_manager.defer_to_process(
+                        job = await self.job_manager.defer_to_worker(
                             pinfo,
                             partial(diff_worker_old_vs_new, id_list_old, new_db_col_names, cnt, diff_folder),
                         )
@@ -441,7 +441,7 @@ class BaseDiffer(object):
                         if len(diff_files) % 100 == 0:
                             self.logger.info("%d diff files to process" % len(diff_files))
                         if current_size > max_diff_size:
-                            job = await self.job_manager.defer_to_process(
+                            job = await self.job_manager.defer_to_worker(
                                 pinfo, partial(reduce_diffs, tomerge, cnt, diff_folder, done_folder)
                             )
                             tg.create_task(merged(job, cnt))
@@ -456,7 +456,7 @@ class BaseDiffer(object):
                     assert not diff_files
 
                     if tomerge:
-                        job = await self.job_manager.defer_to_process(
+                        job = await self.job_manager.defer_to_worker(
                             pinfo, partial(reduce_diffs, tomerge, cnt, diff_folder, done_folder)
                         )
                         tg.create_task(merged(job, cnt))

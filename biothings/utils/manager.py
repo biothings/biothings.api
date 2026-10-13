@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import types
+import warnings
 from collections import OrderedDict
 from functools import partial, wraps
 from pprint import pformat
@@ -34,6 +35,19 @@ from biothings.utils.common import get_random_string, sizeof_fmt, timesofar
 
 logger = config.logger
 
+# default of JobManager's deprecated process_queue argument, to tell whether it
+# was passed at all
+_UNSET = object()
+
+
+def _warn_deprecated(old, new):
+    # stacklevel=3 points the warning at the code using the deprecated name
+    warnings.warn(
+        "%s is deprecated and will be removed in a future major release, use %s instead" % (old, new),
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
 
 def track(func):
     # only wraps do_work defined later
@@ -42,7 +56,7 @@ def track(func):
     @wraps(func)
     def func_wrapper(*args, **kwargs):
         job_id = args[0]
-        ptype = args[1]  # tracking process or thread ?
+        ptype = args[1]  # tracking a "worker" or a "thread" job
         # we're looking for some "pinfo" value (process info) to later
         # reporting. If we can't find any, we'll try our best to figure out
         # what this is about...
@@ -91,8 +105,8 @@ def track(func):
             if ptype == "thread":
                 _id = "%s" % threading.current_thread().name
             elif multiprocessing.current_process().name == "MainProcess":
-                # free-threaded workers mode: "process" jobs actually run in
-                # threads of the hub process, the pid alone would collide
+                # free-threaded workers mode: worker jobs run in threads of
+                # the hub process, the pid alone would collide
                 _id = "%s-%s" % (os.getpid(), threading.current_thread().name)
             else:
                 _id = os.getpid()
@@ -126,7 +140,7 @@ def track(func):
 @track
 def do_work(job_id, ptype, pinfo=None, func=None, *args, **kwargs):
     # purpose: to be wrapped by @track
-    # only used in defer_to_process / defer_to_thread in JobManager
+    # only used in defer_to_worker / defer_to_thread in JobManager
     # pinfo is optional, and func is not. and args and kwargs must
     # be after func. just to say func is mandatory, despite what the
     # signature says
@@ -180,7 +194,9 @@ class JobManager:
             return False
         return hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()
 
-    def _get_process_executor(self):
+    def _create_worker_queue(self):
+        """Create the executor behind defer_to_worker(): a thread pool in
+        free-threaded mode, a forked process pool otherwise."""
         if self._free_threaded_mode():
             # the GIL is disabled: CPU-bound workers can run in threads,
             # sharing the hub's heap, with no fork and no job pickling
@@ -204,12 +220,14 @@ class JobManager:
     def __init__(
         self,
         loop,
-        process_queue=None,
+        worker_queue=None,
         thread_queue=None,
         max_memory_usage=None,
         num_workers=None,
         num_threads=None,
         auto_recycle=True,
+        *,
+        process_queue=_UNSET,
     ):
         if not os.path.exists(config.RUN_DIR):
             logger.info("Creating RUN_DIR directory '%s'", config.RUN_DIR)
@@ -220,7 +238,14 @@ class JobManager:
             logger.debug("Adjusting number of worker to 1")
             self.num_workers = 1
         self.num_threads = num_threads or self.num_workers
-        self.process_queue = process_queue or self._get_process_executor()
+        if process_queue is not _UNSET:
+            _warn_deprecated("JobManager's process_queue argument", "worker_queue")
+            if worker_queue is not None and process_queue is not None:
+                raise TypeError("JobManager got both worker_queue and its deprecated alias process_queue")
+            worker_queue = worker_queue or process_queue
+        # runs defer_to_worker() jobs: worker processes, or worker threads in
+        # free-threaded mode (see worker_mode)
+        self.worker_queue = worker_queue or self._create_worker_queue()
         # notes on fixing BPE (BrokenProcessPool Exception):
         # whenever a process exits unexpectedly, BPE is raised, and while that
         # all the processes in the pool gets a SIGTERM from the management
@@ -234,7 +259,7 @@ class JobManager:
         #  However, loop.run_in_executor still accepts ProcessPoolExecutor
         #  see https://bugs.python.org/issue34075
         self.loop.set_default_executor(self.thread_queue)
-        # this lock is acquired when defer_to_process/thread is invoked
+        # this lock is acquired when defer_to_worker/thread is invoked
         # and released when the inner coroutine is run
         #  purpose being: "control job submission", as it only creates a new
         #  "task" when the previous one has completed checking its constraints
@@ -256,50 +281,78 @@ class JobManager:
         self.avail_memory = int(psutil.virtual_memory().available)
         self._phub = None
         # Process obj. for hub (process which JobManager is in)
-        if auto_recycle and isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
+        if auto_recycle and self.worker_mode == "thread":
             # free-threaded workers share the hub's heap, recycling the
             # executor wouldn't reclaim any memory
-            logger.info("Free-threaded workers: disabling process queue auto-recycling")
+            logger.info("Free-threaded workers: disabling worker queue auto-recycling")
             auto_recycle = False
         self.auto_recycle = auto_recycle  # active
         self.auto_recycle_setting = auto_recycle  # keep setting if we need to restore it its orig value
         self.jobs = {}  # all active jobs (thread/process)
-        # _process_job_ids is for storing Job IDs of calls deferred in process
-        # executor, so that when Executor is recreated, staled Job IDs can
-        # be removed
+        # _worker_job_ids is for storing Job IDs of calls deferred in the
+        # worker queue, so that when Executor is recreated, staled Job IDs can
+        # be removed. Free-threaded mode also counts pending jobs with it.
         # FIXME: drop this when structure of pinfo is clear so we can rely on
-        #  that instead of storing _process_job_ids
-        self._process_job_ids = set()
+        #  that instead of storing _worker_job_ids
+        self._worker_job_ids = set()
         self._pchildren = []
+        logger.info(
+            "Job manager: worker queue runs jobs in %s mode with up to %s workers, thread queue with up to %s threads",
+            self.worker_mode,
+            getattr(self.worker_queue, "_max_workers", "?"),
+            getattr(self.thread_queue, "_max_workers", "?"),
+        )
         self.clean_staled()
+
+    @property
+    def worker_mode(self):
+        """How the worker queue runs defer_to_worker() jobs: "process" for
+        worker processes, "thread" for worker threads (free-threaded mode),
+        None when there's no worker queue or it's another kind of executor."""
+        if isinstance(self.worker_queue, concurrent.futures.ThreadPoolExecutor):
+            return "thread"
+        if isinstance(self.worker_queue, concurrent.futures.ProcessPoolExecutor):
+            return "process"
+        return None
+
+    @property
+    def process_queue(self):
+        """Deprecated alias of worker_queue."""
+        _warn_deprecated("JobManager.process_queue", "JobManager.worker_queue")
+        return self.worker_queue
+
+    @process_queue.setter
+    def process_queue(self, executor):
+        _warn_deprecated("JobManager.process_queue", "JobManager.worker_queue")
+        self.worker_queue = executor
 
     def stop(self, force=False, recycling=False, wait=1):
         async def do():
             try:
-                # shutting down the process queue can take a while
-                # if some processes are still running (it'll wait until they're done)
+                # shutting down the worker queue can take a while
+                # if some workers are still running (it'll wait until they're done)
                 # we'll wait in a thread to prevent the hub from being blocked
-                logger.info("Shutting down current process queue...")
+                logger.info("Shutting down current worker queue...")
                 pinfo = {
                     "__skip_check__": True,  # skip sanity check, mem check to make sure
                     # this worker will be run
                     "category": "admin",
                     "source": "maintenance",
                     "step": "",
-                    "description": "Stopping process queue",
+                    "description": "Stopping worker queue",
                 }
                 # await on coroutine
-                j = await self.defer_to_thread(pinfo, self.process_queue.shutdown)
+                j = await self.defer_to_thread(pinfo, self.worker_queue.shutdown)
                 # await on the future to be done
                 await j
                 if recycling:
                     # now replace
-                    logger.info("Replacing process queue with new one")
-                    self.process_queue = self._get_process_executor()
+                    logger.info("Replacing worker queue with new one")
+                    self.worker_queue = self._create_worker_queue()
                 else:
-                    self.process_queue = None
+                    self.worker_queue = None
             except Exception as e:
-                logger.error("Error while recycling the process queue: %s", e)
+                logger.error("Error while recycling the worker queue: %s", e)
                 raise
 
         async def kill():
@@ -325,7 +378,7 @@ class JobManager:
         # clean old/staled files
         children_pids = {p.pid for p in self.pchildren}
         active_tids = {t.name for t in self.thread_queue._threads}
-        ft_active = {t.name for t in getattr(self.process_queue, "_threads", None) or []}
+        ft_active = {t.name for t in getattr(self.worker_queue, "_threads", None) or []}
         ft_pat = re.compile(r"(?P<pid>\d+)-(?P<tid>FTWorker_\d+)")
 
         # Inspect one snapshot. A worker may create another tracking file while
@@ -363,16 +416,22 @@ class JobManager:
                     # file after the snapshot was taken.
                     pass
 
-    def recycle_process_queue(self):
+    def recycle_worker_queue(self):
         """
-        Replace current process queue with a new one. When processes
+        Replace current worker queue with a new one. When worker processes
         are used over and over again, memory tends to grow as python
         interpreter keeps some data (...). Calling this method will
         perform a clean shutdown on current queue, waiting for running
-        processes to terminate, then discard current queue and replace
-        it a new one.
+        workers to terminate, then discard current queue and replace
+        it a new one. Free-threaded workers share the hub's memory, so
+        recycling them doesn't free any.
         """
         return self.stop(recycling=True)
+
+    def recycle_process_queue(self):
+        """Deprecated alias of recycle_worker_queue()."""
+        _warn_deprecated("JobManager.recycle_process_queue()", "JobManager.recycle_worker_queue()")
+        return self.recycle_worker_queue()
 
     async def check_constraints(self, pinfo=None):
         mem_req = pinfo and pinfo.get("__reqs__", {}).get("mem") or 0
@@ -391,16 +450,16 @@ class JobManager:
             hub_mem = self.hub_memory
             while hub_mem >= self.max_memory_usage:
                 if self.auto_recycle:
-                    pworkers = self.get_pid_files()
+                    pworkers = self.get_worker_files()
                     tworkers = self.get_thread_files()
                     if len(pworkers) == 0 and len(tworkers) == 0:
-                        logger.info("No worker running, recycling the process queue...")
-                        await self.recycle_process_queue()
+                        logger.info("No worker running, recycling the worker queue...")
+                        await self.recycle_worker_queue()
                         # still out of memory ?
                         avail_mem = self.max_memory_usage - self.hub_memory
                         if avail_mem <= 0:
                             logger.error(
-                                "After recycling process queue, "
+                                "After recycling worker queue, "
                                 "memory usage is still too high (needs at least %s more)"
                                 "now turn auto-recycling off to prevent infinite recycling...",
                                 sizeof_fmt(abs(avail_mem)),
@@ -493,34 +552,35 @@ class JobManager:
             if self.auto_recycle_setting:
                 self.auto_recycle = self.auto_recycle_setting
 
-    def _ensure_process_pool_alive(self):
-        if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):
+    def _ensure_worker_queue_alive(self):
+        if not isinstance(self.worker_queue, concurrent.futures.ProcessPoolExecutor):
             # thread pools (free-threaded workers mode) can't break this way
             return
         try:
             # test to see if Executor still alive
-            _ = self.process_queue.submit(int, 1)
+            _ = self.worker_queue.submit(int, 1)
         except concurrent.futures.process.BrokenProcessPool as e:
             # recreate if not
             # we don't need to care about the remaining tasks because
             # they'd all be SIGTERM'd anyways. But ...
             logger.warning("Broken Process Pool: %s, restarting.", e)
-            self.process_queue = self._get_process_executor()
-            for stale_id in self._process_job_ids:
+            self.worker_queue = self._create_worker_queue()
+            for stale_id in self._worker_job_ids:
                 self.jobs.pop(stale_id, None)  # in the rare case that
                 # somehow they de-sync
-            self._process_job_ids.clear()
+            self._worker_job_ids.clear()
 
     def _pending_jobs_count(self):
-        """Number of jobs submitted to the process executor and not done yet
+        """Number of jobs submitted to the worker queue and not done yet
         (including the ones currently running in a worker)."""
-        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
-            # free-threaded workers mode: the work queue only holds jobs not
-            # yet picked up; approximate running ones with the spawned workers
-            return self.process_queue._work_queue.qsize() + len(self.process_queue._threads)
-        return len(self.process_queue._pending_work_items)
+        if isinstance(self.worker_queue, concurrent.futures.ThreadPoolExecutor):
+            # free-threaded workers mode: a thread pool doesn't track running
+            # jobs and its idle threads stay alive, so count the jobs deferred
+            # to it and not reaped yet
+            return len(self._worker_job_ids)
+        return len(self.worker_queue._pending_work_items)
 
-    async def _reap(self, fut, job_id, process=False):
+    async def _reap(self, fut, job_id, worker=False):
         """Await an executor future and clean up the job registry, keeping it
         in sync with actually running jobs. Returns the worker's result,
         raises its exception."""
@@ -533,14 +593,15 @@ class JobManager:
             return res
         finally:
             self.jobs.pop(job_id, None)
-            if process:
-                self._process_job_ids.discard(job_id)
+            if worker:
+                self._worker_job_ids.discard(job_id)
 
-    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
-        """Submit func to the process executor, as soon as job constraints
-        (memory, queue depth, predicates) allow it. Blocks until the job is
-        admitted and submitted, then returns an asyncio.Task resolving to the
-        worker's result (awaiting it raises the worker's exception, if any)."""
+    async def defer_to_worker(self, pinfo=None, func=None, *args, **kwargs):
+        """Submit func to the worker queue, as soon as job constraints
+        (memory, queue depth, predicates) allow it. Workers are processes, or
+        threads in free-threaded mode (see worker_mode). Blocks until the job
+        is admitted and submitted, then returns an asyncio.Task resolving to
+        the worker's result (awaiting it raises the worker's exception, if any)."""
         # ok_to_run serializes admission: only one job at a time checks its
         # constraints, providing submission backpressure to the pipelines
         async with self.ok_to_run:
@@ -549,20 +610,26 @@ class JobManager:
             # but we also need not to touch the original one
             copy_pinfo = copy.deepcopy(pinfo)
             copy_pinfo.pop("__predicates__", None)
-            self._ensure_process_pool_alive()
+            self._ensure_worker_queue_alive()
             job_id = get_random_string()
             self.jobs[job_id] = copy_pinfo
-            self._process_job_ids.add(job_id)
+            self._worker_job_ids.add(job_id)
             fut = self.loop.run_in_executor(
-                self.process_queue,
-                partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs),
+                self.worker_queue,
+                partial(do_work, job_id, "worker", copy_pinfo, func, *args, **kwargs),
             )
             # do_work will create and clean up the pickle files unless
             # the worker process gets killed unexpectedly
-        return asyncio.create_task(self._reap(fut, job_id, process=True))
+        return asyncio.create_task(self._reap(fut, job_id, worker=True))
+
+    async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
+        """Deprecated alias of defer_to_worker(), whose workers may be threads."""
+        _warn_deprecated("JobManager.defer_to_process()", "JobManager.defer_to_worker()")
+        return await self.defer_to_worker(pinfo, func, *args, **kwargs)
 
     async def defer_to_thread(self, pinfo=None, func=None, *args, **kwargs):
-        """Same as defer_to_process, but runs func in the thread executor."""
+        """Same as defer_to_worker(), but always runs func in the thread
+        queue, inside the hub process."""
         skip_check = pinfo.get("__skip_check__", False)
 
         def submit():
@@ -673,18 +740,37 @@ class JobManager:
             pass
         return pids
 
+    def get_worker_files(self, child=None):
+        """Tracking files of the jobs running in the worker queue, keyed by
+        worker pid, or by worker thread name in free-threaded mode."""
+        if self.worker_mode != "thread":
+            return self.get_pid_files(child)
+        workers = {}
+        pat = re.compile(r".*/\d+-(FTWorker_\d+)_.*\.pickle")  # see track() for filename format
+        for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
+            match = pat.match(fn)
+            if not match:
+                continue
+            try:
+                with open(fn, "rb") as f:
+                    workers[match.group(1)] = pickle.load(f)
+            except Exception:
+                # the job may have just finished and removed its file, or may
+                # still be writing it
+                continue
+        return workers
+
     def get_thread_files(self):
         tids = {}
         try:
-            # see track() for filename format; the second alternative matches
-            # free-threaded mode worker files ("<pid>-FTWorker_<n>_<jobid>")
-            pat = re.compile(r".*/(?:(Thread\w*-\d+)|\d+-(FTWorker_\d+))_.*\.pickle")
+            # see track() for filename format; free-threaded worker files
+            # ("<pid>-FTWorker_<n>_<jobid>") belong to get_worker_files()
+            pat = re.compile(r".*/(Thread\w*-\d+)_.*\.pickle")
             # threads = self.thread_queue._threads
             # active_tids = [t.getName() for t in threads]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
                 try:
-                    thread_tid, ft_tid = pat.findall(fn)[0]
-                    tid = ft_tid or thread_tid.split("_")[0]
+                    tid = pat.findall(fn)[0].split("_")[0]
                     worker = pickle.load(open(fn, "rb"))
                     worker["process"] = self.hub_process  # misleading... it's the hub process
                     tids[tid] = worker
@@ -770,6 +856,8 @@ class JobManager:
         return out
 
     def get_process_summary(self):
+        if self.worker_mode == "thread":
+            return self._get_worker_thread_summary()
         running_pids = self.get_pid_files()
         res = {}
         for child in self.pchildren:
@@ -839,12 +927,37 @@ class JobManager:
 
         return res
 
+    def _get_worker_thread_summary(self):
+        """get_process_summary() for free-threaded mode: one entry per worker
+        thread, shaped like a worker process entry since API clients (Studio)
+        read its cpu, memory and job fields."""
+        running_tids = self.get_worker_files()
+        res = {}
+        for thread in list(self.worker_queue._threads):
+            worker = running_tids.get(thread.name)
+            res[thread.name] = {
+                # a thread's memory and CPU usage can't be measured apart from
+                # the hub's, report zeros
+                "memory": {"size": 0, "percent": 0.0},
+                "cpu": {"status": "running" if worker else "sleeping", "percent": 0.0},
+                "io": {"read_count": -1, "write_count": -1, "read_bytes": -1, "write_bytes": -1},
+            }
+            if worker:
+                res[thread.name]["job"] = {
+                    "started_at": worker["job"]["started_at"],
+                    "duration": timesofar(worker["job"]["started_at"], 0),
+                    "func_name": worker["func_name"],
+                    "category": worker["job"]["category"],
+                    "description": worker["job"]["description"],
+                    "source": worker["job"]["source"],
+                    "step": worker["job"]["step"],
+                    "id": worker["job"]["id"],
+                }
+        return res
+
     def get_thread_summary(self):
         running_tids = self.get_thread_files()
         tchildren = list(self.thread_queue._threads)
-        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
-            # free-threaded workers mode: report CPU-bound worker threads too
-            tchildren += list(self.process_queue._threads)
         res = {}
         for child in tchildren:
             res[child.name] = {
@@ -869,16 +982,19 @@ class JobManager:
         return res
 
     def get_summary(self, child=None):
-        pworkers = self.get_pid_files(child)
+        pworkers = self.get_worker_files(child)
         tworkers = self.get_thread_files()
         ppendings = self.get_pending_processes()
         tpendings = {}  # TODO:
         return {
+            # the worker queue, kept under "process" for API clients (Studio);
+            # "mode" tells whether its workers are processes or threads
             "process": {
                 "running": list(pworkers.keys()),
                 "pending": list(ppendings.keys()),
                 "all": self.get_process_summary(),
-                "max": self.process_queue._max_workers,
+                "max": self.worker_queue._max_workers,
+                "mode": self.worker_mode,
             },
             "thread": {
                 "running": list(tworkers.keys()),
@@ -893,17 +1009,17 @@ class JobManager:
         }
 
     def get_pending_summary(self, getstr=False):
-        running = len(self.get_pid_files())
+        running = len(self.get_worker_files())
         return "%d pending job(s)" % (self._pending_jobs_count() - running)
 
     def get_pending_processes(self):
-        if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):
+        if not isinstance(self.worker_queue, concurrent.futures.ProcessPoolExecutor):
             # free-threaded workers mode: no per-job introspection available
             return {}
         # pendings are kept in queue while running, until result is there so we need
         # to adjust the actual real pending jobs. also, pending job are get() from the
         # queue following FIFO order. finally, worker ID is incremental. So...
-        pendings = sorted(self.process_queue._pending_work_items.items())
+        pendings = sorted(self.worker_queue._pending_work_items.items())
         running = len(self.get_pid_files())
         actual_pendings = dict(pendings[running:])
         return actual_pendings
@@ -937,7 +1053,7 @@ class JobManager:
         #        child = [p for p in pchildren if p.pid == pid][0]
         #    except ValueError:
         #        pass
-        pworkers = self.get_pid_files(child)
+        pworkers = self.get_worker_files(child)
         tworkers = self.get_thread_files()
         done_jobs = glob.glob(os.path.join(config.RUN_DIR, "done", "*.pickle"))
         out = []
