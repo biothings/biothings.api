@@ -128,3 +128,127 @@ def test_elasticsearch_querybuilder_aggs_reject_id():
     # a normal aggregation is unaffected
     assert "aggs" in builder.build("term", aggs=["taxid"]).to_dict()
 
+
+def test_elasticsearch_querybuilder_search_after():
+    builder = ESQueryBuilder()
+
+    # unlike fetch_all, search_after keeps the sort and size
+    query = builder.build("term", search_after="*", sort=["-taxid"], size=25).to_dict()
+    assert query["sort"] == [{"taxid": {"order": "desc"}}]
+    assert query["size"] == 25
+
+    # 'from' 0 is the same as no 'from'
+    builder.build("term", search_after="*", **{"from": 0})
+
+    # options that cannot be used with search_after, rejected
+    # before scroll_id skips building the query
+    for options, message in (
+        ({"fetch_all": True}, "fetch_all or scroll_id"),
+        ({"scroll_id": "FGluY2x1ZGVfY29udGV4dF91dWlk"}, "fetch_all or scroll_id"),
+        ({"aggs": ["taxid"]}, "facets"),
+        ({"from": 10}, "'from'"),
+    ):
+        with pytest.raises(ValueError) as exc_info:
+            builder.build("term", search_after="*", **options)
+        assert message in str(exc_info.value)
+
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("__any__", search_after="*")
+    assert "q=__any__" in str(exc_info.value)
+
+
+def test_elasticsearch_querybuilder_result_window_suggests_search_after():
+    builder = ESQueryBuilder()
+    with pytest.raises(ValueError) as exc_info:
+        builder.build("term", size=1000, **{"from": 9500})
+    message = str(exc_info.value)
+    assert "Result window is too large" in message
+    assert "search_after=*" in message
+    
+    
+class _FakeMetadata:
+    """Provide exists aliases by biothing type."""
+
+    ALIASES = {
+        None: {"gnomad_genome": "gnomad_genome.chrom", "dbnsfp": "dbnsfp.alt"},
+        "hg38": {"gnomad_genome": "gnomad_genome.alt"},
+    }
+
+    def __init__(self, aliases=None):
+        self.aliases = self.ALIASES if aliases is None else aliases
+
+    def get_exists_aliases(self, biothing_type):
+        return self.aliases.get(biothing_type, {})
+
+
+class TestExistsAliasRewrite:
+    """Test exists alias rewriting in queries and filters."""
+
+    @staticmethod
+    def _query_string(q, aliases=None, **options):
+        builder = ESQueryBuilder(metadata=_FakeMetadata(aliases))
+        return builder.build(q, **options).to_dict()["query"]["query_string"]["query"]
+
+    @pytest.mark.parametrize(
+        "q, expected",
+        [
+            ("_exists_:gnomad_genome", "_exists_:gnomad_genome.chrom"),
+            (
+                "_exists_:gnomad_genome AND _exists_:dbnsfp",
+                "_exists_:gnomad_genome.chrom AND _exists_:dbnsfp.alt",
+            ),
+            (
+                "chr1:100-200 AND NOT (_exists_:gnomad_genome OR _exists_:dbnsfp)",
+                "chr1:100-200 AND NOT (_exists_:gnomad_genome.chrom OR _exists_:dbnsfp.alt)",
+            ),
+            ("_exists_:cadd", "_exists_:cadd"),
+            # A child field does not inherit its parent's alias.
+            ("_exists_:gnomad_genome.af", "_exists_:gnomad_genome.af"),
+            ("gnomad_genome:1", "gnomad_genome:1"),
+            ("_missing_:gnomad_genome", "_missing_:gnomad_genome"),
+        ],
+        ids=[
+            "single",
+            "multiple_occurrences",
+            "negation_and_grouping",
+            "no_alias_recorded",
+            "nested_field_not_inherited",
+            "not_an_exists_clause",
+            "not_the_exists_keyword",
+        ],
+    )
+    def test_rewrite(self, q, expected):
+        assert self._query_string(q) == expected
+
+    def test_map_is_per_biothing_type(self):
+        assert self._query_string("_exists_:gnomad_genome") == "_exists_:gnomad_genome.chrom"
+        assert self._query_string("_exists_:gnomad_genome", biothing_type="hg38") == "_exists_:gnomad_genome.alt"
+        assert self._query_string("_exists_:dbnsfp", biothing_type="hg38") == "_exists_:dbnsfp"
+
+    def test_filter_and_post_filter_are_query_strings_too(self):
+        builder = ESQueryBuilder(metadata=_FakeMetadata())
+        query = builder.build("term", filter="_exists_:gnomad_genome", post_filter="_exists_:dbnsfp").to_dict()
+
+        assert query["query"]["bool"]["filter"][0]["query_string"]["query"] == "_exists_:gnomad_genome.chrom"
+        assert query["post_filter"]["query_string"]["query"] == "_exists_:dbnsfp.alt"
+
+    @pytest.mark.parametrize(
+        "builder",
+        [
+            ESQueryBuilder(),
+            ESQueryBuilder(metadata=_FakeMetadata({})),
+            ESQueryBuilder(metadata=_FakeMetadata({None: {}})),
+        ],
+        ids=["no_metadata_service", "no_map_for_any_type", "empty_map"],
+    )
+    def test_nothing_is_rewritten_without_a_map(self, builder):
+        query = builder.build("_exists_:gnomad_genome").to_dict()
+        assert query["query"]["query_string"]["query"] == "_exists_:gnomad_genome"
+
+    @pytest.mark.parametrize(
+        "q, expected_clause",
+        [(None, "match_all"), ("", "match_none")],
+        ids=["match_all", "match_none"],
+    )
+    def test_non_string_queries_are_untouched(self, q, expected_clause):
+        assert expected_clause in ESQueryBuilder(metadata=_FakeMetadata()).build(q).to_dict()["query"]

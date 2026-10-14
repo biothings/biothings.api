@@ -772,9 +772,10 @@ def diff_worker_new_vs_old(
     exclude = exclude or []
     new = create_backend(new_db_col_names, follow_ref=True)
     old = create_backend(old_db_col_names, follow_ref=True)
-    docs_common = old.mget_from_ids(id_list_new)
-    ids_common = [_doc["_id"] for _doc in docs_common]
-    id_in_new = list(set(id_list_new) - set(ids_common))
+    id_list_new = list(dict.fromkeys(id_list_new))
+    existing_ids = set(old.get_existing_ids(id_list_new))
+    ids_common = [_id for _id in id_list_new if _id in existing_ids]
+    id_in_new = [_id for _id in id_list_new if _id not in existing_ids]
     _updates = []
     if len(ids_common) > 0:
         _updates = diff_func(old, new, list(ids_common), exclude_attrs=exclude)

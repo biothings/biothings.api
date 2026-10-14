@@ -532,9 +532,11 @@ class DataBuilder:
                 raise BuilderException(
                     "'%s'could not be found in master documents (%s)" % (src, repr(list(masters.keys())))
                 )
-            search = src
-            if master["_id"] != master["name"]:
-                search = master["name"]
+            # A mapping saved from inspection can be the first src_master data
+            # recorded for a source. Older/minimal records only contain ``_id``
+            # and ``mapping``; in that case the source id is also the exact
+            # collection-name pattern.
+            search = master.get("name", master["_id"])
             # restrict pattern to minimal match
             pat = re.compile("^%s$" % search)
             for col in cols:
@@ -1337,14 +1339,16 @@ class BuilderManager(BaseManager):
         successfully, otherwise tells which ones weren't and why), without merging.
         """
         try:
-            bdr = self[build_name]
+            builder_factory = BaseManager.__getitem__(self, build_name)
+        except KeyError as key_error:
+            raise BuilderException("No such builder for '%s'" % build_name) from key_error
+
+        bdr = builder_factory()
+        try:
             if check:
                 bdr.check_ready()  # tells which sources aren't ready, and why
                 return "Ready to merge '%s': %s" % (build_name, ", ".join(self.list_sources(build_name)))
-            job = bdr.merge(sources, target_name, job_manager=self.job_manager, **kwargs)
-            return job
-        except KeyError as key_error:
-            raise BuilderException("No such builder for '%s'" % build_name) from key_error
+            return bdr.merge(sources, target_name, job_manager=self.job_manager, **kwargs)
         except ResourceNotReady as resource_error:
             raise BuilderException(f"Some datasources aren't ready for the merge: {resource_error}") from resource_error
 

@@ -61,9 +61,7 @@ def test_merge_check(fake_builder):
     class Manager:
         src_build_config = fake_builder.source_backend.build_config
         list_sources = BuilderManager.list_sources
-
-        def __getitem__(self, build_name):
-            return fake_builder
+        register = {"disease": lambda: fake_builder}  # build configuration => builder factory
 
     with pytest.raises(BuilderException, match=r"aren't ready for the merge: hpo \(being uploaded\); umls"):
         BuilderManager.merge(Manager(), "disease", check=True)

@@ -443,7 +443,8 @@ class JobManager:
                 # thus memory usage can be modified on-the-fly
                 hub_mem = self.hub_memory
                 max_mem = self.max_memory_usage and self.max_memory_usage or self.avail_memory
-        pendings = self._pending_jobs_count() - config.HUB_MAX_WORKERS
+        worker_capacity = self.process_queue._max_workers
+        pendings = self._pending_jobs_count() - worker_capacity
         while pendings >= config.MAX_QUEUED_JOBS:
             if not waited:
                 logger.info(
@@ -454,7 +455,7 @@ class JobManager:
                     config.MAX_QUEUED_JOBS,
                 )
             await asyncio.sleep(sleep_time)
-            pendings = self._pending_jobs_count() - config.HUB_MAX_WORKERS
+            pendings = self._pending_jobs_count() - worker_capacity
             waited = True
         # finally check custom predicates
         predicates = pinfo and pinfo.get("__predicates__", [])
@@ -514,11 +515,20 @@ class JobManager:
     def _pending_jobs_count(self):
         """Number of jobs submitted to the process executor and not done yet
         (including the ones currently running in a worker)."""
-        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
-            # free-threaded workers mode: the work queue only holds jobs not
-            # yet picked up; approximate running ones with the spawned workers
-            return self.process_queue._work_queue.qsize() + len(self.process_queue._threads)
-        return len(self.process_queue._pending_work_items)
+        return len(self._process_job_ids)
+
+    def _cleanup_process_job(self, job_id):
+        self.jobs.pop(job_id, None)
+        self._process_job_ids.discard(job_id)
+
+    def _process_job_done(self, job_id, _future):
+        # Executor callbacks may run in a worker or management thread. Keep
+        # JobManager state changes on its event-loop thread while it is alive.
+        try:
+            self.loop.call_soon_threadsafe(self._cleanup_process_job, job_id)
+        except RuntimeError:
+            # The loop can already be closed during application shutdown.
+            self._cleanup_process_job(job_id)
 
     async def _reap(self, fut, job_id, process=False):
         """Await an executor future and clean up the job registry, keeping it
@@ -532,9 +542,15 @@ class JobManager:
                 res = await res
             return res
         finally:
-            self.jobs.pop(job_id, None)
             if process:
-                self._process_job_ids.discard(job_id)
+                # Guarantee cleanup before a normally completed/failed job is
+                # observed by its caller.  A cancelled wrapper must stay
+                # tracked until the executor callback confirms the underlying
+                # work has really stopped.
+                if fut.done() and not fut.cancelled():
+                    self._cleanup_process_job(job_id)
+            else:
+                self.jobs.pop(job_id, None)
 
     async def defer_to_process(self, pinfo=None, func=None, *args, **kwargs):
         """Submit func to the process executor, as soon as job constraints
@@ -553,10 +569,17 @@ class JobManager:
             job_id = get_random_string()
             self.jobs[job_id] = copy_pinfo
             self._process_job_ids.add(job_id)
-            fut = self.loop.run_in_executor(
-                self.process_queue,
-                partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs),
-            )
+            work = partial(do_work, job_id, "process", copy_pinfo, func, *args, **kwargs)
+            try:
+                worker_fut = self.process_queue.submit(work)
+            except Exception:
+                self._cleanup_process_job(job_id)
+                raise
+            # Tie bookkeeping to the executor future, not the caller-facing
+            # asyncio task: cancelling that task does not necessarily stop an
+            # already-running process or free-threaded worker.
+            worker_fut.add_done_callback(partial(self._process_job_done, job_id))
+            fut = asyncio.wrap_future(worker_fut, loop=self.loop)
             # do_work will create and clean up the pickle files unless
             # the worker process gets killed unexpectedly
         return asyncio.create_task(self._reap(fut, job_id, process=True))
@@ -893,8 +916,14 @@ class JobManager:
         }
 
     def get_pending_summary(self, getstr=False):
-        running = len(self.get_pid_files())
-        return "%d pending job(s)" % (self._pending_jobs_count() - running)
+        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
+            # The thread-pool queue contains only jobs not yet picked up. Cap
+            # it with the tracked count so shutdown sentinels aren't reported.
+            pending = min(self._pending_jobs_count(), self.process_queue._work_queue.qsize())
+        else:
+            running = len(self.get_pid_files())
+            pending = self._pending_jobs_count() - running
+        return "%d pending job(s)" % max(0, pending)
 
     def get_pending_processes(self):
         if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):

@@ -55,7 +55,6 @@ Clone the repository to your local.
 A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
 * **7081**: **BioThings Hub** REST API port, read-only access
 * **9200**: ElasticSearch port
@@ -63,7 +62,11 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
 
-.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+.. note:: Ports 8080, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+
+.. warning:: Review these port mappings before starting: for access from the Docker host only, replace
+   mappings such as ``7080:7080`` with ``127.0.0.1:7080:7080``, and remove the ones you don't need.
+   See :doc:`hub_deployment` for remote access and for requiring a login.
 
 .. code:: bash
 
@@ -1164,8 +1167,10 @@ to extend our API, specifically:
 So far APIs are running from within **BioThings Studio**, and data still isn't exposed to the public. The next step to publish this data and make the API available
 for everyone.
 
-.. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
-   it's not recommended to expose any ports, including API ports, to public-facing internet.
+.. note:: **BioThings Studio** is a backend service for preparing, testing, and releasing APIs
+   in a trusted administrative environment. Keep its administrative services and databases
+   off the public internet. Deploy the query API for its intended data consumers with
+   separate access rules, as described in :doc:`hub_deployment`.
 
 
 ===============
@@ -1229,6 +1234,7 @@ but we will not be using all of the parameters for this tutorial:
 Now we will need to clone the tutorial onto your local computer and switch to pharmgkb_v7.
 
 .. code:: bash
+
    git clone https://github.com/biothings/tutorials.git
    cd tutorials
    git checkout pharmgkb_v7
@@ -1236,6 +1242,7 @@ Now we will need to clone the tutorial onto your local computer and switch to ph
 Now we will need to install the requirements to run our Biothings CLI. We will first create a virtual environment and then install a Biothings Hub dev environemt.
 
 .. code:: bash
+
    python -m venv .venv
    source ./venv/bin/activate
    pip install "biothings[dev]"
@@ -1244,6 +1251,7 @@ Just like our original pharmgkb plugin, we have a manifest and a parser file wit
 Lets have a quick look at the manifest file.
 
 .. code:: yaml
+
    version: '0.3'
    name: 'tutorials'
    requires:
@@ -1275,12 +1283,14 @@ Lets try to dump using this manifest file to see what happens!
 Lets first build our docker file. As shown in our manifest, the data url has ``image=annotations`` so when we build we have to make sure to name our image accordingly.
 
 .. code:: bash
+
    docker build -t annotations .
 
 Now we can finally test our source using the Biothings CLI. Since our document size is small we can directly use the dump_and_upload.
 If you are working with a larger source you will need need to use them separately and specify the ``--batch-limit`` flag when uploading:
 
 .. code:: bash
+
    biothings-cli dataplugin dump_and_upload
 
 We have now successfully dumped and uploaded our source. Why did we not see any of the expected errors for missing parameters?
@@ -1291,6 +1301,7 @@ We have now successfully dumped and uploaded our source. Why did we not see any 
 To answer this question, we have to take a look at the Dockerfile.
 
 .. code::
+
    FROM praqma/network-multitool:latest
    LABEL "path"="/tmp/annotations.zip"
    LABEL "dump_command"="/usr/bin/wget https://s3.pgkb.org/data/annotations.zip -O /tmp/annotations.zip"
@@ -1313,6 +1324,7 @@ the latter holding our uploaded data.
 With our uploaded data in our database, we can finally serve this data on our localhost.
 
 .. code:: bash
+
    biothings-cli dataplugin serve
 
 The result should look something similar to this:
@@ -1357,7 +1369,7 @@ The same commands can be run from a shell with ``biothings-cli hub`` (see `BioTh
 
 On a lower level, make sure all services are running in the docker container. Enter the container with
 ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
-(see usual running `services <studio_guide.html#services-check>`_). If services on ports 7080 and 7022 aren't running, it means the
+(see usual running `services <studio_guide.html#services-check>`_). If the service on port 7080 isn't running, it means the
 **Hub** has not started. If you just started the instance, wait a little more as services may take a while
 before they're fully started and ready.
 

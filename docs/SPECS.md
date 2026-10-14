@@ -73,3 +73,18 @@ BioThings APIs are APIs designed for biological entities. Here are the guideline
 ```
     https://mygene.info/v3/query?q=cdk2&size=50&from=20
 ```
+
+    * search_after
+       * Page through all matching hits, including beyond the first 10,000 that "size" and "from" can reach
+       * Optional, pass "search_after=*" with the first request. While more hits remain, the response includes a "_search_after" value. Send the same query again with "search_after" set to that value to get the next page, until a response no longer includes "_search_after"
+       * Each page holds "size" hits (1000 by default) in the order of "sort", or in index order without "sort"
+       * Cannot be combined with "from", "facets", "fetch_all" or "scroll_id"
+       * A "_search_after" value expires 1 minute (by default) after the page it came with
+
+```
+    https://mygene.info/v3/query?q=cdk2&size=1000&search_after=*
+    https://mygene.info/v3/query?q=cdk2&size=1000&search_after=<the _search_after value of the previous response>
+```
+
+    * fetch_all, scroll_id
+       * Deprecated, use "search_after" instead. Scrolling still works, and its responses include a "_warning" recommending "search_after"

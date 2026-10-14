@@ -22,14 +22,40 @@ dict_keys(['taxid', 'symbol', 'name', ... ])
 """
 
 import asyncio
+import base64
+import hashlib
+import json
 import logging
+from dataclasses import dataclass
 
-from elasticsearch import NotFoundError, RequestError
+from elasticsearch import ApiError, NotFoundError, RequestError
 from elasticsearch.dsl import MultiSearch, Search
 
 from biothings.web.query.builder import ESScrollID
 
 logger = logging.getLogger(__name__)
+
+
+def parse_api_error(exc):
+    """
+    Extract (error_type, reason, root_cause_types) from an elasticsearch-py
+    ApiError's response body, e.g. ("search_phase_execution_exception",
+    "all shards failed", {"search_context_missing_exception"}).
+
+    Returns (None, "", set()) if the body doesn't have the expected shape -
+    ES's error body is a best-effort diagnostic, not a validated contract,
+    so a differently-shaped or absent "error"/"root_cause" must fall back
+    cleanly rather than raise out of here.
+    """
+    try:
+        error = exc.info.get("error", {})
+        if not isinstance(error, dict):
+            return None, "", set()
+        root_cause = error.get("root_cause") or []  # covers both absent and explicit null
+        root_causes = {cause.get("type") for cause in root_cause if isinstance(cause, dict)}
+        return error.get("type"), error.get("reason", ""), root_causes
+    except (AttributeError, TypeError):
+        return None, "", set()
 
 
 class ResultInterrupt(Exception):
@@ -45,6 +71,71 @@ class RawResultInterrupt(ResultInterrupt):
 class EndScrollInterrupt(ResultInterrupt):
     def __init__(self):
         super().__init__({"success": False, "error": "No more results to return."})
+
+
+# the search_after value that starts a new search
+SEARCH_AFTER_START = "*"
+
+# query keys that change what each page returns but not which hits
+# match or their order, they may differ between pages of a search
+_PAGE_ONLY_KEYS = ("size", "from", "_source", "explain", "version")
+
+_INVALID_SEARCH_AFTER = (
+    "Invalid search_after value. Start a new search with search_after=*, "
+    "then pass back the _search_after value of each response to get the next page."
+)
+
+
+def search_after_fingerprint(index, query):
+    """
+    Summarize the index and the query body a search_after cursor belongs to,
+    so a cursor sent with a different query is rejected instead of returning
+    pages of the wrong hits.
+    """
+    query = {key: value for key, value in query.items() if key not in _PAGE_ONLY_KEYS}
+    serialized = json.dumps([index, query], sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode()).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class SearchAfterCursor:
+    """
+    The "_search_after" value returned with a page of hits, passed
+    back as the search_after parameter to get the next page.
+    """
+
+    pit: str  # id of the point in time the pages are read from
+    after: list  # sort values of the last hit returned
+    fingerprint: str  # see search_after_fingerprint
+    total: int  # number of hits, counted on the first page
+    returned: int  # number of hits returned so far
+
+    def encode(self):
+        data = {"pit": self.pit, "after": self.after, "fp": self.fingerprint, "total": self.total, "n": self.returned}
+        return base64.urlsafe_b64encode(json.dumps(data, separators=(",", ":")).encode()).decode().rstrip("=")
+
+    @classmethod
+    def decode(cls, value):
+        try:
+            data = json.loads(base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)))
+            cursor = cls(data["pit"], data["after"], data["fp"], data["total"], data["n"])
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ValueError(_INVALID_SEARCH_AFTER) from exc
+
+        def is_count(number):
+            return isinstance(number, int) and not isinstance(number, bool) and number >= 0
+
+        if not (
+            isinstance(cursor.pit, str)
+            and cursor.pit
+            and isinstance(cursor.after, list)
+            and cursor.after
+            and isinstance(cursor.fingerprint, str)
+            and is_count(cursor.total)
+            and is_count(cursor.returned)
+        ):
+            raise ValueError(_INVALID_SEARCH_AFTER)
+        return cursor
 
 
 class ESQueryBackend:
@@ -113,6 +204,8 @@ class AsyncESQueryBackend(ESQueryBackend):
 
         Options:
             fetch_all: also return a scroll_id for this query (default: false)
+            search_after: page through all hits in a point in time, "*" for the first page,
+                then the "_search_after" value returned with the previous page
             biothing_type: which type's corresponding indices to query (default in config.py)
         """
         assert isinstance(
@@ -158,7 +251,10 @@ class AsyncESQueryBackend(ESQueryBackend):
         # index can be further adjusted (e.g. based on options) if necessary
         index = self.adjust_index(index, query, **options)
 
-        if isinstance(query, Search):
+        if isinstance(query, Search) and options.get("search_after"):
+            res = await self._search_after(query, index, options["search_after"])
+
+        elif isinstance(query, Search):
             if options.get("fetch_all"):
                 query = query.extra(size=self.scroll_size)
                 query = query.params(scroll=self.scroll_time)
@@ -182,6 +278,88 @@ class AsyncESQueryBackend(ESQueryBackend):
             raise RawResultInterrupt(res)
 
         return res
+
+    async def _search_after(self, query, index, search_after):
+        """
+        Search a page of hits in a point in time (PIT), the deep pagination
+        elasticsearch recommends over scroll. search_after is "*" to open a
+        point in time for the first page, or the cursor returned with the
+        previous page to continue after its last hit. Hits follow the query's
+        sort, which elasticsearch ends with a _shard_doc tiebreaker, or come
+        in index order (_shard_doc) when the query has no sort.
+        https://www.elastic.co/docs/reference/elasticsearch/rest-apis/paginate-search-results
+        """
+        body = query.to_dict()
+        fingerprint = search_after_fingerprint(index, body)
+        first_page = search_after == SEARCH_AFTER_START
+
+        if first_page:
+            pit = await self.client.open_point_in_time(index=index, keep_alive=self.scroll_time)
+            cursor = SearchAfterCursor(pit["id"], [], fingerprint, 0, 0)
+        else:
+            cursor = SearchAfterCursor.decode(search_after)
+            if cursor.fingerprint != fingerprint:
+                raise ValueError(
+                    "This search_after value belongs to a different query. Send the same q, sort "
+                    "and filters with every page, or start a new search with search_after=*."
+                )
+            body["search_after"] = cursor.after
+
+        if not body.get("sort"):
+            body["sort"] = ["_shard_doc"]
+        if body.get("size") is None:
+            body["size"] = self.scroll_size
+        # the index is part of the point in time
+        body["pit"] = {"id": cursor.pit, "keep_alive": self.scroll_time}
+        # the hits are counted once, on the first page, the point in time
+        # does not change and later pages are faster without counting
+        body["track_total_hits"] = first_page
+        # fail rather than silently skip the hits of a failed shard
+        body["allow_partial_search_results"] = False
+        if self.total_hits_as_int:
+            body["rest_total_hits_as_int"] = True
+
+        try:
+            res = await self.client.search(**body)
+        except Exception as exc:
+            if first_page:
+                # the cursor to continue in this point in time is never returned
+                await self._close_point_in_time(cursor.pit)
+            elif isinstance(exc, NotFoundError) or (
+                # how a multi node cluster can report it
+                isinstance(exc, ApiError)
+                and "search_context_missing_exception" in parse_api_error(exc)[2]
+            ):
+                raise ValueError(
+                    f"Invalid or expired search_after value, a value expires {self.scroll_time} "
+                    "after the page it came with. Start a new search with search_after=*."
+                ) from exc
+            raise
+
+        page = getattr(res, "body", res)  # the dict of an ObjectApiResponse
+        hits = page["hits"]["hits"]
+        if first_page:
+            total = page["hits"]["total"]
+            total = total["value"] if isinstance(total, dict) else total
+        else:
+            total = cursor.total
+            page["hits"]["total"] = total if self.total_hits_as_int else {"value": total, "relation": "eq"}
+        returned = cursor.returned + len(hits)
+        pit_id = page.get("pit_id", cursor.pit)  # the id can change between pages
+
+        if hits and len(hits) >= body["size"] and returned < total:
+            page["_search_after"] = SearchAfterCursor(pit_id, hits[-1]["sort"], fingerprint, total, returned).encode()
+        else:  # the last page
+            await self._close_point_in_time(pit_id)
+
+        return res
+
+    async def _close_point_in_time(self, pit_id):
+        # best effort, a point in time left open expires after its keep_alive
+        try:
+            await self.client.close_point_in_time(id=pit_id)
+        except Exception as exc:
+            logger.warning("Point in time not closed: %s", exc)
 
 
 class MongoQueryBackend:
