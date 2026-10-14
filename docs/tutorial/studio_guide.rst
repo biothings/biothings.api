@@ -63,6 +63,9 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **9000**: Cerebro, a webapp used to easily interact with ElasticSearch clusters
 * **60080**: Code-Server, a webapp used to directly edit code in the container
 
+.. note:: Publish these ports only to their intended users: see :doc:`hub_deployment`, which also covers
+   requiring a login to run commands.
+
 **BioThings Hub** and the whole backend service can be accessed through different options according to some
 of these services:
 

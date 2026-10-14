@@ -190,12 +190,17 @@ A BioThings instance expose several services on different ports:
 * **7080**: BioThings hub REST API port
 * **9200**: ElasticSearch port
 
-We will map and expose those ports to the host server using option ``-p`` so we can access BioThings services without
-having to enter the container (eg. hub REST API port here will be accessible using port 19090).
+For this local example, we publish these ports on the Docker host's loopback interface only, so they can be
+reached from that host without entering the container (eg. the hub REST API port is available at
+``127.0.0.1:19090``). For remote administration, or to serve the query API to others, see :doc:`hub_deployment`.
 
 .. code:: bash
 
-  $ docker run --name demo_mygene -p 19080:80 -p 19200:9200 -p 19090:7080 -d demo_mygene
+  $ docker run --name demo_mygene \
+      -p 127.0.0.1:19080:80 \
+      -p 127.0.0.1:19200:9200 \
+      -p 127.0.0.1:19090:7080 \
+      -d demo_mygene
 
 .. note:: Instance will store ElasticSearch data in `/var/lib/elasticsearch/` directory, and downloaded data and logs
           in ``/data/`` directory. Those two locations could require extra disk space, if needed Docker option ``-v``

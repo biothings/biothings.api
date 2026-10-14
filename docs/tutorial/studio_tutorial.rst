@@ -64,6 +64,10 @@ A **BioThings Studio** instance exposes several services on different ports:
 
 .. note:: Ports 8080, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
 
+.. warning:: Review these port mappings before starting: for access from the Docker host only, replace
+   mappings such as ``7080:7080`` with ``127.0.0.1:7080:7080``, and remove the ones you don't need.
+   See :doc:`hub_deployment` for remote access and for requiring a login.
+
 .. code:: bash
 
   $ docker compose up -d --build
@@ -1163,8 +1167,10 @@ to extend our API, specifically:
 So far APIs are running from within **BioThings Studio**, and data still isn't exposed to the public. The next step to publish this data and make the API available
 for everyone.
 
-.. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
-   it's not recommended to expose any ports, including API ports, to public-facing internet.
+.. note:: **BioThings Studio** is a backend service for preparing, testing, and releasing APIs
+   in a trusted administrative environment. Keep its administrative services and databases
+   off the public internet. Deploy the query API for its intended data consumers with
+   separate access rules, as described in :doc:`hub_deployment`.
 
 
 ===============
