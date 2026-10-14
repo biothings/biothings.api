@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import textwrap
 
 import pytest
@@ -44,6 +45,7 @@ def config(tmp_path):
             S3_SNAPSHOT_BUCKET = S3_REGION = ""
             CONFIG_READONLY = False
             HUB_MAX_WORKERS = 2
+            HUB_API_USERS = {"alice": "pbkdf2_sha256$1000$somesalt$somedigest"}
             """ % str(tmp_path)))
     spec = importlib.util.spec_from_file_location("config_for_tests", path)
     module = importlib.util.module_from_spec(spec)
@@ -77,3 +79,11 @@ def test_hidden_secrets_are_not_stored(config):
     with pytest.raises(ValueError, match="hidden secrets"):
         config.store_value_to_db("HUB_MAX_WORKERS", {"cloud": {"secret_key": "********"}})
     assert config._db.docs == {}
+
+
+def test_users_and_passwords_are_hidden(config):
+    """HUB_API_USERS (usernames and password hashes) is never shown, eg. by the terminal's config command"""
+    assert config.show("HUB_API_USERS")["value"] == "********"
+    assert "somedigest" not in json.dumps(config.show(), default=str)
+    with pytest.raises(RuntimeError, match="read-only"):
+        config.store_value_to_db("HUB_API_USERS", {"mallory": "pbkdf2_sha256$1000$salt$digest"})

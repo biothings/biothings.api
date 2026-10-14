@@ -7,11 +7,14 @@ from collections import UserList
 from collections.abc import Mapping
 from functools import lru_cache
 
+from biothings.utils.passwords import ALGORITHM, is_password_hash
+
 REDACTED = "********"
 # words of a key telling its value is a secret, eg. AWS_SECRET, HUB_PASSWD, SLACK_WEBHOOK, http_auth
 SECRET_WORDS = {"password", "passwd", "secret", "token", "credential", "credentials", "webhook", "auth"}
-# or a pair of words, eg. access_key (AWS_ACCESS_KEY_ID), api_key (UMLS_API_KEY, apiKey)
-SECRET_PAIRS = ("access_key", "secret_key", "private_key", "api_key", "aws_key")
+# or a pair of words, eg. access_key (AWS_ACCESS_KEY_ID), api_key (UMLS_API_KEY, apiKey), api_users
+# (HUB_API_USERS: the password hashes of the users who can log in to the Hub API)
+SECRET_PAIRS = ("access_key", "secret_key", "private_key", "api_key", "aws_key", "api_users")
 # credentials in a URL, eg. mongodb://user:password@host
 URL_CREDENTIALS = re.compile(r"(\w+://)[^/\s@]+@")
 
@@ -35,6 +38,8 @@ def redact_secrets(value, secret=False):
         return [redact_secrets(item, secret) for item in value]
     if secret and value is not None and not isinstance(value, bool) and value != "":
         return REDACTED
+    if isinstance(value, str) and value.startswith(ALGORITHM) and is_password_hash(value):
+        return REDACTED  # a password hash, whatever its key (see biothings.utils.passwords)
     if isinstance(value, str) and "@" in value and "://" in value:
         return URL_CREDENTIALS.sub(r"\1%s@" % REDACTED, value)
     return value

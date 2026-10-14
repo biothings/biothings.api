@@ -18,6 +18,7 @@ from biothings.utils.redact import REDACTED, is_secret_key, redact_secrets
         "apiKey",
         "github_token",
         "credentials",
+        "HUB_API_USERS",
     ],
 )
 def test_secret_keys(key):
@@ -61,3 +62,12 @@ def test_redact_secrets():
     # the original is left untouched
     assert build["snapshot"]["mygene_20240101_abcdefgh"]["conf"]["cloud"]["secret_key"] == "s3cr3t"
     assert redact_secrets(["text", 1, None]) == ["text", 1, None]
+
+
+def test_password_hashes_are_hidden():
+    hashed = "pbkdf2_sha256$600000$salt$digest"
+    assert redact_secrets({"HUB_API_USERS": {"alice": hashed}}) == {"HUB_API_USERS": {"alice": REDACTED}}
+    assert redact_secrets({"value": {"bob": hashed}, "other": "pbkdf2_sha256 isn't a hash"}) == {
+        "value": {"bob": REDACTED},  # whatever its key
+        "other": "pbkdf2_sha256 isn't a hash",
+    }
