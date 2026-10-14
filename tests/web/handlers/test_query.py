@@ -11,6 +11,7 @@ import sys
 import pytest
 
 from biothings.tests.web import BiothingsWebAppTest
+from biothings.web.handlers.query import SCROLL_DEPRECATION_WARNING
 from biothings.web.settings.configs import ConfigModule
 
 
@@ -597,12 +598,14 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res = self.request("/v1/query?q=__all__&fetch_all").json()
         number_hits = len(res["hits"])
         assert number_hits == 60
+        assert res["_warning"] == SCROLL_DEPRECATION_WARNING
 
         scroll_id = res["_scroll_id"]
 
         res = self.request("/v1/query?scroll_id=" + scroll_id).json()
         number_hits = len(res["hits"])
         assert number_hits == 40
+        assert res["_warning"] == SCROLL_DEPRECATION_WARNING
 
         scroll_id = res["_scroll_id"]
 
@@ -807,6 +810,44 @@ class TestQueryKeywords(BiothingsWebAppTest):
         res_0 = self.request("/v1/query?q=_exists_:accession&fields=accession").json()
         res_1 = self.request("/v1/query?q=_exists_:accession&fields=accession&jmespath=accession.xxx|@").json()
         assert res_0["hits"] == res_1["hits"]
+
+    def test_40_search_after(self):
+        """GET /v1/query?q=__all__&sort=taxid&size=7&search_after=*
+        {
+            "_search_after": ...,
+            "total": 100,
+            "hits": [ ... 7 hits ... ]
+        }
+        then the same query with search_after=<_search_after>,
+        until a page comes without "_search_after"
+        """
+        params = {"q": "__all__", "sort": "taxid", "size": 7, "fields": "taxid", "search_after": "*"}
+        hits = []
+        while True:
+            res = self.request("/v1/query", params=params)
+            assert "Cache-Control" not in res.headers
+            page = res.json()
+            assert page["total"] == 100
+            assert "pit_id" not in page  # it is inside the _search_after value
+            hits += page["hits"]
+            if "_search_after" not in page:
+                break
+            params["search_after"] = page["_search_after"]
+
+        # every document once, in order across pages, taxid has ties
+        assert len({hit["_id"] for hit in hits}) == 100
+        taxids = [hit["taxid"] for hit in hits]
+        assert taxids == sorted(taxids)
+
+    def test_41_search_after_invalid(self):
+        res = self.request("/v1/query?q=__all__&search_after=<invalid>", expect=400).json()
+        assert "search_after=*" in res["details"]
+
+        # a cursor sent with a different query
+        page = self.request("/v1/query", params={"q": "__all__", "size": 10, "search_after": "*"}).json()
+        params = {"q": "cdk2", "size": 10, "search_after": page["_search_after"]}
+        res = self.request("/v1/query", params=params, expect=400).json()
+        assert "different query" in res["details"]
 
 
 class TestQueryString(BiothingsWebAppTest):

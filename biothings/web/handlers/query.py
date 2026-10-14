@@ -51,6 +51,12 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+SCROLL_DEPRECATION_WARNING = (
+    "Scrolling with fetch_all/scroll_id is deprecated in favor of search_after, which Elasticsearch "
+    "recommends for deep pagination. Send your query with search_after=* and pass each response's "
+    "_search_after value back as search_after (with the same query parameters) to get the next page."
+)
+
 
 class BaseQueryHandler(BaseAPIHandler):
     def initialize(self, biothing_type=None, *args, **kwargs):
@@ -355,9 +361,15 @@ class QueryHandler(BaseQueryHandler):
         self.event["value"] = 1
         if self.args.get("fetch_all"):
             self.event["label"] = "fetch_all"
+        elif self.args.get("search_after"):
+            self.event["label"] = "search_after"
 
-        if self.args.get("fetch_all") or self.args.get("scroll_id") or self.args.get("q") == "__any__":
+        scrolling = self.args.get("fetch_all") or self.args.get("scroll_id")
+        if scrolling or self.args.get("search_after") or self.args.get("q") == "__any__":
+            # a cached search_after page would replay a cursor that expired
             self.clear_header("Cache-Control")
 
         response = await ensure_awaitable(self.pipeline.search(**self.args))
+        if scrolling and isinstance(response, dict):
+            response = {"_warning": SCROLL_DEPRECATION_WARNING, **response}
         self.finish(response)

@@ -1,3 +1,23 @@
+v1.2.1 (2026/10/14)
+    biothings.hub improvements:
+        - Added an optional login to the Hub API. When users are defined in the new `HUB_API_USERS` setting, requests that run commands or change data (any method other than GET, HEAD, and OPTIONS) require a token from `POST /login`, sent in the `X-Biothings-Access-Token` header, and repeated failed logins are throttled per user. Without users, the API stays open as before. ([#480](https://github.com/biothings/biothings.api/pull/480))
+        - Removed the Hub's SSH console and dropped `asyncssh` from the `hub` extra. `HUB_SSH_PORT` and `HUB_PASSWD` are now ignored with a warning, and the console's commands can be run from BioThings Studio's terminal. ([#480](https://github.com/biothings/biothings.api/pull/480))
+        - Sped up build diffs by checking which IDs exist in the old collection without loading their documents, loading both sides of a MongoDB comparison in parallel, and pairing documents by ID instead of by sort order. Diffs now raise an error when a backend returns duplicate or mismatched document IDs instead of comparing the wrong documents. ([#473](https://github.com/biothings/biothings.api/pull/473))
+        - Fixed JobManager's pending-job count with free-threaded workers, which counted idle worker threads as running jobs, and kept a cancelled process job counted until its worker actually stops. ([#473](https://github.com/biothings/biothings.api/pull/473))
+
+    biothings.web improvements:
+        - Added `search_after` pagination with an Elasticsearch point in time to `GET /query`. `search_after=*` starts a session, each page returns a `_search_after` cursor for the next page, and unlike `fetch_all`, `sort` is honored. ([#474](https://github.com/biothings/biothings.api/pull/474))
+        - Deprecated scroll pagination with `fetch_all` and `scroll_id`, which keeps working and now adds a `_warning` recommending `search_after` to its responses. ([#474](https://github.com/biothings/biothings.api/pull/474))
+
+    biothings.utils improvements:
+        - Sped up unordered list comparison in `jsondiff`, and fixed lists holding the same values with different multiplicities being reported as equal. ([#473](https://github.com/biothings/biothings.api/pull/473))
+        - Added `python -m biothings.utils.passwords` to create the password hashes used in `HUB_API_USERS`. ([#480](https://github.com/biothings/biothings.api/pull/480))
+        - Fixed `biothings.utils.diff.get_backend` building MongoDB backends from a collection instead of its database and rejecting the backend's own `mongo` type name. ([#473](https://github.com/biothings/biothings.api/pull/473))
+
+    Misc improvements:
+        - Added a Hub deployment and access-control guide covering the API login and HTTPS. ([#480](https://github.com/biothings/biothings.api/pull/480))
+        - Added a JSON diff workload to the JobManager benchmark. ([#473](https://github.com/biothings/biothings.api/pull/473))
+
 v1.2.0 (2026/10/08)
     Highlights:
         - Required Python 3.11 or newer and dropped support for Python 3.9 and 3.10.

@@ -1,8 +1,3 @@
-# from http://asyncssh.readthedocs.io/en/latest/#id13
-
-# To run this program, the file ``ssh_host_key`` must exist with an SSH
-# private key in it to use as a server host key.
-
 import asyncio
 import copy
 import datetime

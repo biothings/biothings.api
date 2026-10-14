@@ -141,6 +141,8 @@ QUERY_KWARGS = {
         "explain": {"type": bool},
         "fetch_all": {"type": bool},
         "scroll_id": {"type": str},
+        # deep pagination with a point in time, "*" starts a new search
+        "search_after": {"type": str},
     },
     "POST": {
         "q": {"type": list, "required": True, "max": 5000},
@@ -185,9 +187,9 @@ ALLOW_NESTED_AGGS = False
 
 # Backend Stage
 # -------------
-# Amount of time a scroll request is kept open
+# Amount of time a scroll request, or a search_after point in time, is kept open
 ES_SCROLL_TIME = "1m"
-# Size of each scroll request return
+# Size of each scroll request return, also the default page size of search_after
 ES_SCROLL_SIZE = 1000
 
 # Transform Stage

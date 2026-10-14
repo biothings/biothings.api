@@ -40,6 +40,10 @@ class DocBackendBase(object):
     def get_from_id(self, id):
         raise NotImplementedError()
 
+    def get_existing_ids(self, ids):
+        """Return the requested IDs that exist in this backend."""
+        return (doc["_id"] for doc in self.mget_from_ids(ids))
+
     def finalize(self):
         """if needed, for example for bulk updates, perform flush
         at the end of updating.
@@ -77,6 +81,9 @@ class DocMemoryBackend(DocBackendBase):
 
     def get_from_id(self, id):
         return self.target_dict[id]
+
+    def get_existing_ids(self, ids):
+        return (_id for _id in ids if _id in self.target_dict)
 
     def finalize(self):
         """dump target_dict into a file."""
@@ -195,6 +202,10 @@ class DocMongoBackend(DocBackendBase):
 
     def get_from_id(self, id):
         return self.target_collection.find_one({"_id": id})
+
+    def get_existing_ids(self, ids):
+        docs = self.target_collection.find({"_id": {"$in": ids}}, projection={"_id": 1})
+        return (doc["_id"] for doc in docs)
 
     def mget_from_ids(self, ids, asiter=False):
         """ids is an id list.
@@ -318,6 +329,10 @@ class DocESBackend(DocBackendBase):
 
     def get_from_id(self, id):
         return self.target_esidxer.get_biothing(id, only_source=True)
+
+    def get_existing_ids(self, ids, step=100000):
+        docs = self.target_esidxer.get_docs(ids, step=step, only_source=False, source=False)
+        return (doc["_id"] for doc in docs)
 
     def mget_from_ids(self, ids, step=100000, only_source=True, asiter=True, **kwargs):
         """ids is an id list. always return a generator"""
