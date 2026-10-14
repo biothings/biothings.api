@@ -945,17 +945,17 @@ class HubTerminal:
         idx = 0
         only_positionals = False
         while idx < len(tokens):
-            token = tokens[idx]
+            word = tokens[idx]
             idx += 1
             if only_positionals:
-                positionals.append(token)
-            elif token == "--":
+                positionals.append(word)
+            elif word == "--":
                 only_positionals = True
-            elif token.startswith("--"):
-                key, has_value, raw = token[2:].partition("=")
+            elif word.startswith("--"):
+                key, has_value, raw = word[2:].partition("=")
                 key = key.replace("-", "_")
                 if not IDENTIFIER.fullmatch(key):
-                    raise CommandUsageError("Invalid option '%s'" % token)
+                    raise CommandUsageError("Invalid option '%s'" % word)
                 param = params.get(key)
                 if param is None and key.startswith("no_") and not has_value and key[3:] in params:
                     negated = params[key[3:]]
@@ -965,7 +965,7 @@ class HubTerminal:
                 if param is not None and param.kind in not_options:
                     raise CommandUsageError("'%s' can't be given as an option" % param.name)
                 if param is None and not accepts_any:
-                    raise CommandUsageError("Unknown option '%s' for command '%s'" % (token, name))
+                    raise CommandUsageError("Unknown option '%s' for command '%s'" % (word, name))
                 kind = param_type(param)
                 if has_value:
                     value = convert(raw, kind)
@@ -980,12 +980,12 @@ class HubTerminal:
                 elif kind is None:
                     value = True  # untyped flag
                 else:
-                    raise CommandUsageError("Option '%s' requires a value" % token)
+                    raise CommandUsageError("Option '%s' requires a value" % word)
                 set_option(key, value)
-            elif re.match(r"-[A-Za-z]", token):
-                raise CommandUsageError("Short options aren't supported, use '--<name>' ('%s')" % token)
+            elif re.match(r"-[A-Za-z]", word):
+                raise CommandUsageError("Short options aren't supported, use '--<name>' ('%s')" % word)
             else:
-                key, sep, raw = token.partition("=")
+                key, sep, raw = word.partition("=")
                 param = params.get(key)
                 if (
                     sep
@@ -996,7 +996,7 @@ class HubTerminal:
                     # python-like keyword argument, eg. force=true
                     set_option(key, convert(raw, param_type(param)))
                 else:
-                    positionals.append(token)
+                    positionals.append(word)
         return positionals, options
 
     def arrange(self, signature, positionals, options):
