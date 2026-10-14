@@ -8,6 +8,29 @@ import time
 from .common import filter_dict, timesofar
 
 
+def _index_documents_by_id(documents, backend_name):
+    documents_by_id = {}
+    for document in documents:
+        document_id = document["_id"]
+        if document_id in documents_by_id:
+            raise ValueError(f"Duplicate document ID {document_id!r} returned by the {backend_name} backend")
+        documents_by_id[document_id] = document
+    return documents_by_id
+
+
+def _validate_matching_document_ids(docs1, docs2, requested_ids):
+    if docs1.keys() != docs2.keys():
+        only_in_first = [_id for _id in docs1 if _id not in docs2]
+        only_in_second = [_id for _id in docs2 if _id not in docs1]
+        raise ValueError(
+            "The backends returned different document IDs: "
+            f"only_in_first={only_in_first!r}, only_in_second={only_in_second!r}"
+        )
+    unexpected_ids = [_id for _id in docs1 if _id not in requested_ids]
+    if unexpected_ids:
+        raise ValueError(f"The backends returned unexpected document IDs: {unexpected_ids!r}")
+
+
 def diff_doc(doc_1, doc_2, exclude_attrs=None):
     exclude_attrs = exclude_attrs or ["_timestamp"]
 
@@ -81,11 +104,20 @@ def two_docs_iterator(docs1, docs2, id_list, step=10000, verbose=False):
         t1 = time.time()
         if verbose:
             print("Processing %d-%d documents..." % (i + 1, min(i + step, n)), end="")
-        _ids = id_list[i : i + step]
-        iter1 = sorted([doc for doc in docs1 if doc["_id"] in _ids], key=lambda a: a["_id"])
-        iter2 = sorted([doc for doc in docs2 if doc["_id"] in _ids], key=lambda a: a["_id"])
-        for doc1, doc2 in zip(iter1, iter2):
-            yield doc1, doc2
+        _ids = list(dict.fromkeys(id_list[i : i + step]))
+        requested_ids = set(_ids)
+        docs1_by_id = _index_documents_by_id(
+            (doc for doc in docs1 if doc["_id"] in requested_ids),
+            "first",
+        )
+        docs2_by_id = _index_documents_by_id(
+            (doc for doc in docs2 if doc["_id"] in requested_ids),
+            "second",
+        )
+        _validate_matching_document_ids(docs1_by_id, docs2_by_id, requested_ids)
+        for _id in _ids:
+            if _id in docs1_by_id:
+                yield docs1_by_id[_id], docs2_by_id[_id]
         if verbose:
             print("Done.[%.1f%%,%s]" % (i * 100.0 / n, timesofar(t1)))
     if verbose:
