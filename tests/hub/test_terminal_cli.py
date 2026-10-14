@@ -22,6 +22,7 @@ from terminal_fakes import make_terminal
 from typer.testing import CliRunner
 
 import biothings.cli
+import biothings.cli.commands.hub as hub_cli
 from biothings.cli.commands.hub import (
     HubAPIError,
     HubClient,
@@ -32,9 +33,29 @@ from biothings.cli.commands.hub import (
     render,
 )
 from biothings.hub.api import EndpointDefinition, generate_api_routes
-from biothings.hub.api.handlers.base import RootHandler
+from biothings.hub.api.handlers import auth
+from biothings.hub.api.handlers.base import LoginHandler, RootHandler
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
 from biothings.utils.hub import CommandDefinition
+from biothings.utils.passwords import hash_password
+
+
+@pytest.fixture(autouse=True)
+def saved_logins(tmp_path, monkeypatch):
+    """The logins saved by 'biothings-cli hub login' (not the user's own)"""
+    path = tmp_path / "biothings_hub_logins"
+    monkeypatch.setattr(hub_cli, "LOGINS_FILE", str(path))
+    return path
+
+
+@pytest.fixture
+def hub_users(monkeypatch):
+    """The hub requires a login to run commands (users in its HUB_API_USERS)"""
+    users = {"alice": hash_password("alice-password", iterations=1000)}
+    monkeypatch.setattr(auth, "config", SimpleNamespace(HUB_API_USERS=users, HUB_API_LOGIN_EXPIRY=3600))
+    auth._failed_logins.clear()
+    yield users
+    auth._failed_logins.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -168,6 +189,7 @@ def hub(tmp_path):
         ("/job_manager", JobManagerHandler),
         ("/terminal/commands", TerminalCommandsHandler, {"terminal": terminal}),
         ("/terminal/run", TerminalRunHandler, {"terminal": terminal}),
+        ("/login", LoginHandler),
     ]
     routes += generate_api_routes(
         shell,
@@ -451,3 +473,65 @@ def test_jobs(hub):
     assert row == ["pid", "24195", "uploader", "ctd", "update_data", "CTD_diseases.tsv.gz", "5.26s", "378.7", "MiB"]
     assert "1 job(s) running, 2 pending" in result.output
     assert json.loads(cli(hub, "jobs", "--json").output) == JOB_MANAGER
+
+
+def test_login(hub, hub_users, saved_logins):
+    result = cli(hub, "run", "dump", "mygene")
+    assert result.exit_code == 2  # not run
+    assert "Login required (biothings-cli hub login)" in result.output
+    assert cli(hub, "help", "dump").exit_code == 0  # reading stays open
+    result = cli(hub, "login", "--username", "alice", "--password-stdin", input="bob-password\n")
+    assert (result.exit_code, "Invalid username or password" in result.output) == (1, True)
+    result = cli(hub, "login", "-n", "alice", "--password-stdin", input="alice-password\n")
+    assert result.exit_code == 0, result.output
+    assert "Logged in to %s as alice, until" % hub.url in result.output
+    assert saved_logins.stat().st_mode & 0o777 == 0o600  # its token gives access to the hub
+    assert json.loads(cli(hub, "run", "dump", "mygene").output) == {"dumped": "mygene", "force": False}
+    assert cli(hub, "logout").output == "Logged out of %s\n" % hub.url
+    assert cli(hub, "run", "dump", "mygene").exit_code == 2
+    # a token for scripts, eg. in BIOTHINGS_HUB_TOKEN
+    result = cli(hub, "login", "-n", "alice", "--password-stdin", "--print-token", input="alice-password\n")
+    token = result.stdout.strip()
+    assert cli(hub, "--token", token, "run", "dump", "mygene").exit_code == 0
+    assert json.loads(saved_logins.read_text()) == {}  # not saved
+
+
+def test_saved_logins_the_hub_refuses_are_forgotten(hub, hub_users, saved_logins):
+    cli(hub, "login", "-n", "alice", "--password-stdin", input="alice-password\n")
+    hub_users["alice"] = hash_password("new-password", iterations=1000)  # its tokens aren't valid anymore
+    result = cli(hub, "run", "dump", "mygene")
+    assert "Invalid or expired login" in result.output
+    assert json.loads(saved_logins.read_text()) == {}
+
+
+def test_expired_logins_are_ignored(saved_logins):
+    hub_cli.save_login("http://hub:7080/", {"username": "alice", "token": "abc", "expires": "2020-01-01T00:00:00"})
+    assert hub_cli.saved_login("http://hub:7080") is None
+    assert "X-Biothings-Access-Token" not in HubClient("http://hub:7080").session.headers
+    hub_cli.save_login("http://hub:7080", {"username": "alice", "token": "abc", "expires": "2999-01-01T00:00:00Z"})
+    assert HubClient("http://hub:7080/").session.headers["X-Biothings-Access-Token"] == "abc"
+    assert HubClient("http://hub:7080", token="given").session.headers["X-Biothings-Access-Token"] == "given"
+
+
+def test_hubs_without_logins(hub):
+    result = cli(hub, "login", "-n", "alice", "--password-stdin", input="alice-password\n")
+    assert (result.exit_code, "Login isn't enabled on this hub" in result.output) == (1, True)
+    url, stop = serve([("/", RootHandler, {"features": ["ws"]})])  # older BioThings versions
+    try:
+        result = CliRunner().invoke(
+            hub_application, ["--url", url, "login", "-n", "alice", "--password-stdin"], input="x\n"
+        )
+        assert "This hub doesn't support logins" in result.output
+    finally:
+        stop()
+
+
+def test_shell_login(hub, hub_users):
+    lines = ["dump mygene", "login", "alice", "alice-password", "dump mygene", "logout", "exit"]
+    result = cli(hub, "shell", input="\n".join(lines) + "\n")
+    assert result.exit_code == 0, result.output
+    assert "This hub requires a login to run commands: type login" in result.output
+    assert "Login required" in result.output
+    assert "Logged in as alice, until" in result.output
+    assert '"dumped": "mygene"' in result.output
+    assert "Logged out" in result.output

@@ -363,9 +363,20 @@ If ``biothings-cli hub`` says ``No such command 'hub'``, an older BioThings vers
 first in your ``PATH`` (eg. a project's virtual environment): ``which -a biothings-cli``
 lists them.
 
-If the hub is behind an authentication proxy, an access token can be given with
-``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), it's sent in the
-``X-Biothings-Access-Token`` header.
+When a hub requires a login to run commands (users in its ``HUB_API_USERS``, see
+:ref:`hub-login`), ``run`` refuses commands until you log in:
+
+.. code-block:: bash
+
+   biothings-cli hub login                         # asks for a username and a password
+   biothings-cli hub logout
+
+The login is saved for this hub in ``~/.biothings_hub_logins`` (only readable by you), and
+used until it expires (12 hours by default); ``shell`` has ``login`` and ``logout`` too. Scripts
+give the password on stdin (``login --username alice --password-stdin``), or a token with
+``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), from ``login --print-token``
+or ``POST /login``. Commands only reading data (``commands``, ``help``, ``history``, ``jobs``)
+don't need a login.
 
 ==========
 In Summary

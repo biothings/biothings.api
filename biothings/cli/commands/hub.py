@@ -14,8 +14,10 @@ in the hub's hook files (python files in the hub's HOOKS_FOLDER)
 > biothings-cli hub jobs                         jobs running on the hub's workers
 > biothings-cli hub hooks                        hook files loaded by the hub
 > biothings-cli hub shell                        interactive terminal
+> biothings-cli hub login                        log in to a hub requiring a login
 """
 
+import datetime
 import json
 import os
 import re
@@ -34,8 +36,10 @@ from typing_extensions import Annotated
 DEFAULT_HUB_URL = "http://localhost:7080"
 DEFAULT_TIMEOUT = 120.0  # seconds to wait for the hub's answers (eg. while a command starts)
 CONNECT_TIMEOUT = 10.0  # ... but not that long to connect to it
-TOKEN_HEADER = "X-Biothings-Access-Token"
+# hubs requiring a login (users in their HUB_API_USERS) give a token on POST /login, to send in this header
+LOGIN_HEADER = "X-Biothings-Access-Token"
 HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_history")
+LOGINS_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_logins")  # see save_login()
 
 SHORT_HELP = "[green]Run commands on a running BioThings Hub, like the terminal in BioThings Studio.[/green]"
 FULL_HELP = (
@@ -72,6 +76,46 @@ class HubTimeout(HubAPIError):
     """The hub was reached, but didn't answer in time: what was asked may still be done (eg. a command started)"""
 
 
+def read_logins():
+    """Logins saved by 'biothings-cli hub login', by hub URL: {"username": ..., "token": ..., "expires": ...}"""
+    try:
+        with open(LOGINS_FILE, encoding="utf-8") as file:
+            logins = json.load(file)
+    except (OSError, ValueError):
+        return {}
+    return logins if isinstance(logins, dict) else {}
+
+
+def is_valid(login):
+    """True if a saved login hasn't expired"""
+    try:
+        expires = datetime.datetime.fromisoformat(login["expires"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=datetime.timezone.utc)
+    return expires > datetime.datetime.now(datetime.timezone.utc)
+
+
+def saved_login(url):
+    """The login saved for a hub, unless it expired"""
+    login = read_logins().get(url.rstrip("/"))
+    return login if isinstance(login, dict) and is_valid(login) else None
+
+
+def save_login(url, login):
+    """Save the login to a hub (None: forget it), in a file only the user can read: its token gives access to the hub"""
+    logins = {hub: saved for hub, saved in read_logins().items() if isinstance(saved, dict) and is_valid(saved)}
+    if login:
+        logins[url.rstrip("/")] = login
+    else:
+        logins.pop(url.rstrip("/"), None)
+    descriptor = os.open(LOGINS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.chmod(LOGINS_FILE, 0o600)  # (if it existed with other permissions)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(logins, file, indent=2)
+
+
 class HubClient:
     """Minimal client for the Hub API endpoints used by the terminal"""
 
@@ -79,8 +123,23 @@ class HubClient:
         self.url = url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        # without a token given, the login saved for this hub (see 'biothings-cli hub login'), if any
+        login = saved_login(self.url) if token is None else None
+        self.saved_login = bool(login)
+        self.set_token(login["token"] if login else token)
+
+    def set_token(self, token):
+        """The login token to send to the hub (None: none)"""
         if token:
-            self.session.headers[TOKEN_HEADER] = token
+            self.session.headers[LOGIN_HEADER] = token
+        else:
+            self.session.headers.pop(LOGIN_HEADER, None)
+
+    def login(self, username, secret):
+        """Log in to the hub (POST /login): returns the login ({username, token, expires}), used by the next requests"""
+        login = self.request("POST", "/login", json={"username": username, "password": secret})
+        self.set_token(login["token"])
+        return login
 
     def request(self, method, endpoint, timeout=None, **kwargs):
         url = self.url + endpoint
@@ -106,6 +165,13 @@ class HubClient:
                 status=404,
                 payload=payload,
             )
+        if response.status_code == 401 and endpoint != "/login":
+            # running commands requires a login (HUB_API_USERS), which is missing, expired, or not valid anymore
+            if self.saved_login:
+                save_login(self.url, None)
+                self.saved_login = False
+            message = payload.get("error") or "Login required"
+            raise HubAPIError("%s (biothings-cli hub login)" % message, status=401, payload=payload)
         if response.status_code >= 400 or payload.get("status") == "error":
             message = payload.get("error") or "%s %s: HTTP %s %s" % (method, url, response.status_code, response.reason)
             raise HubAPIError(message, status=response.status_code, payload=payload)
@@ -247,7 +313,8 @@ def hub_options(
         typer.Option(
             "--token",
             envvar="BIOTHINGS_HUB_TOKEN",
-            help="Access token, sent in the X-Biothings-Access-Token header (hub behind an authentication proxy)",
+            help="Login token of a hub requiring a login (users in its HUB_API_USERS), from POST /login or "
+            "'biothings-cli hub login --print-token'. By default: the login saved by 'biothings-cli hub login'",
         ),
     ] = None,
     timeout: Annotated[
@@ -436,7 +503,7 @@ def run_command(
         raise typer.Exit(1)
     except HubAPIError as e:
         print_error(e)
-        raise typer.Exit(2 if e.status in (400, 403, 404, 409) else 1)
+        raise typer.Exit(2 if e.status in (400, 401, 403, 404, 409) else 1)
 
     if response["is_done"]:
         if as_json:
@@ -702,6 +769,79 @@ def list_hooks(ctx: typer.Context):
         raise typer.Exit(1)
 
 
+def format_expiry(login):
+    """When a login expires, in local time"""
+    try:
+        return datetime.datetime.fromisoformat(login["expires"]).astimezone().strftime("%Y-%m-%d %H:%M")
+    except (KeyError, TypeError, ValueError):
+        return str(login.get("expires"))
+
+
+def log_in(client, username=None, secret=None):
+    """Log in to the hub, asking for the username and password if not given, and save the login"""
+    username = username or typer.prompt("Username", err=True)
+    if secret is None:
+        secret = typer.prompt("Password", hide_input=True, err=True)
+    login = client.login(username, secret)
+    save_login(client.url, login)
+    client.saved_login = True
+    return login
+
+
+@hub_application.command(name="login")
+def login_command(
+    ctx: typer.Context,
+    username: Annotated[Optional[str], typer.Option("--username", "-n", help="Username (asked if not given)")] = None,
+    password_stdin: Annotated[
+        bool,
+        typer.Option("--password-stdin", help="Read the password from stdin, eg. in scripts (otherwise it's asked)"),
+    ] = False,
+    print_token: Annotated[
+        bool,
+        typer.Option(
+            "--print-token", help="Print the login token rather than saving the login (eg. for BIOTHINGS_HUB_TOKEN)"
+        ),
+    ] = False,
+):
+    """
+    Log in to a hub requiring a login to run commands (users in its HUB_API_USERS). The login is saved
+    for this hub in ~/.biothings_hub_logins (only readable by you), and used until it expires
+    """
+    client = get_client(ctx)
+    username = username or typer.prompt("Username", err=True)
+    if password_stdin:
+        secret = sys.stdin.readline().rstrip("\r\n")
+    else:
+        secret = typer.prompt("Password", hide_input=True, err=True)
+    try:
+        login = client.login(username, secret)
+    except HubAPIError as e:
+        if e.status == 404 and not e.payload.get("error"):
+            e = HubAPIError("This hub doesn't support logins (older BioThings version): it doesn't require one")
+        print_error(e)
+        raise typer.Exit(1)
+    if print_token:
+        typer.echo(login["token"])
+        return
+    save_login(client.url, login)
+    console.print(
+        "Logged in to %s as %s, until %s" % (escape(client.url), escape(login["username"]), format_expiry(login))
+    )
+
+
+@hub_application.command(name="logout")
+def logout_command(ctx: typer.Context):
+    """
+    Forget the login saved for this hub (see login)
+    """
+    client = get_client(ctx)
+    if not saved_login(client.url):
+        console.print("Not logged in to %s" % escape(client.url))
+        return
+    save_login(client.url, None)
+    console.print("Logged out of %s" % escape(client.url))
+
+
 @hub_application.command(name="shell")
 def interactive_shell(ctx: typer.Context):
     """
@@ -716,6 +856,12 @@ def interactive_shell(ctx: typer.Context):
         raise typer.Exit(1)
     commands = {cmd["name"]: cmd for cmd in catalog["commands"]}
     console.print("Connected to [bold]%s[/bold] (%s)" % (escape(str(info.get("name") or "hub")), escape(client.url)))
+    if info.get("login_required"):  # (not sent by older hubs)
+        login = saved_login(client.url)
+        if login:
+            console.print("Logged in as %s, until %s" % (escape(login["username"]), format_expiry(login)))
+        elif LOGIN_HEADER not in client.session.headers:
+            console.print("This hub requires a login to run commands: type [bold]login[/bold]")
     console.print(
         "Type [bold]help[/bold] to list commands, [bold]help <command>[/bold] for details, "
         "[bold]jobs[/bold] for commands running in background, [bold]exit[/bold] to quit."
@@ -744,6 +890,18 @@ def interactive_shell(ctx: typer.Context):
                     print_command_help(commands[words[1].replace("-", "_")])
                 else:
                     print_text("Unknown command '%s'" % words[1], style="red", stderr=True)
+                continue
+            if line in ("login", "logout"):
+                try:
+                    if line == "login":
+                        login = log_in(client)
+                        print_text("Logged in as %s, until %s" % (login["username"], format_expiry(login)))
+                    else:
+                        save_login(client.url, None)
+                        client.set_token(None)
+                        print_text("Logged out")
+                except HubAPIError as e:
+                    print_error(e)
                 continue
             if line == "jobs":
                 for command_id, cmd in sorted(running.items()):
@@ -790,7 +948,7 @@ def shell_help(commands):
     hooks = sorted(name for name, cmd in commands.items() if cmd["origin"] == "hook")
     if hooks:
         console.print("From hook files: %s" % escape(", ".join(hooks)), soft_wrap=True)
-    console.print("Terminal commands: help [<command>], jobs, exit")
+    console.print("Terminal commands: help [<command>], jobs, login, logout, exit")
 
 
 def report_finished(client, running):

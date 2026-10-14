@@ -9,8 +9,10 @@ import json
 import logging
 import textwrap
 import threading
+import time
 from functools import partial
 from types import SimpleNamespace
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,6 +22,7 @@ from terminal_fakes import FakeShell, make_terminal
 
 from biothings.hub import HubServer, overview
 from biothings.hub.api import EndpointDefinition, generate_api_routes
+from biothings.hub.api.handlers import auth
 from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
 from biothings.hub.terminal import (
     BUILTIN_DETAILS,
@@ -40,6 +43,7 @@ from biothings.utils.hub import (
     CommandNotAllowed,
     CompositeCommand,
 )
+from biothings.utils.passwords import hash_password
 from biothings.utils.redact import REDACTED
 
 # -------------------------------------------------------------------------------------
@@ -894,6 +898,21 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
         assert code == 409
         assert body["error"] == "'slow('mongodb://%s@su09')' is already running (command #%s)" % (REDACTED, command_id)
         self.io_loop.run_sync(lambda: wait_done(self.shell, command_id))
+
+    def test_hubs_with_users_require_a_login_to_run_commands(self):
+        users = {"alice": hash_password("alice-password", iterations=1000)}
+        with mock.patch.object(auth, "config", SimpleNamespace(HUB_API_USERS=users, HUB_API_LOGIN_EXPIRY=3600)):
+            code, body = self.run_command({"cmd": "dump mygene"})
+            assert (code, body["error"]) == (401, "HTTP 401: Login required")
+            assert self.fetch("/terminal/commands").code == 200  # reading stays open
+            token = auth.create_token("alice", users["alice"], int(time.time()) + 60)
+            response = self.fetch(
+                "/terminal/run",
+                method="POST",
+                body=json.dumps({"cmd": "dump mygene"}),
+                headers={auth.LOGIN_HEADER: token},
+            )
+            assert json.loads(response.body)["result"]["result"] == {"dumped": "mygene", "force": False}
 
     def test_naive_dates_are_sent_as_utc(self):
         code, body = self.run_command({"cmd": "last_update"})
