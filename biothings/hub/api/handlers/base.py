@@ -1,11 +1,13 @@
 import datetime
+import json
 import logging
 
 # non-json compliant values (NaN, Inf) are handled by utils.serializer,
 # which encodes them as null
-from tornado.web import RequestHandler
+from tornado.web import HTTPError, RequestHandler
 
 from biothings import config
+from biothings.hub.api.handlers.auth import get_users, login, require_login
 from biothings.utils import serializer
 
 
@@ -16,6 +18,10 @@ class DefaultHandler(RequestHandler):
         # part of pre-flight requests
         self.set_header("Access-Control-Allow-Methods", "PUT, DELETE, POST, GET, OPTIONS")
         self.set_header("Access-Control-Allow-Headers", "Content-Type,X-BioThings-API,X-Biothings-Access-Token")
+
+    def prepare(self):
+        # when users are defined (HUB_API_USERS), running commands or changing data requires a login
+        require_login(self)
 
     def write(self, result):
         super(DefaultHandler, self).write(
@@ -87,5 +93,31 @@ class RootHandler(DefaultHandler):
                 "icon": getattr(config, "HUB_ICON", None),
                 "now": datetime.datetime.now().astimezone(),
                 "features": self.features,
+                # the read-only API can't run commands, it never requires a login
+                "login_required": bool(get_users()) and "readonly" not in self.features,
             }
         )
+
+
+class LoginHandler(DefaultHandler):
+    """
+    POST /login with {"username": ..., "password": ...}: returns a login token, to send in the
+    X-Biothings-Access-Token header of the requests requiring a login, and its expiry date
+    """
+
+    def prepare(self):
+        pass  # logging in doesn't require a login
+
+    async def post(self):
+        if not get_users():
+            raise HTTPError(404, reason="Login isn't enabled on this hub (no HUB_API_USERS)")
+        try:
+            body = json.loads(self.request.body or b"{}")
+            username, password = body["username"], body["password"]
+        except (ValueError, KeyError, TypeError):
+            username = password = None
+        if not isinstance(username, str) or not isinstance(password, str):
+            raise HTTPError(400, reason="Expecting a JSON body with a 'username' and a 'password'")
+        result = await login(username, password, self.request.remote_ip)
+        # not through self.write(), so the token can't be altered like other results (eg. hidden as a secret)
+        super(DefaultHandler, self).write(serializer.to_json({"result": result, "status": "ok"}))

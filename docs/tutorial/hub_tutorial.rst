@@ -12,6 +12,9 @@ containing all the data of interest, ready to be served as an API, using
 Biothings SDK Web component (covered in another tutorial).
 Taxonomy Biothings API code is avaiable at `<https://github.com/biothings/biothings.species>`_.
 
+.. note:: This tutorial was written for an older version of BioThings: some functions it uses no longer
+   exist, and the Hub no longer runs an SSH console. Before starting a Hub, read :doc:`hub_deployment`.
+
 Prerequesites
 ^^^^^^^^^^^^^
 
