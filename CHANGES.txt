@@ -1,3 +1,37 @@
+v1.2.0 (2026/10/08)
+    Highlights:
+        - Required Python 3.11 or newer and dropped support for Python 3.9 and 3.10.
+        - Migrated Hub job handling and data pipelines to structured asyncio concurrency.
+        - Added opt-in free-threaded (no-GIL) Hub workers for free-threaded Python builds.
+        - Replaced orjson with msgspec for JSON serialization.
+        - Added optional index-time aliasing to speed up `_exists_` queries on large object fields.
+
+    biothings.hub improvements:
+        - Migrated JobManager job submission and the dump, upload, build, diff, sync, index, snapshot, inspect, and publish pipelines to `asyncio.TaskGroup` and awaited steps. A failed job now cancels its sibling jobs, and semaphores no longer leak when job admission or a download fails. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Added the `HUB_FREE_THREADED_WORKERS` setting, which runs CPU-bound merge, diff, and upload jobs in threads instead of forked processes on free-threaded Python builds. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Fixed file descriptor leaks that could crash the Hub with "Too many open files" by caching MongoDB and Elasticsearch clients per process, reusing them across indexing batches, and closing archive file handles in the dump and upload helpers. ([#458](https://github.com/biothings/biothings.api/pull/458), [#465](https://github.com/biothings/biothings.api/pull/465))
+        - Fixed `flatten_inspection_data` failing on running or failed inspection jobs, and quick index failing with `No such builder` after an inspected mapping was saved. ([#463](https://github.com/biothings/biothings.api/pull/463))
+        - Added an optional post-index scan, enabled with the `exists_field_alias_scan` build config option, that stores `_exists_` field aliases in index metadata. ([#469](https://github.com/biothings/biothings.api/pull/469))
+        - Stored a merged field mapping for each source, including multi-uploader sources, in build metadata. ([#454](https://github.com/biothings/biothings.api/pull/454))
+        - Fixed DataTransform nested lookups through lists of dicts to resolve the rest of the path in every item, so deeper paths return all of their values and non-dictionary intermediate values no longer raise errors. ([#458](https://github.com/biothings/biothings.api/pull/458), [44f1bf3](https://github.com/biothings/biothings.api/commit/44f1bf3288160f6493e5f24c17d4f27031db2a64))
+        - Replaced the `unprepare()` and `prepare(state)` pickling workaround with `__getstate__` in dumpers, uploaders, and DataTransform edges, and removed `unprepare()` from builders. ([ec7eb9b](https://github.com/biothings/biothings.api/commit/ec7eb9b9cb87c993a22ff3af75b3b3fb54b052a5))
+        - Logged a warning instead of raising an error when a registered dumper has no `SCHEDULE`. ([#470](https://github.com/biothings/biothings.api/pull/470))
+        - Fixed the source name missing from source registration warnings. ([77c876b](https://github.com/biothings/biothings.api/commit/77c876b720f54d83b94a64c7349988e02e3ee34b))
+
+    biothings.web improvements:
+        - Annotated `/metadata/fields` entries with the sources that define them, and listed each source's fields in `/metadata` only in development mode. ([#454](https://github.com/biothings/biothings.api/pull/454))
+        - Rewrote `_exists_` clauses in `q`, `filter`, and `post_filter` query strings to use the field aliases stored in index metadata. ([#469](https://github.com/biothings/biothings.api/pull/469))
+
+    biothings.utils improvements:
+        - Replaced orjson with msgspec in `biothings.utils.serializer`. Public functions keep their signatures, `orjson_default` remains as a deprecated alias of `json_enc_hook`, and non-string dictionary keys are still converted to strings. `serializer.JSONDecodeError` now aliases `msgspec.DecodeError`, and naive datetimes are encoded without a `+00:00` suffix. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Replaced deprecated `asyncio.get_event_loop()` and `asyncio.ensure_future()` calls with `get_loop()` and `loop.create_task()`, and added a `first_exception()` helper for unwrapping exception groups. ([#458](https://github.com/biothings/biothings.api/pull/458))
+
+    Misc improvements:
+        - Updated CI to test Python 3.11 through 3.14 and free-threaded 3.14t, and removed dependency markers and backports for unsupported Python versions. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Capped `aiohttp` below 3.14 in the `dev` extra until `aioresponses` supports it. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Added a JobManager benchmark comparing process and free-threaded workers. ([#458](https://github.com/biothings/biothings.api/pull/458))
+        - Fixed missing code blocks in the Studio tutorial. ([de7a60c](https://github.com/biothings/biothings.api/commit/de7a60caa7069fe7d90231c4bfcc859ecec7f6f8))
+
 v1.1.4 (2026/09/10)
     biothings.web improvements:
         - Rejected `_id` as a sort or aggregation field with an actionable error message instead of an Elasticsearch fielddata failure. ([1747825](https://github.com/biothings/biothings.api/commit/17478250478b8e45458b56ca0ca8f8fa174ced97))

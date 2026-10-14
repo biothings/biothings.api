@@ -55,7 +55,6 @@ Clone the repository to your local.
 A **BioThings Studio** instance exposes several services on different ports:
 
 * **8080**: **BioThings Studio** web application port
-* **7022**: **BioThings Hub** SSH port
 * **7080**: **BioThings Hub** REST API port
 * **7081**: **BioThings Hub** REST API port, read-only access
 * **9200**: ElasticSearch port
@@ -63,7 +62,11 @@ A **BioThings Studio** instance exposes several services on different ports:
 * **8000**: BioThings API, once created, it can be any non-priviledged (>1024) port
 * **9000**: `Cerebro <https://github.com/lmenezes/cerebro>`_, a webapp used to easily interact with ElasticSearch clusters
 
-.. note:: Ports 8080, 7022, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+.. note:: Ports 8080, 7080, 9200, 27017, 8000, 9000 are exposed by default in the docker-compose.yml file.
+
+.. warning:: Review these port mappings before starting: for access from the Docker host only, replace
+   mappings such as ``7080:7080`` with ``127.0.0.1:7080:7080``, and remove the ones you don't need.
+   See :doc:`hub_deployment` for remote access and for requiring a login.
 
 .. code:: bash
 
@@ -1164,8 +1167,10 @@ to extend our API, specifically:
 So far APIs are running from within **BioThings Studio**, and data still isn't exposed to the public. The next step to publish this data and make the API available
 for everyone.
 
-.. note:: **BioThings Studio** is a backend service, aimed to be used internally to prepare, test and release APIs. It is not inteneded to be facing public internet, in other words,
-   it's not recommended to expose any ports, including API ports, to public-facing internet.
+.. note:: **BioThings Studio** is a backend service for preparing, testing, and releasing APIs
+   in a trusted administrative environment. Keep its administrative services and databases
+   off the public internet. Deploy the query API for its intended data consumers with
+   separate access rules, as described in :doc:`hub_deployment`.
 
 
 ===============
@@ -1361,7 +1366,7 @@ be useful to troubleshoot an issue. Typing ``help()``, or even passing a command
 
 On a lower level, make sure all services are running in the docker container. Enter the container with
 ``docker exec -ti studio /bin/bash`` and type ``netstat -tnlp``, you should see services running on ports
-(see usual running `services <studio_guide.html#services-check>`_). If services on ports 7080 and 7022 aren't running, it means the
+(see usual running `services <studio_guide.html#services-check>`_). If the service on port 7080 isn't running, it means the
 **Hub** has not started. If you just started the instance, wait a little more as services may take a while
 before they're fully started and ready.
 

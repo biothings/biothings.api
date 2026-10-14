@@ -16,6 +16,7 @@ class UploadHandler(GenericHandler):
         self.upload_root = upload_root
 
     def prepare(self):
+        super().prepare()  # login check, before receiving the file
         # sanity check + extract boundary
         ct = self.request.headers.get("Content-Type")
         if not ct:
