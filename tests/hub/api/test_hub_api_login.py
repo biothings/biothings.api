@@ -213,7 +213,7 @@ class HubApiTestCase(AsyncHTTPTestCase):
     def request(self, path, method="GET", body=None, token=None, headers=None):
         headers = dict(headers or {})
         if token:
-            headers[auth.TOKEN_HEADER] = token
+            headers[auth.LOGIN_HEADER] = token
         return self.fetch(path, method=method, body=body, headers=headers)
 
     def login(self, username="alice", password="alice-password"):

@@ -21,7 +21,7 @@ ITERATIONS = 600_000  # OWASP's recommendation for PBKDF2-SHA256
 
 def hash_password(password, iterations=ITERATIONS):
     salt = secrets.token_urlsafe(16)
-    return "%s$%d$%s$%s" % (ALGORITHM, iterations, salt, _pbkdf2(password, salt, iterations))
+    return f"{ALGORITHM}${iterations}${salt}${_pbkdf2(password, salt, iterations)}"
 
 
 def is_password_hash(value):

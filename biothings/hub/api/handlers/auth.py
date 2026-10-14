@@ -29,7 +29,7 @@ from biothings import config
 from biothings.utils.configuration import ConfigurationError
 from biothings.utils.passwords import hash_password, is_password_hash, verify_password
 
-TOKEN_HEADER = "X-Biothings-Access-Token"
+LOGIN_HEADER = "X-Biothings-Access-Token"
 # methods only reading data, which never require a login (OPTIONS: CORS pre-flight requests)
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
 # after this number of failed logins in a row, a user can only try again once per LOGIN_RETRY_DELAY
@@ -61,8 +61,8 @@ def check_users():
     invalid = [repr(username) for username, hashed in users.items() if not is_password_hash(hashed)]
     if invalid:
         raise ConfigurationError(
-            "HUB_API_USERS: the password of %s isn't a password hash, "
-            "get one with 'python -m biothings.utils.passwords'" % ", ".join(invalid)
+            f"HUB_API_USERS: the password of {', '.join(invalid)} isn't a password hash, "
+            "get one with 'python -m biothings.utils.passwords'"
         )
     return list(users)
 
@@ -77,7 +77,7 @@ def require_login(handler):
     users = get_users()
     if not users:
         return
-    token = handler.request.headers.get(TOKEN_HEADER)
+    token = handler.request.headers.get(LOGIN_HEADER)
     username = get_token_user(token, users) if token else None
     if username is None:
         raise HTTPError(401, reason="Invalid or expired login, log in again" if token else "Login required")
@@ -91,7 +91,7 @@ class TooManyFailedLogins(Exception):
     """
 
     def __init__(self, wait):
-        super().__init__("Too many failed logins, try again in %d seconds" % (int(wait) + 1))
+        super().__init__(f"Too many failed logins, try again in {int(wait) + 1} seconds")
 
 
 async def check_password(username, password, users):
@@ -125,7 +125,7 @@ async def login(username, password, remote_ip=None):
     try:
         valid = await check_password(username, password, users)
     except TooManyFailedLogins as error:
-        raise HTTPError(429, reason=str(error))
+        raise HTTPError(429, reason=str(error)) from error
     if not valid:
         logging.warning("Hub API: failed login for user %.100r from %s", username, remote_ip)
         raise HTTPError(401, reason="Invalid username or password")

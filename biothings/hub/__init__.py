@@ -459,6 +459,8 @@ class HubServer:
             # we want to expose throught the api
             self.configure_api_endpoints()
 
+            # the API modules are only imported when the hub has an API
+            # pylint: disable=import-outside-toplevel
             from biothings.hub.api import generate_api_routes
             from biothings.hub.api.handlers.auth import check_users
             from biothings.hub.api.handlers.base import LoginHandler, RootHandler
