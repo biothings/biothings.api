@@ -163,6 +163,11 @@ QUERY_KWARGS["GET"]["q"]["strict"] = False
 QUERY_KWARGS["POST"]["q"]["strict"] = False
 QUERY_KWARGS["POST"]["scopes"]["strict"] = False
 
+# POST /query runs one search per query term, each returning up to "size" hits.
+# Reject requests where the number of query terms times "size" exceeds this.
+# Set to None to disable the limit.
+QUERY_POST_MAX_HITS = 50000
+
 
 # *****************************************************************************
 # Elasticsearch Query Pipeline
