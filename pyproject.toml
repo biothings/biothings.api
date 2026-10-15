@@ -9,7 +9,7 @@ exclude = ["tests*"]  # exclude packages matching these glob patterns
 namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
 
 [tool.setuptools.package-data]
-"*" = ["*.md", "*.tpl", "*.json", "*.html", "config.py.sample", ".git_info"]
+"*" = ["*.md", "*.tpl", "*.json", "*.html", "config.py.sample", ".git-info"]
 
 [tool.setuptools.dynamic]
 version = {attr = "biothings.__version__"}
