@@ -370,14 +370,18 @@ class QueryHandler(BaseQueryHandler):
             size = ES_DEFAULT_SIZE
 
         if max_hits and num_terms * size > max_hits:
-            raise HTTPError(
-                400,
-                None,
-                f"The number of query terms times size must be less than or equal to {max_hits}, "
-                f"got {num_terms} query terms with size={size} ({num_terms * size} hits). "
-                "Use a smaller size or send fewer query terms per request.",
-                reason="Too Many Hits Requested.",
+            details = (
+                f"'size' is the maximum number of hits returned for each query term, so {num_terms} "
+                f"query terms with size={size} can return up to {num_terms * size} hits, more than "
+                f"the limit of {max_hits}. Use a smaller 'size' (at most {max_hits // num_terms} for "
+                f"{num_terms} query terms), or send fewer query terms per request."
             )
+            if "species" in self.args:  # APIs with a species filter, like mygene.info
+                details += (
+                    " Most queries don't need hits from every species, and a 'species' filter "
+                    "(e.g. species=human) returns fewer hits per term, so a smaller 'size' is enough."
+                )
+            raise HTTPError(400, None, details, reason="Too Many Hits Requested.")
 
     @capture_exceptions
     async def get(self, *args, **kwargs):
