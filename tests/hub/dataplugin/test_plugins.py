@@ -11,17 +11,16 @@ import pytest
 
 from biothings import config
 from biothings.hub.dataload.dumper import DumperManager
-from biothings.hub.dataload.uploader import UploaderManager
+from biothings.hub.dataload.uploader import ParallelizedSourceUploader, UploaderManager
 from biothings.hub.dataplugin.loaders.loader import AdvancedPluginLoader, ManifestBasedPluginLoader
 from biothings.hub.dataplugin.assistant import LocalAssistant
 from biothings.hub.dataplugin.manager import DataPluginManager
 from biothings.utils import hub_db
 from biothings.utils.workers import upload_worker
 
-
 logger = logging.getLogger(__name__)
 
-plugin_designs = ["single_uploader_plugin", "multiple_uploader_plugin"]
+plugin_designs = ["single_uploader_plugin", "multiple_uploader_plugin", "parallel_uploader_plugin"]
 
 
 def test_local_assistant_construction():
@@ -113,6 +112,40 @@ def test_plugin_loading(plugin):
 
     p_loader = assistant_instance.loader
     p_loader.load_plugin()
+
+
+@pytest.mark.parametrize("plugin", ["parallel_uploader_plugin"], indirect=True)
+def test_plugin_with_a_parallelizer(plugin):
+    """
+    The uploader of a plugin with a parallelizer in its manifest loads its data in parallel jobs,
+    one for each set of arguments its parallelizer returns (see ParallelizedSourceUploader)
+    """
+    hub_db.setup(config)
+    LocalAssistant.data_plugin_manager = DataPluginManager(job_manager=None)
+    LocalAssistant.dumper_manager = DumperManager(job_manager=None)
+    LocalAssistant.uploader_manager = UploaderManager(job_manager=None)
+    assistant_instance = LocalAssistant(f"local://{plugin.name}")
+    dp = hub_db.get_data_plugin()
+    dp.remove({"_id": assistant_instance.plugin_name})
+    dp.insert_one(
+        {
+            "_id": assistant_instance.plugin_name,
+            "plugin": {"url": assistant_instance.url, "type": assistant_instance.plugin_type, "active": True},
+            "download": {"data_folder": str(Path(plugin))},
+        }
+    )
+    p_loader = assistant_instance.loader
+    p_loader.load_plugin()
+
+    (uploader_class,) = p_loader.__class__.uploader_manager[plugin.name]
+    assert issubclass(uploader_class, ParallelizedSourceUploader)
+    uploader = uploader_class(db_conn_info="")
+    uploader.data_folder = str(plugin)
+    jobs = uploader.jobs()
+    assert (str(plugin / "manifest.json"),) in jobs
+    (document,) = uploader.load_data(str(plugin / "manifest.json"))
+    assert document["name"] == "manifest.json"
+    dp.remove({"_id": assistant_instance.plugin_name})
 
 
 @pytest.mark.parametrize("plugin", plugin_designs, indirect=True)
