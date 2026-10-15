@@ -27,14 +27,18 @@ class ManifestTypeException(jsonschema.exceptions.ValidationError):
             str: "string",
             float: "float",
             bool: "boolean",
+            type(None): "null",
         }
         current_instance_type = type(validation_error.instance)
         current_instance_type = python_json_type_mapping.get(current_instance_type, str(current_instance_type))
+        expected_type = validation_error.validator_value
+        if validation_error.validator == "oneOf":
+            # property accepting multiple types, e.g. dumper.data_url (string or array)
+            expected_type = " | ".join(str(option.get("type")) for option in validation_error.validator_value)
         schema_error_message = (
             "Discovered a manifest typing error that prevents loading. "
             f"Please update the {list(validation_error.absolute_path)} section of the manifest. "
-            f"Expected {validation_error.validator} <{validation_error.validator_value}> | "
-            f"Discovered {validation_error.validator} <{current_instance_type}>"
+            f"Expected type <{expected_type}> | Discovered type <{current_instance_type}>"
         )
         super().__init__(schema_error_message)
 
@@ -54,7 +58,7 @@ class ManifestMissingPropertyException(jsonschema.exceptions.ValidationError):
             "Please add the missing section to the manifest before proceeding. "
             f"[{validation_error.message}]\n"
             "The manifest schema can be referenced by running:\n\t"
-            f"`biothings-cli manifest schema`"
+            "`biothings-cli dataplugin validate --show-schema`"
         )
         super().__init__(schema_error_message)
 
@@ -66,10 +70,11 @@ class ManifestMutuallyExclusivePropertyException(jsonschema.exceptions.Validatio
     One of many may exist, but not multiple of the many.
 
     Usage:
-        - dumper.data_url typing (array or string)
         - oneOf(uploader | uploaders). At the root of the schema, you can either have an uploader
         object or an uploaders array. Not both since they are logically covering the same manifest
         content
+
+    A oneOf between types (dumper.data_url: string or array) is a ManifestTypeException
     """
 
     def __init__(self, validation_error: jsonschema.exceptions.ValidationError):
@@ -153,6 +158,10 @@ def determine_validation_error_category(validation_error: jsonschema.exceptions.
         "enum": ManifestIncorrectEnumException,
     }
     manifest_exception = validation_exception_mapping.get(validation_error.validator, None)
+    if validation_error.validator == "oneOf" and not all(
+        "required" in option for option in validation_error.validator_value
+    ):
+        manifest_exception = ManifestTypeException
     if manifest_exception is None:
         exception = validation_error
     else:
