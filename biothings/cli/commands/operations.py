@@ -178,7 +178,9 @@ async def do_dump(plugin_name: Optional[str] = None, show_dumped: bool = True, m
 
 @cli_system_path
 @operation_mode
-async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True) -> None:
+async def do_upload(
+    plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True, parallel: bool = False
+) -> None:
     """
     Perform upload for the given list of uploader_classes
 
@@ -188,8 +190,12 @@ async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000,
     >>>     self.commands["upload"] = self.managers["upload_manager"].upload_src
     >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
     >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
+
+    With parallel, the uploaders with a parallelizer in the plugin's manifest load their data in one job
+    per set of arguments it returns, like the ParallelizedSourceUploader's `update_data` in the hub
     """
     CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
+    ParallelizedSourceUploader = _load_attr("biothings.hub.dataload.uploader", "ParallelizedSourceUploader")
     assistant_instance = CLIAssistant(plugin_name)
     uploader_classes = assistant_instance.get_uploader_class()
     for uploader_class in uploader_classes:
@@ -208,16 +214,44 @@ async def do_upload(plugin_name: Optional[str] = None, batch_limit: int = 10000,
             logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
             raise typer.Exit(1)
 
-        upload_worker(
-            uploader.fullname,
-            uploader.__class__.storage_class,
-            uploader.load_data,
-            uploader.temp_collection_name,
-            batch_limit,
-            1,
-            uploader.data_folder,
-            db=uploader.db,
-        )
+        if parallel and isinstance(uploader, ParallelizedSourceUploader):
+            # the CLI's job manager runs the jobs in this process: they can store the documents in the
+            # CLI's database (without db, the storage would use the hub's source database, in MongoDB)
+            jobs = []
+            for batch_number, data_load_arguments in enumerate(uploader.jobs()):
+                pinfo = uploader.get_pinfo()
+                pinfo["step"] = "update_data"
+                pinfo["description"] = f"{data_load_arguments}"
+                job = await assistant_instance.job_manager.defer_to_process(
+                    pinfo,
+                    upload_worker,
+                    uploader.fullname,  # worker name
+                    uploader.storage_class,  # storage class
+                    uploader.load_data,  # loading function
+                    uploader.temp_collection_name,  # destination collection name
+                    batch_limit,  # batch size
+                    batch_number,  # batch number
+                    *data_load_arguments,  # loading function arguments
+                    db=uploader.db,
+                )
+                jobs.append(job)
+            await asyncio.gather(*jobs)
+        else:
+            if parallel:
+                logger.warning(
+                    "No parallelizer for '%s' in the plugin's manifest: its data is uploaded in one job",
+                    uploader.fullname,
+                )
+            upload_worker(
+                uploader.fullname,
+                uploader.__class__.storage_class,
+                uploader.load_data,
+                uploader.temp_collection_name,
+                batch_limit,
+                1,
+                uploader.data_folder,
+                db=uploader.db,
+            )
         uploader.switch_collection()
         uploader.keep_archive = 3  # keep 3 archived collections, that's probably good enough for CLI, default is 10
         uploader.clean_archived_collections()
@@ -236,64 +270,9 @@ async def do_parallel_upload(
     plugin_name: Optional[str] = None, batch_limit: int = 10000, show_uploaded: bool = True
 ) -> None:
     """
-    Perform upload for the given list of uploader_classes
-
-    The callback in the hub leverages the `upload_src` method
-
-    >>> if self.managers.get("upload_manager"):
-    >>>     self.commands["upload"] = self.managers["upload_manager"].upload_src
-    >>>     self.commands["upload_all"] = self.managers["upload_manager"].upload_all
-    >>>     self.commands["update_source_meta"] = self.managers["upload_manager"].update_source_meta
-
-    This is a modified version of the ParallelUploader `update_data` source call
+    Perform upload, with the data of the uploaders with a parallelizer loaded in parallel jobs (see do_upload())
     """
-    CLIAssistant = _load_attr("biothings.cli.assistant", "CLIAssistant")
-    assistant_instance = CLIAssistant(plugin_name)
-    uploader_classes = assistant_instance.get_uploader_class()
-    for uploader_class in uploader_classes:
-        uploader = uploader_class.create(db_conn_info="")
-        uploader.make_temp_collection()
-        uploader.prepare()
-        uploader.update_master()
-
-        if not uploader.data_folder or not pathlib.Path(uploader.data_folder).exists():
-            uploader_error_message = (
-                "Data folder '%s' for '%s' is empty or does not exist yet. "
-                "Please ensure you have run `biothings-cli dataplugin dump`"
-            )
-            logger.error(uploader_error_message, uploader.data_folder, uploader.fullname)
-            raise typer.Exit(1)
-
-        job_parameters = uploader.jobs()
-        jobs = []
-        job_manager = assistant_instance.dumper_manager.job_manager
-        for batch_number, data_load_arguments in enumerate(job_parameters):
-            pinfo = uploader.get_pinfo()
-            pinfo["step"] = "update_data"
-            pinfo["description"] = f"{data_load_arguments}"
-            job = await job_manager.defer_to_process(
-                pinfo,
-                upload_worker,
-                uploader.fullname,  # worker name
-                uploader.storage_class,  # storage class
-                uploader.load_data,  # loading function
-                uploader.temp_collection_name,  # destination collection name
-                batch_limit,  # batch size
-                batch_number,  # batch number
-                *data_load_arguments,  # loading function arguments
-                # db=uploader.db,
-            )
-            jobs.append(job)
-        await asyncio.gather(*jobs)
-        uploader.switch_collection()
-
-        # keep 3 archived collections, good enough for CLI, default is 10
-        uploader.keep_archive = 3
-        uploader.clean_archived_collections()
-
-    if show_uploaded:
-        logger.info("[green]Success![/green] :rocket:", extra={"markup": True})
-        show_uploaded_sources(pathlib.Path(assistant_instance.plugin_directory), assistant_instance.plugin_name)
+    await do_upload(plugin_name=plugin_name, batch_limit=batch_limit, show_uploaded=show_uploaded, parallel=True)
 
 
 @cli_system_path

@@ -83,7 +83,8 @@ def upload_source(
         Optional[bool],
         typer.Option(
             "--parallel",
-            help="Used for uploaders that leverage the ParallelizedUploader source for the plugin",
+            help="Load the data in parallel jobs, for the uploaders with a parallelizer in the plugin's manifest "
+            "(see dataplugin create --parallelizer)",
         ),
     ] = False,
     show_upload: Annotated[

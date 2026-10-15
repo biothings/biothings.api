@@ -432,9 +432,9 @@ class ManifestBasedPluginLoader(BasePluginLoader):
                     else:
                         confdict["BASE_CLASSES"] = "biothings.hub.dataload.uploader.BaseSourceUploader"
 
-                    confdict["PLUGIN_MODULE"] = confdict["BASE_CLASSES"].split(".")[0]
-
                     confdict["JOBS_FUNC"] = ""
+                # imported by the uploader's code, for its base class (with a parallelizer too)
+                confdict["PLUGIN_MODULE"] = confdict["BASE_CLASSES"].split(".")[0]
 
                 if uploader_section.get("mapping"):
                     indentfunc, func = self.get_code_for_mod_name(plugin_directory, uploader_section["mapping"])
