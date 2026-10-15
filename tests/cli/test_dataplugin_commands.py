@@ -11,6 +11,7 @@ import http.server
 import json
 import os
 import pathlib
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -36,6 +37,21 @@ def load_data(data_folder):
 """
 
 
+PARALLEL_PARSER = """
+import csv
+import os
+
+
+def load_data(path):
+    # a data file (with a parallelizer, one job per file), or the data folder
+    paths = [path] if os.path.isfile(path) else [os.path.join(path, name) for name in sorted(os.listdir(path))]
+    for file_path in paths:
+        with open(file_path, encoding="utf-8") as handle:
+            for row in csv.DictReader(handle, delimiter="\\t"):
+                yield {"_id": row["id"], "symbol": row["symbol"]}
+"""
+
+
 def run_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.CompletedProcess:
     """
     Runs the biothings-cli with the given arguments. stderr is merged into stdout
@@ -56,16 +72,16 @@ def run_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.CompletedProcess:
     )
 
 
-def create_plugin(working_directory: pathlib.Path) -> pathlib.Path:
+def create_plugin(working_directory: pathlib.Path, *options: str) -> pathlib.Path:
     """
-    Creates the "demo" data plugin from the template
+    Creates the "demo" data plugin from the template (options: eg. --parallelizer)
     """
-    result = run_cli("dataplugin", "create", "--name", "demo", cwd=working_directory)
+    result = run_cli("dataplugin", "create", "--name", "demo", *options, cwd=working_directory)
     assert result.returncode == 0, result.stdout
     return working_directory / "demo"
 
 
-def set_data_url(plugin_directory: pathlib.Path, data_url: str) -> None:
+def set_data_url(plugin_directory: pathlib.Path, data_url) -> None:
     manifest_file = plugin_directory / "manifest.yaml"
     manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
     manifest["dumper"]["data_url"] = data_url
@@ -89,6 +105,33 @@ def data_url(tmp_path_factory) -> str:
     server.shutdown()
     server.server_close()
     thread.join()
+
+
+@pytest.fixture(scope="module")
+def data_urls(tmp_path_factory) -> list:
+    """
+    Serves 3 small TSV files over HTTP for the data plugin dumper, 10 genes each
+    """
+    data_directory = tmp_path_factory.mktemp("cli_parallel_data")
+    for part in (1, 2, 3):
+        rows = "".join(f"G{part}_{number}\tSYMBOL{number}\n" for number in range(10))
+        data_directory.joinpath(f"genes{part}.tsv").write_text("id\tsymbol\n" + rows, encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(data_directory))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield [f"http://127.0.0.1:{server.server_port}/genes{part}.tsv" for part in (1, 2, 3)]
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+def uploaded_documents(plugin_directory: pathlib.Path) -> int:
+    """
+    Number of documents uploaded in the CLI's database
+    """
+    with sqlite3.connect(plugin_directory / ".biothings_hub" / "data_src_database") as connection:
+        return connection.execute("SELECT count(*) FROM demo").fetchone()[0]
 
 
 def test_create_reports_plugin_location(tmp_path: pathlib.Path):
@@ -208,3 +251,30 @@ def test_missing_plugin_name_message():
     message = str(MissingPluginName("/data/plugins"))
     assert "--name (-n)" in message
     assert "--plugin-name" not in message
+
+
+def test_parallel_upload(tmp_path: pathlib.Path, data_urls: list):
+    """
+    With the template's parallelizer (one job per downloaded file), the data is uploaded in parallel
+    jobs, into the CLI's database
+    """
+    plugin_directory = create_plugin(tmp_path, "--parallelizer")
+    set_data_url(plugin_directory, data_urls)
+    plugin_directory.joinpath("parser.py").write_text(PARALLEL_PARSER, encoding="utf-8")
+
+    for command in (["dump"], ["upload", "--parallel"]):
+        result = run_cli("dataplugin", *command, cwd=plugin_directory)
+        assert result.returncode == 0, result.stdout
+    assert uploaded_documents(plugin_directory) == 30
+
+
+def test_parallel_upload_without_parallelizer(tmp_path: pathlib.Path, data_urls: list):
+    plugin_directory = create_plugin(tmp_path)
+    set_data_url(plugin_directory, data_urls)
+    plugin_directory.joinpath("parser.py").write_text(PARALLEL_PARSER, encoding="utf-8")
+
+    for command in (["dump"], ["upload", "--parallel"]):
+        result = run_cli("dataplugin", *command, cwd=plugin_directory)
+        assert result.returncode == 0, result.stdout
+    assert "No parallelizer for 'demo' in the plugin's manifest" in result.stdout
+    assert uploaded_documents(plugin_directory) == 30  # in one job
