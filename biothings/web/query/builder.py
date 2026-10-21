@@ -642,7 +642,7 @@ class ESQueryBuilder:
         if q == "":  # same empty q behavior as that of ES.
             search = search.query("match_none")
 
-        elif q == "__all__" or q is None:
+        elif q in ("__all__", "*") or q is None:
             search = search.query()
             if options.aggs and not options.size:
                 options.size = 0
