@@ -642,7 +642,7 @@ class ESQueryBuilder:
         if q == "":  # same empty q behavior as that of ES.
             search = search.query("match_none")
 
-        elif q in ("__all__", "*") or q is None:
+        elif q == "__all__" or q is None:
             search = search.query()
             if options.aggs and not options.size:
                 options.size = 0
@@ -726,10 +726,15 @@ class ESQueryBuilder:
     def default_string_query(self, q, options):
         """
         Override this to customize default string query.
-        By default it implements a query string query.
+        By default it implements a query string query,
+        except that q="*" is a match_all query.
         """
         assert isinstance(q, str) and q
         assert not options.scopes
+        # here, not with "__all__" in _build_string_query,
+        # so that overrides of this method still receive q="*"
+        if q == "*":
+            return Search().query("match_all")
         return Search().query("query_string", query=q, default_operator="AND", lenient=True)
 
     def default_match_query(self, q, scopes, options):
