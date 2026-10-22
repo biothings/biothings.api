@@ -1,3 +1,9 @@
+v1.2.2 (2026/10/22)
+    biothings.web improvements:
+        - Added the `QUERY_POST_MAX_HITS` setting (100,000 by default, `None` to turn it off), and POST `/query` now returns a 400 error when the number of query terms times `size` is over it. The error explains that `size` applies to each query term and gives the largest `size` that fits, and also suggests a species filter in APIs with a `species` parameter. A request without `size` counts as 10 hits per term. ([#482](https://github.com/biothings/biothings.api/pull/482))
+        - Changed the default `default_string_query` to build `q=*` as a `match_all` query instead of a `query_string` query. APIs that override `default_string_query` still receive `q=*` and build their own query for it. ([#484](https://github.com/biothings/biothings.api/pull/484), [#485](https://github.com/biothings/biothings.api/pull/485))
+        - Logged failed searches with status 400 in POST `/query` multisearch results as warnings instead of errors, so user errors that weren't on the list of known error reasons, such as sorting on a nested field, are no longer reported to Sentry. Failed searches with any other status are still logged at ERROR. ([#483](https://github.com/biothings/biothings.api/pull/483))
+
 v1.2.1 (2026/10/14)
     biothings.hub improvements:
         - Added an optional login to the Hub API. When users are defined in the new `HUB_API_USERS` setting, requests that run commands or change data (any method other than GET, HEAD, and OPTIONS) require a token from `POST /login`, sent in the `X-Biothings-Access-Token` header, and repeated failed logins are throttled per user. Without users, the API stays open as before. ([#480](https://github.com/biothings/biothings.api/pull/480))

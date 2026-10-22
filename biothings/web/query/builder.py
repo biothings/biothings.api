@@ -726,10 +726,15 @@ class ESQueryBuilder:
     def default_string_query(self, q, options):
         """
         Override this to customize default string query.
-        By default it implements a query string query.
+        By default it implements a query string query,
+        except that q="*" is a match_all query.
         """
         assert isinstance(q, str) and q
         assert not options.scopes
+        # here, not with "__all__" in _build_string_query,
+        # so that overrides of this method still receive q="*"
+        if q == "*":
+            return Search().query("match_all")
         return Search().query("query_string", query=q, default_operator="AND", lenient=True)
 
     def default_match_query(self, q, scopes, options):
