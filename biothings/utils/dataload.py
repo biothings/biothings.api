@@ -30,7 +30,7 @@ def _missing_value_kind(val):
     if val is None or val_cls is str or val_cls is int or val_cls is bool:
         return None
     if val_cls is float:
-        return "NaN" if val != val else None
+        return "NaN" if val != val else None  # pylint: disable=comparison-with-itself
     if val_cls is dict or val_cls is list or val_cls is tuple:
         return None
     cls_module = getattr(val_cls, "__module__", "")
