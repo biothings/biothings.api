@@ -14,10 +14,11 @@ from functools import partial
 from biothings import config as btconfig
 from biothings.hub import HubServer
 from biothings.hub.autoupdate import BiothingsDumper, BiothingsUploader
-from biothings.hub.manager import ResourceNotFound
+from biothings.hub.manager import ResourceError, ResourceNotFound
 from biothings.hub.standalone.validators import AutoHubValidator
 from biothings.utils.backend import DocESBackend
 from biothings.utils.es import ESIndexer
+from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
 
 
@@ -90,6 +91,8 @@ class AutoHubFeature(object):
         """
         Update hub's data up to the given version (default is latest available),
         using full and incremental updates to get up to that given version (if possible).
+        A version already downloaded (eg. when its install failed) is installed without downloading
+        it again, unless force: then it's downloaded again (force is also given to the validator).
         """
         # a data release installed in several environments is named <release>__<environment>
         if self.managers["dump_manager"].find_source(src_name) is None:
@@ -100,15 +103,15 @@ class AutoHubFeature(object):
             try:
                 dklass = self.managers["dump_manager"][src_name][0]  # only one dumper allowed / source
                 dobj = self.managers["dump_manager"].create_instance(dklass)
-                update_path = dobj.find_update_path(version, backend_version=dobj.target_backend.version)
+                backend_version = dobj.target_backend.version
+                update_path = dobj.find_update_path(version, backend_version=backend_version)
                 version_path = [v["build_version"] for v in update_path]
                 if not version_path:
-                    logging.info("No update path found")
-                    return
+                    return "%s is up to date (version %s)" % (src_name, backend_version)
 
                 logging.info(
                     "Found path for updating from version '%s' to version '%s': %s",
-                    dobj.target_backend.version,
+                    backend_version,
                     version,
                     version_path,
                 )
@@ -120,18 +123,24 @@ class AutoHubFeature(object):
                 for step_version in version_path:
                     logging.info("Downloading data for version '%s'", step_version)
                     jobs = self.managers["dump_manager"].dump_src(src_name, version=step_version, force=force)
-                    download = asyncio.gather(*jobs)
-                    res = await download
+                    res = await asyncio.gather(*jobs)
                     assert len(res) == 1
-                    if res[0] is None:
-                        # download ready, now install
-                        logging.info("Updating backend to version '%s'", step_version)
-                        jobs = self.managers["upload_manager"].upload_src(
-                            src_name,
-                            use_no_downtime_method=use_no_downtime_method,
-                        )
-                        upload = asyncio.gather(*jobs)
-                        res = await upload
+                    if res[0] is not None:
+                        # nothing downloaded ("Nothing to dump"): downloaded already, eg. its install failed
+                        download = (get_src_dump().find_one({"_id": src_name}) or {}).get("download") or {}
+                        if download.get("release") != step_version or download.get("status") != "success":
+                            raise ResourceError(
+                                "Version '%s' of %s wasn't downloaded (%s): install it with --force"
+                                % (step_version, src_name, res[0])
+                            )
+                        logging.info("Version '%s' was downloaded already, installing it", step_version)
+                    logging.info("Updating backend to version '%s'", step_version)
+                    jobs = self.managers["upload_manager"].upload_src(
+                        src_name,
+                        use_no_downtime_method=use_no_downtime_method,
+                    )
+                    await asyncio.gather(*jobs)
+                return "%s: installed %s" % (src_name, ", then ".join(version_path))
 
             except Exception:
                 self.logger.exception("data install failed")

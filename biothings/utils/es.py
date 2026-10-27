@@ -834,21 +834,51 @@ class ESIndexer:
         return self._es.snapshot.status(repository=repo, snapshot=snapshot)
 
     def get_restore_status(self, index_name=None):
+        """
+        Status of a snapshot's restore into an index: INIT (not started yet), IN_PROGRESS (with its
+        progress), DONE once all its primary shards are restored, or FAILED when one of them can't be
+        assigned to a node (eg. they're all past their disk watermark), with the reason ("reason")
+        """
         index_name = index_name or self._index
-        recov = self._es.indices.recovery(index=index_name)
-        if index_name not in recov:
-            return {"status": "INIT", "progress": "0%"}
-        shards = recov[index_name]["shards"]
-        # get all shards status
-        shards_status = [s["stage"] for s in shards]
-        done = len([s for s in shards_status if s == "DONE"])
-        if set(shards_status) == {"DONE"}:
+        shards = self._es.indices.recovery(index=index_name).get(index_name, {}).get("shards") or []
+        settings = self._es.indices.get_settings(index=index_name)
+        number_of_shards = int(settings[index_name]["settings"]["index"]["number_of_shards"])
+        # recoveries are only listed for the shards assigned to a node: a shard which can't be isn't
+        # listed, and its data is never restored
+        restored = {shard["id"] for shard in shards if shard.get("primary") and shard["stage"] == "DONE"}
+        progress = "%.2f%%" % (len(restored) / number_of_shards * 100)
+        if len(restored) == number_of_shards and all(shard["stage"] == "DONE" for shard in shards):
             return {"status": "DONE", "progress": "100%"}
-        else:
-            return {
-                "status": "IN_PROGRESS",
-                "progress": "%.2f%%" % (done / len(shards_status) * 100),
-            }
+        listed = {shard["id"] for shard in shards if shard.get("primary")}
+        unlisted = [number for number in range(number_of_shards) if number not in listed]
+        if unlisted:
+            reason = self.get_unassigned_reason(index_name, unlisted[0])
+            if reason:
+                return {"status": "FAILED", "progress": progress, "reason": reason}
+        if not shards:
+            return {"status": "INIT", "progress": "0%"}
+        return {"status": "IN_PROGRESS", "progress": progress}
+
+    def get_unassigned_reason(self, index_name, shard):
+        """
+        Why a primary shard of an index can't be assigned to a node (None if it can, eg. it will be soon),
+        as Elasticsearch explains it, eg. "...: the node is above the high watermark cluster setting..."
+        """
+        try:
+            explanation = self._es.cluster.allocation_explain(index=index_name, shard=shard, primary=True)
+        except ApiError:  # eg. assigned meanwhile
+            return None
+        if explanation.get("can_allocate") not in ("no", "no_valid_shard_copy"):
+            return None  # eg. throttled: waiting for other shards
+        reason = explanation.get("allocate_explanation") or "can't be assigned to a node"
+        # what the nodes said (eg. the disk threshold), the first one
+        refusals = [
+            decider["explanation"]
+            for node in explanation.get("node_allocation_decisions") or []
+            for decider in node.get("deciders") or []
+            if decider.get("decision") == "NO"
+        ]
+        return "shard %s: %s%s" % (shard, reason, " (%s)" % refusals[0] if refusals else "")
 
     def get_internal_number_of_replicas(self):
         try:
