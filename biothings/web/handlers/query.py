@@ -39,6 +39,7 @@ from tornado.web import Finish, HTTPError
 from biothings.utils import serializer
 from biothings.web.analytics.events import GAEvent
 from biothings.web.handlers.base import BaseAPIHandler
+from biothings.web.query.builder import ES_DEFAULT_SIZE
 from biothings.web.query.pipeline import QueryPipelineException, QueryPipelineInterrupt
 
 __all__ = [
@@ -352,9 +353,35 @@ class QueryHandler(BaseQueryHandler):
     @capture_exceptions
     async def post(self, *args, **kwargs):
         self.event["value"] = len(self.args["q"])
+        self._validate_max_hits()
 
         result = await ensure_awaitable(self.pipeline.search(**self.args))
         self.finish(result)
+
+    def _validate_max_hits(self):
+        """
+        Reject a POST query that can return more than QUERY_POST_MAX_HITS hits.
+        It runs one search per query term, each returning up to "size" hits.
+        """
+        max_hits = self.biothings.config.QUERY_POST_MAX_HITS
+        num_terms = len(self.args["q"])
+        size = self.args.get("size")
+        if size is None:  # ES applies its own default when size is not set
+            size = ES_DEFAULT_SIZE
+
+        if max_hits and num_terms * size > max_hits:
+            details = (
+                f"'size' is the maximum number of hits returned for each query term, so {num_terms} "
+                f"query terms with size={size} can return up to {num_terms * size} hits, more than "
+                f"the limit of {max_hits}. Use a smaller 'size' (at most {max_hits // num_terms} for "
+                f"{num_terms} query terms), or send fewer query terms per request."
+            )
+            if "species" in self.args:  # APIs with a species filter, like mygene.info
+                details += (
+                    " Most queries don't need hits from every species, and a 'species' filter "
+                    "(e.g. species=human) returns fewer hits per term, so a smaller 'size' is enough."
+                )
+            raise HTTPError(400, None, details, reason="Too Many Hits Requested.")
 
     @capture_exceptions
     async def get(self, *args, **kwargs):
