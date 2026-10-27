@@ -363,9 +363,11 @@ class SnapshotPublisher(BasePublisher):
         """
         self.logger.info("Waiting for the release note of '%s' (created after its snapshot)", build_name)
         waited = 0
+        idle = 0  # checks in a row without a release note queued or being created
         while True:
+            doc = get_src_build().find_one({"_id": build_name}) or {}
             # registered once created, or once failed (without its changes then)
-            notes = (get_src_build().find_one({"_id": build_name}) or {}).get("release_note")
+            notes = doc.get("release_note")
             if notes:
                 if not any("changes" in (note or {}) for note in notes.values()):
                     raise PublisherException(
@@ -373,6 +375,18 @@ class SnapshotPublisher(BasePublisher):
                         "create_release_note %s %s" % (build_name, next(iter(notes)), build_name)
                     )
                 return
+            steps = doc.get("jobs") or []
+            creating = "release_note" in (doc.get("pending") or []) or (
+                steps
+                and steps[-1].get("step") == "release_note"
+                and steps[-1].get("status") not in ("success", "failed", "canceled", "cancelled")
+            )
+            idle = 0 if creating else idle + 1
+            if idle >= 2:  # (twice: its creation may be about to start)
+                raise PublisherException(
+                    "No release note for '%s', and none being created: create it with create_release_note "
+                    "<previous build> %s, or give previous_build" % (build_name, build_name)
+                )
             if waited >= timeout:
                 raise PublisherException(
                     "No release note for '%s' after %ss (it's created after its snapshot, against the previous "
@@ -1542,9 +1556,7 @@ class ReleaseManager(BaseManager, BaseStatusRegisterer):
                     }
                 },
             )
-            self.logger.info(
-                "Release note ready, saved in %s: %s", release_folder, res["txt"], extra={"notify": True}
-            )
+            self.logger.info("Release note ready, saved in %s: %s", release_folder, res["txt"], extra={"notify": True})
             set_pending_to_publish(new)
 
         return self.job_manager.loop.create_task(main(release_folder))

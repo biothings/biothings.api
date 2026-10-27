@@ -74,3 +74,18 @@ async def test_wait_for_a_missing_release_note(src_build):
     fake = fake_publisher()
     with pytest.raises(PublisherException, match="create it with create_release_note <previous build> %s" % BUILD):
         await fake.wait_for_release_note(BUILD, timeout=0.05)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_a_release_note_nobody_creates(src_build):
+    """eg. a build snapshotted long ago: no release note queued nor being created, fail right away"""
+    src_build.update_one({"_id": BUILD}, {"$set": {"pending": []}})
+    fake = fake_publisher()
+    with pytest.raises(PublisherException, match="and none being created: create it with create_release_note"):
+        await fake.wait_for_release_note(BUILD)  # (not after 120s)
+    # being created: wait for it
+    src_build.update_one({"_id": BUILD}, {"$set": {"jobs": [{"step": "release_note", "status": "generating"}]}})
+    asyncio.get_running_loop().call_later(
+        0.05, lambda: src_build.update_one({"_id": BUILD}, {"$set": {"release_note": {"previous": NOTE}}})
+    )
+    await fake.wait_for_release_note(BUILD)
