@@ -177,7 +177,7 @@ def test_source_summary(hub_db):
                 "download": {
                     "status": "failed",
                     "started_at": CREATED,
-                    "error": "Traceback...\nConnectionError: https://user:pass@example.com unreachable",
+                    "err": "Traceback...\nConnectionError: https://user:pass@example.com unreachable",
                 },
             },
             {"_id": "disease__es8", "download": {"status": "success"}},  # not a data source

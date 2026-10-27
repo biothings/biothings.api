@@ -137,14 +137,14 @@ def source_summary(dump_manager=None, upload_manager=None):
         summary[source] = compact(
             release=download.get("release"),
             download=compact(
-                status=download.get("status"), at=download.get("started_at"), error=last_line(download.get("error"))
+                status=download.get("status"), at=download.get("started_at"), error=last_line(download.get("err"))
             ),
             upload={
                 name: compact(
                     status=upload.get("status"),
                     documents=upload.get("count"),
                     at=upload.get("started_at"),
-                    error=last_line(upload.get("error")),
+                    error=last_line(upload.get("err")),
                 )
                 for name, upload in uploads.items()
             },
