@@ -7,9 +7,11 @@ Configuration settings for the biothings-cli tool
 """
 
 import sys
+from typing import Optional
 
 import typer
 import typer.rich_utils
+from typing_extensions import Annotated
 
 
 def build_admin_application(debug: bool, rich_traceback: bool) -> typer.Typer:
@@ -45,4 +47,21 @@ def build_admin_application(debug: bool, rich_traceback: bool) -> typer.Typer:
         pretty_exceptions_enable=pretty_exceptions_enable,
     )
 
+    @typer_instance.callback()
+    def options(
+        version: Annotated[
+            Optional[bool],
+            typer.Option("--version", "-V", callback=show_version, is_eager=True, help="Show the BioThings version"),
+        ] = None,
+    ):
+        pass
+
     return typer_instance
+
+
+def show_version(value: bool):
+    if value:
+        import biothings  # pylint: disable=import-outside-toplevel
+
+        typer.echo("biothings %s" % biothings.__version__)
+        raise typer.Exit()

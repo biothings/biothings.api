@@ -5,8 +5,10 @@ handlers with an in-memory hub shell, see terminal_fakes.py)
 
 import asyncio
 import http.server
+import importlib.util
 import json
 import logging
+import re
 import sys
 import textwrap
 import threading
@@ -21,8 +23,10 @@ import tornado.web
 from terminal_fakes import make_terminal
 from typer.testing import CliRunner
 
+import biothings
 import biothings.cli
 import biothings.cli.commands.hub as hub_cli
+from biothings.cli.commands.admin import build_admin_application
 from biothings.cli.commands.hub import (
     HubAPIError,
     HubClient,
@@ -286,12 +290,20 @@ def test_history_filters(hub):
     assert "upload('myvariant')" in cli(hub, "status").output
 
 
+def untimed(output):
+    """Lines of an output, without the times added when it's not a terminal (eg. "[16:52:58] mondo done")"""
+    return [re.sub(r"^\[[\d:-]+( [\d:]+)?\] ", "", line) for line in output.splitlines()]
+
+
 def test_run_prints_progress(hub):
     result = cli(hub, "run", "--interval", "0.01", "dump_sources")
     assert result.exit_code == 0, result.output
-    lines = result.output.splitlines()
+    lines = untimed(result.output)
+    # not in a terminal (eg. a script): the command's ID right away, then its progress, timed
+    assert lines[0] == "[#1] dump_sources() started"
     assert lines.index("dump mondo, hpo") < lines.index("mondo done (1/2)") < lines.index("hpo done (2/2)")
-    assert "dumped" in lines
+    assert re.search(r"^\[\d\d:\d\d:\d\d\] hpo done \(2/2\)$", result.output, re.M)
+    assert result.stdout == "dumped\n"  # only the results: "[#1] ... done" is on stderr
     # and "history <id>" while it runs
     command_id = json.loads(cli(hub, "run", "--no-wait", "--json", "dump_sources", "--delay", "0.3").output)["id"]
     for _ in range(100):
@@ -458,7 +470,7 @@ def test_history_wait(hub):
     assert "Follow it with: biothings-cli hub history 1 --wait" in result.output
     result = cli(hub, "history", "1", "--wait", "--interval", "0.01")
     assert result.exit_code == 0, result.output
-    lines = result.output.splitlines()
+    lines = untimed(result.output)
     assert lines.index("dump mondo, hpo") < lines.index("hpo done (2/2)")
     assert lines[-2].startswith("[#1] dump_sources(delay=0.1) done in") and lines[-1] == "dumped"
     assert cli(hub, "history", "1", "--wait").exit_code == 0  # already done: its results
@@ -467,11 +479,14 @@ def test_history_wait(hub):
 
 
 def test_jobs(hub):
-    result = cli(hub, "jobs", env={"COLUMNS": "200"})
+    # not in a terminal (eg. piped to grep): tab-separated values, never cut
+    result = cli(hub, "jobs")
     assert result.exit_code == 0, result.output
-    row = next(line for line in result.output.splitlines() if "pid 24195" in line).split()
-    assert row == ["pid", "24195", "uploader", "ctd", "update_data", "CTD_diseases.tsv.gz", "5.26s", "378.7", "MiB"]
-    assert "1 job(s) running, 2 pending" in result.output
+    assert result.stdout.splitlines() == [
+        "worker\tcategory\tsource\tstep\tdescription\tduration\tmemory",
+        "pid 24195\tuploader\tctd\tupdate_data\tCTD_diseases.tsv.gz\t5.26s\t378.7 MiB",
+    ]
+    assert "1 job(s) running, 2 pending" in result.stderr
     assert json.loads(cli(hub, "jobs", "--json").output) == JOB_MANAGER
 
 
@@ -535,3 +550,58 @@ def test_shell_login(hub, hub_users):
     assert "Logged in as alice, until" in result.output
     assert '"dumped": "mygene"' in result.output
     assert "Logged out" in result.output
+
+
+def test_waits_survive_network_drops(monkeypatch):
+    """While waiting for a command, the hub can't be reached for a while (eg. the network drops): try again"""
+    client = HubClient("http://hub:7080")
+    answers = [HubAPIError("Can't reach the hub at http://hub:7080 (connection refused)")] * 3
+    answers += [{"id": 7, "is_done": False}, {"id": 7, "is_done": True, "results": ["indexed"]}]
+    states, delays = [], []
+
+    def command(command_id, timeout=None):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(client, "command", command)
+    monkeypatch.setattr(hub_cli.time, "sleep", delays.append)
+    info = client.wait(7, on_status=states.append, max_interval=2)
+    assert info["results"] == ["indexed"]
+    assert states[:3] == [None, None, None]  # (unreachable)
+    assert delays == [1.0, 1.5, 2, 2]  # less and less often, up to max_interval
+    # still unreachable after retry_for: stop waiting
+    answers[:] = [HubAPIError("Can't reach the hub at http://hub:7080 (connection refused)")] * 2
+    monkeypatch.setattr(hub_cli.time, "time", iter([0, 0, 0, 0, 1000, 1000]).__next__)
+    with pytest.raises(HubAPIError, match="for 900s: stopped waiting, command #7 may still be running"):
+        client.wait(7)
+    # errors which won't go away by trying again (eg. the hub restarted, it doesn't know the command)
+    answers[:] = [HubAPIError("No such command with ID 7", status=400)]
+    with pytest.raises(HubAPIError, match="No such command"):
+        client.wait(7)
+
+
+def test_heartbeats_when_not_in_a_terminal(hub, monkeypatch):
+    """Scripts (not a terminal) get a line now and then saying how it's going, with what the workers do"""
+    monkeypatch.setattr(hub_cli, "HEARTBEAT_INTERVAL", 0.1)
+    result = cli(hub, "run", "--interval", "0.01", "dump_sources", "--delay", "0.3")
+    assert result.exit_code == 0, result.output
+    heartbeats = re.findall(r"^\[[\d-]+ [\d:]+\] \[#1\] running for \d+s: (.*)$", result.output, re.M)
+    assert heartbeats and heartbeats[0] == "uploader ctd update_data"  # (see JOB_MANAGER)
+
+
+def test_version():
+    result = CliRunner().invoke(build_admin_application(debug=False, rich_traceback=False), ["--version"])
+    assert (result.exit_code, result.output) == (0, "biothings %s\n" % biothings.__version__)
+
+
+def test_cli_without_its_packages(monkeypatch):
+    """The CLI's packages are optional (biothings[cli]): without them, it says how to install them"""
+    find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util, "find_spec", lambda name, *args: None if name == "typer" else find_spec(name, *args)
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        biothings.cli.main()
+    assert exit_info.value.code == "The biothings-cli requires typer: pip install 'biothings[cli]'"

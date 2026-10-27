@@ -329,15 +329,26 @@ default, ``run`` waits for the job to finish and prints its results, while
 ``--no-wait`` returns right away with the command ID, to follow it with
 ``biothings-cli hub history <ID> --wait``. ``jobs`` shows what the hub's workers are
 doing meanwhile: the source, step (eg. an index batch, ``#12/40``), file and duration
-of each job.
+of each job (tab-separated values when piped). ``run cancel <ID>`` cancels a command
+running in background: its next steps don't run (eg. an install doesn't move its alias),
+its jobs already running in the hub's workers finish first.
+
+While waiting, the CLI checks the command every second at first, then less and less
+often (up to every 30 seconds), and keeps trying for 15 minutes when the hub can't be
+reached, eg. when the network drops (``--retry-for``). Its state goes to stderr: a spinner
+in a terminal, otherwise (eg. scripts) a line with its ID when it starts, then how it's going
+every 5 minutes, with what the hub's workers do. Commands queued by others don't have an ID:
+``run follow_build <build>`` waits for a build's next steps, eg. its release note and its
+publication after a snapshot (autopublish).
 
 The CLI waits up to 2 minutes for each answer of the hub (``--timeout``, given to ``run``
 or before it). A busy hub may not answer in time while it starts a command, which may
 start anyway: ``run`` then lists the commands the hub started meanwhile, to follow one
 with ``history <ID> --wait`` rather than running it twice.
 
-What a command logs while it's called (eg. ``logger.info(...)``) is printed on
-stderr, its results on stdout. Commands deleting or changing data (eg. ``rmmerge``,
+What a command logs while it's called (eg. ``logger.info(...)``) is printed on stderr,
+like the command's state (eg. ``[#12] index(...) done in 2h05m``), its results on stdout:
+they can be piped to a JSON parser. Commands deleting or changing data (eg. ``rmmerge``,
 ``archive``, ``resetconf``, or ``auto_archive`` when it's not a dry run) must be
 confirmed: ``run`` asks for it from an interactive terminal, ``--yes`` confirms right
 away (eg. in scripts).

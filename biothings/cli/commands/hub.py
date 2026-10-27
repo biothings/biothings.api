@@ -36,6 +36,13 @@ from typing_extensions import Annotated
 DEFAULT_HUB_URL = "http://localhost:7080"
 DEFAULT_TIMEOUT = 120.0  # seconds to wait for the hub's answers (eg. while a command starts)
 CONNECT_TIMEOUT = 10.0  # ... but not that long to connect to it
+# waiting for a command running in background: checks its status every --interval seconds at first,
+# then less and less often, up to every MAX_INTERVAL seconds (a long index: not a check every second)
+MAX_INTERVAL = 30.0
+# ... when the hub can't be reached (eg. the network is down, the hub restarts), tries again for:
+DEFAULT_RETRY_FOR = 900.0
+# ... and when it's not shown in a terminal (eg. scripts), says how it's going every:
+HEARTBEAT_INTERVAL = 300.0
 # hubs requiring a login (users in their HUB_API_USERS) give a token on POST /login, to send in this header
 LOGIN_HEADER = "X-Biothings-Access-Token"
 HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_history")
@@ -196,27 +203,60 @@ class HubClient:
     def commands(self, running=False):
         return self.request("GET", "/commands", params={"running": 1} if running else None)
 
-    def wait(self, command_id, timeout=None, interval=1.0, on_progress=None):
+    def wait(
+        self,
+        command_id,
+        timeout=None,
+        interval=1.0,
+        on_progress=None,
+        on_status=None,
+        retry_for=DEFAULT_RETRY_FOR,
+        max_interval=MAX_INTERVAL,
+    ):
         """
         Poll a command running in background until it's done, returning its final state. on_progress
-        is called with its new progress lines, if any (eg. dump_all: which sources are done)
+        is called with its new progress lines, if any (eg. dump_all: which sources are done), on_status
+        with its state after each check, or None when the hub can't be reached. Polls every interval
+        seconds at first, then less and less often, up to every max_interval seconds. When the hub
+        can't be reached (eg. the network is down), tries again for up to retry_for seconds
         """
         started = time.time()
         reported = 0
+        unreachable_since = None
+        delay = interval
         while True:
             try:
                 info = self.command(command_id)
-            except HubTimeout:
-                info = {}  # the hub is busy, the command still runs: try again
-            progress = info.get("progress") or []  # not sent by older hubs
+                unreachable_since = None
+            except HubAPIError as error:
+                if not is_transient(error):
+                    raise
+                # the command still runs on the hub: try again, for a while
+                unreachable_since = unreachable_since or time.time()
+                if time.time() - unreachable_since > retry_for:
+                    raise HubAPIError(
+                        "%s, for %ss: stopped waiting, command #%s may still be running on the hub"
+                        % (error, int(retry_for), command_id)
+                    ) from error
+                info = None
+            if on_status:
+                on_status(info)
+            progress = (info or {}).get("progress") or []  # not sent by older hubs
             if on_progress and len(progress) > reported:
                 on_progress(progress[reported:])
                 reported = len(progress)
-            if info.get("is_done"):
+            if (info or {}).get("is_done"):
                 return info
             if timeout is not None and time.time() - started > timeout:
                 raise TimeoutError("Command #%s still running after %ss" % (command_id, timeout))
-            time.sleep(interval)
+            time.sleep(delay)
+            delay = min(delay * 1.5, max(max_interval, interval))
+
+
+def is_transient(error):
+    """True if a request may work when tried again: the hub couldn't be reached, didn't answer in time, or a
+    proxy in front of it says it's unavailable (eg. restarting)"""
+    return isinstance(error, HubTimeout) or error.status is None or error.status in (502, 503, 504)
 
 
 def is_empty(value):
@@ -284,11 +324,12 @@ def print_command_results(info, verbose=False):
     results = info.get("results") or []
     failed = bool(info.get("failed"))
     label = "failed" if failed else "done"
+    # (on stderr: stdout only has the results, eg. for a JSON parser)
     print_text(
         "[#%s] %s %s%s"
         % (info.get("id"), info.get("cmd"), label, " in %s" % info["duration"] if info.get("duration") else ""),
         style="red" if failed else "green",
-        stderr=failed,
+        stderr=True,
     )
     for result in results:
         print_text(render(result), style="red" if failed else None, stderr=failed)
@@ -442,7 +483,10 @@ def run_command(
         Optional[float],
         typer.Option("--wait-timeout", help="Maximum time to wait for the command to finish, in seconds"),
     ] = None,
-    interval: Annotated[float, typer.Option("--interval", help="Seconds between status checks while waiting")] = 1.0,
+    interval: Annotated[
+        float,
+        typer.Option("--interval", help="Seconds between status checks while waiting, at first (then up to 30s)"),
+    ] = 1.0,
     as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Print the traceback when a command fails")] = False,
     yes: Annotated[
@@ -457,6 +501,13 @@ def run_command(
             "(default: the hub option, %ss)" % int(DEFAULT_TIMEOUT),
         ),
     ] = None,
+    retry_for: Annotated[
+        float,
+        typer.Option(
+            "--retry-for",
+            help="While waiting, seconds to keep trying when the hub can't be reached (eg. the network drops)",
+        ),
+    ] = DEFAULT_RETRY_FOR,
 ):
     """
     Run a command on the hub. Options for [bold]run[/bold] itself go before the command name.
@@ -524,7 +575,9 @@ def run_command(
 
     if not as_json:
         print_logs(response)
-    raise typer.Exit(follow_command(client, response["id"], response["cmd"], wait_timeout, interval, as_json, verbose))
+    raise typer.Exit(
+        follow_command(client, response["id"], response["cmd"], wait_timeout, interval, as_json, verbose, retry_for)
+    )
 
 
 def report_started(client, since):
@@ -556,19 +609,83 @@ def report_started(client, since):
     print_text("To wait longer for the hub's answers: run --timeout <seconds>", style="dim", stderr=True)
 
 
-def follow_command(client, command_id, cmd, wait_timeout=None, interval=1.0, as_json=False, verbose=False):
-    """Wait for a command running in background, printing its progress then its results: returns an exit code"""
+def format_duration(seconds):
+    """eg. 1h05m, 3m20s, 12s"""
+    seconds = int(seconds)
+    if seconds >= 3600:
+        return "%dh%02dm" % (seconds // 3600, seconds % 3600 // 60)
+    return "%dm%02ds" % (seconds // 60, seconds % 60) if seconds >= 60 else "%ds" % seconds
+
+
+def jobs_summary(client):
+    """What the hub's workers are doing, in short (eg. "indexer local8 nde_all_20261020 #12/40 30%")"""
     try:
-        if as_json:
-            info = client.wait(command_id, timeout=wait_timeout, interval=interval)
-        else:
-            with console.status("[#%s] %s running..." % (command_id, escape(str(cmd)))):
-                info = client.wait(
-                    command_id,
-                    timeout=wait_timeout,
-                    interval=interval,
-                    on_progress=lambda lines: [print_text(line, style="dim", stderr=True) for line in lines],
-                )
+        jobs = running_jobs(client.request("GET", "/job_manager", timeout=CONNECT_TIMEOUT) or {})
+    except HubAPIError:
+        return ""
+    described = [" ".join(str(job[key]) for key in ("category", "source", "step") if job.get(key)) for job in jobs]
+    return "; ".join(described[:3]) + (" (+%d)" % (len(described) - 3) if len(described) > 3 else "")
+
+
+def follow_command(
+    client,
+    command_id,
+    cmd,
+    wait_timeout=None,
+    interval=1.0,
+    as_json=False,
+    verbose=False,
+    retry_for=DEFAULT_RETRY_FOR,
+):
+    """
+    Wait for a command running in background, printing its progress then its results: returns an exit code.
+    Its progress and state go to stderr: a spinner in a terminal, otherwise (eg. scripts) a line when it
+    starts, and how it's going every HEARTBEAT_INTERVAL seconds, with what the hub's workers do
+    """
+    started = time.time()
+    in_terminal = err_console.is_terminal
+    state = {"heartbeat": started, "unreachable": False, "jobs": "", "jobs_at": 0.0}
+    if not in_terminal:
+        print_text("[%s] [#%s] %s started" % (time.strftime("%Y-%m-%d %H:%M:%S"), command_id, cmd), stderr=True)
+
+    def on_status(info):
+        now = time.time()
+        if info is None and not state["unreachable"]:
+            state["unreachable"] = True
+            print_text(
+                "Can't reach the hub: trying again for up to %s, command #%s keeps running there"
+                % (format_duration(retry_for), command_id),
+                style="yellow",
+                stderr=True,
+            )
+        elif info is not None and state["unreachable"]:
+            state["unreachable"] = False
+            print_text("Reached the hub again", style="yellow", stderr=True)
+        if info is None or info.get("is_done"):
+            return
+        if now - state["jobs_at"] > (60 if in_terminal else HEARTBEAT_INTERVAL - 1):
+            state["jobs"], state["jobs_at"] = jobs_summary(client), now
+        running = "running for %s%s" % (format_duration(now - started), ": " + state["jobs"] if state["jobs"] else "")
+        if in_terminal:
+            status.update("[#%s] %s %s" % (command_id, escape(str(cmd)), escape(running)))
+        elif now - state["heartbeat"] >= HEARTBEAT_INTERVAL:
+            state["heartbeat"] = now
+            print_text("[%s] [#%s] %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), command_id, running), stderr=True)
+
+    def on_progress(lines):
+        for line in lines:  # eg. dump_all: which sources are done
+            print_text(line if in_terminal else "[%s] %s" % (time.strftime("%H:%M:%S"), line), style="dim", stderr=True)
+
+    try:
+        with err_console.status("[#%s] %s running..." % (command_id, escape(str(cmd)))) as status:
+            info = client.wait(
+                command_id,
+                timeout=wait_timeout,
+                interval=interval,
+                on_progress=on_progress,
+                on_status=on_status,
+                retry_for=retry_for,
+            )
     except KeyboardInterrupt:
         print_text("Stopped waiting, command #%s keeps running on the hub" % command_id, stderr=True)
         return 130
@@ -613,6 +730,13 @@ def command_history(
         typer.Option("--wait-timeout", help="With --wait: maximum time to wait, in seconds"),
     ] = None,
     interval: Annotated[float, typer.Option("--interval", help="With --wait: seconds between status checks")] = 1.0,
+    retry_for: Annotated[
+        float,
+        typer.Option(
+            "--retry-for",
+            help="With --wait, seconds to keep trying when the hub can't be reached (eg. the network drops)",
+        ),
+    ] = DEFAULT_RETRY_FOR,
 ):
     """
     Show the commands launched on the hub (since it started), or the status and results of one of them
@@ -628,7 +752,7 @@ def command_history(
         raise typer.Exit(1)
     if wait and not result.get("is_done"):
         raise typer.Exit(
-            follow_command(client, command_id, result.get("cmd"), wait_timeout, interval, as_json, verbose)
+            follow_command(client, command_id, result.get("cmd"), wait_timeout, interval, as_json, verbose, retry_for)
         )
     if command_id is None:
         hidden = set()
@@ -731,14 +855,21 @@ def list_jobs(
             for key in ("worker", "category", "source", "step", "description", "duration", "memory")
             if any(job.get(key) for job in jobs)
         ]
-        table = Table(box=box.SIMPLE)
-        for column in columns:
-            table.add_column(column)
-        for job in jobs:
-            table.add_row(*[escape(str(job.get(key) or "")) for key in columns])
-        console.print(table)
-    console.print("%s job(s) running, %s pending" % (len(jobs), pending))
-    console.print("Commands launched on the hub: biothings-cli hub history --running", style="dim")
+        if not console.is_terminal:
+            # eg. piped to grep or awk: tab-separated values, never cut to a terminal's width
+            typer.echo("\t".join(columns))
+            for job in jobs:
+                typer.echo("\t".join(str(job.get(key) or "") for key in columns))
+        else:
+            table = Table(box=box.SIMPLE)
+            for column in columns:
+                table.add_column(column, overflow="fold")  # (long values wrap rather than being cut)
+            for job in jobs:
+                table.add_row(*[escape(str(job.get(key) or "")) for key in columns])
+            console.print(table)
+    print_text("%s job(s) running, %s pending" % (len(jobs), pending), stderr=not console.is_terminal)
+    if console.is_terminal:
+        console.print("Commands launched on the hub: biothings-cli hub history --running", style="dim")
 
 
 @hub_application.command(name="hooks")
