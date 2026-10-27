@@ -74,7 +74,13 @@ def wait_for_sources(action, jobs, raise_on_error=False, skipped=None, skip_erro
         errors = {}
         running = set(sources)
         while running:
-            done, running = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            try:
+                done, running = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            except asyncio.CancelledError:
+                # (eg. the terminal's cancel): the sources' jobs too, their next steps don't run
+                for job in running:
+                    job.cancel()
+                raise
             for job in done:
                 name = sources[job]
                 left[name] -= 1

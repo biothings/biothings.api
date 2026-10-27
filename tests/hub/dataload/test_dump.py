@@ -191,3 +191,26 @@ def test_source_names():
     with pytest.raises(DumperException, match=r"Can't find 'chembI' in registered sources .*did you mean: chembl\?"):
         manager.call("chembI", "versions")
     assert manager.call("mydisease.info", "versions") == []  # (no dumper class registered here)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_command_run_on_several_sources():
+    """eg. cancel dump_all: the sources' jobs are cancelled too, their next steps (eg. uploads) don't run"""
+    steps = []
+
+    async def dump(name):
+        try:
+            await asyncio.sleep(60)
+            steps.append(name + " uploaded")
+        except asyncio.CancelledError:
+            steps.append(name + " cancelled")
+            raise
+
+    jobs = {"mondo": [dump("mondo")], "hpo": [dump("hpo")]}
+    task = wait_for_sources("dump", jobs)
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0.01)
+    assert sorted(steps) == ["hpo cancelled", "mondo cancelled"]
