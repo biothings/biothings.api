@@ -238,13 +238,9 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                 raise RuntimeError("Deterministic part of index name already too long")
 
             index_name = base_index_name
-            append_random_str = False
-            while True:
-                if append_random_str:
-                    index_name += "_" + get_random_string()
-                    index_name = index_name[:255]  # elasticsearch restriction
-                if not idxr.exists_index(index=index_name):
-                    break
+            # eg. the same snapshot installed again within the same minute: a random suffix
+            while idxr.exists_index(index=index_name):
+                index_name = (base_index_name + "_" + get_random_string())[:255]  # elasticsearch restriction
         else:
             index_name = alias_name
 
@@ -254,11 +250,10 @@ class BiothingsUploader(uploader.BaseSourceUploader):
 
         def get_status_info():
             try:
-                res = idxr.get_restore_status(index_name)
-                return res
+                return idxr.get_restore_status(index_name)
             except Exception as e:
-                # somethng went wrong, report as failure
-                return {"status": "FAILED %s" % e}
+                # eg. Elasticsearch didn't answer in time: tried again, a few times (see below)
+                return {"status": "ERROR", "reason": "%s: %s" % (type(e).__name__, e)}
 
         async def await_step(job, step: str):
             try:
@@ -324,11 +319,13 @@ class BiothingsUploader(uploader.BaseSourceUploader):
             # restore indexer's replica to original value
             idxr.set_internal_number_of_replicas(original_number_of_replicas)
 
+        errors = 0  # in a row, getting the status of the restore
         while True:
             status_info = get_status_info()
             status = status_info["status"]
             self.logger.info("Recovery status for index '%s': %s" % (index_name, status_info))
-            if status in ["INIT", "IN_PROGRESS"]:
+            errors = errors + 1 if status == "ERROR" else 0
+            if status in ["INIT", "IN_PROGRESS"] or status == "ERROR" and errors < 5:
                 await asyncio.sleep(getattr(btconfig, "MONITOR_SNAPSHOT_DELAY", 60))
             else:
                 if status == "DONE":
@@ -350,7 +347,7 @@ class BiothingsUploader(uploader.BaseSourceUploader):
                             " (%s)" % status_info["reason"] if "reason" in status_info else "",
                         )
                     )
-                    if use_no_downtime_method:
+                    if use_no_downtime_method and status == "FAILED":
                         # the alias still points to the previous index: the new one is useless, and takes space
                         self.logger.warning("Deleting index '%s', which couldn't be restored", index_name)
                         try:
