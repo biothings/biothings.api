@@ -434,6 +434,36 @@ async def test_progress_of_background_commands():
 
 
 @pytest.mark.asyncio
+async def test_cancel_a_command():
+    """eg. stop an install before it moves an API's alias to a new index"""
+    stages = []
+
+    async def install(src_name):
+        """Install a data release"""
+        try:
+            stages.append("restoring")
+            await asyncio.sleep(60)  # (waiting for the restore)
+            stages.append("alias moved")
+        except asyncio.CancelledError:
+            stages.append("cancelled")
+            raise
+
+    terminal, shell, _ = make_terminal(install=install)
+    command_id = terminal.run("install nde")["id"]
+    await asyncio.sleep(0.01)
+    with pytest.raises(ConfirmationRequired, match="Cancel a command running in background"):
+        terminal.run("cancel %s" % command_id)
+    assert terminal.run("cancel %s" % command_id, confirmed=True)["result"] == "Command #1 install('nde') cancelled"
+    info = await wait_done(shell, command_id)
+    assert (info["failed"], info["results"]) == (True, ["cancelled"])
+    assert stages == ["restoring", "cancelled"]  # the alias wasn't moved
+    with pytest.raises(CommandError, match="Command #1 is done already"):
+        shell.cancel_command(command_id)
+    with pytest.raises(CommandError, match="No such command with ID 99"):
+        shell.cancel_command(99)
+
+
+@pytest.mark.asyncio
 async def test_run_async_commands_are_tracked():
     async def refresh(source, delay=0.01):
         """Refresh a source (coroutine)"""
@@ -928,3 +958,12 @@ class TerminalHandlersTest(tornado.testing.AsyncHTTPTestCase):
         response = self.fetch("/command/%s" % started["id"])
         info = json.loads(response.body)["result"]
         assert (info["is_done"], info["failed"], info["results"]) == (True, False, ["done mygene"])
+
+
+def test_commands_calling_a_generic_method_have_their_own_help():
+    """eg. backend calls DumperManager.call(src, method_name="get_target_backend"): not its docstring"""
+    from biothings.hub import documented
+
+    terminal, shell, _ = make_terminal()
+    shell.add_command("backend", documented(partial(lambda src, method_name: None, method_name="x"), "The index"))
+    assert terminal.describe("backend")["doc"] == "The index"

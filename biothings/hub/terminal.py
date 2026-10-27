@@ -97,6 +97,11 @@ BUILTIN_HELP = {
     "help": ("Help about a command, or list all commands", ["help", "help dump"]),
     "commands": ("Commands launched on the hub, with their status", ["commands", "commands --running true"]),
     "command": ("Status and results of a launched command", ["command 12"]),
+    "cancel": (
+        "Cancel a command running in background: its next steps don't run (jobs already running in "
+        "the hub's workers, eg. an index batch, finish first)",
+        ["cancel 12"],
+    ),
     "hooks": ("Hook files loaded from the hooks folder, with the commands they define", ["hooks"]),
     "config": ("Hub configuration, or one of its parameters", ["config", "config HUB_MAX_WORKERS"]),
     "setconf": (
@@ -170,6 +175,11 @@ BUILTIN_HELP = {
     "build_config": (
         "Build configurations, or one of them, with their builds",
         ["build_config", "build_config mygene"],
+    ),
+    "follow_build": (
+        "Wait for a build's next steps queued after the ones done (eg. its release note and publication after "
+        "a snapshot), reporting each one",
+        ["follow_build mygene_20240101_abcdefgh"],
     ),
     "merge": (
         "Create a new build from a build configuration (--check: only check that its sources are ready)",
@@ -305,7 +315,8 @@ BUILTIN_DETAILS = {
         "Snapshots an index in the repository of an environment of SNAPSHOT_CONFIG (see envs), eg. an S3 "
         "bucket, named after the index (unless --snapshot). Then, in background, the build's release note is "
         "created against the previous build (pending: release_note, see build_summary), which publish_snapshot "
-        "waits for."
+        "waits for, then the build is published if its configuration automates it (autopublish): "
+        "follow_build <build> waits for them."
     ),
     "publish_snapshot": (
         "Publishes a full release from a build's snapshot, to an environment of RELEASE_CONFIG (see envs): "
@@ -320,6 +331,15 @@ BUILTIN_DETAILS = {
     "publish": (
         "Runs publish_snapshot for a snapshot, or publish_diff for a build with a diff. A build with both a "
         "snapshot and a diff is ambiguous: use publish_snapshot or publish_diff."
+    ),
+    "install": (
+        "Installs a BioThings API's data releases in its Elasticsearch index, up to a version (the latest "
+        "by default): downloads each release on the way (see versions), then restores a full release's "
+        "snapshot into a new index, named after the index's alias, moved to it once all its shards are "
+        "restored (otherwise the install fails, the alias unchanged), or applies an incremental one. The "
+        "indices of previous installs are deleted, beyond RELEASE_KEEP_N_RECENT_INDICES. A version downloaded "
+        "already (eg. when its install failed) isn't downloaded again: --force does. --dry: only shows the "
+        "versions it would install. To stop an install before it moves the alias: cancel <command ID>."
     ),
     "create_release_note": (
         "Creates the release note between two builds (source versions, document counts, fields added and removed, "
@@ -349,6 +369,7 @@ CONFIRM = {
     "restore": True,
     "upgrade": True,
     "stop": True,
+    "cancel": True,
 }
 
 
@@ -455,6 +476,12 @@ def get_signature(command):
         return inspect.signature(command)
     except (TypeError, ValueError):
         return None
+
+
+def given_doc(command):
+    """The docstring given to a command made with functools.partial (eg. calling a generic method), if any"""
+    doc = command.__dict__.get("__doc__") if isinstance(command, partial) else None
+    return inspect.cleandoc(doc) if doc else None
 
 
 def unwrap(command):
@@ -691,7 +718,7 @@ class HubTerminal:
         if isinstance(command, CompositeCommand):
             doc = "Composite command, runs: %s" % command.cmd
         else:
-            doc = inspect.getdoc(unwrap(command)) or ""
+            doc = given_doc(command) or inspect.getdoc(unwrap(command)) or ""
             signature = public_signature(command, get_signature(command))
         if signature is not None:
             for param in signature.parameters.values():

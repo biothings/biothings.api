@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from types import SimpleNamespace
 
@@ -251,3 +252,58 @@ def test_envs(monkeypatch):
     }
     monkeypatch.setattr(overview, "config", SimpleNamespace())
     assert overview.envs() == {"index": {}, "snapshot": {}, "release": {}}
+
+
+@pytest.mark.asyncio
+async def test_follow_build(hub_db):
+    """
+    Wait for a build's next steps: after its snapshot, its release note, then its publication (autopublish).
+    The hub's managers pull the pending flags when they start the steps
+    """
+    builds = hub_db["src_build"]
+    builds.insert_one(
+        {"_id": "nde_1", "pending": ["release_note"], "jobs": [{"step": "snapshot", "status": "success"}]}
+    )
+    task = overview.follow_build("nde_1", interval=0.01)
+    assert task.progress == ["following nde_1, pending: release_note"]
+
+    async def release_manager():
+        # (as its poll does: pull the flag, then run the step, which registers its status)
+        await asyncio.sleep(0.05)
+        builds.update_one(
+            {"_id": "nde_1"},
+            {"$set": {"pending": []}, "$push": {"jobs": {"step": "release_note", "status": "generating"}}},
+        )
+        await asyncio.sleep(0.05)
+        builds.update_one({"_id": "nde_1"}, {"$set": {"jobs.1.status": "success", "pending": ["publish"]}})
+        await asyncio.sleep(0.05)
+        builds.update_one(
+            {"_id": "nde_1"}, {"$set": {"pending": []}, "$push": {"jobs": {"step": "pre", "status": "pre"}}}
+        )
+        await asyncio.sleep(0.05)
+        builds.update_one(
+            {"_id": "nde_1"},
+            {"$set": {"jobs.2.status": "success"}, "$push": {"jobs": {"step": "metadata", "status": "success"}}},
+        )
+
+    await asyncio.gather(release_manager(), task)
+    assert task.result() == "nde_1: release_note success, pre success, metadata success"
+    assert task.progress[1:] == ["release_note success", "pre success", "metadata success"]
+
+    # a step failing
+    builds.update_one({"_id": "nde_1"}, {"$set": {"pending": ["publish"]}})
+    task = overview.follow_build("nde_1", interval=0.01)
+    await asyncio.sleep(0.03)
+    builds.update_one(
+        {"_id": "nde_1"},
+        {
+            "$set": {"pending": []},
+            "$push": {
+                "jobs": {"step": "metadata", "status": "failed", "err": "Traceback...\nClientError: AccessDenied"}
+            },
+        },
+    )
+    with pytest.raises(overview.BuildStepFailed, match="nde_1: metadata failed: ClientError: AccessDenied"):
+        await task
+    with pytest.raises(ValueError, match="No build named 'nope'"):
+        overview.follow_build("nope")

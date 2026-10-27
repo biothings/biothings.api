@@ -93,6 +93,13 @@ class CommandDefinition(dict):
     pass
 
 
+def job_error(job):
+    """The error of a job which is done (CancelledError if it was cancelled), None if it succeeded"""
+    if job.cancelled():
+        return asyncio.CancelledError("cancelled")
+    return job.exception()
+
+
 class HubShell(InteractiveShell):
     launched_commands = {}
     pending_outputs = {}
@@ -175,7 +182,7 @@ class HubShell(InteractiveShell):
             # don't expose extra commands, they're kind of private/advanced
             register(extra, hidden=True)
 
-        # self.extra_ns["cancel"] = self.__class__.cancel
+        register({"cancel": CommandDefinition(command=self.cancel_command, tracked=False)})
         # for boolean calls
         self.extra_ns["_and"] = _and
         self.extra_ns["partial"] = partial
@@ -465,9 +472,22 @@ class HubShell(InteractiveShell):
 
         return outputs
 
-    # @classmethod
-    # def cancel(klass,jobnum):
-    #    return klass.launched_commands.get(jobnum)
+    @classmethod
+    def cancel_command(cls, id):
+        """
+        Cancel a command running in background: its next steps don't run. Its jobs already running in
+        the hub's workers (eg. an index batch, a download) finish first, their results unused
+        """
+        try:
+            info = cls.launched_commands[int(id)]
+        except (KeyError, ValueError):
+            raise CommandError("No such command with ID %s" % repr(id))
+        if info.get("is_done"):
+            raise CommandError("Command #%s is done already" % id)
+        for job in info["jobs"]:
+            if hasattr(job, "cancel") and not job.done():
+                job.cancel()
+        return "Command #%s %s cancelled" % (id, info["cmd"])
 
     @classmethod
     def refresh_commands(cls):
@@ -483,19 +503,18 @@ class HubShell(InteractiveShell):
             progress = [line for j in info["jobs"] for line in getattr(j, "progress", None) or []]
             if progress:
                 cls.launched_commands[num]["progress"] = progress
-            has_err = is_done and [True for j in info["jobs"] if j.exception()] or None
-            localoutputs = (
-                is_done
-                and ([str(j.exception()) for j in info["jobs"] if j.exception()] or [j.result() for j in info["jobs"]])
-                or None
-            )
+            # (a cancelled job: CancelledError, see cancel_command())
+            errors = [job_error(j) for j in info["jobs"]] if is_done else []
+            errors = [error for error in errors if error is not None]
+            has_err = errors and [True] or None
+            localoutputs = is_done and ([str(error) for error in errors] or [j.result() for j in info["jobs"]]) or None
             if is_done:
                 cls.launched_commands[num]["is_done"] = True
                 cls.launched_commands[num]["failed"] = has_err and has_err[0] or False
                 cls.launched_commands[num]["results"] = localoutputs
                 if has_err:
-                    # where it failed, for terminals ("biothings-cli hub status <id> --verbose", Studio)
-                    error = next(j.exception() for j in info["jobs"] if j.exception())
+                    # where it failed, for terminals ("biothings-cli hub history <id> --verbose", Studio)
+                    error = errors[0]
                     cls.launched_commands[num]["traceback"] = "".join(
                         traceback.format_exception(type(error), error, error.__traceback__)
                     )

@@ -29,6 +29,7 @@ class FakeShell:
     restart = HubShell.restart
     stop = HubShell.stop
     command_info = classmethod(HubShell.command_info.__func__)
+    cancel_command = classmethod(HubShell.cancel_command.__func__)
     refresh_commands = classmethod(HubShell.refresh_commands.__func__)
 
     @classmethod

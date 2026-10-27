@@ -4,6 +4,8 @@ build configurations, sources and environments, without the bulky parts of their
 release notes...) and without secrets (see biothings.utils.redact)
 """
 
+import asyncio
+
 from biothings import config
 from biothings.utils.hub_db import get_src_build, get_src_build_config, get_src_dump
 from biothings.utils.redact import redact_secrets
@@ -175,3 +177,54 @@ def envs(release_installers=None):
         # data releases installed with "install" (VERSION_URLS, see biothings.hub.autoupdate)
         summary["release_installers"] = release_installers()
     return redact_secrets(summary)
+
+
+# statuses of a build's steps once done (any other one: running)
+FINAL_STATUSES = ("success", "failed", "canceled", "cancelled")
+
+
+class BuildStepFailed(Exception):
+    pass
+
+
+def follow_build(name, interval=15):
+    """
+    Wait for a build's next steps, queued after the ones done (pending, see build_summary): eg. after a
+    snapshot, its release note, then its publication if it's automated (autopublish). Reports each step
+    once done ("progress"), and fails if one failed. Done once nothing is pending nor running, twice in
+    a row (the next step may be about to start)
+    """
+    doc = get_src_build().find_one({"_id": name})
+    if not doc:
+        raise ValueError("No build named '%s' (see lsmerge)" % name)
+    pending = ", ".join(doc.get("pending") or []) or "nothing"
+    progress = ["following %s, pending: %s" % (name, pending)]
+    first = len(doc.get("jobs") or [])  # (the steps done before aren't reported)
+
+    async def follow():
+        reported = first
+        failed = []
+        settled = 0
+        while settled < 2:
+            doc = get_src_build().find_one({"_id": name}) or {}
+            steps = doc.get("jobs") or []
+            for step in steps[reported:]:
+                if step.get("status") not in FINAL_STATUSES:
+                    break  # running, reported once done
+                error = last_line(step.get("err")) or (step.get("detail") if step.get("status") == "failed" else None)
+                progress.append("%s %s%s" % (step.get("step"), step.get("status"), ": %s" % error if error else ""))
+                if step.get("status") == "failed":
+                    failed.append(progress[-1])
+                reported += 1
+            running = steps and steps[-1].get("status") not in FINAL_STATUSES
+            settled = settled + 1 if not doc.get("pending") and not running else 0
+            if settled < 2:
+                await asyncio.sleep(interval)
+        if failed:
+            raise BuildStepFailed("%s: %s" % (name, "; ".join(failed)))
+        done = progress[1:]
+        return "%s: %s" % (name, ", ".join(done) if done else "nothing to wait for")
+
+    task = asyncio.ensure_future(follow())
+    task.progress = progress
+    return task

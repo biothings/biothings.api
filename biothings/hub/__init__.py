@@ -289,6 +289,12 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
+def documented(command, doc):
+    """A command made with functools.partial, with its own docstring (rather than its function's, eg. generic)"""
+    command.__doc__ = doc
+    return command
+
+
 class HubCommands(OrderedDict):
     def __setitem__(self, k, v):
         if k in self:
@@ -1096,6 +1102,7 @@ class HubServer:
             )
         if self.managers.get("build_manager"):
             self.commands["build_summary"] = CommandDefinition(command=overview.build_summary, tracked=False)
+            self.commands["follow_build"] = overview.follow_build
             self.commands["build_config"] = CommandDefinition(command=overview.build_config, tracked=False)
         self.commands["export_command_documents"] = CommandDefinition(
             command=self.export_command_documents, tracked=False, hidden=True
@@ -1202,12 +1209,21 @@ class HubServer:
             )
             # dump commands
             self.commands["versions"] = CommandDefinition(
-                command=partial(self.managers["dump_manager"].call, method_name="versions"), hidden=hidden
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="versions"),
+                    "List the data releases a BioThings API published (its versions.json): version, type "
+                    "(full or incremental), release date and URL",
+                ),
+                hidden=hidden,
             )
             # works for any source
             self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
             self.commands["info"] = CommandDefinition(
-                command=partial(self.managers["dump_manager"].call, method_name="info"), hidden=hidden
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="info"),
+                    "Show a data release's information and release note: the latest one, or --version",
+                ),
+                hidden=hidden,
             )
             self.commands["download"] = CommandDefinition(
                 command=partial(self.managers["dump_manager"].dump_src), hidden=hidden
@@ -1218,10 +1234,19 @@ class HubServer:
             )
             self.commands["install"] = CommandDefinition(command=partial(self.autohub_feature.install), hidden=hidden)
             self.commands["backend"] = CommandDefinition(
-                command=partial(self.managers["dump_manager"].call, method_name="get_target_backend"), hidden=hidden
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="get_target_backend"),
+                    "Show the Elasticsearch index a BioThings API's data releases are installed in: its host, "
+                    "alias, index, document count and version",
+                ),
+                hidden=hidden,
             )
             self.commands["reset_backend"] = CommandDefinition(
-                command=partial(self.managers["dump_manager"].call, method_name="reset_target_backend"),
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="reset_target_backend"),
+                    "Delete the Elasticsearch index a BioThings API's data releases are installed in "
+                    "(the next install restores a full release)",
+                ),
                 hidden=hidden,
             )
 
