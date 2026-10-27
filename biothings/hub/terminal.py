@@ -1226,7 +1226,16 @@ class HubTerminal:
             tokens = shlex.split(split_chain(line)[0])
         except ValueError:
             return False
-        return bool(tokens) and NAME_WORD.fullmatch(tokens[0]) is not None and not keyword.iskeyword(tokens[0])
+        if not tokens or NAME_WORD.fullmatch(tokens[0]) is None or keyword.iskeyword(tokens[0]):
+            return False
+        # IPython's own commands (eg. "cd /data", "ls", "time dump('x')"), unless a hub command has that name
+        return tokens[0].replace("-", "_") in self.runnable_commands() or not self.is_ipython_command(tokens[0])
+
+    def is_ipython_command(self, word):
+        """True for a magic or an alias of the hub's IPython shell (eg. cd, ls, time)"""
+        find_magic = getattr(self.shell, "find_magic", None)
+        aliases = getattr(self.shell, "alias_manager", None)
+        return bool(find_magic and find_magic(word)) or bool(aliases and aliases.is_alias(word))
 
     def console(self, line):
         """Run a shell-like command line from the hub console, returning the outputs to display"""

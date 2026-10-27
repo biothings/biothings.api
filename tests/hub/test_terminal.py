@@ -783,6 +783,10 @@ def test_hubshell_console_accepts_terminal_syntax():
     with pytest.raises(CommandError, match="Unknown command 'uplod', did you mean: upload"):
         shell.eval("uplod mygene")
     assert terminal.is_terminal_syntax("dump all && upload mygene") is True
+    # IPython's own commands still work in the console (magics, aliases)
+    shell.find_magic = lambda name: object() if name in ("cd", "time") else None
+    assert terminal.is_terminal_syntax("cd /data/hub") is False
+    assert terminal.is_terminal_syntax("time dump('x')") is False
 
 
 def test_hubserver_hook_files_are_loaded_by_terminal(tmp_path):
