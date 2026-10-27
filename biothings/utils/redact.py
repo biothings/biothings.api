@@ -30,10 +30,12 @@ def is_secret_key(key):
 def redact_secrets(value, secret=False):
     """
     Copy of value (dicts, lists... eg. a command's result) where the values of the keys naming a
-    secret (see is_secret_key()) are replaced by "********", as well as the credentials in URLs
+    secret (see is_secret_key()) are replaced by "********", as well as the credentials in URLs and
+    password hashes. A dict under such a key keeps its structure, its own keys are checked (eg. a
+    mapping's "token" field, {"type": "keyword"}, isn't a secret)
     """
     if isinstance(value, Mapping):
-        return {key: redact_secrets(item, secret or is_secret_key(key)) for key, item in value.items()}
+        return {key: redact_secrets(item, is_secret_key(key)) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, UserList)):
         return [redact_secrets(item, secret) for item in value]
     if secret and value is not None and not isinstance(value, bool) and value != "":

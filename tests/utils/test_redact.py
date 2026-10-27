@@ -71,3 +71,12 @@ def test_password_hashes_are_hidden():
         "value": {"bob": REDACTED},  # whatever its key
         "other": "pbkdf2_sha256 isn't a hash",
     }
+
+
+def test_structures_under_secret_keys_are_kept():
+    """eg. a mapping's "token" field: its definition isn't a secret, the keys inside are checked"""
+    mapping = {"properties": {"token": {"type": "keyword"}, "api_key": {"type": "text"}}}
+    assert redact_secrets(mapping) == mapping
+    assert redact_secrets({"credentials": {"user": "me", "password": "pw"}}) == {
+        "credentials": {"user": "me", "password": REDACTED}
+    }
