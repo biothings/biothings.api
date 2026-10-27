@@ -443,9 +443,12 @@ class BaseDumper:
                     await self.create_todump_list(force=force, job_manager=job_manager, **kwargs)
                 else:
                     # checking for a new release can take a while (eg. HTTP requests to a slow
-                    # server), run it in a thread so the hub (API, websocket...) isn't blocked meanwhile
+                    # server), run it in a thread so the hub (API, websocket...) isn't blocked meanwhile.
+                    # Right away, as before: only downloading waits (eg. for the source's upload to end)
+                    check_pinfo = {key: value for key, value in pinfo.items() if key != "__predicates__"}
+                    check_pinfo.update(step="check", __skip_check__=True)
                     job = await job_manager.defer_to_thread(
-                        pinfo, partial(self.create_todump_list, force=force, **kwargs)
+                        check_pinfo, partial(self.create_todump_list, force=force, **kwargs)
                     )
                     await job
                 # make sure we release (disconnect) client so we don't keep an open
