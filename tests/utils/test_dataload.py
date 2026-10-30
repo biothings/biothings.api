@@ -1,16 +1,17 @@
 """
-Tests for dict_sweep and _val_to_delete in biothings.utils.dataload,
-specifically the handling of NaN-like values.
+Tests for dict_sweep, _val_to_delete and _missing_value_kind in
+biothings.utils.dataload, specifically the handling of NaN-like values.
 
 NaN-like values (float NaN, pandas.NA, pandas.NaT) are only removed
 when explicitly included in the vals list (opt-in).
 """
 
+import concurrent.futures
 import math
 
 import pytest
 
-from biothings.utils.dataload import _val_to_delete, dict_sweep
+from biothings.utils.dataload import _missing_value_kind, _val_to_delete, dict_sweep
 
 # ---------------------------------------------------------------------------
 # Fake pandas-like NA / NaT types for testing without importing pandas.
@@ -120,6 +121,42 @@ class TestValToDelete:
 
     def test_regular_match_after_na_like_value(self):
         assert _val_to_delete("", [_NA, ""]) is True
+
+
+# ---------------------------------------------------------------------------
+# _missing_value_kind helper tests
+# ---------------------------------------------------------------------------
+
+
+class TestMissingValueKind:
+    def test_json_types_not_missing(self):
+        for val in [None, "", "NA", 0, 1, True, False, 0.0, 1.5, float("inf"), {}, [], (), {"a": None}, [None]]:
+            assert _missing_value_kind(val) is None, f"{val!r} is not NaN-like"
+
+    def test_float_nan(self):
+        assert _missing_value_kind(float("nan")) == "NaN"
+
+    def test_pandas_like_types(self):
+        assert _missing_value_kind(_NA) == "NAType"
+        assert _missing_value_kind(_NaT) == "NaTType"
+
+    def test_subclasses_of_json_types(self):
+        """Subclasses, such as numpy.float64, skip the fast paths for the exact types."""
+
+        class MyFloat(float):
+            pass
+
+        class MyStr(str):
+            pass
+
+        assert _missing_value_kind(MyFloat("nan")) == "NaN"
+        assert _missing_value_kind(MyFloat(1.5)) is None
+        assert _missing_value_kind(MyStr("NA")) is None
+
+    def test_int_too_large_for_float(self):
+        """math.isnan() raises OverflowError for it, which used to escape dict_sweep."""
+        assert _missing_value_kind(10**400) is None
+        assert dict_sweep({"a": 10**400}) == {"a": 10**400}
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +315,38 @@ class TestDictSweepDefaultBehavior:
         d = {"a": "NA", "b": "keep", "c": ["NA", "keep"]}
         result = dict_sweep(d, vals="NA")
         assert result == {"b": "keep", "c": ["keep"]}
+
+
+# ---------------------------------------------------------------------------
+# dict_sweep — the vals list (copied before sweeping)
+# ---------------------------------------------------------------------------
+
+
+class TestDictSweepVals:
+    def test_empty_list_and_dict_vals(self):
+        d = {"a": ["x", []], "b": {"c": {}}}
+        assert dict_sweep(d, vals=[[], {}]) == {"a": ["x"]}
+
+    def test_empty_list_and_dict_vals_with_remove_invalid_list(self):
+        d = {"a": [[], "x", {}], "b": {"c": [[], "y"]}}
+        result = dict_sweep(d, vals=[[], {}], remove_invalid_list=True)
+        assert result == {"a": ["x"], "b": {"c": ["y"]}}
+
+    def test_vals_not_modified(self):
+        empty_list, empty_dict = [], {}
+        vals = [None, "NA", empty_list, empty_dict]
+        dict_sweep({"a": [{"b": []}, None, "NA"], "c": {"d": {}}}, vals=vals)
+        assert vals == [None, "NA", [], {}]
+        assert vals[2] is empty_list and vals[3] is empty_dict
+
+    def test_vals_shared_between_threads(self):
+        """Threads sweeping with one vals list, like a parser's class-level list in thread workers."""
+        vals = [None, "", "NA", []]
+        docs = [{"a": i, "b": "NA", "c": [{"d": [], "e": i}, None], "f": {"g": ""}} for i in range(200)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(lambda doc: dict_sweep(doc, vals=vals), docs))
+        assert results == [{"a": i, "c": [{"e": i}]} for i in range(200)]
+        assert vals == [None, "", "NA", []]
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,14 @@ csv.field_size_limit(10000000)  # default is 131072, too small for some big file
 def _missing_value_kind(val):
     """Return a stable kind for NaN-like values without importing optional deps."""
     val_cls = val.__class__
+    # Fast paths for the common JSON types. They skip the type attribute lookups below, which
+    # contend between threads on free-threaded Python, and math.isnan() raising TypeError.
+    if val is None or val_cls is str or val_cls is int or val_cls is bool:
+        return None
+    if val_cls is float:
+        return "NaN" if val != val else None  # pylint: disable=comparison-with-itself
+    if val_cls is dict or val_cls is list or val_cls is tuple:
+        return None
     cls_module = getattr(val_cls, "__module__", "")
     cls_name = getattr(val_cls, "__name__", "")
 
@@ -93,6 +101,16 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
     """
     # set default supported vals for empty values
     vals = vals or [".", "-", "", "NA", "none", " ", "Not Available", "unknown"]
+    if not is_str(vals):
+        # Sweep with a private copy of vals, made once rather than for every nested dict, with
+        # copies of mutable candidates such as []: on free-threaded Python, threads sweeping with
+        # one shared list contend on the reference counts of the list and its items.
+        vals = [v.copy() if isinstance(v, (list, dict)) else v for v in vals]
+    return _dict_sweep(d, vals, remove_invalid_list)
+
+
+def _dict_sweep(d, vals, remove_invalid_list):
+    """Sweep d recursively, with vals as prepared by dict_sweep."""
     for key, val in list(d.items()):
         if _val_to_delete(val, vals):
             del d[key]
@@ -101,7 +119,7 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                 val = [v for v in val if not _val_to_delete(v, vals)]
                 for item in val:
                     if isinstance(item, dict):
-                        dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
+                        _dict_sweep(item, vals, remove_invalid_list)
                 # if len(val) == 0:
                 if not val:
                     del d[key]
@@ -114,12 +132,12 @@ def dict_sweep(d, vals=None, remove_invalid_list=False):
                     if _val_to_delete(item, vals):
                         del val[i]
                     elif isinstance(item, dict):
-                        dict_sweep(item, vals, remove_invalid_list=remove_invalid_list)
+                        _dict_sweep(item, vals, remove_invalid_list)
                     i += 1
                 if not val:
                     del d[key]
         elif isinstance(val, dict):
-            dict_sweep(val, vals, remove_invalid_list=remove_invalid_list)
+            _dict_sweep(val, vals, remove_invalid_list)
             # if len(val) == 0:
             if not val:
                 del d[key]

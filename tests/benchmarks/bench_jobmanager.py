@@ -1,6 +1,6 @@
 """Benchmark JobManager CPU-bound workers: fork process pool vs free-threaded thread pool.
 
-Runs merge_struct- or jsondiff-heavy batches through JobManager.defer_to_process
+Runs merge_struct-, jsondiff- or parser-heavy batches through JobManager.defer_to_process
 and reports wall time and peak RSS. Select a workload with ``--workload``.
 
 Three configurations to compare, all runnable on a single 3.14t build
@@ -17,12 +17,16 @@ For the original merge workload, the asyncio-modernization plan's acceptance
 target is (b) within ~1.3x of (a) wall time, with materially lower RSS; (c)
 should show little to no speedup over a single worker.  The jsondiff workload
 is diagnostic: record its throughput and RSS independently rather than applying
-the merge workload's timing target to it.
+the merge workload's timing target to it.  So is the parse workload, which mimics
+a dataplugin parser: json.load (hooked with jsonpatch.multidict once the hub
+imports biothings.utils.jsonpatch), then dict_sweep with a vals list shared by
+all workers.
 """
 
 import argparse
 import asyncio
 import gc
+import io
 import logging
 import os
 import sys
@@ -133,6 +137,36 @@ def jsondiff_batch(num_docs, width, batch_num):
     return len(updates)
 
 
+# like a parser's class-level list of empty values, shared by every worker thread
+SWEEP_VALUES = [None, ".", "-", "", "NA", "None", "none", " ", "Not Available", "unknown", "null", []]
+
+
+def make_parse_doc(key, width):
+    return {
+        "_id": "doc%s" % key,
+        "properties": {"p%d" % i: "%d.5" % i if i % 4 else "" for i in range(width)},
+        "synonyms": [
+            {"name": "syn%d" % i, "type": "TRADE_NAME", "source": None if i % 3 else "NA"} for i in range(width)
+        ],
+        "xrefs": [{"id": "x%s_%d" % (key, i), "src": "src%d" % (i % 5), "extra": []} for i in range(width)],
+    }
+
+
+def parse_batch(num_docs, width, batch_num):
+    import json
+
+    import biothings.utils.jsonpatch  # noqa: F401  (hooks json.load with multidict, as in a hub)
+    from biothings.utils.dataload import dict_sweep
+
+    data = json.dumps([make_parse_doc(batch_num * num_docs + i, width) for i in range(num_docs)])
+    documents = json.load(io.StringIO(data))
+    for document in documents:
+        dict_sweep(document, vals=SWEEP_VALUES)
+    if "source" in document["synonyms"][0] or "extra" in document["xrefs"][0]:
+        raise AssertionError("dict_sweep kept empty values in %s" % document["_id"])
+    return len(documents)
+
+
 def peak_rss_sampler(stop, result):
     import psutil
 
@@ -149,7 +183,7 @@ def peak_rss_sampler(stop, result):
 
 
 async def run_bench(jm, workload, batches, num_docs, width):
-    worker = {"merge": merge_batch, "jsondiff": jsondiff_batch}[workload]
+    worker = {"merge": merge_batch, "jsondiff": jsondiff_batch, "parse": parse_batch}[workload]
     pinfo = {"category": "bench", "source": "bench", "step": workload, "description": ""}
     done = 0
 
@@ -237,7 +271,7 @@ async def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--workload", choices=("merge", "jsondiff"), default="merge")
+    parser.add_argument("--workload", choices=("merge", "jsondiff", "parse"), default="merge")
     parser.add_argument("--batches", type=int, default=16)
     parser.add_argument("--docs", type=int, default=2000, help="documents processed per batch")
     parser.add_argument("--width", type=int, default=20, help="lists/dicts width per document")

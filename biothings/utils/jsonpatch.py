@@ -34,7 +34,6 @@
 
 from __future__ import unicode_literals
 
-import collections
 import copy
 import functools
 import inspect
@@ -84,16 +83,20 @@ class JsonPatchTestFailed(JsonPatchException, AssertionError):
 
 def multidict(ordered_pairs):
     """Convert duplicate keys values to lists."""
-    # read all values into lists
-    mdict = collections.defaultdict(list)
+    # A plain dict rather than collections.defaultdict, whose lookup of its __missing__ method
+    # for every new key contends between threads on free-threaded Python. Values of keys that
+    # appear once are stored as they are.
+    mdict = {}
+    duplicates = {}
     for key, value in ordered_pairs:
-        mdict[key].append(value)
-
-    return dict(
-        # unpack lists that have only 1 item
-        (key, values[0] if len(values) == 1 else values)
-        for key, values in mdict.items()
-    )
+        if key in mdict:
+            duplicates.setdefault(key, [mdict[key]]).append(value)
+        else:
+            mdict[key] = value
+    # a duplicated key gets the list of all its values, in order
+    for key, values in duplicates.items():
+        mdict[key] = values
+    return mdict
 
 
 def get_loadjson():
