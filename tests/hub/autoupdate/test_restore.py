@@ -1,6 +1,7 @@
 """
 Installing a data release restores its snapshot into a new index, then moves the API's alias to it:
-only once all its shards are restored
+only once all its shards are restored, and the indices restored by previous installs are deleted,
+beyond the number to keep (RELEASE_KEEP_N_RECENT_INDICES)
 """
 
 import asyncio
@@ -12,7 +13,7 @@ import pytest
 from elasticsearch import Elasticsearch
 
 from biothings.hub.autoupdate import uploader as autoupdate_uploader
-from biothings.hub.autoupdate.uploader import BiothingsUploader
+from biothings.hub.autoupdate.uploader import BiothingsUploader, installed_indices
 from biothings.hub.dataload.uploader import ResourceError
 from biothings.utils.es import ESIndexer
 
@@ -98,6 +99,26 @@ def test_restore_status_on_elasticsearch(elasticsearch):
     assert "node does not match index setting [index.routing.allocation.require]" in status["reason"]
 
 
+def test_installed_indices(elasticsearch):
+    """The indices restored for an alias: named after it, and the one it points to (named otherwise before)"""
+    elasticsearch.create_index("bt_test_nde_20260901_abcdefgh_202609020300")  # restored before (old naming)
+    elasticsearch.create_index("bt_test_nde_current__bt_test_nde_20261001_ijklmnop_202610020300")
+    elasticsearch.create_index("bt_test_nde_current__bt_test_nde_20261015_qrstuvwx_202610160300")
+    elasticsearch.create_index("bt_test_nde_current_v2__bt_test_nde_20261015_qrstuvwx_202610160300")  # another alias
+    elasticsearch.create_index("bt_test_nde_20261020_yzabcdef")  # eg. the hub's own index for a build
+    elasticsearch.client.indices.put_alias(
+        index="bt_test_nde_20260901_abcdefgh_202609020300", name="bt_test_nde_current"
+    )
+    new_index = "bt_test_nde_current__bt_test_nde_20261020_yzabcdef_202610210300"
+    elasticsearch.create_index(new_index)
+    assert installed_indices(indexer(elasticsearch.client), "bt_test_nde_current", exclude=new_index) == [
+        "bt_test_nde_20260901_abcdefgh_202609020300",
+        "bt_test_nde_current__bt_test_nde_20261001_ijklmnop_202610020300",
+        "bt_test_nde_current__bt_test_nde_20261015_qrstuvwx_202610160300",
+    ]
+    assert installed_indices(indexer(elasticsearch.client), "bt_test_first_install") == []
+
+
 class FakeIndexer:
     """An ESIndexer for the API's alias, the indices it has, and the restore's statuses"""
 
@@ -123,12 +144,14 @@ class FakeIndexer:
             raise status
         return status
 
-    def get_indice_names_by_settings(self, index, sort_by_creation_date=False, reverse=False):
-        prefix = index.rstrip("*")
-        names = {name for name in self.indices if name.startswith(prefix)}
-        if self.alias and self.canonical_index_name.startswith(prefix):
-            names.add(self.alias)  # (Elasticsearch expands a pattern matching an alias to its index)
-        return sorted(names, key=self.indices.get, reverse=reverse)
+    def get_settings(self, pattern):
+        if pattern == self.canonical_index_name:
+            return {self.alias: {}} if self.alias else {}
+        prefix = pattern.rstrip("*")
+        return {name: {} for name in self.indices if name.startswith(prefix)}
+
+    def get_indice_names_by_settings(self, index, sort_by_creation_date=False):
+        return sorted(index.split(","), key=self.indices.get)
 
     def update_alias(self, alias_name, index_name):
         self.alias = index_name
@@ -188,25 +211,30 @@ def install(idxr, monkeypatch, keep=1):
 
 @pytest.mark.asyncio
 async def test_install_restores_then_moves_the_alias(monkeypatch):
+    previous = ["nde_20260901_202609020300", "nde_current__nde_20261001", "nde_current__nde_20261015"]
     done = {"status": "DONE", "progress": "100%"}
     # the new index's name is taken (eg. the same release installed again): a random suffix, not a hang;
     # Elasticsearch doesn't answer a few times while restoring: still restoring
-    idxr = FakeIndexer({"nde_20261015": 1, "nde_20261020": 2}, [TimeoutError("timed out")] * 4 + [done])
-    idxr.alias = "nde_20261015"
-    assert await install(idxr, monkeypatch, keep=0) == 1000
-    assert idxr.alias.startswith("nde_20261020_") and idxr.alias in idxr.indices
-    assert idxr.deleted == ["nde_20261015"]  # the index it pointed to (RELEASE_KEEP_N_RECENT_INDICES = 0)
+    idxr = FakeIndexer({name: date for date, name in enumerate(previous)}, [TimeoutError("timed out")] * 4 + [done])
+    idxr.indices["nde_current__nde_20261020"] = 10
+    idxr.alias = "nde_current__nde_20261015"
+    assert await install(idxr, monkeypatch, keep=1) == 1000
+    assert idxr.alias.startswith("nde_current__nde_20261020_") and idxr.alias in idxr.indices
+    # the oldest indices of previous installs are deleted, beyond the one to keep (the most recent); not
+    # nde_20260901_202609020300, named otherwise and not behind the alias: not known as one of them
+    assert idxr.deleted == ["nde_current__nde_20261001", "nde_current__nde_20261015"]
+    assert "nde_20260901_202609020300" in idxr.indices
 
 
 @pytest.mark.asyncio
 async def test_install_fails_when_a_shard_cant_be_restored(monkeypatch):
     failed = {"status": "FAILED", "progress": "50.00%", "reason": "shard 1: the node is above the high watermark"}
-    idxr = FakeIndexer({"nde_20261015": 1}, [{"status": "IN_PROGRESS", "progress": "0%"}, failed])
-    idxr.alias = "nde_20261015"
+    idxr = FakeIndexer({"nde_current__nde_20261015": 1}, [{"status": "IN_PROGRESS", "progress": "0%"}, failed])
+    idxr.alias = "nde_current__nde_20261015"
     with pytest.raises(ResourceError, match="status: FAILED .shard 1: the node is above the high watermark"):
         await install(idxr, monkeypatch)
-    assert idxr.alias == "nde_20261015"  # unchanged
-    assert idxr.deleted == ["nde_20261020"]  # the new index, useless
+    assert idxr.alias == "nde_current__nde_20261015"  # unchanged
+    assert idxr.deleted == ["nde_current__nde_20261020"]  # the new index, useless
     # Elasticsearch not answering, again and again: fails, without deleting the index being restored
     idxr = FakeIndexer({}, [TimeoutError("timed out")] * 5)
     with pytest.raises(ResourceError, match="status: ERROR .TimeoutError: timed out"):

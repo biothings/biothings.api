@@ -15,6 +15,24 @@ from biothings.utils.common import get_random_string
 from biothings.utils.es import IndexerException
 
 
+def installed_indices(idxr, alias_name, exclude=None):
+    """
+    The indices restored by previous installs of data releases for an alias, oldest first: named after
+    it (see BiothingsUploader.restore_snapshot()), and the one it points to (eg. restored before they
+    were named after it). Not exclude (eg. the index just restored)
+    """
+    names = set()
+    for pattern in (alias_name, f"{alias_name}__*"):
+        try:
+            names.update(idxr.get_settings(pattern))  # (an alias: the index it points to)
+        except NotFoundError:
+            pass  # eg. the first install
+    names.discard(exclude)
+    if not names:
+        return []
+    return idxr.get_indice_names_by_settings(index=",".join(sorted(names)), sort_by_creation_date=True)
+
+
 class BiothingsUploader(uploader.BaseSourceUploader):
     name = None
 
@@ -210,10 +228,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         use_no_downtime_method = kwargs.get("use_no_downtime_method", True)
         append_ts = kwargs.get("append_ts", True)
         if use_no_downtime_method:
-            base_index_name = snapshot_name
+            # named after the alias, so the indices restored by previous installs can be found and deleted
+            # (see update_alias_and_delete_old_indices()): "__", so another alias's indices don't match
+            base_index_name = f"{alias_name}__{snapshot_name}"
             if append_ts:
                 ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
-                base_index_name = f"{snapshot_name}_{ts}"
+                base_index_name = f"{base_index_name}_{ts}"
             if len(base_index_name) >= 255:
                 raise RuntimeError("Deterministic part of index name already too long")
 
@@ -254,15 +274,12 @@ class BiothingsUploader(uploader.BaseSourceUploader):
         await await_step(job, "restore")
 
         def update_alias_and_delete_old_indices():
-            # Find indices which starts with snapshot_name, and sort by creation date and order by asc
             old_indices = []
             try:
-                old_indices.extend(
-                    idxr.get_indice_names_by_settings(index=alias_name + "*", sort_by_creation_date=True, reverse=False)
-                )
-            except Exception:
-                pass
-            self.logger.debug("Alias '%s' points to '%s'" % (alias_name, old_indices))
+                old_indices.extend(installed_indices(idxr, alias_name, exclude=index_name))
+            except Exception as error:
+                self.logger.warning("Can't find the indices restored by previous installs: %s", error)
+            self.logger.debug("Indices restored by previous installs for alias '%s': %s", alias_name, old_indices)
             if index_name in old_indices:
                 self.logger.warning("new index name in old alias, something is not right")
                 self.logger.warning("continuing alias swap despite potential problem")
