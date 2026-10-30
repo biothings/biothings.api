@@ -46,6 +46,24 @@ def test_json_inf_nan():
     assert json.loads(serializer.to_json({"a": float("inf"), "b": float("nan")})) == {"a": None, "b": None}
 
 
+def test_json_int_subclass():
+    import json
+
+    # msgspec only encodes exact ints natively and sends int subclasses to the enc_hook;
+    # orjson encoded them natively. The hub gets bson.int64.Int64 (a MongoDB long) in
+    # documents read back from its database.
+    class MyInt(int):
+        pass
+
+    try:
+        from bson.int64 import Int64
+    except ImportError:  # pymongo is optional for the web tests
+        Int64 = MyInt
+
+    obj = {"count": Int64(5), "nested": [{"n": MyInt(2**40), "big": Int64(2**40)}]}
+    assert json.loads(serializer.to_json(obj)) == {"count": 5, "nested": [{"n": 2**40, "big": 2**40}]}
+
+
 def test_yaml_01():
     import yaml
 

@@ -25,6 +25,11 @@ def json_enc_hook(o):
     """The hook passed to msgspec to serialize otherwise non-serializable objects"""
     if isinstance(o, (UserDict, UserList)):
         return o.data  # o.data is the actual dictionary of list to store the data
+    if isinstance(o, int) and not isinstance(o, bool):
+        # msgspec only encodes exact ints natively; int subclasses such as bson.int64.Int64
+        # (what pymongo returns for a MongoDB long) land here. bool keys must keep raising so
+        # that to_json falls back to _stringify_keys ("true"/"false"), instead of becoming 1/0.
+        return int(o)
     raise TypeError(f"Type {type(o)} not serializable")
 
 
