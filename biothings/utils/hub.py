@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import datetime
+import inspect
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import pydoc
 import re
 import sys
 import time
+import traceback
 from collections import OrderedDict, UserDict
 from functools import partial
 from pprint import pformat
@@ -91,6 +93,13 @@ class CommandDefinition(dict):
     pass
 
 
+def job_error(job):
+    """The error of a job which is done (CancelledError if it was cancelled), None if it succeeded"""
+    if job.cancelled():
+        return asyncio.CancelledError("cancelled")
+    return job.exception()
+
+
 class HubShell(InteractiveShell):
     launched_commands = {}
     pending_outputs = {}
@@ -154,11 +163,11 @@ class HubShell(InteractiveShell):
         # update with ssh server default commands
         register(basic_commands)
         # don't track this calls
-        register({"restart": CommandDefinition(command=self.restart, track=True)})
-        register({"stop": CommandDefinition(command=self.stop, track=True)})
-        register({"backup": CommandDefinition(command=backup, track=True)})
-        register({"restore": CommandDefinition(command=restore, track=True)})
-        register({"help": CommandDefinition(command=self.help, track=False)})
+        register({"restart": CommandDefinition(command=self.restart, tracked=True)})
+        register({"stop": CommandDefinition(command=self.stop, tracked=True)})
+        register({"backup": CommandDefinition(command=backup, tracked=True)})
+        register({"restore": CommandDefinition(command=restore, tracked=True)})
+        register({"help": CommandDefinition(command=self.help, tracked=False)})
         register({"commands": CommandDefinition(command=self.command_info, tracked=False)})
         register(
             {
@@ -173,7 +182,7 @@ class HubShell(InteractiveShell):
             # don't expose extra commands, they're kind of private/advanced
             register(extra, hidden=True)
 
-        # self.extra_ns["cancel"] = self.__class__.cancel
+        register({"cancel": CommandDefinition(command=self.cancel_command, tracked=False)})
         # for boolean calls
         self.extra_ns["_and"] = _and
         self.extra_ns["partial"] = partial
@@ -185,6 +194,22 @@ class HubShell(InteractiveShell):
         # has been passed by ref in __init__() so things get updated automagically
         # (self.user_ns.update(...) can be used otherwise, self.user_ns is IPython
         # internal namespace dict
+
+    def add_command(self, name, command, hidden=False, tracked=True):
+        """
+        Register a command once the shell is set up (eg. a command defined in a hook file),
+        replacing any existing command with the same name. Returns the replaced command, if any.
+        """
+        if isinstance(command, CommandDefinition):
+            hidden = command.get("hidden", hidden)
+            tracked = command.get("tracked", tracked)
+            command = command["command"]
+        previous = self.commands.get(name)
+        self.commands[name] = command
+        self.hidden[name] = hidden
+        self.tracked[name] = tracked
+        self.extra_ns[name] = command
+        return previous
 
     def stop(self, force=False):
         return self.restart(force=force, stop=True)
@@ -229,6 +254,9 @@ class HubShell(InteractiveShell):
         """
         Display help on given function/object or list all available commands
         """
+        if isinstance(func, str) and func.replace("-", "_") in self.commands:
+            # command given by its name, eg. help("dump")
+            func = self.commands[func.replace("-", "_")]
         if not func:
             cmds = "\nAvailable commands:\n\n"
             for k in self.commands:
@@ -238,7 +266,7 @@ class HubShell(InteractiveShell):
             cmds += "\nType: 'help(command)' for more\n"
             return cmds
         elif isinstance(func, partial):
-            docstr = "\n" + pydoc.render_doc(func.func, title="Hub documentation: %s")
+            docstr = "\n" + pydoc.render_doc(func.func, title="Hub documentation: %s", renderer=pydoc.plaintext)
             docstr += "\nDefined et as a partial, with:\nargs:%s\nkwargs:%s\n" % (
                 repr(func.args),
                 repr(func.keywords),
@@ -249,7 +277,7 @@ class HubShell(InteractiveShell):
             return docstr
         else:
             try:
-                return "\n" + pydoc.render_doc(func, title="Hub documentation: %s")
+                return "\n" + pydoc.render_doc(func, title="Hub documentation: %s", renderer=pydoc.plaintext)
             except ImportError:
                 return "\nHelp not available for this command\n"
 
@@ -348,6 +376,15 @@ class HubShell(InteractiveShell):
         # poor man's singleton...
         if line in [j["cmd"] for j in self.__class__.launched_commands.values() if not j.get("is_done")]:
             raise AlreadyRunningException("Command '%s' is already running\n" % repr(line))
+        # shell-like command line typed in the console, eg. "dump mygene --force" (see biothings.hub.terminal)
+        terminal = getattr(getattr(self, "server", None), "terminal", None)
+        if not secure and terminal is not None and terminal.is_terminal_syntax(line):
+            outputs = terminal.console(line)
+            self.last_std_contents = None  # already part of outputs
+            if self.__class__.pending_outputs:
+                outputs.extend(self.__class__.pending_outputs.values())
+                self.__class__.pending_outputs = {}
+            return outputs
         # is it a hub command, in which case, intercept and run the actual declared cmd
         # IMPORTANT !!! this is where we allow the command or not when secure=True IMPORTANT !!!
         # the logic is following:
@@ -355,8 +392,8 @@ class HubShell(InteractiveShell):
         # - parenthesis are mandatory
         # - no '&&' operator allowed
         if secure:
-            # command must be alpha only, argument with "," and "=", or no arg at all
-            pat = r'^([A-Za-z_]+)\(["\'\w\s=,.-]*\)$'
+            # command must be alphanumeric only, argument with "," and "=", or no arg at all
+            pat = r'^([A-Za-z_][A-Za-z0-9_]*)\(["\'\w\s=,.-]*\)$'
         else:
             pat = r"(.*)\(.*\)"  # more permissive
         m = re.match(pat, line)
@@ -397,7 +434,7 @@ class HubShell(InteractiveShell):
             self.last_std_contents = redirect_stream.get_std_contents()
 
         if not r.success:
-            raise CommandError("%s\n" % repr(r.error_in_exec))
+            raise CommandError("%s\n" % repr(r.error_in_exec or r.error_before_exec))
         else:
             # command was a success, now get the results:
             if r.result is None:
@@ -411,7 +448,11 @@ class HubShell(InteractiveShell):
                 self.buf.truncate()
             else:
                 # -> we have something returned...
-                res = self.register_command(cmd=origline, result=r.result)
+                result = r.result
+                if inspect.iscoroutine(result):
+                    # eg. a command defined with "async def" in a hook file, run it as a job
+                    result = self.job_manager.loop.create_task(result)
+                res = self.register_command(cmd=origline, result=result)
                 # if type(res) != CommandInformation:    # TODO: remove this line
                 if not isinstance(res, CommandInformation):
                     # if type(res) != str:    # TODO: remove this line
@@ -431,9 +472,22 @@ class HubShell(InteractiveShell):
 
         return outputs
 
-    # @classmethod
-    # def cancel(klass,jobnum):
-    #    return klass.launched_commands.get(jobnum)
+    @classmethod
+    def cancel_command(cls, id):
+        """
+        Cancel a command running in background: its next steps don't run. Its jobs already running in
+        the hub's workers (eg. an index batch, a download) finish first, their results unused
+        """
+        try:
+            info = cls.launched_commands[int(id)]
+        except (KeyError, ValueError):
+            raise CommandError("No such command with ID %s" % repr(id))
+        if info.get("is_done"):
+            raise CommandError("Command #%s is done already" % id)
+        for job in info["jobs"]:
+            if hasattr(job, "cancel") and not job.done():
+                job.cancel()
+        return "Command #%s %s cancelled" % (id, info["cmd"])
 
     @classmethod
     def refresh_commands(cls):
@@ -445,16 +499,25 @@ class HubShell(InteractiveShell):
                 continue
             # is_done = set([j.done() for j in info["jobs"]]) == set([True])   # TODO: remove this line
             is_done = {j.done() for j in info["jobs"]} == {True}
-            has_err = is_done and [True for j in info["jobs"] if j.exception()] or None
-            localoutputs = (
-                is_done
-                and ([str(j.exception()) for j in info["jobs"] if j.exception()] or [j.result() for j in info["jobs"]])
-                or None
-            )
+            # eg. dump_all(): which sources are done (see wait_for_sources()), followed by terminals
+            progress = [line for j in info["jobs"] for line in getattr(j, "progress", None) or []]
+            if progress:
+                cls.launched_commands[num]["progress"] = progress
+            # (a cancelled job: CancelledError, see cancel_command())
+            errors = [job_error(j) for j in info["jobs"]] if is_done else []
+            errors = [error for error in errors if error is not None]
+            has_err = errors and [True] or None
+            localoutputs = is_done and ([str(error) for error in errors] or [j.result() for j in info["jobs"]]) or None
             if is_done:
                 cls.launched_commands[num]["is_done"] = True
                 cls.launched_commands[num]["failed"] = has_err and has_err[0] or False
                 cls.launched_commands[num]["results"] = localoutputs
+                if has_err:
+                    # where it failed, for terminals ("biothings-cli hub history <id> --verbose", Studio)
+                    error = errors[0]
+                    cls.launched_commands[num]["traceback"] = "".join(
+                        traceback.format_exception(type(error), error, error.__traceback__)
+                    )
                 cls.launched_commands[num]["finished_at"] = time.time()
                 cls.launched_commands[num]["duration"] = timesofar(
                     t0=cls.launched_commands[num]["started_at"],

@@ -2,13 +2,17 @@
 Tests for the various dumper classes
 """
 
+import asyncio
+import logging
 import pathlib
 import tempfile
 
 import pytest
 import requests
 
-from biothings.hub.dataload.dumper import BaseDumper, HTTPDumper
+from biothings.hub.autoupdate import BiothingsDumper
+from biothings.hub.dataload.dumper import BaseDumper, DumperException, DumperManager, HTTPDumper
+from biothings.hub.dataload.manager import SourcesFailed, wait_for_sources
 
 
 def test_base_dumper():
@@ -92,3 +96,121 @@ def test_http_dumper_download(remoteurl: str, resolve_filepath: bool):
             local_file = pathlib.Path(pathlib.Path(temp_local_file.name))
             assert local_file.exists()
             assert local_file.stat().st_size > 0
+
+
+@pytest.mark.asyncio
+async def test_dump_all_skips_private_dumpers(monkeypatch):
+    """
+    dump_all() runs data sources' dumpers, not the private ones ("__" names), eg. the code
+    upgrade dumpers, which would pull new code for the hub application and the BioThings SDK,
+    nor the ones downloading data releases to install (eg. on mydisease's hub, which installs its
+    releases in its API's indices)
+    """
+
+    class ReleaseDumper(BiothingsDumper):
+        pass
+
+    manager = DumperManager(job_manager=None)
+    manager.register = {
+        "mondo": [],
+        "hpo": [],
+        "__biothings_sdk": [],
+        "__application": [],
+        "mydisease-disease__es9": [ReleaseDumper],
+    }
+    dumped = []
+    monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: dumped.append(src) or [])
+    await manager.dump_all()
+    assert dumped == ["mondo", "hpo"]
+
+
+@pytest.mark.asyncio
+async def test_dump_all_tells_which_sources_failed(monkeypatch, caplog):
+    manager = DumperManager(job_manager=None)
+    manager.register = {"mondo": [], "mydisease-disease__es9": [], "disgenet": []}
+
+    async def dumped():
+        await asyncio.sleep(0.05)  # still running when the other one fails
+
+    async def failed():
+        raise TypeError("string indices must be integers, not 'str'")
+
+    jobs = {"mondo": [dumped], "mydisease-disease__es9": [failed], "disgenet": []}  # disgenet: disabled dumper
+    monkeypatch.setattr(manager, "dump_src", lambda src, **kwargs: [asyncio.ensure_future(job()) for job in jobs[src]])
+    with caplog.at_level(logging.ERROR), pytest.raises(SourcesFailed) as error:
+        await manager.dump_all()
+    assert str(error.value) == (
+        "dump failed for 1 of 3 sources: mydisease-disease__es9 (TypeError: string indices must be integers, "
+        "not 'str'). Done: mondo. Skipped: disgenet"
+    )
+    assert error.value.summary["mondo"] == "done"  # wasn't stopped by the other failing
+    assert "dump failed for mydisease-disease__es9: TypeError" in caplog.text
+    assert "(still running: mondo)" in caplog.text
+    jobs["mydisease-disease__es9"] = [dumped]
+    assert await manager.dump_all() == {"mondo": "done", "mydisease-disease__es9": "done", "disgenet": "skipped"}
+
+
+@pytest.mark.asyncio
+async def test_wait_for_sources_progress():
+    """The progress of commands run on several sources (eg. dump_all), shown by terminals while they run"""
+
+    async def done(delay):
+        await asyncio.sleep(delay)
+
+    async def failed():
+        await asyncio.sleep(0.01)
+        raise TypeError("string indices must be integers, not 'str'")
+
+    # hpo: 2 jobs (eg. sub-sources), done once both are
+    task = wait_for_sources("dump", {"mondo": [failed()], "hpo": [done(0.02), done(0.04)], "disgenet": []})
+    assert task.progress == ["dump mondo, hpo (skipped: disgenet)"]
+    with pytest.raises(SourcesFailed):
+        await task
+    assert task.progress == [
+        "dump mondo, hpo (skipped: disgenet)",
+        "mondo failed (1/2): TypeError: string indices must be integers, not 'str'",
+        "hpo done (2/2)",
+    ]
+
+
+def test_source_names():
+    """
+    Unknown sources come with suggestions, and a data release installed in one environment only can be
+    given by its name (installed in several environments: <release>__<environment>, see list)
+    """
+    manager = DumperManager(job_manager=None)
+    manager.register = {"chembl": [], "mychem.info__es8": [], "mychem.info__es9": [], "mydisease.info__es8": []}
+    assert manager.find_source("chembl") == "chembl"
+    assert manager.find_source("mydisease.info") == "mydisease.info__es8"
+    assert manager.find_source("mychem.info") is None
+    with pytest.raises(DumperException) as error:
+        manager.dump_src("mychem.info")
+    assert str(error.value) == (
+        "'mychem.info' is installed in several environments, give one of them: mychem.info__es8, mychem.info__es9"
+    )
+    with pytest.raises(DumperException, match=r"Can't find 'chembI' in registered sources .*did you mean: chembl\?"):
+        manager.call("chembI", "versions")
+    assert manager.call("mydisease.info", "versions") == []  # (no dumper class registered here)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_command_run_on_several_sources():
+    """eg. cancel dump_all: the sources' jobs are cancelled too, their next steps (eg. uploads) don't run"""
+    steps = []
+
+    async def dump(name):
+        try:
+            await asyncio.sleep(60)
+            steps.append(name + " uploaded")
+        except asyncio.CancelledError:
+            steps.append(name + " cancelled")
+            raise
+
+    jobs = {"mondo": [dump("mondo")], "hpo": [dump("hpo")]}
+    task = wait_for_sources("dump", jobs)
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0.01)
+    assert sorted(steps) == ["hpo cancelled", "mondo cancelled"]

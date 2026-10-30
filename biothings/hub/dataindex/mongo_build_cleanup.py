@@ -94,7 +94,8 @@ class MongoBuildCleaner:
         Checks every build in src_build to see if its target collection still
         exists in the target database.  Build records whose target collections
         have been removed are deleted, keeping the database in sync with the
-        actual data.
+        actual data. Archived builds are kept: archiving deletes a build's
+        collection but keeps its record, on purpose.
 
         Returns a dict with ``builds_removed`` (count) and ``builds_removed_names``.
         """
@@ -107,7 +108,7 @@ class MongoBuildCleaner:
             existing_collections = set(await target_db.list_collection_names())
 
             orphaned_ids = []
-            async for doc in src_build.find({}, {"_id": 1, "target_name": 1}):
+            async for doc in src_build.find({"archived": {"$exists": False}}, {"_id": 1, "target_name": 1}):
                 build_id = doc["_id"]
                 target_name = doc.get("target_name") or build_id
                 if target_name not in existing_collections:

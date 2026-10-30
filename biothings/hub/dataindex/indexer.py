@@ -920,9 +920,13 @@ class IndexManager(BaseManager):
                 async with AsyncElasticsearch(**env["args"]) as client:
                     try:
                         indices = await client.indices.get(index=index_name)
-                    except Exception:
+                    except elasticsearch.NotFoundError:
+                        continue  # no index matching index_name there
+                    except Exception as error:
+                        self.logger.warning("Can't list the indices of environment '%s': %s", _env_name, error)
                         continue
-                    for index_name, index_data in indices.items():
+                    # (not index_name: the pattern searched in the next environments)
+                    for found_name, index_data in indices.items():
                         if "_meta" in index_data["mappings"] and "biothing_type" in index_data["mappings"]["_meta"]:
                             mapping_meta = index_data["mappings"]["_meta"]
                             stats = mapping_meta.get("stats", {})
@@ -930,7 +934,7 @@ class IndexManager(BaseManager):
                             if count is not None:
                                 indexes.append(
                                     {
-                                        "index_name": index_name,
+                                        "index_name": found_name,
                                         "doc_type": mapping_meta["biothing_type"],
                                         "build_version": mapping_meta["build_version"],
                                         "count": count,
@@ -966,14 +970,14 @@ class IndexManager(BaseManager):
             index_name = ("hub_tmp_%s" % get_random_string()).lower()
             try:
                 return await client.indices.create(
-                    index_name,
+                    index=index_name,
                     body={
                         "settings": (await indexer.es_index_settings.finalize(client)),
                         "mappings": (await indexer.es_index_mappings.finalize(client)),
                     },
                 )
             finally:
-                await client.indices.delete(index_name, ignore_unavailable=True)
+                await client.indices.delete(index=index_name, ignore_unavailable=True)
                 await client.close()
 
         job = self.job_manager.loop.create_task(_validate_mapping())

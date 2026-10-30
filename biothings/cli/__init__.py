@@ -8,19 +8,14 @@ import logging
 import os
 import sys
 
-import typer
-from rich.logging import RichHandler
-
-from biothings.cli.commands.admin import build_admin_application
-from biothings.cli.commands.config import config_application, load_configuration
-from biothings.cli.commands.dataplugin import dataplugin_application
-from biothings.cli.commands.pathing import path_application
-
 
 def setup_logging_configuration(logging_level: Literal[10, 20, 30, 40, 50]) -> None:
     """
     Configures the logging based off our environment configuration
     """
+    import typer
+    from rich.logging import RichHandler
+
     rich_handler = RichHandler(
         level=logging_level,
         markup=True,
@@ -35,16 +30,16 @@ def main():
     """
     The entrypoint for running the BioThings CLI
     """
-    module_specification = importlib.util.find_spec("typer")
-    typer_status = module_specification is not None
-    if not typer_status:
-        logging.error(
-            (
-                "`typer` package is required for biothings-cli package. "
-                "Use `pip install biothings[cli]` or `pip install typer[all]` to install."
-            )
-        )
-        sys.exit(-1)
+    # the CLI's packages are optional (biothings[cli]): only imported once they're known to be installed
+    missing = [package for package in ("typer", "rich") if importlib.util.find_spec(package) is None]
+    if missing:
+        sys.exit("The biothings-cli requires %s: pip install 'biothings[cli]'" % " and ".join(missing))
+    # pylint: disable=import-outside-toplevel
+    from biothings.cli.commands.admin import build_admin_application
+    from biothings.cli.commands.config import config_application, load_configuration
+    from biothings.cli.commands.dataplugin import dataplugin_application
+    from biothings.cli.commands.hub import hub_application
+    from biothings.cli.commands.pathing import path_application
 
     # Typer already supports an environment variable to disable rich tracebacks
     # >>> TYPER_STANDARD_TRACEBACK=1
@@ -60,9 +55,13 @@ def main():
     if cli_debug_flag:
         logging_level = logging.DEBUG
     setup_logging_configuration(logging_level)
-    load_configuration()
+    # "hub" commands talk to a running hub through its API and don't need a local configuration,
+    # which could fail to load when run from a hub's folder (its config.py is the hub's own)
+    if sys.argv[1:2] != ["hub"]:
+        load_configuration()
 
     admin_application.add_typer(dataplugin_application, name="dataplugin")
     admin_application.add_typer(config_application, name="config")
     admin_application.add_typer(path_application, name="path")
+    admin_application.add_typer(hub_application, name="hub")
     return admin_application()

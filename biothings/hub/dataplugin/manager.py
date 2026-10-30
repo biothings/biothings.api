@@ -23,6 +23,7 @@ from biothings.utils.hub_db import get_data_plugin, get_src_dump, get_src_master
 from biothings.hub.dataload import dumper
 from biothings.hub.dataload.manager import BaseSourceManager
 from biothings.hub.dataplugin.assistant import GithubAssistant, LocalAssistant, AssistantException
+from biothings.utils.redact import REDACTED, redact_secrets
 
 
 class DataPluginManager(dumper.DumperManager):
@@ -88,6 +89,11 @@ class AssistantManager(BaseSourceManager):
         if url:
             url = url.strip()
             doc = dp.find_one({"plugin.url": url})
+            if not doc and REDACTED in url:
+                # its URL as the Hub API shows it, credentials hidden (eg. sent back by BioThings Studio)
+                doc = next((plugin for plugin in dp.find() if redact_secrets(plugin["plugin"]["url"]) == url), None)
+            if doc:
+                url = doc["plugin"]["url"]
         elif name:
             doc = dp.find_one({"_id": name})
             url = doc["plugin"]["url"]
@@ -390,9 +396,9 @@ class AssistantManager(BaseSourceManager):
         assert plugin_name  # avoid deleting the whole export folder when purge=True...
         dp = get_data_plugin()
         plugin = dp.find_one({"_id": plugin_name})
-        plugin_path_name = os.path.basename(plugin["download"]["data_folder"])
         if not plugin:
             raise Exception(f"Data plugin {plugin_name} does not exist!")
+        plugin_path_name = os.path.basename(plugin["download"]["data_folder"])
         folder = os.path.join(folder, plugin_path_name)
         if purge:
             shutil.rmtree(folder)

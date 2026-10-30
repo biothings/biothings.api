@@ -1,0 +1,1110 @@
+"""
+Module for creating the cli interface to a running BioThings Hub: ``biothings-cli hub``
+
+Runs the same commands as BioThings Studio's terminal through the Hub API: the built-in
+commands every hub provides (dump_all, upload_all, sync, ...) and the commands defined
+in the hub's hook files (python files in the hub's HOOKS_FOLDER)
+
+> biothings-cli hub commands                     list available commands
+> biothings-cli hub help dump                    usage and documentation of a command
+> biothings-cli hub run dump all                 run a command, wait for it to finish
+> biothings-cli hub run --no-wait upload mygene  run a command in background
+> biothings-cli hub history [ID]                 launched commands and their results
+> biothings-cli hub history ID --wait            wait for a command running in background
+> biothings-cli hub jobs                         jobs running on the hub's workers
+> biothings-cli hub hooks                        hook files loaded by the hub
+> biothings-cli hub shell                        interactive terminal
+> biothings-cli hub login                        log in to a hub requiring a login
+"""
+
+import datetime
+import json
+import os
+import re
+import sys
+import time
+from typing import List, Optional
+
+import requests
+import typer
+from rich import box
+from rich.console import Console
+from rich.markup import escape
+from rich.table import Table
+from typing_extensions import Annotated
+
+DEFAULT_HUB_URL = "http://localhost:7080"
+DEFAULT_TIMEOUT = 120.0  # seconds to wait for the hub's answers (eg. while a command starts)
+CONNECT_TIMEOUT = 10.0  # ... but not that long to connect to it
+# waiting for a command running in background: checks its status every --interval seconds at first,
+# then less and less often, up to every MAX_INTERVAL seconds (a long index: not a check every second)
+MAX_INTERVAL = 30.0
+# ... when the hub can't be reached (eg. the network is down, the hub restarts), tries again for:
+DEFAULT_RETRY_FOR = 900.0
+# ... and when it's not shown in a terminal (eg. scripts), says how it's going every:
+HEARTBEAT_INTERVAL = 300.0
+# hubs requiring a login (users in their HUB_API_USERS) give a token on POST /login, to send in this header
+LOGIN_HEADER = "X-Biothings-Access-Token"
+HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_history")
+LOGINS_FILE = os.path.join(os.path.expanduser("~"), ".biothings_hub_logins")  # see save_login()
+
+SHORT_HELP = "[green]Run commands on a running BioThings Hub, like the terminal in BioThings Studio.[/green]"
+FULL_HELP = (
+    SHORT_HELP
+    + "\n\n[magenta]   :sparkles: Built-in commands (dump, dump_all, upload_all, sync, ...) and commands defined "
+    + "in the hub's hook files.[/magenta]"
+    + "\n[magenta]   :sparkles: Same syntax as the terminal: [bold]dump all[/bold], [bold]dump mygene --force[/bold] "
+    + "or [bold]dump('mygene', force=True)[/bold][/magenta]"
+    + "\n[green]   :point_right: Set [bold]BIOTHINGS_HUB_URL[/bold] (default: http://localhost:7080) "
+    + "and [bold]BIOTHINGS_HUB_TOKEN[/bold] ENV variables to avoid passing --url and --token.[/green]"
+)
+
+hub_application = typer.Typer(
+    help=FULL_HELP,
+    short_help=SHORT_HELP,
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+)
+
+console = Console(highlight=False)
+err_console = Console(stderr=True, highlight=False)
+
+
+class HubAPIError(Exception):
+    """Error returned by the Hub API, or raised when it can't be reached"""
+
+    def __init__(self, message, status=None, payload=None):
+        super().__init__(message)
+        self.status = status
+        self.payload = payload or {}
+
+
+class HubTimeout(HubAPIError):
+    """The hub was reached, but didn't answer in time: what was asked may still be done (eg. a command started)"""
+
+
+def read_logins():
+    """Logins saved by 'biothings-cli hub login', by hub URL: {"username": ..., "token": ..., "expires": ...}"""
+    try:
+        with open(LOGINS_FILE, encoding="utf-8") as file:
+            logins = json.load(file)
+    except (OSError, ValueError):
+        return {}
+    return logins if isinstance(logins, dict) else {}
+
+
+def is_valid(login):
+    """True if a saved login hasn't expired"""
+    try:
+        expires = datetime.datetime.fromisoformat(login["expires"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=datetime.timezone.utc)
+    return expires > datetime.datetime.now(datetime.timezone.utc)
+
+
+def saved_login(url):
+    """The login saved for a hub, unless it expired"""
+    login = read_logins().get(url.rstrip("/"))
+    return login if isinstance(login, dict) and is_valid(login) else None
+
+
+def save_login(url, login):
+    """Save the login to a hub (None: forget it), in a file only the user can read: its token gives access to the hub"""
+    logins = {hub: saved for hub, saved in read_logins().items() if isinstance(saved, dict) and is_valid(saved)}
+    if login:
+        logins[url.rstrip("/")] = login
+    else:
+        logins.pop(url.rstrip("/"), None)
+    descriptor = os.open(LOGINS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.chmod(LOGINS_FILE, 0o600)  # (if it existed with other permissions)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(logins, file, indent=2)
+
+
+class HubClient:
+    """Minimal client for the Hub API endpoints used by the terminal"""
+
+    def __init__(self, url, token=None, timeout=DEFAULT_TIMEOUT):
+        self.url = url.rstrip("/")
+        self.timeout = timeout
+        self.session = requests.Session()
+        # without a token given, the login saved for this hub (see 'biothings-cli hub login'), if any
+        login = saved_login(self.url) if token is None else None
+        self.saved_login = bool(login)
+        self.set_token(login["token"] if login else token)
+
+    def set_token(self, token):
+        """The login token to send to the hub (None: none)"""
+        if token:
+            self.session.headers[LOGIN_HEADER] = token
+        else:
+            self.session.headers.pop(LOGIN_HEADER, None)
+
+    def login(self, username, secret):
+        """Log in to the hub (POST /login): returns the login ({username, token, expires}), used by the next requests"""
+        login = self.request("POST", "/login", json={"username": username, "password": secret})
+        self.set_token(login["token"])
+        return login
+
+    def request(self, method, endpoint, timeout=None, **kwargs):
+        url = self.url + endpoint
+        timeout = timeout or self.timeout
+        try:
+            # custom token header must not be sent to another host through redirects
+            response = self.session.request(
+                method, url, timeout=(min(CONNECT_TIMEOUT, timeout), timeout), allow_redirects=False, **kwargs
+            )
+        except requests.ReadTimeout:
+            raise HubTimeout("The hub at %s didn't answer within %ss (it may be busy)" % (self.url, timeout))
+        except requests.RequestException as e:
+            raise HubAPIError("Can't reach the hub at %s (%s)" % (self.url, e))
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        if response.status_code == 404 and endpoint.startswith("/terminal"):
+            raise HubAPIError(
+                payload.get("error")
+                or "This hub doesn't provide the terminal API: it runs an older BioThings version, or without "
+                "the 'terminal' feature. Its commands can still be followed with 'biothings-cli hub history'",
+                status=404,
+                payload=payload,
+            )
+        if response.status_code == 401 and endpoint != "/login":
+            # running commands requires a login (HUB_API_USERS), which is missing, expired, or not valid anymore
+            if self.saved_login:
+                save_login(self.url, None)
+                self.saved_login = False
+            message = payload.get("error") or "Login required"
+            raise HubAPIError("%s (biothings-cli hub login)" % message, status=401, payload=payload)
+        if response.status_code >= 400 or payload.get("status") == "error":
+            message = payload.get("error") or "%s %s: HTTP %s %s" % (method, url, response.status_code, response.reason)
+            raise HubAPIError(message, status=response.status_code, payload=payload)
+        return payload.get("result")
+
+    def info(self):
+        return self.request("GET", "/")
+
+    def catalog(self):
+        return self.request("GET", "/terminal/commands")
+
+    def run(self, line=None, argv=None, confirmed=False):
+        body = {"cmd": line} if line is not None else {"argv": list(argv)}
+        if confirmed:
+            # commands deleting or changing data must be confirmed (otherwise: 428 error)
+            body["confirmed"] = True
+        return self.request("POST", "/terminal/run", json=body)
+
+    def command(self, command_id, timeout=None):
+        return self.request("GET", "/command/%s" % command_id, timeout=timeout)
+
+    def commands(self, running=False):
+        return self.request("GET", "/commands", params={"running": 1} if running else None)
+
+    def wait(
+        self,
+        command_id,
+        timeout=None,
+        interval=1.0,
+        on_progress=None,
+        on_status=None,
+        retry_for=DEFAULT_RETRY_FOR,
+        max_interval=MAX_INTERVAL,
+    ):
+        """
+        Poll a command running in background until it's done, returning its final state. on_progress
+        is called with its new progress lines, if any (eg. dump_all: which sources are done), on_status
+        with its state after each check, or None when the hub can't be reached. Polls every interval
+        seconds at first, then less and less often, up to every max_interval seconds. When the hub
+        can't be reached (eg. the network is down), tries again for up to retry_for seconds
+        """
+        started = time.time()
+        reported = 0
+        unreachable_since = None
+        delay = interval
+        while True:
+            try:
+                info = self.command(command_id)
+                unreachable_since = None
+            except HubAPIError as error:
+                if not is_transient(error):
+                    raise
+                # the command still runs on the hub: try again, for a while
+                unreachable_since = unreachable_since or time.time()
+                if time.time() - unreachable_since > retry_for:
+                    raise HubAPIError(
+                        "%s, for %ss: stopped waiting, command #%s may still be running on the hub"
+                        % (error, int(retry_for), command_id)
+                    ) from error
+                info = None
+            if on_status:
+                on_status(info)
+            progress = (info or {}).get("progress") or []  # not sent by older hubs
+            if on_progress and len(progress) > reported:
+                on_progress(progress[reported:])
+                reported = len(progress)
+            if (info or {}).get("is_done"):
+                return info
+            if timeout is not None and time.time() - started > timeout:
+                raise TimeoutError("Command #%s still running after %ss" % (command_id, timeout))
+            time.sleep(delay)
+            delay = min(delay * 1.5, max(max_interval, interval))
+
+
+def is_transient(error):
+    """True if a request may work when tried again: the hub couldn't be reached, didn't answer in time, or a
+    proxy in front of it says it's unavailable (eg. restarting)"""
+    return isinstance(error, HubTimeout) or error.status is None or error.status in (502, 503, 504)
+
+
+def is_empty(value):
+    """True for results without anything to display: None, or lists of None (eg. dump_all(), one None per job)"""
+    if value is None:
+        return True
+    return isinstance(value, list) and len(value) > 0 and all(is_empty(item) for item in value)
+
+
+def render(value):
+    """Text representation of a command result"""
+    if is_empty(value):
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, indent=2, default=str)
+
+
+def print_text(text, style=None, stderr=False):
+    """Print text as is (no rich markup nor emoji codes), eg. a command result"""
+    if text:
+        (err_console if stderr else console).print(text, style=style, soft_wrap=True, markup=False, emoji=False)
+
+
+def print_json(value):
+    """Machine-readable output, never wrapped nor colored"""
+    typer.echo(json.dumps(value, indent=2, default=str))
+
+
+def print_error(error):
+    print_text("Error: %s" % error, style="red", stderr=True)
+    payload = getattr(error, "payload", {}) or {}
+    if payload.get("usage"):
+        print_text("Usage: %s" % payload["usage"], stderr=True)
+
+
+def print_logs(response):
+    """Print what a command logged while it was called, on stderr to keep stdout for its outputs"""
+    for line in response.get("logs") or []:  # not sent by older hubs
+        print_text(line, style="dim", stderr=True)
+
+
+def print_response(response, verbose=False):
+    """Print the outcome of a command run synchronously (done), returns False if it failed"""
+    print_logs(response)
+    print_text(response.get("stdout"))
+    print_text(response.get("stderr"), stderr=True)
+    if response.get("failed"):
+        print_text(response.get("error"), style="red", stderr=True)
+        if verbose:
+            print_text(response.get("traceback"), style="dim", stderr=True)
+        return False
+    print_text(render(response.get("result")))
+    return True
+
+
+def show_confirmation(error):
+    """What a command would delete or change, as reported by the hub when it must be confirmed (428 error)"""
+    for reason in error.payload.get("confirm") or [str(error)]:
+        print_text(reason, style="yellow", stderr=True)
+
+
+def print_command_results(info, verbose=False):
+    """Print the final state of a command which ran in background, returns False if it failed"""
+    results = info.get("results") or []
+    failed = bool(info.get("failed"))
+    label = "failed" if failed else "done"
+    # (on stderr: stdout only has the results, eg. for a JSON parser)
+    print_text(
+        "[#%s] %s %s%s"
+        % (info.get("id"), info.get("cmd"), label, " in %s" % info["duration"] if info.get("duration") else ""),
+        style="red" if failed else "green",
+        stderr=True,
+    )
+    for result in results:
+        print_text(render(result), style="red" if failed else None, stderr=failed)
+    if failed and verbose and info.get("traceback"):  # not sent by older hubs
+        print_text(info["traceback"].rstrip(), style="dim", stderr=True)
+    return not failed
+
+
+def get_client(ctx: typer.Context) -> HubClient:
+    return ctx.obj
+
+
+@hub_application.callback()
+def hub_options(
+    ctx: typer.Context,
+    url: Annotated[
+        str,
+        typer.Option("--url", "-u", envvar="BIOTHINGS_HUB_URL", help="URL of the Hub API"),
+    ] = DEFAULT_HUB_URL,
+    token: Annotated[
+        Optional[str],
+        typer.Option(
+            "--token",
+            envvar="BIOTHINGS_HUB_TOKEN",
+            help="Login token of a hub requiring a login (users in its HUB_API_USERS), from POST /login or "
+            "'biothings-cli hub login --print-token'. By default: the login saved by 'biothings-cli hub login'",
+        ),
+    ] = None,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", help="Seconds to wait for each answer of the hub (eg. while a command starts)"),
+    ] = DEFAULT_TIMEOUT,
+):
+    """
+    Run commands on a running BioThings Hub
+    """
+    ctx.obj = HubClient(url, token=token, timeout=timeout)
+
+
+@hub_application.command(name="commands")
+def list_commands(
+    ctx: typer.Context,
+    search: Annotated[Optional[str], typer.Argument(help="Only list commands containing this text")] = None,
+    show_all: Annotated[bool, typer.Option("--all", "-a", help="Include advanced (hidden) commands")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the commands catalog as JSON")] = False,
+):
+    """
+    List the commands available on the hub: built-in commands and the ones defined in hook files
+    """
+    try:
+        catalog = get_client(ctx).catalog()
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if as_json:
+        print_json(catalog)
+        return
+    commands = [cmd for cmd in catalog["commands"] if show_all or not cmd["hidden"]]
+    if search:
+        commands = [cmd for cmd in commands if search.lower() in (cmd["name"] + cmd["summary"]).lower()]
+    for title, origin in (("Built-in commands", "builtin"), ("Hook commands", "hook")):
+        rows = [cmd for cmd in commands if cmd["origin"] == origin]
+        if not rows:
+            continue
+        table = Table(title=title, title_justify="left", box=box.SIMPLE, show_header=False)
+        table.add_column("command", style="bold cyan", no_wrap=True)
+        table.add_column("description")
+        for cmd in sorted(rows, key=lambda cmd: cmd["name"]):
+            description = cmd["summary"]
+            if origin == "hook":
+                description = "%s [dim](%s)[/dim]" % (escape(description), escape(cmd["hook"]))
+            else:
+                description = escape(description)
+            table.add_row(cmd["name"], description)
+        console.print(table)
+    if not commands:
+        console.print("No command found")
+    else:
+        console.print("Use [bold]biothings-cli hub help <command>[/bold] for details about a command.")
+
+
+@hub_application.command(name="help")
+def command_help(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Command name, eg. dump or dump_all")],
+):
+    """
+    Show the usage and documentation of a hub command
+    """
+    try:
+        catalog = get_client(ctx).catalog()
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    wanted = name.replace("-", "_").replace(" ", "_")
+    commands = {cmd["name"]: cmd for cmd in catalog["commands"]}
+    cmd = commands.get(wanted)
+    if cmd is None:
+        suggestions = [other for other in commands if wanted in other]
+        print_text("Unknown command '%s'" % name, style="red", stderr=True)
+        if suggestions:
+            print_text("Similar commands: %s" % ", ".join(sorted(suggestions)[:10]), stderr=True)
+        raise typer.Exit(2)
+    print_command_help(cmd)
+
+
+def print_command_help(cmd):
+    origin = "hook file %s" % cmd["hook"] if cmd["origin"] == "hook" else "built-in command"
+    console.print("[bold cyan]%s[/bold cyan] [dim](%s)[/dim]" % (escape(cmd["name"]), escape(origin)))
+    doc = cmd.get("doc") or ""
+    if cmd.get("summary") and not doc.startswith(cmd["summary"]):
+        print_text(cmd["summary"])
+    console.print("[bold]Usage:[/bold] %s" % escape(cmd["usage"]), soft_wrap=True)
+    console.print("[bold]Python:[/bold] %s" % escape(cmd["signature"]), soft_wrap=True)
+    if cmd.get("is_async"):
+        console.print("Runs in background (asynchronous command)")
+    if cmd.get("confirm"):  # not sent by older hubs
+        unless = "" if cmd["confirm"] is True else ", unless it's a dry run"
+        console.print("Asks for a confirmation before running%s (see run --yes)" % unless)
+    if cmd.get("examples"):
+        console.print("[bold]Examples:[/bold]")
+        for example in cmd["examples"]:
+            print_text("  %s" % example)
+    if doc:
+        console.print()
+        print_text(doc)
+
+
+@hub_application.command(
+    name="run",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "allow_interspersed_args": False},
+)
+def run_command(
+    ctx: typer.Context,
+    argv: Annotated[
+        List[str],
+        typer.Argument(
+            help="Command and its arguments, eg. [bold]dump all[/bold], [bold]dump mygene --force[/bold], "
+            "or a whole command line in quotes: [bold]\"dump('mygene', force=True)\"[/bold]",
+            show_default=False,
+        ),
+    ],
+    wait: Annotated[
+        bool,
+        typer.Option(
+            "--wait/--no-wait",
+            help="Wait for commands running in background to finish (sync), or return right away (async)",
+        ),
+    ] = True,
+    wait_timeout: Annotated[
+        Optional[float],
+        typer.Option("--wait-timeout", help="Maximum time to wait for the command to finish, in seconds"),
+    ] = None,
+    interval: Annotated[
+        float,
+        typer.Option("--interval", help="Seconds between status checks while waiting, at first (then up to 30s)"),
+    ] = 1.0,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Print the traceback when a command fails")] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Don't ask for a confirmation (commands deleting or changing data)"),
+    ] = False,
+    timeout: Annotated[
+        Optional[float],
+        typer.Option(
+            "--timeout",
+            help="Seconds to wait for each answer of the hub, eg. while the command starts "
+            "(default: the hub option, %ss)" % int(DEFAULT_TIMEOUT),
+        ),
+    ] = None,
+    retry_for: Annotated[
+        float,
+        typer.Option(
+            "--retry-for",
+            help="While waiting, seconds to keep trying when the hub can't be reached (eg. the network drops)",
+        ),
+    ] = DEFAULT_RETRY_FOR,
+):
+    """
+    Run a command on the hub. Options for [bold]run[/bold] itself go before the command name.
+    Commands deleting or changing data (eg. rmmerge) ask for a confirmation, unless [bold]--yes[/bold] is given.
+
+    Examples:
+
+      biothings-cli hub run dump all
+
+      biothings-cli hub run --no-wait upload mygene
+
+      biothings-cli hub run --yes auto_archive covid19 --days 3 --no-dryrun
+    """
+    client = get_client(ctx)
+    if timeout:
+        client.timeout = timeout
+    if argv[0].startswith("-"):
+        # an option given after another option's value, or misspelled: it would be taken as the command
+        print_text(
+            "Unknown option '%s' for run: see biothings-cli hub run --help (options of run go before the command "
+            "name, --url and --token before run)" % argv[0],
+            style="red",
+            stderr=True,
+        )
+        raise typer.Exit(2)
+    started = time.time()
+    try:
+        try:
+            response = client.run(argv=argv, confirmed=yes)
+        except HubAPIError as e:
+            if e.status != 428:
+                raise
+            show_confirmation(e)
+            if not sys.stdin.isatty():
+                print_text("Not run: this command must be confirmed, use --yes", style="red", stderr=True)
+                raise typer.Exit(2)
+            if not typer.confirm("Run it?", default=False, err=True):
+                raise typer.Exit(1)
+            started = time.time()
+            response = client.run(argv=argv, confirmed=True)
+    except HubTimeout as e:
+        print_error(e)
+        report_started(client, started)
+        raise typer.Exit(1)
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(2 if e.status in (400, 401, 403, 404, 409) else 1)
+
+    if response["is_done"]:
+        if as_json:
+            print_json(response)
+            ok = not response["failed"]
+        else:
+            ok = print_response(response, verbose=verbose)
+        raise typer.Exit(0 if ok else 1)
+
+    if not wait:
+        if as_json:
+            print_json(response)
+        else:
+            print_logs(response)
+            print_text("[#%s] %s started" % (response["id"], response["cmd"]))
+            print_text("Follow it with: biothings-cli hub history %s --wait" % response["id"], style="dim")
+        return
+
+    if not as_json:
+        print_logs(response)
+    raise typer.Exit(
+        follow_command(client, response["id"], response["cmd"], wait_timeout, interval, as_json, verbose, retry_for)
+    )
+
+
+def report_started(client, since):
+    """
+    After the hub didn't answer in time when asked to run a command: it may have started it anyway,
+    tell which commands it started since then, rather than letting the user run it twice
+    """
+    try:
+        commands = client.request("GET", "/commands", timeout=CONNECT_TIMEOUT) or {}
+    except HubAPIError:
+        commands = {}
+    # (a margin for the difference between the clocks of the hub and of this computer)
+    recent = [cmd for cmd in commands.values() if (cmd.get("started_at") or 0) >= since - 60]
+    if recent:
+        print_text("The command may have started anyway, commands the hub started recently:", stderr=True)
+        for cmd in sorted(recent, key=lambda cmd: cmd.get("id", 0)):
+            status = "running" if not cmd.get("is_done") else ("failed" if cmd.get("failed") else "done")
+            print_text("  [#%s] %s %s" % (cmd.get("id"), cmd.get("cmd"), status), stderr=True)
+        print_text(
+            "Follow one with 'biothings-cli hub history <id> --wait' rather than running it again",
+            style="dim",
+            stderr=True,
+        )
+    else:
+        print_text(
+            "The command may have started anyway: check with 'biothings-cli hub history' before running it again",
+            stderr=True,
+        )
+    print_text("To wait longer for the hub's answers: run --timeout <seconds>", style="dim", stderr=True)
+
+
+def format_duration(seconds):
+    """eg. 1h05m, 3m20s, 12s"""
+    seconds = int(seconds)
+    if seconds >= 3600:
+        return "%dh%02dm" % (seconds // 3600, seconds % 3600 // 60)
+    return "%dm%02ds" % (seconds // 60, seconds % 60) if seconds >= 60 else "%ds" % seconds
+
+
+def jobs_summary(client):
+    """What the hub's workers are doing, in short (eg. "indexer local8 nde_all_20261020 #12/40 30%")"""
+    try:
+        jobs = running_jobs(client.request("GET", "/job_manager", timeout=CONNECT_TIMEOUT) or {})
+    except HubAPIError:
+        return ""
+    described = [" ".join(str(job[key]) for key in ("category", "source", "step") if job.get(key)) for job in jobs]
+    return "; ".join(described[:3]) + (" (+%d)" % (len(described) - 3) if len(described) > 3 else "")
+
+
+def follow_command(
+    client,
+    command_id,
+    cmd,
+    wait_timeout=None,
+    interval=1.0,
+    as_json=False,
+    verbose=False,
+    retry_for=DEFAULT_RETRY_FOR,
+):
+    """
+    Wait for a command running in background, printing its progress then its results: returns an exit code.
+    Its progress and state go to stderr: a spinner in a terminal, otherwise (eg. scripts) a line when it
+    starts, and how it's going every HEARTBEAT_INTERVAL seconds, with what the hub's workers do
+    """
+    started = time.time()
+    in_terminal = err_console.is_terminal
+    state = {"heartbeat": started, "unreachable": False, "jobs": "", "jobs_at": 0.0}
+    if not in_terminal:
+        print_text("[%s] [#%s] %s started" % (time.strftime("%Y-%m-%d %H:%M:%S"), command_id, cmd), stderr=True)
+
+    def on_status(info):
+        now = time.time()
+        if info is None and not state["unreachable"]:
+            state["unreachable"] = True
+            print_text(
+                "Can't reach the hub: trying again for up to %s, command #%s keeps running there"
+                % (format_duration(retry_for), command_id),
+                style="yellow",
+                stderr=True,
+            )
+        elif info is not None and state["unreachable"]:
+            state["unreachable"] = False
+            print_text("Reached the hub again", style="yellow", stderr=True)
+        if info is None or info.get("is_done"):
+            return
+        if now - state["jobs_at"] > (60 if in_terminal else HEARTBEAT_INTERVAL - 1):
+            state["jobs"], state["jobs_at"] = jobs_summary(client), now
+        running = "running for %s%s" % (format_duration(now - started), ": " + state["jobs"] if state["jobs"] else "")
+        if in_terminal:
+            status.update("[#%s] %s %s" % (command_id, escape(str(cmd)), escape(running)))
+        elif now - state["heartbeat"] >= HEARTBEAT_INTERVAL:
+            state["heartbeat"] = now
+            print_text("[%s] [#%s] %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), command_id, running), stderr=True)
+
+    def on_progress(lines):
+        for line in lines:  # eg. dump_all: which sources are done
+            print_text(line if in_terminal else "[%s] %s" % (time.strftime("%H:%M:%S"), line), style="dim", stderr=True)
+
+    try:
+        with err_console.status("[#%s] %s running..." % (command_id, escape(str(cmd)))) as status:
+            info = client.wait(
+                command_id,
+                timeout=wait_timeout,
+                interval=interval,
+                on_progress=on_progress,
+                on_status=on_status,
+                retry_for=retry_for,
+            )
+    except KeyboardInterrupt:
+        print_text("Stopped waiting, command #%s keeps running on the hub" % command_id, stderr=True)
+        return 130
+    except (TimeoutError, HubAPIError) as e:
+        print_error(e)
+        return 1
+    if as_json:
+        print_json(info)
+        return 1 if info.get("failed") else 0
+    return 0 if print_command_results(info, verbose=verbose) else 1
+
+
+def command_name(cmd):
+    """Name of the command called by a command line from the history, eg. dump for "dump('mygene')" """
+    match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)", cmd or "")
+    return match.group(1) if match else None
+
+
+@hub_application.command(name="history")
+def command_history(
+    ctx: typer.Context,
+    command_id: Annotated[Optional[int], typer.Argument(help="ID of a command, as returned by 'run'")] = None,
+    running: Annotated[bool, typer.Option("--running", help="Only list commands still running")] = False,
+    search: Annotated[
+        Optional[str], typer.Option("--search", "-s", help="Only list commands containing this text")
+    ] = None,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", "-a", help="Also list the calls to advanced commands (eg. made by BioThings Studio)"),
+    ] = False,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Number of commands to list")] = 20,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the raw JSON response")] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Print the traceback when the command failed")
+    ] = False,
+    wait: Annotated[
+        bool,
+        typer.Option("--wait", "-w", help="Wait for the command (given its ID) to finish, printing its progress"),
+    ] = False,
+    wait_timeout: Annotated[
+        Optional[float],
+        typer.Option("--wait-timeout", help="With --wait: maximum time to wait, in seconds"),
+    ] = None,
+    interval: Annotated[float, typer.Option("--interval", help="With --wait: seconds between status checks")] = 1.0,
+    retry_for: Annotated[
+        float,
+        typer.Option(
+            "--retry-for",
+            help="With --wait, seconds to keep trying when the hub can't be reached (eg. the network drops)",
+        ),
+    ] = DEFAULT_RETRY_FOR,
+):
+    """
+    Show the commands launched on the hub (since it started), or the status and results of one of them
+    """
+    client = get_client(ctx)
+    if wait and command_id is None:
+        print_text("--wait needs the ID of a command, eg. history 12 --wait", style="red", stderr=True)
+        raise typer.Exit(2)
+    try:
+        result = client.command(command_id) if command_id is not None else client.commands(running=running)
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if wait and not result.get("is_done"):
+        raise typer.Exit(
+            follow_command(client, command_id, result.get("cmd"), wait_timeout, interval, as_json, verbose, retry_for)
+        )
+    if command_id is None:
+        hidden = set()
+        if not show_all:
+            try:
+                hidden = {cmd["name"] for cmd in client.catalog()["commands"] if cmd["hidden"]}
+            except HubAPIError:  # older hubs: no terminal API
+                pass
+        result = {
+            key: cmd
+            for key, cmd in result.items()
+            if command_name(cmd.get("cmd")) not in hidden
+            and (not search or search.lower() in cmd.get("cmd", "").lower())
+        }
+    if as_json:
+        print_json(result)
+        return
+    if command_id is not None:
+        if not result.get("is_done"):
+            print_text("[#%s] %s running" % (result["id"], result["cmd"]))
+            for line in result.get("progress") or []:  # eg. dump_all: which sources are done
+                print_text(line, style="dim")
+            print_text("Wait for it with: biothings-cli hub history %s --wait" % result["id"], style="dim")
+            return
+        if not print_command_results(result, verbose=verbose):
+            raise typer.Exit(1)
+        return
+    commands = sorted(result.values(), key=lambda cmd: cmd.get("id", 0), reverse=True)[:limit]
+    if not commands:
+        console.print("No command %s" % ("running" if running else "found"))
+        return
+    table = Table(box=box.SIMPLE)
+    table.add_column("id", justify="right")
+    table.add_column("status")
+    table.add_column("duration")
+    table.add_column("command")
+    for cmd in commands:
+        if not cmd.get("is_done"):
+            status = "[yellow]running[/yellow]"
+        elif cmd.get("failed"):
+            status = "[red]failed[/red]"
+        else:
+            status = "[green]done[/green]"
+        table.add_row(str(cmd.get("id")), status, cmd.get("duration") or "", escape(cmd.get("cmd", "")))
+    console.print(table)
+
+
+# its previous name, easily mixed up with "run status" (the hub's summary)
+hub_application.command(name="status", hidden=True)(command_history)
+
+
+def human_size(size):
+    """eg. 378.7 MiB, for a size in bytes"""
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return "%d B" % size if unit == "B" else "%.1f %s" % (size, unit)
+        size /= 1024
+
+
+def running_jobs(job_manager):
+    """The jobs running on the hub's workers (processes and threads), from its job manager's state"""
+    jobs = []
+    for kind, queue in (job_manager.get("queue") or {}).items():
+        for worker, state in (queue.get("all") or {}).items():
+            if state.get("job"):
+                memory = (state.get("memory") or {}).get("size") if kind == "process" else None
+                jobs.append(
+                    dict(state["job"], worker="pid %s" % worker if kind == "process" else worker, memory=memory)
+                )
+    return sorted(jobs, key=lambda job: job.get("started_at") or 0)
+
+
+@hub_application.command(name="jobs")
+def list_jobs(
+    ctx: typer.Context,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the raw JSON response (the job manager's state)")
+    ] = False,
+):
+    """
+    Show the jobs running on the hub's workers (downloads, uploads, merge steps, index batches...): their
+    source, step, description (eg. the file being downloaded) and duration, and how many are pending
+    """
+    try:
+        state = get_client(ctx).request("GET", "/job_manager")
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if as_json:
+        print_json(state)
+        return
+    jobs = running_jobs(state)
+    pending = sum(len(queue.get("pending") or []) for queue in (state.get("queue") or {}).values())
+    if jobs:
+        for job in jobs:
+            job["memory"] = human_size(job["memory"]) if job.get("memory") else ""
+        # (without the columns empty for all the jobs, eg. descriptions: tables fit narrow terminals)
+        columns = [
+            key
+            for key in ("worker", "category", "source", "step", "description", "duration", "memory")
+            if any(job.get(key) for job in jobs)
+        ]
+        if not console.is_terminal:
+            # eg. piped to grep or awk: tab-separated values, never cut to a terminal's width
+            typer.echo("\t".join(columns))
+            for job in jobs:
+                typer.echo("\t".join(str(job.get(key) or "") for key in columns))
+        else:
+            table = Table(box=box.SIMPLE)
+            for column in columns:
+                table.add_column(column, overflow="fold")  # (long values wrap rather than being cut)
+            for job in jobs:
+                table.add_row(*[escape(str(job.get(key) or "")) for key in columns])
+            console.print(table)
+    print_text("%s job(s) running, %s pending" % (len(jobs), pending), stderr=not console.is_terminal)
+    if console.is_terminal:
+        console.print("Commands launched on the hub: biothings-cli hub history --running", style="dim")
+
+
+@hub_application.command(name="hooks")
+def list_hooks(ctx: typer.Context):
+    """
+    List the hook files loaded by the hub (python files in its HOOKS_FOLDER), and the commands they define
+    """
+    try:
+        catalog = get_client(ctx).catalog()
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    console.print("Hooks folder: %s" % escape(str(catalog.get("hooks_folder"))))
+    if not catalog["hooks"]:
+        console.print("No hook file loaded")
+    failed = False
+    for hook in catalog["hooks"]:
+        if hook["error"]:
+            failed = True
+            console.print("[red]:heavy_multiplication_x: %s failed to load[/red]" % escape(hook["name"]))
+            print_text(hook["error"].rstrip(), style="dim")
+        else:
+            commands = ", ".join(hook["commands"]) or "no command defined"
+            console.print("[green]:heavy_check_mark:[/green] %s: %s" % (escape(hook["name"]), escape(commands)))
+        if hook.get("overrides"):
+            console.print("   [yellow]replaces: %s[/yellow]" % escape(", ".join(hook["overrides"])))
+    if failed:
+        raise typer.Exit(1)
+
+
+def format_expiry(login):
+    """When a login expires, in local time"""
+    try:
+        return datetime.datetime.fromisoformat(login["expires"]).astimezone().strftime("%Y-%m-%d %H:%M")
+    except (KeyError, TypeError, ValueError):
+        return str(login.get("expires"))
+
+
+def log_in(client, username=None, secret=None):
+    """Log in to the hub, asking for the username and password if not given, and save the login"""
+    username = username or typer.prompt("Username", err=True)
+    if secret is None:
+        secret = typer.prompt("Password", hide_input=True, err=True)
+    login = client.login(username, secret)
+    save_login(client.url, login)
+    client.saved_login = True
+    return login
+
+
+@hub_application.command(name="login")
+def login_command(
+    ctx: typer.Context,
+    username: Annotated[Optional[str], typer.Option("--username", "-n", help="Username (asked if not given)")] = None,
+    password_stdin: Annotated[
+        bool,
+        typer.Option("--password-stdin", help="Read the password from stdin, eg. in scripts (otherwise it's asked)"),
+    ] = False,
+    print_token: Annotated[
+        bool,
+        typer.Option(
+            "--print-token", help="Print the login token rather than saving the login (eg. for BIOTHINGS_HUB_TOKEN)"
+        ),
+    ] = False,
+):
+    """
+    Log in to a hub requiring a login to run commands (users in its HUB_API_USERS). The login is saved
+    for this hub in ~/.biothings_hub_logins (only readable by you), and used until it expires
+    """
+    client = get_client(ctx)
+    username = username or typer.prompt("Username", err=True)
+    if password_stdin:
+        secret = sys.stdin.readline().rstrip("\r\n")
+    else:
+        secret = typer.prompt("Password", hide_input=True, err=True)
+    try:
+        login = client.login(username, secret)
+    except HubAPIError as e:
+        if e.status == 404 and not e.payload.get("error"):
+            e = HubAPIError("This hub doesn't support logins (older BioThings version): it doesn't require one")
+        print_error(e)
+        raise typer.Exit(1)
+    if print_token:
+        typer.echo(login["token"])
+        return
+    save_login(client.url, login)
+    console.print(
+        "Logged in to %s as %s, until %s" % (escape(client.url), escape(login["username"]), format_expiry(login))
+    )
+
+
+@hub_application.command(name="logout")
+def logout_command(ctx: typer.Context):
+    """
+    Forget the login saved for this hub (see login)
+    """
+    client = get_client(ctx)
+    if not saved_login(client.url):
+        console.print("Not logged in to %s" % escape(client.url))
+        return
+    save_login(client.url, None)
+    console.print("Logged out of %s" % escape(client.url))
+
+
+@hub_application.command(name="shell")
+def interactive_shell(ctx: typer.Context):
+    """
+    Interactive terminal: type commands as in BioThings Studio's terminal (help, exit...)
+    """
+    client = get_client(ctx)
+    try:
+        info = client.info() or {}
+        catalog = client.catalog()
+    except HubAPIError as e:
+        print_error(e)
+        raise typer.Exit(1)
+    commands = {cmd["name"]: cmd for cmd in catalog["commands"]}
+    console.print("Connected to [bold]%s[/bold] (%s)" % (escape(str(info.get("name") or "hub")), escape(client.url)))
+    if info.get("login_required"):  # (not sent by older hubs)
+        login = saved_login(client.url)
+        if login:
+            console.print("Logged in as %s, until %s" % (escape(login["username"]), format_expiry(login)))
+        elif LOGIN_HEADER not in client.session.headers:
+            console.print("This hub requires a login to run commands: type [bold]login[/bold]")
+    console.print(
+        "Type [bold]help[/bold] to list commands, [bold]help <command>[/bold] for details, "
+        "[bold]jobs[/bold] for commands running in background, [bold]exit[/bold] to quit."
+    )
+    readline = setup_history()
+    running = {}
+    try:
+        while True:
+            report_finished(client, running)
+            try:
+                line = input("hub> ").strip()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                console.print()
+                continue
+            if not line:
+                continue
+            words = line.split()
+            if line in ("exit", "quit"):
+                break
+            if words[0] == "help" and len(words) <= 2:
+                if len(words) == 1:
+                    shell_help(commands)
+                elif words[1].replace("-", "_") in commands:
+                    print_command_help(commands[words[1].replace("-", "_")])
+                else:
+                    print_text("Unknown command '%s'" % words[1], style="red", stderr=True)
+                continue
+            if line in ("login", "logout"):
+                try:
+                    if line == "login":
+                        login = log_in(client)
+                        print_text("Logged in as %s, until %s" % (login["username"], format_expiry(login)))
+                    else:
+                        save_login(client.url, None)
+                        client.set_token(None)
+                        print_text("Logged out")
+                except HubAPIError as e:
+                    print_error(e)
+                continue
+            if line == "jobs":
+                for command_id, cmd in sorted(running.items()):
+                    print_text("[#%s] %s running" % (command_id, cmd))
+                    try:
+                        progress = client.command(command_id, timeout=CONNECT_TIMEOUT).get("progress") or []
+                    except HubAPIError:
+                        progress = []
+                    for progress_line in progress:  # eg. dump_all: which sources are done
+                        print_text("  %s" % progress_line, style="dim")
+                if not running:
+                    print_text("No command running in background")
+                continue
+            try:
+                try:
+                    response = client.run(line=line)
+                except HubAPIError as e:
+                    if e.status != 428:
+                        raise
+                    show_confirmation(e)
+                    if not typer.confirm("Run it?", default=False, err=True):
+                        continue
+                    response = client.run(line=line, confirmed=True)
+            except HubAPIError as e:
+                print_error(e)
+                continue
+            if response["is_done"]:
+                print_response(response)
+            else:
+                print_logs(response)
+                running[response["id"]] = response["cmd"]
+                print_text("[#%s] %s running in background" % (response["id"], response["cmd"]), style="dim")
+    finally:
+        if readline is not None:
+            try:
+                readline.write_history_file(HISTORY_FILE)
+            except OSError:
+                pass
+
+
+def shell_help(commands):
+    visible = sorted(name for name, cmd in commands.items() if not cmd["hidden"])
+    console.print("Commands: %s" % escape(", ".join(visible)), soft_wrap=True)
+    hooks = sorted(name for name, cmd in commands.items() if cmd["origin"] == "hook")
+    if hooks:
+        console.print("From hook files: %s" % escape(", ".join(hooks)), soft_wrap=True)
+    console.print("Terminal commands: help [<command>], jobs, login, logout, exit")
+
+
+def report_finished(client, running):
+    """Print the results of the commands running in background which are now done"""
+    for command_id in list(running):
+        try:
+            info = client.command(command_id, timeout=CONNECT_TIMEOUT)  # (don't hold the prompt for long)
+        except HubAPIError:
+            continue
+        if info.get("is_done"):
+            running.pop(command_id)
+            print_command_results(info)
+
+
+def setup_history():
+    """Enable line editing and history for the interactive terminal, when readline is available"""
+    if not sys.stdin.isatty():
+        return None
+    try:
+        import readline
+    except ImportError:
+        return None
+    try:
+        readline.read_history_file(HISTORY_FILE)
+    except OSError:
+        pass
+    readline.set_history_length(1000)
+    return readline

@@ -404,6 +404,8 @@ class SnapshotManager(BaseManager):
         Create a snapshot named "snapshot" (or, by default, same name as the index)
         from "index" according to environment definition (repository, etc...) "env".
         """
+        if snapshot_env not in self.register:
+            raise ValueError("Unknown snapshot environment '%s' (see SNAPSHOT_CONFIG)" % snapshot_env)
         env = self.register[snapshot_env]
         return env.snapshot(index, snapshot, recreate_repo=recreate_repo)
 

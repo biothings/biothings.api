@@ -118,7 +118,8 @@ class Collection(HandleAutoReconnectMixin, PymongoCollection):
             return self.update_one(spec, doc, *args, **kwargs)
 
     def remove(self, spec_or_id=None, **kwargs):
-        if kwargs.pop("multi", None):
+        # like pymongo 3's remove(): all matching documents, unless multi=False
+        if kwargs.pop("multi", True):
             return self.delete_many(spec_or_id, **kwargs)
         else:
             return self.delete_one(spec_or_id, **kwargs)

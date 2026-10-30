@@ -191,7 +191,7 @@ class Cleaner:
             args = self.indexers[index["environment"]]["args"]
 
             async with AsyncElasticsearch(**args) as client:
-                await client.indices.delete(index["_id"], ignore_unavailable=True)
+                await client.indices.delete(index=index["_id"], ignore_unavailable=True)
 
                 action = ("DELETE", str(index))
                 actions.append(action)

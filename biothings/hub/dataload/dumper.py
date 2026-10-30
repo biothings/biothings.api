@@ -34,7 +34,7 @@ import requests
 
 from biothings import config as btconfig
 from biothings.hub import DUMPER_CATEGORY, UPLOADER_CATEGORY, renderer as job_renderer
-from biothings.hub.dataload.manager import BaseSourceManager
+from biothings.hub.dataload.manager import BaseSourceManager, wait_for_sources
 from biothings.hub.dataload.uploader import set_pending_to_upload
 from biothings.hub.manager import ResourceError
 from biothings.utils.common import first_exception, open_anyfile, rmdashfr, timesofar, untarall
@@ -439,13 +439,21 @@ class BaseDumper:
                 except (AttributeError, KeyError):
                     # no src_doc or no download info
                     pass
-                # TODO: blocking call for now, FTP client can't be properly set in thread after
                 if inspect.iscoroutinefunction(self.create_todump_list):
                     await self.create_todump_list(force=force, job_manager=job_manager, **kwargs)
                 else:
-                    self.create_todump_list(force=force, **kwargs)
+                    # checking for a new release can take a while (eg. HTTP requests to a slow
+                    # server), run it in a thread so the hub (API, websocket...) isn't blocked meanwhile.
+                    # Right away, as before: only downloading waits (eg. for the source's upload to end)
+                    check_pinfo = {key: value for key, value in pinfo.items() if key != "__predicates__"}
+                    check_pinfo.update(step="check", __skip_check__=True)
+                    job = await job_manager.defer_to_thread(
+                        check_pinfo, partial(self.create_todump_list, force=force, **kwargs)
+                    )
+                    await job
                 # make sure we release (disconnect) client so we don't keep an open
-                # connection for nothing
+                # connection for nothing (the client used for checks isn't shared with downloads,
+                # which prepare their own client, in the process they run in)
                 self.release_client()
                 if self.to_dump:
                     if check_only:
@@ -1460,21 +1468,29 @@ class DumperManager(BaseSourceManager):
                     logging.error("Can't register class %s: %s" % (klass, e))
                     continue
 
-    def dump_all(self, force=False, **kwargs):
+    def dump_all(self, force=False, raise_on_error=False, **kwargs):
         """
-        Run all dumpers, except manual ones
+        Run the dumpers of all the data sources, except manual ones. Not the private ones (named
+        "__..."), such as the ones pulling new code for the hub's "upgrade" command (see
+        biothings.hub.upgrade), nor the ones downloading data releases to install (see
+        biothings.hub.autoupdate, "install" command). Unless raise_on_error, a dump failing doesn't
+        fail the whole before the others are done: then tells which sources failed (see
+        wait_for_sources()).
         """
-        jobs = []
-        for src in self.register:
-            job = self.dump_src(src, force=force, skip_manual=True, **kwargs)
-            jobs.extend(job)
-        return asyncio.gather(*jobs)
+        from biothings.hub.autoupdate.dumper import BiothingsDumper  # (imports this module)
+
+        jobs = {}
+        for src, klasses in self.register.items():
+            if src.startswith("__") or (klasses and all(issubclass(klass, BiothingsDumper) for klass in klasses)):
+                continue
+            jobs[src] = self.dump_src(src, force=force, skip_manual=True, **kwargs)
+        return wait_for_sources("dump", jobs, raise_on_error=raise_on_error)
 
     def dump_src(self, src, force=False, skip_manual=False, schedule=False, check_only=False, **kwargs):
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)  # eg. a data release installed in one environment
+        klasses = self.register[src]
 
         jobs = []
         try:
@@ -1510,10 +1526,10 @@ class DumperManager(BaseSourceManager):
             raise
 
     def mark_success(self, src: str, dry_run: bool = True):
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException(f"Can't find '{src}' in registered sources (whether as main or sub-source)")
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)
+        klasses = self.register[src]
 
         result = []
         for _, klass in enumerate(klasses):
@@ -1527,10 +1543,10 @@ class DumperManager(BaseSourceManager):
         with given arguments. Used to create arbitrary calls on a dumper.
         "method_name" within dumper definition must a coroutine.
         """
-        if src in self.register:
-            klasses = self.register[src]
-        else:
-            raise DumperException("Can't find '%s' in registered sources (whether as main or sub-source)" % src)
+        if self.find_source(src) is None:
+            raise DumperException(self.unknown_source(src))
+        src = self.find_source(src)
+        klasses = self.register[src]
 
         jobs = []
         try:

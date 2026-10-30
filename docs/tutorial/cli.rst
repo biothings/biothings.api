@@ -285,6 +285,110 @@ We can check if all the data is deleted using
 .. image:: ../_static/clilistclean.png
     :width: 100%
 
+=============================
+Run commands on a running Hub
+=============================
+
+The ``biothings-cli hub`` commands connect to a running BioThings Hub (eg. a
+BioThings Studio) through its API, and run the same commands as the terminal in
+BioThings Studio: the built-in commands every hub provides (``dump_all``,
+``upload_all``, ``sync``...), and the commands defined in the hub's hook files
+(see `Hooks and custom commands <studio_guide.html#hooks-and-custom-commands>`_).
+
+.. code:: bash
+
+   # URL of the Hub API, defaults to http://localhost:7080
+   export BIOTHINGS_HUB_URL=http://localhost:7080
+
+   biothings-cli hub commands                      # list the commands available on the hub
+   biothings-cli hub help dump                     # usage and documentation of a command
+   biothings-cli hub run dump all                  # run a command, wait for it to finish
+   biothings-cli hub run --no-wait upload mygene   # run a command in background
+   biothings-cli hub history                       # launched commands, and their status
+   biothings-cli hub history 12                    # status and results of command #12
+   biothings-cli hub history 12 --wait             # wait for command #12 to finish
+   biothings-cli hub jobs                          # jobs running on the hub's workers
+   biothings-cli hub hooks                         # hook files loaded by the hub
+   biothings-cli hub shell                         # interactive terminal
+
+A command can be typed with a shell-like syntax, or as a python call:
+
+.. code:: bash
+
+   biothings-cli hub run dump mygene --force
+   biothings-cli hub run "dump('mygene', force=True)"
+
+Multi-word command names can be typed with spaces or hyphens (``dump all`` runs
+``dump_all``), and commands can be chained with ``&&`` (quoted) to run one after
+the other, stopping at the first failure.
+
+Options of ``run`` go before the command name (``--no-wait``, ``--json``,
+``--wait-timeout``, ``--timeout``...), everything after it is given to the hub command.
+Some commands return their result right away, others start a job in background: by
+default, ``run`` waits for the job to finish and prints its results, while
+``--no-wait`` returns right away with the command ID, to follow it with
+``biothings-cli hub history <ID> --wait``. ``jobs`` shows what the hub's workers are
+doing meanwhile: the source, step (eg. an index batch, ``#12/40``), file and duration
+of each job (tab-separated values when piped). ``run cancel <ID>`` cancels a command
+running in background: its next steps don't run (eg. an install doesn't move its alias),
+its jobs already running in the hub's workers finish first.
+
+While waiting, the CLI checks the command every second at first, then less and less
+often (up to every 30 seconds), and keeps trying for 15 minutes when the hub can't be
+reached, eg. when the network drops (``--retry-for``). Its state goes to stderr: a spinner
+in a terminal, otherwise (eg. scripts) a line with its ID when it starts, then how it's going
+every 5 minutes, with what the hub's workers do. Commands queued by others don't have an ID:
+``run follow_build <build>`` waits for a build's next steps, eg. its release note and its
+publication after a snapshot (autopublish).
+
+The CLI waits up to 2 minutes for each answer of the hub (``--timeout``, given to ``run``
+or before it). A busy hub may not answer in time while it starts a command, which may
+start anyway: ``run`` then lists the commands the hub started meanwhile, to follow one
+with ``history <ID> --wait`` rather than running it twice.
+
+What a command logs while it's called (eg. ``logger.info(...)``) is printed on stderr,
+like the command's state (eg. ``[#12] index(...) done in 2h05m``), its results on stdout:
+they can be piped to a JSON parser. Commands deleting or changing data (eg. ``rmmerge``,
+``archive``, ``resetconf``, or ``auto_archive`` when it's not a dry run) must be
+confirmed: ``run`` asks for it from an interactive terminal, ``--yes`` confirms right
+away (eg. in scripts).
+
+To see the hub's state: ``run source_summary`` (each data source's download and upload),
+``run build_config <name>``, ``run build_summary <build>`` (its steps, index, snapshot,
+release note, what's pending...) and ``run envs`` (the index, snapshot and release
+environments to give to ``index``, ``snapshot`` and ``publish``). Secrets, such as the
+cloud credentials of release environments, are hidden in all the hub's API responses.
+While ``dump all`` and ``upload all`` run, ``run`` prints each source as it's done.
+``history`` lists the commands launched since the hub started: ``--search`` filters them,
+``--all`` includes the calls to advanced commands (eg. made by BioThings Studio). The help
+of the release commands (``help merge``, ``help snapshot``, ``help publish``...) tells what
+they need, what they do and what comes next: eg. ``publish`` waits for the release note
+created in background after a snapshot.
+
+A merge needs every source of its build configuration uploaded successfully: ``run merge
+<configuration> --check`` lists the sources which aren't, and why, without merging.
+``upload all`` skips the sources which can't be uploaded yet (eg. their last download
+failed: they keep their last upload, and can still be merged) and the dummy uploaders.
+
+If ``biothings-cli hub`` says ``No such command 'hub'``, an older BioThings version comes
+first in your ``PATH`` (eg. a project's virtual environment): ``which -a biothings-cli``
+lists them.
+
+When a hub requires a login to run commands (users in its ``HUB_API_USERS``, see
+:ref:`hub-login`), ``run`` refuses commands until you log in:
+
+.. code-block:: bash
+
+   biothings-cli hub login                         # asks for a username and a password
+   biothings-cli hub logout
+
+The login is saved for this hub in ``~/.biothings_hub_logins`` (only readable by you), and
+used until it expires (12 hours by default); ``shell`` has ``login`` and ``logout`` too. Scripts
+give the password on stdin (``login --username alice --password-stdin``), or a token with
+``--token`` (or the ``BIOTHINGS_HUB_TOKEN`` environment variable), from ``login --print-token``
+or ``POST /login``. Commands only reading data (``commands``, ``help``, ``history``, ``jobs``)
+don't need a login.
+
 ==========
 In Summary
 ==========

@@ -9,6 +9,7 @@ from tornado.web import HTTPError, RequestHandler
 from biothings import config
 from biothings.hub.api.handlers.auth import get_users, login, require_login
 from biothings.utils import serializer
+from biothings.utils.redact import redact_secrets
 
 
 class DefaultHandler(RequestHandler):
@@ -29,19 +30,21 @@ class DefaultHandler(RequestHandler):
             #     "result": result,
             #     "status": "ok"
             # }, iso_dates=True)
-            serializer.to_json({
-                "result": result, "status": "ok"
-            })
+            # naive dates (eg. from MongoDB) are UTC: say so, so clients (eg. BioThings Studio)
+            # don't read them as local time. Secrets (eg. AWS keys in release configurations) are hidden
+            serializer.to_json({"result": redact_secrets(result), "status": "ok"}, naive_utc=True)
         )
 
     def write_error(self, status_code, **kwargs):
         self.set_status(status_code)
         super(DefaultHandler, self).write(
-            {
-                "error": str(kwargs.get("exc_info", [None, None, None])[1]),
-                "status": "error",
-                "code": status_code,
-            }
+            redact_secrets(
+                {
+                    "error": str(kwargs.get("exc_info", [None, None, None])[1]),
+                    "status": "error",
+                    "code": status_code,
+                }
+            )
         )
 
     # defined by default so we accept OPTIONS pre-flight requests

@@ -102,6 +102,8 @@ _config_for_app()
 #     _config_for_app(_config)
 
 
+from biothings.hub import overview  # noqa: E402
+from biothings.hub.terminal import HubTerminal  # noqa: E402
 from biothings.utils.common import get_class_from_classpath  # noqa: E402
 from biothings.utils.hub import (  # noqa: E402
     CommandDefinition,
@@ -287,6 +289,12 @@ def get_schedule(loop):
     return "\n".join(out)
 
 
+def documented(command, doc):
+    """A command made with functools.partial, with its own docstring (rather than its function's, eg. generic)"""
+    command.__doc__ = doc
+    return command
+
+
 class HubCommands(OrderedDict):
     def __setitem__(self, k, v):
         if k in self:
@@ -391,6 +399,7 @@ class HubServer:
         self.api_endpoints = {}
         self.readonly_api_endpoints = None
         self.shell = None
+        self.terminal = None  # runs shell commands for the webapp terminal and the CLI
         self.commands = None  # default "public" commands
         self.extra_commands = None  # "hidden" commands, but still useful for advanced usage
         self.hook_files = None  # user-defined commands as hook files
@@ -448,6 +457,9 @@ class HubServer:
         self.shell.register_managers(self.managers)
         self.shell.server = self  # propagate server instance in shell
         # so it's accessible from the console if needed
+        # shown as an absolute path: a relative HOOKS_FOLDER depends on the folder the hub was started from
+        hooks_folder = os.path.abspath(getattr(config, "HOOKS_FOLDER", "./hooks"))
+        self.terminal = HubTerminal(self.shell, hooks_folder=hooks_folder)
         self.configure_remaining_features()
         self.configure_commands()
         self.configure_extra_commands()
@@ -848,7 +860,7 @@ class HubServer:
         if not os.path.exists(hooks_folder):
             self.logger.info("Hooks folder '%s' doesn't exist, creating it" % hooks_folder)
             os.makedirs(hooks_folder)
-        self.hook_files = glob.glob(os.path.join(hooks_folder, "*.py"))
+        self.hook_files = sorted(glob.glob(os.path.join(hooks_folder, "*.py")))
 
     def ingest_hooks(self):
         if not self.hook_files:
@@ -861,9 +873,11 @@ class HubServer:
                 self.logger.exception("Can't process hook file: %s" % e)
 
     def process_hook_file(self, hook_file):
-        strcode = open(hook_file).read()
-        code = compile(strcode, "<string>", "exec")
-        eval(code, self.shell.extra_ns, self.shell.extra_ns)
+        """
+        Run a hook file in the hub namespace. Functions it defines become hub commands,
+        available from the console, the webapp terminal and the CLI (see HubTerminal.load_hook)
+        """
+        return self.terminal.load_hook(hook_file)
 
     def configure_managers(self):
         if self.managers is not None:
@@ -1016,6 +1030,11 @@ class HubServer:
 
         shell_endpoint = ("/shell", ShellHandler, {"shell": self.shell, "shellog": shell_logger})
         self.routes.append(shell_endpoint)
+        # commands catalog and runner used by the webapp terminal and "biothings-cli hub"
+        from biothings.hub.api.handlers.terminal import TerminalCommandsHandler, TerminalRunHandler
+
+        self.routes.append(("/terminal/commands", TerminalCommandsHandler, {"terminal": self.terminal}))
+        self.routes.append(("/terminal/run", TerminalRunHandler, {"terminal": self.terminal, "shellog": shell_logger}))
 
     def configure_dataupload_feature(self):
         assert "ws" in self.features, "'dataupload' feature requires 'ws'"
@@ -1068,9 +1087,28 @@ class HubServer:
         assert self.managers, "No managers configured"
         self.commands = HubCommands()
         self.commands["status"] = CommandDefinition(command=partial(status, self.managers), tracked=False)
-        self.commands["export_command_documents"] = CommandDefinition(
-            command=self.export_command_documents, tracked=False
+        # readable summaries of the hub's state, secrets hidden (see biothings.hub.overview)
+        autohub = getattr(self, "autohub_feature", None) if "autohub" in self.features else None
+        release_installers = autohub.list_biothings if autohub and autohub.version_urls else None
+        self.commands["envs"] = CommandDefinition(
+            command=partial(overview.envs, release_installers=release_installers), tracked=False
         )
+        if self.managers.get("dump_manager") or self.managers.get("upload_manager"):
+            self.commands["source_summary"] = CommandDefinition(
+                command=partial(
+                    overview.source_summary, self.managers.get("dump_manager"), self.managers.get("upload_manager")
+                ),
+                tracked=False,
+            )
+        if self.managers.get("build_manager"):
+            self.commands["build_summary"] = CommandDefinition(command=overview.build_summary, tracked=False)
+            self.commands["follow_build"] = overview.follow_build
+            self.commands["build_config"] = CommandDefinition(command=overview.build_config, tracked=False)
+        self.commands["export_command_documents"] = CommandDefinition(
+            command=self.export_command_documents, tracked=False, hidden=True
+        )
+        if "hooks" in self.features:
+            self.commands["hooks"] = CommandDefinition(command=self.terminal.hooks_summary, tracked=False)
 
         if "config" in self.features:
             self.commands["config"] = CommandDefinition(command=config.show, tracked=False)
@@ -1099,7 +1137,9 @@ class HubServer:
             self.commands["whatsnew"] = CommandDefinition(
                 command=self.managers["build_manager"].whatsnew, tracked=False
             )
-            self.commands["lsmerge"] = self.managers["build_manager"].list_merge
+            self.commands["lsmerge"] = CommandDefinition(
+                command=self.managers["build_manager"].list_merge, tracked=False
+            )
             self.commands["rmmerge"] = self.managers["build_manager"].delete_merge
             self.commands["merge"] = self.managers["build_manager"].merge
             self.commands["archive"] = self.managers["build_manager"].archive_merge
@@ -1123,11 +1163,15 @@ class HubServer:
         if self.managers.get("snapshot_manager"):
             self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
             self.commands["snapshot_cleanup"] = self.managers["snapshot_manager"].cleanup
-            self.commands["list_snapshots"] = self.managers["snapshot_manager"].list_snapshots
+            self.commands["list_snapshots"] = CommandDefinition(
+                command=self.managers["snapshot_manager"].list_snapshots, tracked=False
+            )
             self.commands["delete_snapshots"] = self.managers["snapshot_manager"].delete_snapshots
             self.commands["validate_snapshots"] = self.managers["snapshot_manager"].validate_snapshots
         if self.managers.get("mongo_build_cleanup_manager"):
-            self.commands["list_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].list_mongo_builds
+            self.commands["list_mongo_builds"] = CommandDefinition(
+                command=self.managers["mongo_build_cleanup_manager"].list_mongo_builds, tracked=False
+            )
             self.commands["delete_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].delete_mongo_builds
             self.commands["validate_mongo_builds"] = self.managers["mongo_build_cleanup_manager"].validate_mongo_builds
         # data release commands
@@ -1144,7 +1188,10 @@ class HubServer:
         # inspector
         if self.managers.get("inspect_manager"):
             self.commands["inspect"] = self.managers["inspect_manager"].inspect
-            self.commands["flatten_inspection_data"] = self.managers["inspect_manager"].flatten
+            # used by BioThings Studio to display inspection results
+            self.commands["flatten_inspection_data"] = CommandDefinition(
+                command=self.managers["inspect_manager"].flatten, hidden=True, tracked=False
+            )
         # data plugins
         if self.managers.get("assistant_manager"):
             self.commands["register_url"] = partial(self.managers["assistant_manager"].register_url)
@@ -1154,18 +1201,53 @@ class HubServer:
             self.commands["dump_plugin"] = self.managers["dataplugin_manager"].dump_src
 
         if "autohub" in self.features:
-            self.commands["list"] = CommandDefinition(command=self.autohub_feature.list_biothings, tracked=False)
+            # installing data releases published by other hubs (see VERSION_URLS): without any, these
+            # commands only apply to sources which can't use them, they're hidden (still callable)
+            hidden = not self.autohub_feature.version_urls
+            self.commands["list"] = CommandDefinition(
+                command=self.autohub_feature.list_biothings, tracked=False, hidden=hidden
+            )
             # dump commands
-            self.commands["versions"] = partial(self.managers["dump_manager"].call, method_name="versions")
+            self.commands["versions"] = CommandDefinition(
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="versions"),
+                    "List the data releases a BioThings API published (its versions.json): version, type "
+                    "(full or incremental), release date and URL",
+                ),
+                hidden=hidden,
+            )
+            # works for any source
             self.commands["check"] = partial(self.managers["dump_manager"].dump_src, check_only=True)
-            self.commands["info"] = partial(self.managers["dump_manager"].call, method_name="info")
-            self.commands["download"] = partial(self.managers["dump_manager"].dump_src)
+            self.commands["info"] = CommandDefinition(
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="info"),
+                    "Show a data release's information and release note: the latest one, or --version",
+                ),
+                hidden=hidden,
+            )
+            self.commands["download"] = CommandDefinition(
+                command=partial(self.managers["dump_manager"].dump_src), hidden=hidden
+            )
             # upload commands
-            self.commands["apply"] = partial(self.managers["upload_manager"].upload_src)
-            self.commands["install"] = partial(self.autohub_feature.install)
-            self.commands["backend"] = partial(self.managers["dump_manager"].call, method_name="get_target_backend")
-            self.commands["reset_backend"] = partial(
-                self.managers["dump_manager"].call, method_name="reset_target_backend"
+            self.commands["apply"] = CommandDefinition(
+                command=partial(self.managers["upload_manager"].upload_src), hidden=hidden
+            )
+            self.commands["install"] = CommandDefinition(command=partial(self.autohub_feature.install), hidden=hidden)
+            self.commands["backend"] = CommandDefinition(
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="get_target_backend"),
+                    "Show the Elasticsearch index a BioThings API's data releases are installed in: its host, "
+                    "alias, index, document count and version",
+                ),
+                hidden=hidden,
+            )
+            self.commands["reset_backend"] = CommandDefinition(
+                command=documented(
+                    partial(self.managers["dump_manager"].call, method_name="reset_target_backend"),
+                    "Delete the Elasticsearch index a BioThings API's data releases are installed in "
+                    "(the next install restores a full release)",
+                ),
+                hidden=hidden,
             )
 
         logging.info("Registered commands: %s", list(self.commands.keys()))
@@ -1214,7 +1296,7 @@ class HubServer:
                 command=self.managers["source_manager"].run_pydantic_validation
             )
             self.extra_commands["source_validations"] = CommandDefinition(
-                command=self.managers["source_manager"].get_validations
+                command=self.managers["source_manager"].get_validations, tracked=False
             )
         if self.managers.get("dump_manager"):
             self.extra_commands["dm"] = CommandDefinition(command=self.managers["dump_manager"], tracked=False)

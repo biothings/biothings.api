@@ -67,8 +67,9 @@ requests to the Hub: a login protects the commands from those too.
    start if a password isn't a hash.
 
 In BioThings Studio, the user icon next to the Hub's name logs in and out, and Studio asks for
-a login when the Hub refuses a command. Scripts log in with ``POST /login``, and send the token
-they get in the ``X-Biothings-Access-Token`` header:
+a login when the Hub refuses a command. The command line interface logs in with ``biothings-cli
+hub login`` (see :doc:`cli`). Scripts log in with ``POST /login``, and send the token they get in
+the ``X-Biothings-Access-Token`` header:
 
 .. code-block:: bash
 
