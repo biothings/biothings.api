@@ -220,8 +220,11 @@ BUILTIN_HELP = {
         ["indexes_by_name", "indexes_by_name mygene*"],
     ),
     "snapshot": (
-        "Snapshot an index in a snapshot environment (see SNAPSHOT_CONFIG)",
-        ["snapshot s3_env mygene_20240101_abcdefgh"],
+        "Snapshot one index or a list in a snapshot environment (see SNAPSHOT_CONFIG)",
+        [
+            "snapshot s3_env mygene_20240101_abcdefgh",
+            'snapshot s3_env \'["mygene_20240101_abcdefgh", "mygene_20240201_ijklmnop"]\' --dry-run',
+        ],
     ),
     "snapshot_cleanup": (
         "Delete older snapshots, keeping the most recent ones (dry run unless --no-dryrun)",
@@ -312,8 +315,12 @@ BUILTIN_DETAILS = {
         "(unless --index-name). Then: snapshot <environment> <index>."
     ),
     "snapshot": (
-        "Snapshots an index in the repository of an environment of SNAPSHOT_CONFIG (see envs), eg. an S3 "
-        "bucket, named after the index (unless --snapshot). Then, in background, the build's release note is "
+        "Snapshots one index or a list in the repository of an environment of SNAPSHOT_CONFIG (see envs), "
+        "eg. an S3 bucket, with one snapshot named after each index. --snapshot sets a custom name for a "
+        "single index; --recreate-repo also requires a single index. --dry-run previews without starting jobs. "
+        "Batch calls report each index's result; missing indices are skipped. Unregistered indices, read-only "
+        "repositories and snapshots already running block a batch before submission. Then, in background, "
+        "each build's release note is "
         "created against the previous build (pending: release_note, see build_summary), which publish_snapshot "
         "waits for, then the build is published if its configuration automates it (autopublish): "
         "follow_build <build> waits for them."

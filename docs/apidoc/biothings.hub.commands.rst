@@ -672,13 +672,35 @@ store_value_to_db(name, value) method of biothings.utils.configuration.Configura
 This is a instance of type: <class 'biothings.hub.dataload.source.SourceManager'>
 
 
-.. py:method:: snapshot(snapshot_env, index, snapshot=None)
+.. py:method:: snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run=False)
 
-method snapshot in module biothings.hub.dataindex.snapshooter
+method run_snapshot in module biothings.hub.dataindex.snapshooter
 
-snapshot(snapshot_env, index, snapshot=None) method of biothings.hub.dataindex.snapshooter.SnapshotManager instance
-    Create a snapshot named "snapshot" (or, by default, same name as the index)
-    from "index" according to environment definition (repository, etc...) "env".
+run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run=False) method of biothings.hub.dataindex.snapshooter.SnapshotManager instance
+    Create one snapshot per index in the repository of a configured snapshot environment.
+    The command uses ``SnapshotManager.run_snapshot()``; the underlying
+    ``SnapshotManager.snapshot()`` keeps its original signature and single-index behavior.
+    Lists delegate to ``SnapshotManager.snapshots()``, which reuses ``snapshot()``
+    for each index. Call ``ssm.snapshots(snapshot_env, indices)`` directly for batch
+    execution; ``dry_run`` is available through ``run_snapshot()`` only.
+    ``index`` accepts one name or a list of exact index names. Each snapshot defaults to
+    its index's name. A custom ``snapshot`` name and ``recreate_repo=True`` require a
+    single index.
+
+    ``dry_run=True`` returns a read-only preview. Batch preflight skips missing source
+    indices and rejects aliases, wildcards, duplicate names, unregistered indices,
+    read-only repositories, and snapshots already running before submitting jobs.
+
+    Existing single-index calls keep their native task and result behavior. A list
+    returns one tracked batch task with per-index results. Indices from the same build
+    run sequentially. A runtime failure raises ``SnapshotBatchError`` with successful,
+    skipped, and failed entries in its ``results`` attribute; a batch is not atomic.
+
+    CLI preview:
+
+    .. code-block:: bash
+
+        biothings-cli hub run snapshot s3_env '["index_a", "index_b"]' --dry-run
 
 
 
