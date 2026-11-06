@@ -704,6 +704,47 @@ run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run
 
 
 
+.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=3600, dry_run=False)
+
+method run_restore in module biothings.hub.dataindex.snapshooter
+
+    Restore one snapshot or a list on the cluster and repository selected by the
+    destination snapshot environment in ``SNAPSHOT_CONFIG``. Every snapshot must
+    be complete and contain exactly one index. Its metadata supplies the destination
+    index name; ``index`` optionally renames a single destination. Existing indices
+    and aliases, duplicate destinations, and missing or incomplete snapshots block
+    the whole batch before submission. No source Hub build registration is needed.
+    The repository must already be registered on the destination, with its configured
+    name resolvable without source build metadata. Read-only repositories are supported.
+
+    ``SnapshotManager.restore()`` delegates a single restore to the environment;
+    ``restore_many()`` reuses it for a batch. ``run_restore()`` handles command dispatch
+    and ``dry_run=True`` previews. Submission and recovery monitoring use
+    ``ESIndexer.restore()`` and ``get_restore_status()``. The task completes after
+    recovery, not merely after Elasticsearch accepts the request. ``recovery_timeout``
+    limits monitoring per snapshot, in seconds. Monitoring errors are retried up to
+    three consecutive failures; uncertain restore submissions are not retried.
+
+    Source aliases are excluded by default; set ``include_aliases=True`` to restore
+    them. Global state is excluded. ``index_settings`` and ``ignore_index_settings``
+    pass destination settings options to ``ESIndexer.restore()``. Batch results
+    retain every snapshot's outcome. A failed batch raises ``RestoreBatchError``
+    with those outcomes in ``results``; the CLI includes them in the error text.
+    A batch is not atomic. Cancellation stops monitoring, while an accepted
+    Elasticsearch restore may continue.
+
+    The existing ``restore`` command restores Hub database backups. ``install``
+    continues to install published releases. Application-specific build discovery
+    and alias staging belong in custom hooks.
+
+    .. code-block:: bash
+
+        biothings-cli hub run restore_snapshot target_env '["snapshot_a", "snapshot_b"]' --dry-run
+        biothings-cli hub run --no-wait restore_snapshot target_env '["snapshot_a", "snapshot_b"]'
+        biothings-cli hub history <id> --wait
+
+
+
 .. py:method:: snapshot_cleanup(env=None, keep=3, group_by='build_config', dryrun=True, **filters)
 
 method cleanup in module biothings.hub.dataindex.snapshooter

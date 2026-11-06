@@ -143,12 +143,15 @@ class ESIndexer:
         number_of_shards=1,
         number_of_replicas=0,
         check_index=True,
+        *,
+        client=None,
         **kwargs,
     ):
+        """Use an existing Elasticsearch client when supplied; otherwise create one."""
         # some old caller may still pass doc_type, we will ignore it here since it's no longer used.
         kwargs.pop("doc_type", None)
         self.es_host = es_host
-        self._es = get_es(es_host, **kwargs)
+        self._es = client if client is not None else get_es(es_host, **kwargs)
         self._host_major_ver = int(self._es.info()["version"]["number"].split(".")[0])
         # the name of the index when ESIndexer is initialized
         self.canonical_index_name = index
