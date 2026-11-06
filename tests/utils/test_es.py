@@ -23,6 +23,18 @@ def test_close_client_releases_connections_without_closing_index(indexer):
     indexer._es.indices.close.assert_not_called()
 
 
+def test_indexer_can_reuse_configured_client_without_opening_another(monkeypatch):
+    client = Mock()
+    client.info.return_value = {"version": {"number": "8.18.0"}}
+    factory = Mock(side_effect=AssertionError("Should reuse the configured client"))
+    monkeypatch.setattr(es, "get_es", factory)
+    indexer = es.ESIndexer("destination", check_index=False, client=client)
+    assert indexer._es is client
+    assert indexer._index == "destination"
+    factory.assert_not_called()
+    client.close.assert_not_called()
+
+
 def test_close_still_closes_index_without_closing_client(indexer):
     indexer.close()
 
