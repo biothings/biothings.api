@@ -1161,7 +1161,7 @@ class HubServer:
             self.commands["index"] = self.managers["index_manager"].index
             self.commands["index_cleanup"] = self.managers["index_manager"].cleanup
         if self.managers.get("snapshot_manager"):
-            self.commands["snapshot"] = self.managers["snapshot_manager"].snapshot
+            self.commands["snapshot"] = self.managers["snapshot_manager"].run_snapshot
             self.commands["snapshot_cleanup"] = self.managers["snapshot_manager"].cleanup
             self.commands["list_snapshots"] = CommandDefinition(
                 command=self.managers["snapshot_manager"].list_snapshots, tracked=False

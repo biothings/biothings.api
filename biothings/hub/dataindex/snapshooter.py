@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import os
 import time
@@ -164,6 +165,32 @@ class CumulativeResult(_SnapshotResult): ...
 
 
 class StepResult(_SnapshotResult): ...
+
+
+class SnapshotBatchError(RuntimeError):
+    """A failed batch, retaining the outcomes of every requested index."""
+
+    def __init__(self, results):
+        self.results = results
+        super().__init__("Snapshot batch failed: " + json.dumps(results, default=str))
+
+
+def _snapshot_indices(index):
+    names = [index] if isinstance(index, str) else index
+    if not isinstance(names, list):
+        raise TypeError("index must be an index name or a list of exact index names")
+    for name in names:
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in {".", ".."}
+            or name.startswith(("_", "-", "+"))
+            or any(char.isspace() or char in '*?,#:/\\<>|"[]' for char in name)
+        ):
+            raise ValueError(f"Expected one exact concrete index name: {name!r}")
+    if len(names) != len(set(names)):
+        raise ValueError("Duplicate index names are not allowed")
+    return names
 
 
 class SnapshotEnv:
@@ -408,6 +435,132 @@ class SnapshotManager(BaseManager):
             raise ValueError("Unknown snapshot environment '%s' (see SNAPSHOT_CONFIG)" % snapshot_env)
         env = self.register[snapshot_env]
         return env.snapshot(index, snapshot, recreate_repo=recreate_repo)
+
+    def snapshots(self, snapshot_env, indices, snapshot=None, recreate_repo=False):
+        """
+        Submit one snapshot per index, reusing snapshot() for each job.
+
+        Return one tracked batch task with per-index SUCCESS or SKIPPED
+        results. Missing source indices are skipped. An unregistered index,
+        read-only repository, or snapshot already running blocks the whole batch
+        before submission. Runtime failures raise SnapshotBatchError, whose
+        results retain successful, skipped, and failed entries. A batch is not atomic.
+
+        Each snapshot defaults to its index name. A custom snapshot name and
+        recreate_repo=True require a single index. Indices from the same build
+        run sequentially to preserve the native registrar's job updates.
+        An empty list returns [] without querying Elasticsearch.
+        """
+        plan = self._snapshot_plan(snapshot_env, indices, snapshot, recreate_repo)
+        env = self.register[snapshot_env]
+        blocked = [row for row in plan["indices"] if row["action"] == "blocked"]
+        if blocked:
+            raise ValueError(f"Cannot create snapshots: {blocked}")
+        if not plan["indices"]:
+            return []
+
+        progress = [f"{row['index_name']}: PENDING" for row in plan["indices"]]
+
+        async def _snapshots():
+            locks = {row["build_id"]: asyncio.Lock() for row in plan["indices"] if "build_id" in row}
+
+            async def run(position, row):
+                result = {key: row[key] for key in ("index_name", "snapshot", "repository") if key in row}
+                if row["action"] == "skip":
+                    result.update(status="SKIPPED", reason=row["reason"])
+                else:
+                    async with locks[row["build_id"]]:
+                        progress[position] = f"{row['index_name']}: RUNNING"
+                        try:
+                            # Use the legacy method with a per-job environment for its logger.
+                            worker = copy.copy(self)
+                            worker.register = {**self.register, snapshot_env: copy.copy(env)}
+                            snapshot_task: asyncio.Task[CumulativeResult] = worker.snapshot(
+                                snapshot_env, row["index_name"], row["snapshot"], recreate_repo=recreate_repo
+                            )
+                            outcome = await snapshot_task
+                            result.update(
+                                status="SUCCESS",
+                                result=outcome.data if isinstance(outcome, _SnapshotResult) else outcome,
+                            )
+                        except Exception as exc:
+                            result.update(status="FAILED", error=f"{type(exc).__name__}: {exc}")
+                progress[position] = f"{row['index_name']}: {result['status']}"
+                return result
+
+            results = await asyncio.gather(*(run(position, row) for position, row in enumerate(plan["indices"])))
+            if any(result["status"] == "FAILED" for result in results):
+                raise SnapshotBatchError(results)
+            return {**plan, "dry_run": False, "indices": results}
+
+        task = self.job_manager.loop.create_task(_snapshots())
+        task.progress = progress
+        return task
+
+    def run_snapshot(self, snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run: bool = False):
+        """
+        Run the snapshot command for one index or a list of exact index names.
+
+        Single-index execution delegates to snapshot() and returns its task unchanged.
+        A list delegates to snapshots(), returning one tracked batch task.
+        dry_run=True returns a read-only preflight preview without submitting jobs.
+        Custom snapshot names and recreate_repo=True require a single index.
+        """
+        if dry_run:
+            return self._snapshot_plan(snapshot_env, index, snapshot, recreate_repo)
+        if isinstance(index, str):
+            return self.snapshot(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
+        return self.snapshots(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
+
+    def _snapshot_plan(self, snapshot_env, index, snapshot, recreate_repo):
+        if snapshot_env not in self.register:
+            raise ValueError("Unknown snapshot environment '%s' (see SNAPSHOT_CONFIG)" % snapshot_env)
+        env = self.register[snapshot_env]
+        names = _snapshot_indices(index)
+        if snapshot is not None and not isinstance(snapshot, str):
+            raise TypeError("snapshot must be a single snapshot name")
+        if len(names) > 1 and snapshot:
+            raise ValueError("A custom snapshot name requires a single index")
+        if len(names) > 1 and recreate_repo:
+            raise ValueError("recreate_repo requires a single index")
+
+        plan = {"snapshot_env": snapshot_env, "indexer_env": env.idxenv, "dry_run": True, "indices": []}
+        if not names:
+            return plan
+        response = env.client.indices.get(
+            index=names,
+            features=["settings", "aliases"],
+            ignore_unavailable=True,
+            allow_no_indices=True,
+        )
+        existing = getattr(response, "body", response)
+        if set(existing) - set(names):
+            raise ValueError("Pass concrete index names, not aliases")
+        for name in names:
+            row = {"index_name": name, "snapshot": snapshot or name}
+            plan["indices"].append(row)
+            if name not in existing:
+                row.update(action="skip", reason="index missing on source cluster")
+                continue
+            try:
+                build = env._doc(name)
+            except ValueError:
+                row.update(action="blocked", reason=f"no Hub index registration under {env.idxenv}")
+                continue
+            row["build_id"] = build["_id"]
+            config = env.repcfg.format(build)
+            row["repository"] = config.repo
+            row["aliases"] = sorted(existing[name].get("aliases", {}))
+            if str(config.get("settings", {}).get("readonly", False)).lower() == "true":
+                row.update(action="blocked", reason="repository is read-only")
+                continue
+            state = Snapshot(env.client, config.repo, row["snapshot"]).state()
+            row["snapshot_state"] = state
+            if state == "IN_PROGRESS":
+                row.update(action="blocked", reason="snapshot is already in progress")
+            else:
+                row["action"] = "create" if state in {"MISSING", "N/A"} else "replace"
+        return plan
 
     def snapshot_a_build(self, build_doc):
         """
