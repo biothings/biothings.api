@@ -955,7 +955,17 @@ class ESIndexer:
         return self._es.reindex(body=body, **kwargs)
 
     def close(self):
+        """Close the Elasticsearch index. Use :meth:`close_client` to release connections."""
         self._es.indices.close(index=self._index)
+
+    def close_client(self):
+        """Close the underlying Elasticsearch client and its HTTP connections.
+
+        Call this when finished with a client you own, including in a ``finally``
+        block if an operation raises. Clients shared with a backend must remain
+        open while that backend uses them. This does not close the index.
+        """
+        return self._es.close()
 
     def open(self):
         self._es.indices.open(index=self._index)
