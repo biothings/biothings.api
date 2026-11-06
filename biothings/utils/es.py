@@ -669,8 +669,9 @@ class ESIndexer:
         *,
         index_settings=None,
         ignore_index_settings=None,
+        include_aliases=True,
     ):
-        """Submit a snapshot restore with optional index settings.
+        """Submit a snapshot restore with optional settings and alias controls.
 
         Args:
             repo_name (str): Repository containing the snapshot.
@@ -684,6 +685,7 @@ class ESIndexer:
             ignore_index_settings (list[str], optional): Saved index settings to
                 omit during restore, such as source-cluster allocation rules.
                 Omitted from the request when None.
+            include_aliases (bool): Restore snapshot aliases. Defaults to True.
 
         Elasticsearch validates the settings. The primary shard count cannot be
         changed with ``index_settings`` or ignored with ``ignore_index_settings``.
@@ -715,6 +717,7 @@ class ESIndexer:
                 # set to False, snapshots were created without global state anyway.
                 #  In ES8, an error will be raised if set to True
                 "include_global_state": False,
+                "include_aliases": include_aliases,
             }
             if index_settings is not None:
                 body["index_settings"] = index_settings

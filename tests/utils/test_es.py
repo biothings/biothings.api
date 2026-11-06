@@ -53,6 +53,7 @@ def test_restore_preserves_defaults_and_leaves_client_open(indexer):
             "ignore_unavailable": True,
             "rename_pattern": "(.+)",
             "include_global_state": False,
+            "include_aliases": True,
         },
     )
     assert indexer._es.indices.mock_calls == []
@@ -89,6 +90,30 @@ def test_restore_forwards_settings_without_modifying_input(indexer, options):
         else:
             assert body[name] == original[name]
     assert options == original
+
+
+@pytest.mark.parametrize("include_aliases", [True, False])
+def test_restore_forwards_alias_control_without_mutating_destination_aliases(indexer, include_aliases):
+    indexer.restore("test_repo", "test_snapshot", include_aliases=include_aliases)
+
+    body = indexer._es.snapshot.restore.call_args.kwargs["body"]
+    assert body["include_aliases"] is include_aliases
+    assert indexer._es.indices.mock_calls == []
+
+
+def test_restore_combines_settings_and_alias_options(indexer):
+    indexer.restore(
+        "test_repo",
+        "test_snapshot",
+        index_settings={"index.number_of_replicas": 0},
+        ignore_index_settings=["index.routing.allocation.*"],
+        include_aliases=False,
+    )
+
+    body = indexer._es.snapshot.restore.call_args.kwargs["body"]
+    assert body["index_settings"] == {"index.number_of_replicas": 0}
+    assert body["ignore_index_settings"] == ["index.routing.allocation.*"]
+    assert body["include_aliases"] is False
 
 
 def test_restore_preserves_positional_destination_and_purge_arguments(indexer):
