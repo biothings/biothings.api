@@ -660,7 +660,38 @@ class ESIndexer:
                 err_msg = e.error
             raise IndexerException("Can't snapshot '%s': %s" % (self._index, err_msg))
 
-    def restore(self, repo_name, snapshot_name, index_name=None, purge=False):
+    def restore(
+        self,
+        repo_name,
+        snapshot_name,
+        index_name=None,
+        purge=False,
+        *,
+        index_settings=None,
+        ignore_index_settings=None,
+    ):
+        """Submit a snapshot restore with optional index settings.
+
+        Args:
+            repo_name (str): Repository containing the snapshot.
+            snapshot_name (str): Snapshot to restore.
+            index_name (str, optional): Destination index name. Defaults to the
+                first index in the snapshot.
+            purge (bool): Delete the existing destination index before restoring.
+                Defaults to False.
+            index_settings (dict, optional): Settings to add or override in the
+                restored index. Omitted from the request when None.
+            ignore_index_settings (list[str], optional): Saved index settings to
+                omit during restore, such as source-cluster allocation rules.
+                Omitted from the request when None.
+
+        Elasticsearch validates the settings. The primary shard count cannot be
+        changed with ``index_settings`` or ignored with ``ignore_index_settings``.
+        Caller-provided settings are not modified.
+
+        Returns:
+            The Elasticsearch restore response. Recovery may still be running.
+        """
         indices = self.get_indices_from_snapshots(repo_name, snapshot_name)
         if not index_name:
             index_name = indices[0]
@@ -685,6 +716,10 @@ class ESIndexer:
                 #  In ES8, an error will be raised if set to True
                 "include_global_state": False,
             }
+            if index_settings is not None:
+                body["index_settings"] = index_settings
+            if ignore_index_settings is not None:
+                body["ignore_index_settings"] = ignore_index_settings
             return self._es.snapshot.restore(repository=repo_name, snapshot=snapshot_name, body=body)
         except TransportError as e:
             raise IndexerException(
