@@ -235,6 +235,12 @@ class ReleaseNoteSource:
                 result["deleted"][key] = old[key]
             elif item["op"] == "replace":
                 result["updated"][key] = {"new": new[key], "old": old[key]}
+            elif item["op"] == "move":
+                # A renamed source (or stat) whose version and counts didn't change,
+                # e.g. "mygene_unii" -> "unii": the old name is gone and the new one is added.
+                from_key = item["from"].strip("/").split("/")[0]
+                result["deleted"][from_key] = old[from_key]
+                result["added"][key] = new[key]
             else:
                 raise ValueError("Unknown operation '%s' while computing changes" % item["op"])
 
