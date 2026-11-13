@@ -335,10 +335,12 @@ BUILTIN_DETAILS = {
     "install": (
         "Installs a BioThings API's data releases in its Elasticsearch index, up to a version (the latest "
         "by default): downloads each release on the way (see versions), then restores a full release's "
-        "snapshot into a new index, the index's alias moved to it once all its shards are restored "
-        "(otherwise the install fails, the alias unchanged), or applies an incremental one. A version "
-        "downloaded already (eg. when its install failed) isn't downloaded again: --force does. --dry: only shows the "
-        "versions it would install. To stop an install before it moves the alias: cancel <command ID>."
+        "snapshot into a new index, named after the index's alias, moved to it once all its shards are "
+        "restored (otherwise the install fails, the alias unchanged), or applies an incremental one. The "
+        "indices of previous installs are deleted beyond RELEASE_KEEP_N_RECENT_INDICES: only indices named "
+        "that way. A version downloaded already (eg. when its install failed) isn't downloaded again: --force "
+        "does. --dry: only shows the versions it would install. To stop an install before it moves the alias: "
+        "cancel <command ID>."
     ),
     "create_release_note": (
         "Creates the release note between two builds (source versions, document counts, fields added and removed, "
