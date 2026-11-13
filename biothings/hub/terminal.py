@@ -220,8 +220,18 @@ BUILTIN_HELP = {
         ["indexes_by_name", "indexes_by_name mygene*"],
     ),
     "snapshot": (
-        "Snapshot an index in a snapshot environment (see SNAPSHOT_CONFIG)",
-        ["snapshot s3_env mygene_20240101_abcdefgh"],
+        "Snapshot one index or a list in a snapshot environment (see SNAPSHOT_CONFIG)",
+        [
+            "snapshot s3_env mygene_20240101_abcdefgh",
+            'snapshot s3_env \'["mygene_20240101_abcdefgh", "mygene_20240201_ijklmnop"]\' --dry-run',
+        ],
+    ),
+    "restore_snapshot": (
+        "Restore snapshots on a destination environment and monitor recovery",
+        [
+            "restore_snapshot target_env snapshot_a",
+            'restore_snapshot target_env \'["snapshot_a", "snapshot_b"]\' --dry-run',
+        ],
     ),
     "snapshot_cleanup": (
         "Delete older snapshots, keeping the most recent ones (dry run unless --no-dryrun)",
@@ -294,6 +304,16 @@ BUILTIN_HELP = {
 
 # More about the commands of a build's release, shown by "help <command>" before their docstring
 BUILTIN_DETAILS = {
+    "restore_snapshot": (
+        "Restores one snapshot or a list using the destination cluster and repository from SNAPSHOT_CONFIG. "
+        "Each snapshot must contain exactly one index; the destination defaults to the name in its metadata. "
+        "--index renames a single destination. Existing indices and aliases block the batch. Source aliases "
+        "are excluded unless --include-aliases; global cluster state is excluded. --index-settings accepts "
+        "a JSON settings object and --ignore-index-settings a JSON list. --dry-run previews without restoring. "
+        "The job completes after recovery, with per-snapshot results. Use hub run --no-wait to detach, then "
+        "hub history <id> --wait to follow it. This is separate from install for published releases and "
+        "restore for Hub database backups."
+    ),
     "merge": (
         "Merges the sources of a build configuration into a new build, in the target database, named "
         "<configuration>_<version>_<random>: its version is the date (YYYYMMDD) unless the configuration's "
@@ -312,8 +332,12 @@ BUILTIN_DETAILS = {
         "(unless --index-name). Then: snapshot <environment> <index>."
     ),
     "snapshot": (
-        "Snapshots an index in the repository of an environment of SNAPSHOT_CONFIG (see envs), eg. an S3 "
-        "bucket, named after the index (unless --snapshot). Then, in background, the build's release note is "
+        "Snapshots one index or a list in the repository of an environment of SNAPSHOT_CONFIG (see envs), "
+        "eg. an S3 bucket, with one snapshot named after each index. --snapshot sets a custom name for a "
+        "single index; --recreate-repo also requires a single index. --dry-run previews without starting jobs. "
+        "Batch calls report each index's result; missing indices are skipped. Unregistered indices, read-only "
+        "repositories and snapshots already running block a batch before submission. Then, in background, "
+        "each build's release note is "
         "created against the previous build (pending: release_note, see build_summary), which publish_snapshot "
         "waits for, then the build is published if its configuration automates it (autopublish): "
         "follow_build <build> waits for them."
