@@ -4,6 +4,7 @@ import json
 import math
 import os
 import time
+import warnings
 from collections import UserDict, UserString
 from dataclasses import dataclass
 from datetime import datetime
@@ -632,7 +633,7 @@ class SnapshotManager(BaseManager):
     # Features
     # -----------
 
-    def snapshot(self, snapshot_env, index, snapshot=None, recreate_repo=False):
+    def create_snapshot(self, snapshot_env, index, snapshot=None, recreate_repo=False):
         """
         Create a snapshot named "snapshot" (or, by default, same name as the index)
         from "index" according to environment definition (repository, etc...) "env".
@@ -642,9 +643,18 @@ class SnapshotManager(BaseManager):
         env = self.register[snapshot_env]
         return env.snapshot(index, snapshot, recreate_repo=recreate_repo)
 
-    def snapshots(self, snapshot_env, indices, snapshot=None, recreate_repo=False):
+    def snapshot(self, snapshot_env, index, snapshot=None, recreate_repo=False):
+        """Deprecated alias for create_snapshot(), preserving its task and result."""
+        warnings.warn(
+            "SnapshotManager.snapshot() is deprecated; use SnapshotManager.create_snapshot() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.create_snapshot(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
+
+    def create_snapshots(self, snapshot_env, indices, snapshot=None, recreate_repo=False):
         """
-        Submit one snapshot per index, reusing snapshot() for each job.
+        Submit one snapshot per index, reusing create_snapshot() for each job.
 
         Return one tracked batch task with per-index SUCCESS or SKIPPED
         results. Missing source indices are skipped. An unregistered index,
@@ -667,7 +677,7 @@ class SnapshotManager(BaseManager):
 
         progress = [f"{row['index_name']}: PENDING" for row in plan["indices"]]
 
-        async def _snapshots():
+        async def _create_snapshots():
             locks = {row["build_id"]: asyncio.Lock() for row in plan["indices"] if "build_id" in row}
 
             async def run(position, row):
@@ -678,10 +688,10 @@ class SnapshotManager(BaseManager):
                     async with locks[row["build_id"]]:
                         progress[position] = f"{row['index_name']}: RUNNING"
                         try:
-                            # Use the legacy method with a per-job environment for its logger.
+                            # Give each job its own environment for its logger.
                             worker = copy.copy(self)
                             worker.register = {**self.register, snapshot_env: copy.copy(env)}
-                            snapshot_task: asyncio.Task[CumulativeResult] = worker.snapshot(
+                            snapshot_task: asyncio.Task[CumulativeResult] = worker.create_snapshot(
                                 snapshot_env, row["index_name"], row["snapshot"], recreate_repo=recreate_repo
                             )
                             outcome = await snapshot_task
@@ -699,7 +709,7 @@ class SnapshotManager(BaseManager):
                 raise SnapshotBatchError(results)
             return {**plan, "dry_run": False, "indices": results}
 
-        task = self.job_manager.loop.create_task(_snapshots())
+        task = self.job_manager.loop.create_task(_create_snapshots())
         task.progress = progress
         return task
 
@@ -707,16 +717,16 @@ class SnapshotManager(BaseManager):
         """
         Run the snapshot command for one index or a list of exact index names.
 
-        Single-index execution delegates to snapshot() and returns its task unchanged.
-        A list delegates to snapshots(), returning one tracked batch task.
+        Single-index execution delegates to create_snapshot() and returns its task unchanged.
+        A list delegates to create_snapshots(), returning one tracked batch task.
         dry_run=True returns a read-only preflight preview without submitting jobs.
         Custom snapshot names and recreate_repo=True require a single index.
         """
         if dry_run:
             return self._snapshot_plan(snapshot_env, index, snapshot, recreate_repo)
         if isinstance(index, str):
-            return self.snapshot(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
-        return self.snapshots(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
+            return self.create_snapshot(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
+        return self.create_snapshots(snapshot_env, index, snapshot, recreate_repo=recreate_repo)
 
     def _snapshot_plan(self, snapshot_env, index, snapshot, recreate_repo):
         if snapshot_env not in self.register:
@@ -884,7 +894,7 @@ class SnapshotManager(BaseManager):
                 await self.index_manager.index(indexer_env, build_doc["_id"])
                 latest_index = build_doc["_id"]  # index_name is build name
 
-            return self.snapshot(snapshot_env, latest_index)
+            return self.create_snapshot(snapshot_env, latest_index)
 
         return self.job_manager.loop.create_task(_())
 

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
@@ -21,10 +22,15 @@ from biothings.hub.dataindex.snapshooter import (
 from tests.hub.terminal_fakes import make_terminal
 
 
-def test_snapshot_in_unknown_environment():
-    manager = SimpleNamespace(register={})  # no SNAPSHOT_CONFIG
-    with pytest.raises(ValueError, match="Unknown snapshot environment 'local' \\(see SNAPSHOT_CONFIG\\)"):
-        SnapshotManager.snapshot(manager, "local", "mygene_20240101_abcdefgh")
+@pytest.mark.parametrize("method", ["create_snapshot", "snapshot"])
+def test_snapshot_in_unknown_environment(method):
+    manager = SnapshotManager.__new__(SnapshotManager)
+    manager.register = {}  # no SNAPSHOT_CONFIG
+    notice = (
+        pytest.warns(DeprecationWarning, match="deprecated.*create_snapshot") if method == "snapshot" else nullcontext()
+    )
+    with notice, pytest.raises(ValueError, match="Unknown snapshot environment 'local' \\(see SNAPSHOT_CONFIG\\)"):
+        getattr(manager, method)("local", "mygene_20240101_abcdefgh")
 
 
 class FakeSnapshotEnv:
@@ -95,10 +101,17 @@ async def manager(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["snapshot", "run_snapshot"])
+@pytest.mark.parametrize("method", ["create_snapshot", "snapshot", "run_snapshot"])
 async def test_single_index_preserves_native_task_and_arguments(manager, method):
     manager, env = manager
-    task = getattr(manager, method)("source_snapshots", "alpha_v1", "custom_snapshot", True)
+    notice = (
+        pytest.warns(DeprecationWarning, match="deprecated.*create_snapshot") if method == "snapshot" else nullcontext()
+    )
+    with notice as caught:
+        task = getattr(manager, method)("source_snapshots", "alpha_v1", "custom_snapshot", True)
+    if method == "snapshot":
+        assert len(caught) == 1
+        assert caught[0].filename == __file__
     assert task is env.tasks[0]
     assert env.calls == [("alpha_v1", "custom_snapshot", True)]
     assert (await task)["index_name"] == "alpha_v1"
@@ -108,48 +121,54 @@ async def test_single_index_preserves_native_task_and_arguments(manager, method)
 def test_command_delegates_single_index_to_native_override(manager, monkeypatch):
     manager, _ = manager
     native = Mock(return_value=object())
-    monkeypatch.setattr(manager, "snapshot", native)
+    monkeypatch.setattr(manager, "create_snapshot", native)
     result = manager.run_snapshot("source_snapshots", "alpha_v1", "custom_snapshot", True)
     assert result is native.return_value
     native.assert_called_once_with("source_snapshots", "alpha_v1", "custom_snapshot", recreate_repo=True)
 
 
 @pytest.mark.parametrize("indices", [[], ["alpha_v1"], ["alpha_v1", "beta_v1"]])
-def test_command_delegates_batch_to_public_snapshots_method(manager, monkeypatch, indices):
+def test_command_delegates_batch_to_public_create_snapshots_method(manager, monkeypatch, indices):
     manager, _ = manager
     batch = Mock(return_value=object())
-    monkeypatch.setattr(manager, "snapshots", batch)
+    monkeypatch.setattr(manager, "create_snapshots", batch)
     result = manager.run_snapshot("source_snapshots", indices)
     assert result is batch.return_value
     batch.assert_called_once_with("source_snapshots", indices, None, recreate_repo=False)
 
 
-def test_hub_snapshot_command_is_registered_to_wrapper(manager):
+def test_hub_snapshot_command_and_endpoint_keep_public_name(manager):
     manager, _ = manager
     server = HubServer(source_list=[], name="Snapshot test Hub")
     server.features = []
     server.managers = {"dump_manager": Mock(), "upload_manager": Mock(), "snapshot_manager": manager}
     server.configure_commands()
     assert server.commands["snapshot"] == manager.run_snapshot
+    assert "create_snapshot" not in server.commands
+    server.extra_commands = {}
+    server.configure_api_endpoints()
+    assert server.api_endpoints["snapshot"] == {"name": "snapshot", "method": "put", "force_bodyargs": True}
+    assert "create_snapshot" not in server.api_endpoints
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["snapshots", "run_snapshot"])
-async def test_batch_uses_native_snapshot_method(manager, monkeypatch, method):
+@pytest.mark.parametrize("method", ["create_snapshots", "run_snapshot"])
+async def test_batch_uses_native_snapshot_method_without_deprecation(manager, monkeypatch, recwarn, method):
     manager, _ = manager
     calls = []
-    native = SnapshotManager.snapshot
+    native = SnapshotManager.create_snapshot
 
     def record(worker, snapshot_env, index, snapshot=None, recreate_repo=False):
         calls.append((snapshot_env, index, snapshot, recreate_repo))
         return native(worker, snapshot_env, index, snapshot, recreate_repo)
 
-    monkeypatch.setattr(SnapshotManager, "snapshot", record)
+    monkeypatch.setattr(SnapshotManager, "create_snapshot", record)
     await getattr(manager, method)("source_snapshots", ["alpha_v1", "beta_v1"])
     assert calls == [
         ("source_snapshots", "alpha_v1", "alpha_v1", False),
         ("source_snapshots", "beta_v1", "beta_v1", False),
     ]
+    assert not recwarn.list
 
 
 def test_dry_run_previews_each_index_without_mutation(manager):
@@ -184,7 +203,7 @@ def test_single_index_dry_run_uses_custom_name_and_build_registration(manager, s
 def test_invalid_batches_are_rejected_before_queries(manager, index):
     manager, env = manager
     with pytest.raises((TypeError, ValueError)):
-        manager.snapshots("source_snapshots", index)
+        manager.create_snapshots("source_snapshots", index)
     env.client.indices.get.assert_not_called()
     assert env.calls == []
 
@@ -193,13 +212,13 @@ def test_invalid_batches_are_rejected_before_queries(manager, index):
 def test_ambiguous_batch_options_are_rejected(manager, options):
     manager, env = manager
     with pytest.raises(ValueError, match="single index"):
-        manager.snapshots("source_snapshots", ["alpha_v1", "beta_v1"], **options)
+        manager.create_snapshots("source_snapshots", ["alpha_v1", "beta_v1"], **options)
     env.client.indices.get.assert_not_called()
 
 
 def test_empty_batch_does_not_query_elasticsearch(manager):
     manager, env = manager
-    assert manager.snapshots("source_snapshots", []) == []
+    assert manager.create_snapshots("source_snapshots", []) == []
     assert manager.run_snapshot("source_snapshots", [], dry_run=True)["indices"] == []
     env.client.indices.get.assert_not_called()
 
@@ -218,7 +237,7 @@ def test_preflight_blocks_entire_batch_before_submission(manager, reason):
     preview = manager.run_snapshot("source_snapshots", ["alpha_v1", "beta_v1"], dry_run=True)
     assert preview["indices"][1]["action"] == "blocked"
     with pytest.raises(ValueError, match="Cannot create snapshots"):
-        manager.snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
+        manager.create_snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
     assert env.calls == []
 
 
@@ -226,17 +245,17 @@ def test_alias_resolution_and_elasticsearch_errors_propagate(manager):
     manager, env = manager
     env.client.indices.get.side_effect = lambda **kwargs: SimpleNamespace(body={"different_concrete_index": {}})
     with pytest.raises(ValueError, match="concrete index names"):
-        manager.snapshots("source_snapshots", ["alpha_v1"])
+        manager.create_snapshots("source_snapshots", ["alpha_v1"])
     env.client.indices.get.side_effect = RuntimeError("ES unavailable")
     with pytest.raises(RuntimeError, match="ES unavailable"):
-        manager.snapshots("source_snapshots", ["alpha_v1"])
+        manager.create_snapshots("source_snapshots", ["alpha_v1"])
     assert env.calls == []
 
 
 @pytest.mark.asyncio
 async def test_batch_reports_each_result_and_isolates_worker_logs(manager):
     manager, env = manager
-    task = manager.snapshots("source_snapshots", ["alpha_v1", "missing", "beta_v1"])
+    task = manager.create_snapshots("source_snapshots", ["alpha_v1", "missing", "beta_v1"])
     assert isinstance(task, asyncio.Task)
     result = await task
     assert [row["status"] for row in result["indices"]] == ["SUCCESS", "SKIPPED", "SUCCESS"]
@@ -250,7 +269,7 @@ async def test_batch_reports_each_result_and_isolates_worker_logs(manager):
 @pytest.mark.asyncio
 async def test_missing_indices_are_reported_without_snapshot_jobs(manager):
     manager, env = manager
-    result = await manager.snapshots("source_snapshots", ["missing"])
+    result = await manager.create_snapshots("source_snapshots", ["missing"])
     assert result["indices"][0]["status"] == "SKIPPED"
     assert env.calls == []
 
@@ -258,7 +277,7 @@ async def test_missing_indices_are_reported_without_snapshot_jobs(manager):
 @pytest.mark.asyncio
 async def test_one_element_batch_supports_existing_single_index_options(manager):
     manager, env = manager
-    result = await manager.snapshots("source_snapshots", ["alpha_v1"], "custom_snapshot", True)
+    result = await manager.create_snapshots("source_snapshots", ["alpha_v1"], "custom_snapshot", True)
     assert env.calls == [("alpha_v1", "custom_snapshot", True)]
     assert result["indices"][0]["snapshot"] == "custom_snapshot"
 
@@ -268,7 +287,7 @@ async def test_one_element_batch_supports_existing_single_index_options(manager)
 async def test_batch_failure_retains_successful_and_failed_outcomes(manager, failure):
     manager, env = manager
     env.failures["beta_v1"] = failure
-    task = manager.snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
+    task = manager.create_snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
     with pytest.raises(SnapshotBatchError) as error:
         await task
     assert [row["status"] for row in error.value.results] == ["SUCCESS", "FAILED"]
@@ -282,7 +301,7 @@ async def test_batch_failure_retains_successful_and_failed_outcomes(manager, fai
 async def test_indices_from_same_build_run_sequentially(manager):
     manager, env = manager
     env.builds = {"shared": {"_id": "shared", "index": {name: {"environment": "source"} for name in env.existing}}}
-    await manager.snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
+    await manager.create_snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
     assert env.events == [("start", "alpha_v1"), ("end", "alpha_v1"), ("start", "beta_v1"), ("end", "beta_v1")]
 
 
@@ -290,7 +309,7 @@ async def test_indices_from_same_build_run_sequentially(manager):
 async def test_cancelling_batch_cancels_pending_snapshot_tasks(manager):
     manager, env = manager
     env.wait = asyncio.Event()
-    task = manager.snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
+    task = manager.create_snapshots("source_snapshots", ["alpha_v1", "beta_v1"])
     await env.started.wait()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -300,18 +319,21 @@ async def test_cancelling_batch_cancels_pending_snapshot_tasks(manager):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fail", [False, True])
-async def test_terminal_accepts_json_batches_and_tracks_all_results(manager, fail):
+async def test_terminal_accepts_json_batches_and_tracks_all_results_without_deprecation(manager, fail, recwarn):
     manager, env = manager
     if fail:
         env.failures["beta_v1"] = "submit"
     terminal, shell, _ = make_terminal(snapshot=manager.run_snapshot)
+    assert "deprecated" not in terminal.describe("snapshot")["summary"].lower()
     argv = ["snapshot", "source_snapshots", '["alpha_v1", "beta_v1"]']
     preview = terminal.run(argv=[*argv, "--dry-run"])
     assert preview["is_done"] is True and preview["failed"] is False
     assert len(preview["result"]["indices"]) == 2
     assert env.calls == []
+    assert not any("deprecated" in line for line in preview["logs"])
     response = terminal.run(argv=argv)
     assert response["is_done"] is False
+    assert not any("deprecated" in line for line in response["logs"])
     await asyncio.gather(*shell.launched_commands[response["id"]]["jobs"], return_exceptions=True)
     shell.refresh_commands()
     info = shell.command_info(response["id"])
@@ -321,6 +343,7 @@ async def test_terminal_accepts_json_batches_and_tracks_all_results(manager, fai
         assert '"status": "FAILED"' in info["results"][0]
     else:
         assert [row["index_name"] for row in info["results"][0]["indices"]] == ["alpha_v1", "beta_v1"]
+    assert not recwarn.list
 
 
 @pytest.mark.asyncio
@@ -394,7 +417,7 @@ async def test_batch_creates_real_snapshots_in_filesystem_repository(monkeypatch
         preview = manager.run_snapshot(env.name, names, dry_run=True)
         assert [row["action"] for row in preview["indices"]] == ["create", "create"]
         assert client.snapshot.get(repository=repository, snapshot="_all")["snapshots"] == []
-        result = await asyncio.wait_for(manager.snapshots(env.name, names), timeout=60)
+        result = await asyncio.wait_for(manager.create_snapshots(env.name, names), timeout=60)
         assert [row["status"] for row in result["indices"]] == ["SUCCESS", "SUCCESS"]
         snapshots = client.snapshot.get(repository=repository, snapshot="_all")["snapshots"]
         assert {item["snapshot"] for item in snapshots} == set(names)
