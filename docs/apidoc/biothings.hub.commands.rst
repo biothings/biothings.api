@@ -679,9 +679,9 @@ method run_snapshot in module biothings.hub.dataindex.snapshooter
 run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run=False) method of biothings.hub.dataindex.snapshooter.SnapshotManager instance
     Create one snapshot per index in the repository of a configured snapshot environment.
     The command uses ``SnapshotManager.run_snapshot()``; the underlying
-    ``SnapshotManager.snapshot()`` keeps its original signature and single-index behavior.
-    Lists delegate to ``SnapshotManager.snapshots()``, which reuses ``snapshot()``
-    for each index. Call ``ssm.snapshots(snapshot_env, indices)`` directly for batch
+    ``SnapshotManager.create_snapshot()`` provides the single-index operation.
+    Lists delegate to ``SnapshotManager.create_snapshots()``, which reuses ``create_snapshot()``
+    for each index. Call ``ssm.create_snapshots(snapshot_env, indices)`` directly for batch
     execution; ``dry_run`` is available through ``run_snapshot()`` only.
     ``index`` accepts one name or a list of exact index names. Each snapshot defaults to
     its index's name. A custom ``snapshot`` name and ``recreate_repo=True`` require a
@@ -701,6 +701,13 @@ run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run
     .. code-block:: bash
 
         biothings-cli hub run snapshot s3_env '["index_a", "index_b"]' --dry-run
+
+    Python callers should use ``SnapshotManager.create_snapshot()`` instead of
+    ``snapshot()``. The old manager method preserves its original signature and
+    single-index behavior, and emits ``DeprecationWarning`` with the caller's location.
+    This deprecation applies only to the Python manager method. The ``snapshot``
+    CLI command and ``PUT /snapshot`` endpoint remain the public entry points,
+    using ``run_snapshot()`` without a deprecation notice.
 
 
 
