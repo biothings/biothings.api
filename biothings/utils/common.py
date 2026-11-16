@@ -825,8 +825,8 @@ def sanitize_tarfile(tar_object, directory):
         target = os.path.join(directory, member.name)
         abs_directory = os.path.abspath(directory)
         abs_target = os.path.abspath(target)
-        prefix = os.path.commonprefix([abs_directory, abs_target])
-        if not prefix == abs_directory:
+        # commonpath compares whole path parts, so "/data/foo_bar" is not seen as inside "/data/foo"
+        if os.path.commonpath([abs_directory, abs_target]) != abs_directory:
             raise ValueError("Attempted Path Traversal in Tar File")
 
 
