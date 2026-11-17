@@ -118,6 +118,39 @@ async def test_single_index_preserves_native_task_and_arguments(manager, method)
     env.client.indices.get.assert_not_called()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_step", ["pre_snapshot", "_snapshot", "post_snapshot"])
+async def test_snapshot_step_failure_preserves_error_and_marks_job_failed(monkeypatch, failed_step):
+    builds = mongomock.MongoClient().db.builds
+    builds.insert_one({"_id": "build-alpha", "index": {"alpha_v1": {"environment": "source"}}})
+    collection = SimpleNamespace(find_one=builds.find_one, replace_one=builds.replace_one, update=builds.update_one)
+    monkeypatch.setattr(snapshooter, "get_src_build", lambda: collection)
+
+    async def defer(pinfo, operation):
+        return asyncio.create_task(asyncio.to_thread(operation))
+
+    env = SnapshotEnv.__new__(SnapshotEnv)
+    env.idxenv = "source"
+    env.repcfg = RepositoryConfig({"name": "test_repository"})
+    env.job_manager = SimpleNamespace(loop=asyncio.get_running_loop(), defer_to_thread=defer)
+    env.pinfo = ProcessInfo("source_snapshots")
+    env.logger = Mock()
+    env.setup_log = Mock()
+    steps = ["pre_snapshot", "_snapshot", "post_snapshot"]
+    for step in steps:
+        setattr(env, step, Mock(return_value={}))
+    error = KeyError(f"Failure in {failed_step}")
+    getattr(env, failed_step).side_effect = error
+
+    with pytest.raises(KeyError) as caught:
+        await env.snapshot("alpha_v1")
+
+    assert caught.value is error
+    jobs = builds.find_one({"_id": "build-alpha"})["jobs"]
+    assert [job["status"] for job in jobs] == ["success"] * steps.index(failed_step) + ["failed"]
+    assert jobs[-1]["detail"] == str(error)
+
+
 def test_command_delegates_single_index_to_native_override(manager, monkeypatch):
     manager, _ = manager
     native = Mock(return_value=object())

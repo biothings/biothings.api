@@ -256,8 +256,8 @@ class SnapshotEnv:
                     raise ex
                 except Exception as exc:
                     self.logger.exception(exc)
-                    state.failed({}, exc)
-                    raise exc
+                    state.failed({}, detail=str(exc))
+                    raise
                 else:
                     merge(x.data, dx.data)
                     self.logger.info(dx)
