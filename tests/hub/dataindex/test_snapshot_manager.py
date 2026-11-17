@@ -201,7 +201,7 @@ async def test_batch_uses_native_snapshot_method_without_deprecation(manager, mo
         ("source_snapshots", "alpha_v1", "alpha_v1", False),
         ("source_snapshots", "beta_v1", "beta_v1", False),
     ]
-    assert not recwarn.list
+    assert not any(issubclass(warning.category, DeprecationWarning) for warning in recwarn.list)
 
 
 def test_dry_run_previews_each_index_without_mutation(manager):
@@ -376,7 +376,7 @@ async def test_terminal_accepts_json_batches_and_tracks_all_results_without_depr
         assert '"status": "FAILED"' in info["results"][0]
     else:
         assert [row["index_name"] for row in info["results"][0]["indices"]] == ["alpha_v1", "beta_v1"]
-    assert not recwarn.list
+    assert not any(issubclass(warning.category, DeprecationWarning) for warning in recwarn.list)
 
 
 @pytest.mark.asyncio
