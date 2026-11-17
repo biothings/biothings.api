@@ -11,7 +11,7 @@ import math
 
 import pytest
 
-from biothings.utils.dataload import _missing_value_kind, _val_to_delete, dict_sweep
+from biothings.utils.dataload import _missing_value_kind, _val_to_delete, dict_sweep, float_convert, int_convert
 
 # ---------------------------------------------------------------------------
 # Fake pandas-like NA / NaT types for testing without importing pandas.
@@ -451,3 +451,21 @@ class TestDictSweepRealPandas:
         assert "b" in result
         assert "c" in result
         assert result["d"] == "keep"
+
+
+def test_int_convert_keeps_each_list_value():
+    assert int_convert({"a": ["1", "2"]}) == {"a": [1, 2]}
+    assert int_convert({"a": [{"b": "1"}, {"b": "2"}]}) == {"a": [{"b": 1}, {"b": 2}]}
+
+
+def test_float_convert_keeps_each_list_value_with_include_keys():
+    doc = {"a": [{"b": "0.1", "c": "3"}, {"b": "0.5", "c": "4"}], "d": "7"}
+    assert float_convert(doc, include_keys=["a.b"]) == {
+        "a": [{"b": 0.1, "c": "3"}, {"b": 0.5, "c": "4"}],
+        "d": "7",
+    }
+
+
+def test_int_convert_with_exclude_keys():
+    doc = {"a": {"b": ["1", "2"], "c": "3"}}
+    assert int_convert(doc, exclude_keys=["a.c"]) == {"a": {"b": [1, 2], "c": "3"}}
