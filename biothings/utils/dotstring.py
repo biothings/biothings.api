@@ -18,7 +18,9 @@ def last_element(d, key_list):
     k = key_list.pop(0)
     # termination
     if not key_list:
-        yield k, d
+        # items in a list can be plain values like strings, which have no keys
+        if isinstance(d, dict):
+            yield k, d
     # recursion
     else:
         try:
