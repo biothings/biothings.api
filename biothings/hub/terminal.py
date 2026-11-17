@@ -308,7 +308,10 @@ BUILTIN_DETAILS = {
         "Restores one snapshot or a list using the destination cluster and repository from SNAPSHOT_CONFIG. "
         "Each snapshot must contain exactly one index; the destination defaults to the name in its metadata. "
         "--index renames a single destination. Existing indices and aliases block the batch. Source aliases "
-        "are excluded unless --include-aliases; global cluster state is excluded. --index-settings accepts "
+        "are excluded unless --include-aliases, which warns and asks for confirmation before restoring. "
+        "Restored indices may join existing aliases and change live query results. Use hub run --yes for "
+        "noninteractive execution; --dry-run warns without asking. Global cluster state is excluded. "
+        "--index-settings accepts "
         "a JSON settings object and --ignore-index-settings a JSON list. --dry-run previews without restoring. "
         "The job completes after recovery, with per-snapshot results. Use hub run --no-wait to detach, then "
         "hub history <id> --wait to follow it. Monitoring has no deadline by default; --recovery-timeout "
@@ -378,6 +381,8 @@ BUILTIN_DETAILS = {
 
 # Commands deleting or overwriting data, or stopping the hub: terminals ask for a confirmation before
 # running them. True: always, or the name of the parameter making it a dry run: unless it's a dry run.
+# A conditional rule asks when one flag is set, unless another makes it a dry run; its warning is
+# returned even for dry runs and confirmed calls.
 # A hook command can ask for one too, with a "confirm" attribute (eg. "purge.confirm = True").
 CONFIRM = {
     "rmmerge": True,
@@ -395,6 +400,14 @@ CONFIRM = {
     "reset_backend": True,
     "resetconf": True,
     "restore": True,
+    "restore_snapshot": {
+        "when": "include_aliases",
+        "unless": "dry_run",
+        "warning": (
+            "WARNING: Restoring snapshot aliases may add restored indices to existing destination aliases, "
+            "changing live query results. Existing alias targets are retained."
+        ),
+    },
     "upgrade": True,
     "stop": True,
     "cancel": True,
@@ -783,7 +796,7 @@ class HubTerminal:
     def confirmation(self, name, command):
         """
         When a command asks for a confirmation before running (see CONFIRM): True (always), the name
-        of the parameter making it a dry run (unless it's a dry run), or None (never)
+        of the parameter making it a dry run, a conditional rule, or None (never).
         """
         rule = getattr(unwrap(command), "confirm", None) if callable(command) else None
         if rule is True or isinstance(rule, str):
@@ -792,18 +805,27 @@ class HubTerminal:
 
     def needs_confirmation(self, invocation):
         """True if a command, called with these arguments, must be confirmed before running"""
+        return self.confirmation_details(invocation)[0]
+
+    def confirmation_details(self, invocation):
+        """Return whether confirmation is required and any warning to display for these arguments."""
         rule = self.confirmation(invocation.name, invocation.command)
         if rule is None or rule is True:
-            return bool(rule)
+            return bool(rule), None
+        conditional = isinstance(rule, dict)
+        parameters = (rule["when"], rule["unless"]) if conditional else (rule,)
         signature = get_signature(invocation.command)
-        if signature is None or rule not in signature.parameters:
-            return True
+        if signature is None or any(name not in signature.parameters for name in parameters):
+            return True, None
         try:
             arguments = signature.bind(*invocation.args, **invocation.kwargs)
         except TypeError:
-            return True
+            return True, None
         arguments.apply_defaults()
-        return not arguments.arguments[rule]
+        if conditional:
+            warning = rule["warning"] if arguments.arguments[rule["when"]] else None
+            return bool(warning) and not arguments.arguments[rule["unless"]], warning
+        return not arguments.arguments[rule], None
 
     def catalog(self):
         """Commands available from the terminal and hook files loaded, as consumed by terminal clients"""
@@ -1123,17 +1145,23 @@ class HubTerminal:
             if info.get("cmd") == cmdline and not info.get("is_done"):
                 raise AlreadyRunningException("'%s' is already running (command #%s)" % (cmdline, info.get("id")))
         steps = [step for invocation in invocations for step in (invocation.steps or [invocation])]
+        confirmations = [(step, *self.confirmation_details(step)) for step in steps]
         if not confirmed:
             reasons = [
-                "%s: %s" % (step.display, self.describe(step.name)["summary"])
-                for step in steps
-                if self.needs_confirmation(step)
+                "%s: %s" % (step.display, warning or self.describe(step.name)["summary"])
+                for step, required, warning in confirmations
+                if required
             ]
             if reasons:
                 raise ConfirmationRequired(reasons)
         if len(steps) == 1:
-            return self.run_one(cmdline, steps[0])
-        return self.run_chain(cmdline, steps)
+            response = self.run_one(cmdline, steps[0])
+        else:
+            response = self.run_chain(cmdline, steps)
+        warnings = list(dict.fromkeys(warning for _, _, warning in confirmations if warning))
+        if warnings:
+            response["warnings"] = warnings
+        return response
 
     def run_one(self, cmdline, invocation):
         streams = RedirectStdStreams()
@@ -1274,7 +1302,7 @@ class HubTerminal:
             raise CommandError(str(e))
         if response["failed"]:
             raise CommandError(response["error"])
-        outputs = ["\n".join(response["logs"]), response["stdout"], response["stderr"]]
+        outputs = [*response.get("warnings", []), "\n".join(response["logs"]), response["stdout"], response["stderr"]]
         if response["is_done"]:
             outputs.append(render(response["result"]))
         # else: running in background, progress is reported by the console like other commands

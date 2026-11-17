@@ -319,6 +319,13 @@ def show_confirmation(error):
         print_text(reason, style="yellow", stderr=True)
 
 
+def print_warnings(response, shown=()):
+    """Keep warnings visible with --yes and --json, without repeating a confirmation's warning."""
+    for warning in response.get("warnings") or []:
+        if not any(warning in reason for reason in shown):
+            print_text(warning, style="yellow", stderr=True)
+
+
 def print_command_results(info, verbose=False):
     """Print the final state of a command which ran in background, returns False if it failed"""
     results = info.get("results") or []
@@ -447,8 +454,15 @@ def print_command_help(cmd):
     if cmd.get("is_async"):
         console.print("Runs in background (asynchronous command)")
     if cmd.get("confirm"):  # not sent by older hubs
-        unless = "" if cmd["confirm"] is True else ", unless it's a dry run"
-        console.print("Asks for a confirmation before running%s (see run --yes)" % unless)
+        rule = cmd["confirm"]
+        if isinstance(rule, dict):
+            console.print(
+                "Asks for a confirmation with --%s, unless --%s (see run --yes)"
+                % (rule["when"].replace("_", "-"), rule["unless"].replace("_", "-"))
+            )
+        else:
+            unless = "" if rule is True else ", unless it's a dry run"
+            console.print("Asks for a confirmation before running%s (see run --yes)" % unless)
     if cmd.get("examples"):
         console.print("[bold]Examples:[/bold]")
         for example in cmd["examples"]:
@@ -534,6 +548,7 @@ def run_command(
         )
         raise typer.Exit(2)
     started = time.time()
+    confirmation_reasons = []
     try:
         try:
             response = client.run(argv=argv, confirmed=yes)
@@ -541,6 +556,7 @@ def run_command(
             if e.status != 428:
                 raise
             show_confirmation(e)
+            confirmation_reasons = e.payload.get("confirm") or []
             if not sys.stdin.isatty():
                 print_text("Not run: this command must be confirmed, use --yes", style="red", stderr=True)
                 raise typer.Exit(2)
@@ -556,6 +572,7 @@ def run_command(
         print_error(e)
         raise typer.Exit(2 if e.status in (400, 401, 403, 404, 409) else 1)
 
+    print_warnings(response, shown=confirmation_reasons)
     if response["is_done"]:
         if as_json:
             print_json(response)
@@ -1046,6 +1063,7 @@ def interactive_shell(ctx: typer.Context):
                 if not running:
                     print_text("No command running in background")
                 continue
+            confirmation_reasons = []
             try:
                 try:
                     response = client.run(line=line)
@@ -1053,12 +1071,14 @@ def interactive_shell(ctx: typer.Context):
                     if e.status != 428:
                         raise
                     show_confirmation(e)
+                    confirmation_reasons = e.payload.get("confirm") or []
                     if not typer.confirm("Run it?", default=False, err=True):
                         continue
                     response = client.run(line=line, confirmed=True)
             except HubAPIError as e:
                 print_error(e)
                 continue
+            print_warnings(response, shown=confirmation_reasons)
             if response["is_done"]:
                 print_response(response)
             else:

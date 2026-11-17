@@ -745,7 +745,14 @@ method run_restore in module biothings.hub.dataindex.snapshooter
     remove the failed destination after verifying it is safe to do so.
 
     Source aliases are excluded by default; set ``include_aliases=True`` to restore
-    them. Global state is excluded. ``index_settings`` and ``ignore_index_settings``
+    them. Restored indices may join existing destination aliases, causing those
+    aliases to query both existing and restored data. Existing alias targets are
+    retained. Saved alias names are unavailable during preflight, so the warning
+    applies whenever aliases are requested, even without a known conflict.
+    The CLI asks for confirmation before submitting the batch, including with
+    ``hub run --no-wait``. Noninteractive use requires ``hub run --yes``; the
+    warning is still displayed. Dry runs display the warning without prompting.
+    Global state is excluded. ``index_settings`` and ``ignore_index_settings``
     pass destination settings options to ``ESIndexer.restore()``. Batch results
     retain every snapshot's outcome. A failed batch raises ``RestoreBatchError``
     with those outcomes in ``results``; the CLI includes them in the error text.
@@ -760,6 +767,7 @@ method run_restore in module biothings.hub.dataindex.snapshooter
 
         biothings-cli hub run restore_snapshot target_env '["snapshot_a", "snapshot_b"]' --dry-run
         biothings-cli hub run --no-wait restore_snapshot target_env '["snapshot_a", "snapshot_b"]'
+        biothings-cli hub run --yes --no-wait restore_snapshot target_env snapshot_a --include-aliases
         biothings-cli hub history <id> --wait
 
 
