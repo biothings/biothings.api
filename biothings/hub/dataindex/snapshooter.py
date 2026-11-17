@@ -346,7 +346,7 @@ class SnapshotEnv:
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
-        recovery_timeout=3600,
+        recovery_timeout=None,
     ):
         """Restore a single-index snapshot and monitor recovery to completion.
 
@@ -354,6 +354,9 @@ class SnapshotEnv:
         indices and aliases are rejected. The environment owns the client shared
         with ESIndexer; this operation does not close it. Source aliases are
         excluded by default, and global state is never restored.
+        Monitoring has no deadline unless recovery_timeout is set. A confirmed
+        recovery failure removes the failed destination; uncertain outcomes leave
+        it in place for inspection.
         """
         if not isinstance(snapshot, str):
             raise TypeError("restore requires a single snapshot name; use restore_many for a batch")
@@ -371,12 +374,20 @@ class SnapshotEnv:
             raise ValueError(f"Cannot restore snapshot: {row}")
         name = row["index_name"]
         progress = [f"{name}: PENDING"]
+        submission_started = False
+        index_uuid = None
+        preserved = (
+            f"Destination index '{name}' was not removed; the restore may still be running. "
+            "Check its recovery and existence before retrying; wait for recovery to finish, "
+            "or remove the failed destination after verifying it is safe to do so."
+        )
 
         async def work(step, operation):
             job = await self.job_manager.defer_to_thread(self.pinfo.get_pinfo(step, snapshot), operation)
             return await job
 
         def submit():
+            nonlocal submission_started
             # Recheck identity and destination immediately before submitting. Never
             # retry an uncertain restore request through the client's transport.
             current = self._restore_plan(snapshot, index, **options)["indices"][0]
@@ -389,6 +400,7 @@ class SnapshotEnv:
                 check_index=False,
                 client=self.client.options(max_retries=0, retry_on_timeout=False),
             )
+            submission_started = True
             response = indexer.restore(
                 row["repository"],
                 snapshot,
@@ -399,20 +411,43 @@ class SnapshotEnv:
             )
             return indexer, response
 
+        def recovery(indexer):
+            nonlocal index_uuid
+            if index_uuid is None:
+                settings = self.client.indices.get_settings(index=name, name="index.uuid")
+                current_uuid = settings[name]["settings"]["index"]["uuid"]
+                if not current_uuid:
+                    raise RuntimeError(f"Cannot identify restored destination index '{name}'")
+                index_uuid = current_uuid
+            return indexer.get_restore_status()
+
+        def cleanup():
+            try:
+                settings = self.client.indices.get_settings(index=name, name="index.uuid")
+                if settings[name]["settings"]["index"]["uuid"] != index_uuid:
+                    return f"Automatic cleanup skipped because the destination index changed. {preserved}"
+                response = self.client.options(max_retries=0, retry_on_timeout=False).indices.delete(index=name)
+            except NotFoundError:
+                return f"Destination index '{name}' is already absent; fix the recovery error before retrying."
+            if not response.get("acknowledged"):
+                raise RuntimeError("destination deletion was not acknowledged")
+            return f"Removed failed destination index '{name}'; fix the recovery error before retrying."
+
         async def _restore():
+            recovery_failed = False
             try:
                 progress[0] = f"{name}: RESTORING"
                 indexer, response = await work("restore", submit)
                 if not response.get("accepted"):
                     raise RuntimeError(f"Restore was not accepted for {name}: {response}")
-                deadline = self.job_manager.loop.time() + recovery_timeout
+                deadline = None if recovery_timeout is None else self.job_manager.loop.time() + recovery_timeout
                 errors = 0
                 while True:
-                    remaining = deadline - self.job_manager.loop.time()
-                    if remaining <= 0:
+                    remaining = None if deadline is None else deadline - self.job_manager.loop.time()
+                    if remaining is not None and remaining <= 0:
                         raise TimeoutError(f"Recovery timed out for {name}")
                     try:
-                        status = await asyncio.wait_for(work("recovery", indexer.get_restore_status), remaining)
+                        status = await asyncio.wait_for(work("recovery", partial(recovery, indexer)), remaining)
                     except asyncio.TimeoutError:
                         raise TimeoutError(f"Recovery timed out for {name}") from None
                     except Exception as exc:
@@ -431,15 +466,30 @@ class SnapshotEnv:
                                 **status,
                             }
                         if status["status"] == "FAILED":
-                            raise RuntimeError(f"Recovery failed for {name}: {status.get('reason', status)}")
+                            recovery_failed = True
+                            progress[0] = f"{name}: CLEANING_UP"
+                            try:
+                                outcome = await work("cleanup", cleanup)
+                            except Exception as exc:
+                                outcome = f"Automatic cleanup failed: {type(exc).__name__}: {exc}. {preserved}"
+                            raise RuntimeError(f"Recovery failed for {name}: {status.get('reason', status)}. {outcome}")
                         if status["status"] not in {"INIT", "IN_PROGRESS"}:
                             raise RuntimeError(f"Unexpected recovery status for {name}: {status}")
-                    await asyncio.sleep(min(self.wtime, max(0, deadline - self.job_manager.loop.time())))
+                    delay = (
+                        self.wtime
+                        if deadline is None
+                        else min(self.wtime, max(0, deadline - self.job_manager.loop.time()))
+                    )
+                    await asyncio.sleep(delay)
             except asyncio.CancelledError:
                 progress[0] = f"{name}: CANCELLED"
+                logging.warning("Restore monitoring cancelled for %s. %s", name, preserved)
                 raise
-            except Exception:
+            except Exception as exc:
                 progress[0] = f"{name}: FAILED"
+                if submission_started and not recovery_failed:
+                    error_type = TimeoutError if isinstance(exc, TimeoutError) else RuntimeError
+                    raise error_type(f"{exc}. {preserved}") from exc
                 raise
 
         task = self.job_manager.loop.create_task(_restore())
@@ -454,7 +504,7 @@ class SnapshotEnv:
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
-        recovery_timeout=3600,
+        recovery_timeout=None,
     ):
         names = _snapshot_indices(snapshot, kind="snapshot")
         if index is not None:
@@ -472,13 +522,13 @@ class SnapshotEnv:
             or any(not isinstance(setting, str) or not setting for setting in ignore_index_settings)
         ):
             raise TypeError("ignore_index_settings must be a list of setting names")
-        if (
+        if recovery_timeout is not None and (
             isinstance(recovery_timeout, bool)
             or not isinstance(recovery_timeout, (int, float))
             or not math.isfinite(recovery_timeout)
             or recovery_timeout <= 0
         ):
-            raise ValueError("recovery_timeout must be a positive number of seconds")
+            raise ValueError("recovery_timeout must be None or a positive finite number of seconds")
         plan = {
             "snapshot_env": self.name,
             "indexer_env": self.idxenv,
@@ -486,6 +536,7 @@ class SnapshotEnv:
             "include_aliases": include_aliases,
             "index_settings": copy.deepcopy(index_settings),
             "ignore_index_settings": copy.deepcopy(ignore_index_settings),
+            "recovery_timeout": recovery_timeout,
             "indices": [],
         }
         if not names:
@@ -836,7 +887,7 @@ class SnapshotManager(BaseManager):
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
-        recovery_timeout=3600,
+        recovery_timeout=None,
         dry_run: bool = False,
     ):
         """Run restore_snapshot for one snapshot or a list, or preview a dry run.
@@ -846,7 +897,9 @@ class SnapshotManager(BaseManager):
         destination name. index optionally renames a single destination. Existing
         destination indices and aliases block execution. Source aliases are
         excluded by default. The returned task finishes after recovery, with
-        per-snapshot results for batches. dry_run belongs to this command wrapper.
+        per-snapshot results for batches. Monitoring has no deadline unless
+        recovery_timeout is set. Failed recoveries clean up their destination;
+        uncertain outcomes preserve it. dry_run belongs to this command wrapper.
         """
         options = dict(
             include_aliases=include_aliases,

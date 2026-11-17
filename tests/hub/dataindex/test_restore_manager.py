@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, NotFoundError
 
 from biothings.hub import HubServer
 from biothings.hub.dataindex import snapshooter
@@ -45,6 +45,13 @@ async def manager(monkeypatch):
         "snapshots": [copy.deepcopy(state.metadata[name]) for name in snapshot if name in state.metadata]
     }
     env.client.indices.get.side_effect = lambda **kwargs: copy.deepcopy(state.existing)
+    env.client.indices.get_settings.side_effect = lambda index, **kwargs: {index: copy.deepcopy(state.existing[index])}
+
+    def delete(index):
+        state.existing.pop(index, None)
+        return {"acknowledged": True}
+
+    env.client.indices.delete.side_effect = delete
 
     async def defer(pinfo, operation):
         state.steps.append(pinfo["step"])
@@ -59,6 +66,7 @@ async def manager(monkeypatch):
 
         def restore(self, repository, snapshot, index, **options):
             state.calls.append((repository, snapshot, index, options))
+            state.existing[index] = {"settings": {"index": {"uuid": uuid4().hex}}}
             if state.failures.get(snapshot) == "submit":
                 raise RuntimeError(f"Submission failed: {snapshot}")
             return {"accepted": state.failures.get(snapshot) != "unaccepted"}
@@ -152,6 +160,10 @@ def test_entire_batch_is_blocked_before_submission(manager, reason):
         (["snapshot_alpha"], {"index_settings": []}),
         (["snapshot_alpha"], {"ignore_index_settings": "index.routing.*"}),
         (["snapshot_alpha"], {"recovery_timeout": 0}),
+        (["snapshot_alpha"], {"recovery_timeout": -1}),
+        (["snapshot_alpha"], {"recovery_timeout": True}),
+        (["snapshot_alpha"], {"recovery_timeout": "3600"}),
+        (["snapshot_alpha"], {"recovery_timeout": float("nan")}),
         (["snapshot_alpha"], {"recovery_timeout": float("inf")}),
     ],
 )
@@ -236,15 +248,140 @@ async def test_monitoring_retries_without_resubmitting_and_has_a_deadline(manage
     state.recoveries["index_alpha"] = [RuntimeError("transient"), {"status": "DONE", "progress": "100%"}]
     await manager.restore(env.name, "snapshot_alpha")
     assert len(state.calls) == 1 and len(state.polls) == 2
+    state.existing.clear()
     state.recoveries["index_alpha"] = [{"status": "IN_PROGRESS", "progress": "50%"}]
     with pytest.raises(TimeoutError, match="Recovery timed out"):
         await manager.restore(env.name, "snapshot_alpha", recovery_timeout=0.01)
     assert len(state.calls) == 2
+    state.existing.clear()
     state.recoveries["index_alpha"] = [RuntimeError("persistent")]
     state.polls.clear()
     with pytest.raises(RuntimeError, match="persistent"):
         await manager.restore(env.name, "snapshot_alpha")
     assert len(state.calls) == 3 and len(state.polls) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["restore", "restore_many", "run_restore"])
+@pytest.mark.parametrize("options", [{}, {"recovery_timeout": None}])
+async def test_unlimited_monitoring_can_finish_after_an_hour(manager, method, options):
+    manager, env, state = manager
+    elapsed = iter((0, 7200, 14400, 21600))
+    env.job_manager.loop = SimpleNamespace(create_task=asyncio.create_task, time=lambda: next(elapsed))
+    state.recoveries["index_alpha"] = [
+        {"status": "IN_PROGRESS", "progress": "50%"},
+        {"status": "DONE", "progress": "100%"},
+    ]
+    selected = ["snapshot_alpha"] if method == "restore_many" else "snapshot_alpha"
+    result = await getattr(manager, method)(env.name, selected, **options)
+    if method == "restore_many":
+        result = result["indices"][0]["result"]
+    assert result["status"] == "DONE"
+    assert state.polls == ["index_alpha"] * 2
+    env.client.indices.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_confirmed_failure_cleans_only_failed_destination_and_allows_retry(manager):
+    manager, env, state = manager
+    state.recoveries["index_beta"] = [{"status": "FAILED", "reason": "disk watermark"}]
+    with pytest.raises(RestoreBatchError) as error:
+        await manager.restore_many(env.name, ["snapshot_alpha", "snapshot_beta"])
+    assert "index_alpha" in state.existing and "index_beta" not in state.existing
+    env.client.indices.delete.assert_called_once_with(index="index_beta")
+    assert "disk watermark" in error.value.results[1]["error"]
+    assert "Removed failed destination" in error.value.results[1]["error"]
+    assert "retry" in error.value.results[1]["error"]
+    assert "cleanup:snapshot_beta" in state.steps
+    state.recoveries["index_beta"] = [{"status": "DONE", "progress": "100%"}]
+    assert (await manager.restore(env.name, "snapshot_beta"))["status"] == "DONE"
+    env.client.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["delete_error", "unacknowledged", "changed_destination", "missing_destination"])
+async def test_failed_restore_reports_cleanup_outcome_without_hiding_recovery_error(manager, failure):
+    manager, env, state = manager
+    state.recoveries["index_alpha"] = [{"status": "FAILED", "reason": "disk watermark"}]
+    if failure == "delete_error":
+        env.client.indices.delete.side_effect = RuntimeError("permission denied")
+        expected = "permission denied"
+    elif failure == "unacknowledged":
+        env.client.indices.delete.side_effect = None
+        env.client.indices.delete.return_value = {"acknowledged": False}
+        expected = "not acknowledged"
+    else:
+        initial = {"index_alpha": {"settings": {"index": {"uuid": "restored-uuid"}}}}
+        if failure == "changed_destination":
+            current = {"index_alpha": {"settings": {"index": {"uuid": "replacement-uuid"}}}}
+            expected = "destination index changed"
+        else:
+            current = NotFoundError("missing", Mock(status=404), {"error": "index_not_found_exception"})
+            expected = "already absent"
+        env.client.indices.get_settings.side_effect = [initial, current]
+    with pytest.raises(RuntimeError, match="disk watermark") as error:
+        await manager.restore(env.name, "snapshot_alpha")
+    assert expected in str(error.value)
+    assert "retry" in str(error.value)
+    if failure in {"changed_destination", "missing_destination"}:
+        env.client.indices.delete.assert_not_called()
+    if failure != "missing_destination":
+        assert "index_alpha" in state.existing
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["submit", "unaccepted", "poll_error", "unknown_status", "timeout"])
+async def test_uncertain_outcomes_preserve_destination_and_report_retry_guidance(manager, failure):
+    manager, env, state = manager
+    options = {}
+    if failure in {"submit", "unaccepted"}:
+        state.failures["snapshot_alpha"] = failure
+    elif failure == "poll_error":
+        state.recoveries["index_alpha"] = [RuntimeError("persistent connection failure")]
+    elif failure == "unknown_status":
+        state.recoveries["index_alpha"] = [{"status": "UNKNOWN"}]
+    else:
+        state.recoveries["index_alpha"] = [{"status": "IN_PROGRESS"}]
+        options["recovery_timeout"] = 0.01
+    with pytest.raises((RuntimeError, TimeoutError)) as error:
+        await manager.restore(env.name, "snapshot_alpha", **options)
+    assert "not removed" in str(error.value) and "before retrying" in str(error.value)
+    assert "index_alpha" in state.existing
+    assert len(state.calls) == 1
+    env.client.indices.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index_uuid", [None, ""])
+async def test_unidentified_destination_is_never_cleaned_up(manager, index_uuid):
+    manager, env, state = manager
+    env.client.indices.get_settings.side_effect = None
+    env.client.indices.get_settings.return_value = {"index_alpha": {"settings": {"index": {"uuid": index_uuid}}}}
+    state.recoveries["index_alpha"] = [{"status": "FAILED", "reason": "disk watermark"}]
+    with pytest.raises(RuntimeError, match="Cannot identify.*not removed"):
+        await manager.restore(env.name, "snapshot_alpha")
+    assert state.polls == [] and "index_alpha" in state.existing
+    env.client.indices.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_monitoring_preserves_destination(manager, caplog):
+    manager, env, state = manager
+    env.wtime = 60
+    state.recoveries["index_alpha"] = [{"status": "IN_PROGRESS"}]
+    task = manager.restore(env.name, "snapshot_alpha")
+
+    async def wait_for_poll():
+        while not state.polls:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_for_poll(), 2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert "index_alpha" in state.existing
+    env.client.indices.delete.assert_not_called()
+    assert "before retrying" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -300,6 +437,7 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
     names = [f"biothings-restore-{part}-{suffix}" for part in ("alpha", "beta")]
     snapshots = [f"snapshot-{part}-{suffix}" for part in ("alpha", "beta")]
     renamed = f"renamed-{suffix}"
+    failed = f"failed-{suffix}"
     alias = f"source-alias-{suffix}"
     root = paths[0][0] if isinstance(paths[0], list) else paths[0]
 
@@ -349,10 +487,23 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
         single = await asyncio.wait_for(manager.run_restore(env.name, snapshots[0], renamed, **options), 60)
         assert single["status"] == "DONE" and single["index_name"] == renamed
         assert client.get(index=renamed, id="1")["_source"] == {"value": 0}
+        with pytest.raises(RuntimeError, match="Recovery failed.*Removed failed destination"):
+            await asyncio.wait_for(
+                manager.run_restore(
+                    env.name,
+                    snapshots[0],
+                    failed,
+                    index_settings={"index.routing.allocation.require._name": f"missing-node-{suffix}"},
+                ),
+                60,
+            )
+        assert not client.indices.exists(index=failed)
+        retried = await asyncio.wait_for(manager.run_restore(env.name, snapshots[0], failed, **options), 60)
+        assert retried["status"] == "DONE" and client.get(index=failed, id="1")["_source"] == {"value": 0}
         env._doc.assert_not_called()
     finally:
         try:
-            client.options(ignore_status=404).indices.delete(index=[*names, renamed])
+            client.options(ignore_status=404).indices.delete(index=[*names, renamed, failed])
             client.options(ignore_status=404).snapshot.delete(repository=repository, snapshot="_all")
             client.options(ignore_status=404).snapshot.delete_repository(name=repository)
         finally:

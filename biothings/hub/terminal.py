@@ -311,7 +311,10 @@ BUILTIN_DETAILS = {
         "are excluded unless --include-aliases; global cluster state is excluded. --index-settings accepts "
         "a JSON settings object and --ignore-index-settings a JSON list. --dry-run previews without restoring. "
         "The job completes after recovery, with per-snapshot results. Use hub run --no-wait to detach, then "
-        "hub history <id> --wait to follow it. This is separate from install for published releases and "
+        "hub history <id> --wait to follow it. Monitoring has no deadline by default; --recovery-timeout "
+        "sets a positive limit in seconds. Confirmed recovery failures remove the failed destination; "
+        "timeouts and uncertain outcomes leave it for inspection before retrying. "
+        "This is separate from install for published releases and "
         "restore for Hub database backups."
     ),
     "merge": (

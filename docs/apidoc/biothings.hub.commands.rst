@@ -711,7 +711,7 @@ run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run
 
 
 
-.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=3600, dry_run=False)
+.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=None, dry_run=False)
 
 method run_restore in module biothings.hub.dataindex.snapshooter
 
@@ -728,9 +728,21 @@ method run_restore in module biothings.hub.dataindex.snapshooter
     ``restore_many()`` reuses it for a batch. ``run_restore()`` handles command dispatch
     and ``dry_run=True`` previews. Submission and recovery monitoring use
     ``ESIndexer.restore()`` and ``get_restore_status()``. The task completes after
-    recovery, not merely after Elasticsearch accepts the request. ``recovery_timeout``
-    limits monitoring per snapshot, in seconds. Monitoring errors are retried up to
-    three consecutive failures; uncertain restore submissions are not retried.
+    recovery, not merely after Elasticsearch accepts the request. Monitoring has
+    no deadline by default (``recovery_timeout=None``). A positive finite
+    ``recovery_timeout`` limits monitoring per snapshot, in seconds. Detaching with
+    ``hub run --no-wait`` leaves monitoring running in the Hub. Monitoring errors
+    are retried up to three consecutive failures; uncertain restore submissions
+    are not retried.
+
+    A confirmed recovery failure triggers automatic deletion of the failed
+    destination, after checking that its index UUID has not changed. The error
+    reports whether cleanup succeeded, failed, or was skipped. Successful batch
+    members remain available. Fix the reported recovery problem before retrying.
+    A timeout, cancellation, or uncertain submission or monitoring outcome leaves
+    the destination in place because Elasticsearch may still be recovering it.
+    Check recovery and existence before retrying; wait for recovery to finish or
+    remove the failed destination after verifying it is safe to do so.
 
     Source aliases are excluded by default; set ``include_aliases=True`` to restore
     them. Global state is excluded. ``index_settings`` and ``ignore_index_settings``
