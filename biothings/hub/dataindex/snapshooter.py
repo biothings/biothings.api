@@ -29,6 +29,7 @@ from config import logger as logging
 
 from . import snapshot_cleanup as cleaner, snapshot_registrar as registrar
 from .snapshot_repo import Repository
+from .snapshot_restore import RestoreRepositoryResolver, validate_repository
 from .snapshot_task import Snapshot
 
 
@@ -343,10 +344,12 @@ class SnapshotEnv:
         snapshot,
         index=None,
         *,
+        repository=None,
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
         recovery_timeout=None,
+        _expected_snapshot_uuid=None,
     ):
         """Restore a single-index snapshot and monitor recovery to completion.
 
@@ -356,11 +359,14 @@ class SnapshotEnv:
         excluded by default, and global state is never restored.
         Monitoring has no deadline unless recovery_timeout is set. A confirmed
         recovery failure removes the failed destination; uncertain outcomes leave
-        it in place for inspection.
+        it in place for inspection. repository selects one exact registered
+        repository; otherwise recorded metadata and the configured name's family
+        locate it without formatting snapshot-creation settings.
         """
         if not isinstance(snapshot, str):
             raise TypeError("restore requires a single snapshot name; use restore_many for a batch")
         options = dict(
+            repository=repository,
             include_aliases=include_aliases,
             index_settings=copy.deepcopy(index_settings),
             ignore_index_settings=copy.deepcopy(ignore_index_settings),
@@ -372,7 +378,10 @@ class SnapshotEnv:
         row = plan["indices"][0]
         if row["action"] == "blocked":
             raise ValueError(f"Cannot restore snapshot: {row}")
+        if _expected_snapshot_uuid is not None and row["snapshot_uuid"] != _expected_snapshot_uuid:
+            raise ValueError(f"Snapshot changed after preflight: {snapshot}")
         name = row["index_name"]
+        options["repository"] = row["repository"]
         progress = [f"{name}: PENDING"]
         submission_started = False
         index_uuid = None
@@ -496,17 +505,20 @@ class SnapshotEnv:
         task.progress = progress
         return task
 
-    def _restore_plan(
-        self,
+    @staticmethod
+    def _validate_restore(
         snapshot,
         index=None,
         *,
+        repository=None,
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
         recovery_timeout=None,
     ):
         names = _snapshot_indices(snapshot, kind="snapshot")
+        if repository is not None:
+            validate_repository(repository)
         if index is not None:
             if not isinstance(index, str):
                 raise TypeError("index must be one destination index name")
@@ -529,6 +541,28 @@ class SnapshotEnv:
             or recovery_timeout <= 0
         ):
             raise ValueError("recovery_timeout must be None or a positive finite number of seconds")
+        return names
+
+    def _restore_plan(
+        self,
+        snapshot,
+        index=None,
+        *,
+        repository=None,
+        include_aliases=False,
+        index_settings=None,
+        ignore_index_settings=None,
+        recovery_timeout=None,
+    ):
+        names = self._validate_restore(
+            snapshot,
+            index,
+            repository=repository,
+            include_aliases=include_aliases,
+            index_settings=index_settings,
+            ignore_index_settings=ignore_index_settings,
+            recovery_timeout=recovery_timeout,
+        )
         plan = {
             "snapshot_env": self.name,
             "indexer_env": self.idxenv,
@@ -541,19 +575,21 @@ class SnapshotEnv:
         }
         if not names:
             return plan
-        repository = self.repcfg.format().repo
-        try:
-            response = self.client.snapshot.get(repository=repository, snapshot=names, ignore_unavailable=True)
-            snapshots = {item["snapshot"]: item for item in response["snapshots"]}
-        except NotFoundError:
-            snapshots = {}
+        resolved = RestoreRepositoryResolver(self.client, self.repcfg).resolve(names, repository)
         targets = {}
-        for name in names:
-            row = {"snapshot": name, "repository": repository, "action": "restore"}
+        for row in resolved:
+            metadata = row.pop("metadata", None)
             plan["indices"].append(row)
-            metadata = snapshots.get(name)
-            if not metadata or metadata.get("state") != "SUCCESS" or metadata.get("shards", {}).get("failed", 0):
-                row.update(action="blocked", reason="snapshot or repository is missing, or snapshot is incomplete")
+            if row["action"] == "blocked":
+                continue
+            if metadata.get("state") != "SUCCESS" or metadata.get("shards", {}).get("failed", 0):
+                row.update(
+                    action="blocked",
+                    reason=(
+                        f"snapshot is incomplete (state={metadata.get('state')}, "
+                        f"failed shards={metadata.get('shards', {}).get('failed', 0)})"
+                    ),
+                )
                 continue
             indices = metadata.get("indices", [])
             if len(indices) != 1:
@@ -848,6 +884,10 @@ class SnapshotManager(BaseManager):
         env = self.register[snapshot_env]
         kwargs = copy.deepcopy(kwargs)
         plan = env._restore_plan(snapshots, index, **kwargs)
+        return self._restore_many_plan(snapshot_env, plan, kwargs)
+
+    def _restore_many_plan(self, snapshot_env, plan, kwargs):
+        """Submit the already-resolved batch, retaining its repository and snapshot identities."""
         blocked = [row for row in plan["indices"] if row["action"] == "blocked"]
         if blocked:
             raise ValueError(f"Cannot restore snapshots: {blocked}")
@@ -861,7 +901,10 @@ class SnapshotManager(BaseManager):
                 progress[position] = f"{row['index_name']}: RUNNING"
                 try:
                     restore_task: asyncio.Task = self.restore(
-                        snapshot_env, row["snapshot"], row["index_name"], **kwargs
+                        snapshot_env,
+                        row["snapshot"],
+                        row["index_name"],
+                        **{**kwargs, "repository": row["repository"], "_expected_snapshot_uuid": row["snapshot_uuid"]},
                     )
                     result.update(status="SUCCESS", result=await restore_task)
                 except Exception as exc:
@@ -884,6 +927,7 @@ class SnapshotManager(BaseManager):
         snapshot,
         index=None,
         *,
+        repository=None,
         include_aliases=False,
         index_settings=None,
         ignore_index_settings=None,
@@ -892,7 +936,9 @@ class SnapshotManager(BaseManager):
     ):
         """Run restore_snapshot for one snapshot or a list, or preview a dry run.
 
-        Select the destination cluster and repository through SNAPSHOT_CONFIG.
+        Select the destination cluster through SNAPSHOT_CONFIG. repository is a
+        strict override; otherwise reuse recorded metadata, then search registered
+        repositories matching the configured name's template family.
         Each snapshot must contain one index; its metadata supplies the default
         destination name. index optionally renames a single destination. Existing
         destination indices and aliases block execution. Source aliases are
@@ -901,19 +947,54 @@ class SnapshotManager(BaseManager):
         recovery_timeout is set. Failed recoveries clean up their destination;
         uncertain outcomes preserve it. dry_run belongs to this command wrapper.
         """
-        options = dict(
-            include_aliases=include_aliases,
-            index_settings=index_settings,
-            ignore_index_settings=ignore_index_settings,
-            recovery_timeout=recovery_timeout,
+        options = copy.deepcopy(
+            dict(
+                repository=repository,
+                include_aliases=include_aliases,
+                index_settings=index_settings,
+                ignore_index_settings=ignore_index_settings,
+                recovery_timeout=recovery_timeout,
+            )
         )
-        if dry_run:
-            if snapshot_env not in self.register:
-                raise ValueError("Unknown snapshot environment '%s' (see SNAPSHOT_CONFIG)" % snapshot_env)
-            return self.register[snapshot_env]._restore_plan(snapshot, index, **options)
-        if isinstance(snapshot, str):
-            return self.restore(snapshot_env, snapshot, index, **options)
-        return self.restore_many(snapshot_env, snapshot, index, **options)
+        if snapshot_env not in self.register:
+            raise ValueError("Unknown snapshot environment '%s' (see SNAPSHOT_CONFIG)" % snapshot_env)
+        env = self.register[snapshot_env]
+        names = env._validate_restore(snapshot, index, **options)
+        if not names:
+            return env._restore_plan(snapshot, index, **options) if dry_run else []
+        progress = ["Resolving snapshot repositories"]
+
+        async def run():
+            try:
+                job = await self.job_manager.defer_to_thread(
+                    env.pinfo.get_pinfo("preflight", str(snapshot)),
+                    partial(env._restore_plan, snapshot, index, **options),
+                )
+                plan = await job
+            except Exception:
+                progress[0] = "Snapshot preflight FAILED"
+                raise
+            progress[0] = "Snapshot preflight complete"
+            if dry_run:
+                return plan
+            if isinstance(snapshot, str):
+                row = plan["indices"][0]
+                if row["action"] == "blocked":
+                    raise ValueError(f"Cannot restore snapshot: {row}")
+                restore_task = self.restore(
+                    snapshot_env,
+                    snapshot,
+                    index,
+                    **{**options, "repository": row["repository"], "_expected_snapshot_uuid": row["snapshot_uuid"]},
+                )
+            else:
+                restore_task = self._restore_many_plan(snapshot_env, plan, options)
+            future.progress = restore_task.progress
+            return await restore_task
+
+        future = self.job_manager.loop.create_task(run())
+        future.progress = progress
+        return future
 
     def snapshot_a_build(self, build_doc):
         """

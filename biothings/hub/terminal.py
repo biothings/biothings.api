@@ -305,7 +305,13 @@ BUILTIN_HELP = {
 # More about the commands of a build's release, shown by "help <command>" before their docstring
 BUILTIN_DETAILS = {
     "restore_snapshot": (
-        "Restores one snapshot or a list using the destination cluster and repository from SNAPSHOT_CONFIG. "
+        "Restores one snapshot or a list on the destination cluster from SNAPSHOT_CONFIG. "
+        "--repository selects an exact registered repository and skips automatic lookup. Otherwise, recorded "
+        "snapshot metadata and published release documents are tried before searching registered repositories "
+        "matching the configured name's template family (for example drug_repository-*). "
+        "Release lookup uses existing VERSION_URLS catalogs; no new configuration is required. "
+        "Ambiguous matches require --repository. Repositories must already be registered on the destination; "
+        "read-only registrations work. Creation-only settings are not formatted for restore. "
         "Each snapshot must contain exactly one index; the destination defaults to the name in its metadata. "
         "--index renames a single destination. Existing indices and aliases block the batch. Source aliases "
         "are excluded unless --include-aliases, which warns and asks for confirmation before restoring. "

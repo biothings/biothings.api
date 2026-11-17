@@ -711,18 +711,53 @@ run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run
 
 
 
-.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=None, dry_run=False)
+.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, repository=None, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=None, dry_run=False)
 
 method run_restore in module biothings.hub.dataindex.snapshooter
 
-    Restore one snapshot or a list on the cluster and repository selected by the
+    Restore one snapshot or a list on the cluster selected by the
     destination snapshot environment in ``SNAPSHOT_CONFIG``. Every snapshot must
     be complete and contain exactly one index. Its metadata supplies the destination
     index name; ``index`` optionally renames a single destination. Existing indices
     and aliases, duplicate destinations, and missing or incomplete snapshots block
     the whole batch before submission. No source Hub build registration is needed.
-    The repository must already be registered on the destination, with its configured
-    name resolvable without source build metadata. Read-only repositories are supported.
+    Repositories must already be registered on the destination; read-only
+    registrations are supported. This command does not register or modify them.
+
+    Repository lookup follows this order, independently for each snapshot:
+
+    1. ``repository`` / ``--repository`` is an exact override. A missing repository,
+       missing snapshot, or incomplete snapshot blocks the restore without fallback.
+    2. Reuse the actual repository recorded in local snapshot records, then published
+       release documents. Known document URLs come from local publishing records;
+       existing ``VERSION_URLS`` catalogs provide other full-release document URLs.
+       A document must match ``metadata.snapshot_name`` exactly, and its recorded
+       repository must be registered on the destination and contain that snapshot.
+    3. Search registered repositories matching the configured name's template family.
+       For example, ``drug_repository-$(Y)`` searches ``drug_repository-*``, including
+       historical years. Build-field placeholders in repository names also become
+       wildcards. A literal configured name searches that repository only. A name
+       consisting entirely of placeholders requires recorded metadata or an override.
+
+    Missing recorded repositories, missing snapshots at recorded locations, and
+    missing release documents allow fallback. Permission, connection, malformed
+    catalog, and incomplete-snapshot errors stop the lookup. Multiple matching
+    repositories require ``--repository``; no match reports whether a destination
+    repository or the snapshot is missing. Dry-run rows include ``repository_source``
+    for successful lookups and candidate repository names for ambiguous matches.
+    Release documents are read once per batch, using existing
+    ``STANDALONE_AWS_CREDENTIALS`` for private S3 releases. Catalog lookup may need
+    to download multiple full-release documents because catalogs do not index
+    snapshot names. No configuration changes are required; absent catalogs and
+    publishing records simply skip release-document lookup.
+
+    Only the repository name participates in family search. Unrelated creation
+    settings such as a build-templated ``base_path`` are not formatted; Elasticsearch
+    uses the existing repository registration. The resolved repository is retained
+    through submission, where the snapshot identity and destination are rechecked.
+    The command runs preflight in a worker so catalog downloads do not block the
+    Hub. Dry runs also return a tracked job; the CLI waits for the preview unless
+    detached with ``--no-wait``.
 
     ``SnapshotManager.restore()`` delegates a single restore to the environment;
     ``restore_many()`` reuses it for a batch. ``run_restore()`` handles command dispatch
@@ -766,6 +801,7 @@ method run_restore in module biothings.hub.dataindex.snapshooter
     .. code-block:: bash
 
         biothings-cli hub run restore_snapshot target_env '["snapshot_a", "snapshot_b"]' --dry-run
+        biothings-cli hub run restore_snapshot target_env snapshot_a --repository drug_repository-2024 --dry-run
         biothings-cli hub run --no-wait restore_snapshot target_env '["snapshot_a", "snapshot_b"]'
         biothings-cli hub run --yes --no-wait restore_snapshot target_env snapshot_a --include-aliases
         biothings-cli hub history <id> --wait

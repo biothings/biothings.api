@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
@@ -9,7 +10,7 @@ import pytest_asyncio
 from elasticsearch import Elasticsearch, NotFoundError
 
 from biothings.hub import HubServer
-from biothings.hub.dataindex import snapshooter
+from biothings.hub.dataindex import snapshot_restore, snapshooter
 from biothings.hub.dataindex.snapshooter import (
     ProcessInfo,
     RepositoryConfig,
@@ -23,6 +24,8 @@ from tests.hub.terminal_fakes import make_terminal
 
 @pytest_asyncio.fixture
 async def manager(monkeypatch):
+    monkeypatch.setattr(snapshot_restore, "get_src_build", lambda: SimpleNamespace(find=lambda *args, **kwargs: []))
+    monkeypatch.setattr(snapshot_restore.config, "VERSION_URLS", [])
     env = SnapshotEnv.__new__(SnapshotEnv)
     env.name = "target_snapshots"
     env.idxenv = "destination"
@@ -31,6 +34,7 @@ async def manager(monkeypatch):
     env.client = Mock()
     env.client.options.return_value = env.client
     env.repcfg = RepositoryConfig({"name": "shared_repository", "settings": {"readonly": True}})
+    env.client.snapshot.get_repository.side_effect = lambda name: {name: {"type": "fs", "settings": {"readonly": True}}}
     env._doc = Mock(side_effect=AssertionError("Restoration must not need source build records"))
     state = SimpleNamespace(metadata={}, existing={}, calls=[], polls=[], steps=[], failures={}, recoveries={})
     for part in ("alpha", "beta"):
@@ -110,21 +114,24 @@ async def test_single_restore_reads_metadata_and_waits_for_recovery(manager, met
     env._doc.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("snapshots", ["snapshot_alpha", ["snapshot_alpha", "snapshot_beta"]])
-def test_dry_run_previews_metadata_destinations_without_starting_jobs(manager, snapshots):
+async def test_dry_run_previews_metadata_destinations_without_starting_restore_jobs(manager, snapshots):
     manager, env, state = manager
-    preview = manager.run_restore(env.name, snapshots, dry_run=True)
+    preview = await manager.run_restore(env.name, snapshots, dry_run=True)
     assert preview["dry_run"] is True
     assert preview["indices"][0]["index_name"] == "index_alpha"
     assert all(row["action"] == "restore" for row in preview["indices"])
-    assert state.calls == state.polls == state.steps == []
+    assert state.calls == state.polls == []
+    assert len(state.steps) == 1 and state.steps[0].startswith("preflight:")
     env.client.options.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reason", ["missing", "incomplete", "failed_shards", "multiple_indices", "index", "alias", "duplicate_destination"]
 )
-def test_entire_batch_is_blocked_before_submission(manager, reason):
+async def test_entire_batch_is_blocked_before_submission(manager, reason):
     manager, env, state = manager
     metadata = state.metadata["snapshot_beta"]
     if reason == "missing":
@@ -141,11 +148,12 @@ def test_entire_batch_is_blocked_before_submission(manager, reason):
         state.existing["other_index"] = {"aliases": {"index_beta": {}}}
     else:
         metadata["indices"] = ["index_alpha"]
-    preview = manager.run_restore(env.name, ["snapshot_alpha", "snapshot_beta"], dry_run=True)
+    preview = await manager.run_restore(env.name, ["snapshot_alpha", "snapshot_beta"], dry_run=True)
     assert preview["indices"][1]["action"] == "blocked"
     with pytest.raises(ValueError, match="Cannot restore snapshots"):
         manager.restore_many(env.name, ["snapshot_alpha", "snapshot_beta"])
-    assert state.calls == state.steps == []
+    assert state.calls == []
+    assert len(state.steps) == 1 and state.steps[0].startswith("preflight:")
 
 
 @pytest.mark.parametrize(
@@ -165,6 +173,8 @@ def test_entire_batch_is_blocked_before_submission(manager, reason):
         (["snapshot_alpha"], {"recovery_timeout": "3600"}),
         (["snapshot_alpha"], {"recovery_timeout": float("nan")}),
         (["snapshot_alpha"], {"recovery_timeout": float("inf")}),
+        (["snapshot_alpha"], {"repository": "repo*"}),
+        (["snapshot_alpha"], {"repository": ["shared_repository"]}),
     ],
 )
 def test_invalid_input_is_rejected_before_queries(manager, snapshots, options):
@@ -220,6 +230,63 @@ async def test_snapshot_and_destination_are_rechecked_before_submission(manager)
     task = manager.restore(env.name, "snapshot_alpha")
     state.existing["index_alpha"] = {}
     with pytest.raises(ValueError, match="already exists"):
+        await task
+    assert state.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["restore", "restore_many"])
+async def test_resolved_repository_is_pinned_without_repeating_metadata_lookup(manager, monkeypatch, method):
+    manager, env, state = manager
+    collection = SimpleNamespace(
+        find=Mock(
+            return_value=[
+                {
+                    "snapshot": {"snapshot_alpha": {"conf": {"repository": {"name": "recorded_repo"}}}},
+                }
+            ]
+        )
+    )
+    lookup = Mock(return_value=collection)
+    monkeypatch.setattr(snapshot_restore, "get_src_build", lookup)
+    selected = ["snapshot_alpha"] if method == "restore_many" else "snapshot_alpha"
+    task = getattr(manager, method)(env.name, selected)
+    lookup.side_effect = AssertionError("Submission must reuse the resolved repository")
+    env.repcfg["name"] = "different_creation_repository"
+    await task
+    assert state.calls[0][0] == "recorded_repo"
+    assert lookup.call_count == collection.find.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_command_discovers_repositories_off_the_hub_event_loop(manager, monkeypatch, dry_run):
+    manager, env, state = manager
+    hub_thread = threading.get_ident()
+    original = env._restore_plan
+
+    def plan(*args, **kwargs):
+        if kwargs.get("repository") is None:
+            assert threading.get_ident() != hub_thread, "Repository discovery must not block the Hub event loop"
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(env, "_restore_plan", plan)
+    task = manager.run_restore(env.name, "snapshot_alpha", dry_run=dry_run)
+    assert isinstance(task, asyncio.Task)
+    result = await task
+    if dry_run:
+        assert result["dry_run"] is True
+    else:
+        assert result["status"] == "DONE"
+    assert len(state.calls) == (0 if dry_run else 1)
+
+
+@pytest.mark.asyncio
+async def test_batch_rejects_snapshot_replaced_after_batch_preflight(manager):
+    manager, env, state = manager
+    task = manager.restore_many(env.name, ["snapshot_alpha"])
+    state.metadata["snapshot_alpha"]["uuid"] = "replacement-uuid"
+    with pytest.raises(RestoreBatchError, match="Snapshot changed after preflight"):
         await task
     assert state.calls == []
 
@@ -409,8 +476,12 @@ async def test_terminal_tracks_batch_and_preserves_database_restore_command(mana
     terminal, shell, _ = make_terminal(restore_snapshot=server.commands["restore_snapshot"])
     assert shell.commands["restore"] is restore_hub_database
     argv = ["restore_snapshot", env.name, '["snapshot_alpha", "snapshot_beta"]']
-    preview = terminal.run(argv=[*argv, "--dry-run"])
-    assert preview["is_done"] is True and len(preview["result"]["indices"]) == 2
+    preview = terminal.run(argv=[*argv, "--repository", "shared_repository", "--dry-run"])
+    assert preview["is_done"] is False
+    await asyncio.gather(*shell.launched_commands[preview["id"]]["jobs"])
+    shell.refresh_commands()
+    preview_done = shell.command_info(preview["id"])
+    assert preview_done["failed"] is False and len(preview_done["results"][0]["indices"]) == 2
     assert state.calls == []
     started = terminal.run(argv=argv)
     assert started["is_done"] is False
@@ -423,6 +494,8 @@ async def test_terminal_tracks_batch_and_preserves_database_restore_command(mana
 
 @pytest.mark.asyncio
 async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
+    monkeypatch.setattr(snapshot_restore, "get_src_build", lambda: SimpleNamespace(find=lambda *args, **kwargs: []))
+    monkeypatch.setattr(snapshot_restore.config, "VERSION_URLS", [])
     client = Elasticsearch("http://localhost:9200")
     paths = [
         node["settings"]["path.repo"]
@@ -433,7 +506,8 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
         client.close()
         pytest.skip("Elasticsearch needs path.repo configured for filesystem snapshot tests")
     suffix = uuid4().hex
-    repository = f"biothings-restore-{suffix}"
+    repository = f"biothings-restore-2024-{suffix}"
+    duplicate_repository = f"biothings-restore-2025-{suffix}"
     names = [f"biothings-restore-{part}-{suffix}" for part in ("alpha", "beta")]
     snapshots = [f"snapshot-{part}-{suffix}" for part in ("alpha", "beta")]
     renamed = f"renamed-{suffix}"
@@ -465,7 +539,12 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
         env.name = "target_snapshots"
         env.idxenv = "target"
         env.client = client
-        env.repcfg = RepositoryConfig({"name": repository, "settings": {"readonly": True}})
+        env.repcfg = RepositoryConfig(
+            {
+                "name": f"biothings-restore-$(Y)-{suffix}",
+                "settings": {"readonly": True, "base_path": "%(build_config.name)s"},
+            }
+        )
         env.pinfo = ProcessInfo(env.name)
         env.wtime = 0.01
         env.job_manager = SimpleNamespace(loop=asyncio.get_running_loop(), defer_to_thread=defer)
@@ -474,8 +553,23 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
         manager.register = {env.name: env}
         manager.job_manager = env.job_manager
         options = {"index_settings": {"index.number_of_replicas": 0}}
-        preview = manager.run_restore(env.name, snapshots, dry_run=True, **options)
+        preview = await manager.run_restore(env.name, snapshots, dry_run=True, **options)
         assert [row["index_name"] for row in preview["indices"]] == names
+        assert all(row["repository"] == repository for row in preview["indices"])
+        client.snapshot.create_repository(
+            name=duplicate_repository,
+            body={
+                "type": "fs",
+                "settings": {"location": f"{root.rstrip('/')}/{repository}", "readonly": True},
+            },
+        )
+        ambiguous = await manager.run_restore(env.name, snapshots, dry_run=True)
+        assert all(
+            row["action"] == "blocked" and "multiple repositories" in row["reason"] for row in ambiguous["indices"]
+        )
+        explicit = await manager.run_restore(env.name, snapshots, repository=repository, dry_run=True)
+        assert all(row["action"] == "restore" for row in explicit["indices"])
+        client.snapshot.delete_repository(name=duplicate_repository)
         assert not any(client.indices.exists(index=name) for name in names)
         result = await asyncio.wait_for(manager.restore_many(env.name, snapshots, **options), 60)
         assert [row["status"] for row in result["indices"]] == ["SUCCESS", "SUCCESS"]
@@ -505,6 +599,7 @@ async def test_restore_real_snapshots_and_settings_on_target(monkeypatch):
         try:
             client.options(ignore_status=404).indices.delete(index=[*names, renamed, failed])
             client.options(ignore_status=404).snapshot.delete(repository=repository, snapshot="_all")
+            client.options(ignore_status=404).snapshot.delete_repository(name=duplicate_repository)
             client.options(ignore_status=404).snapshot.delete_repository(name=repository)
         finally:
             client.close()
