@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from functools import total_ordering
 
 from .common import anyfile, is_str, open_anyfile, safewfile
-from .dotstring import key_value, set_key_value
+from .dotstring import key_value, set_key_value  # noqa: F401 (set_key_value kept for older imports)
 
 csv.field_size_limit(10000000)  # default is 131072, too small for some big files
 
@@ -785,10 +785,28 @@ def value_convert_incexcl(d, fn, include_keys=None, exclude_keys=None):
     :param exclude_keys: exclude all other keys except these keys (optional)
     :return: generate key, value pairs
     """
-    for path, value in traverse_keys(d, include_keys, exclude_keys):
-        new_value = fn(value)
-        set_key_value(d, path, new_value)
-    return d
+    include_keys = set(include_keys or [])
+    exclude_keys = set(exclude_keys or [])
+
+    def should_convert(path, value):
+        if include_keys:
+            # keep skipping empty values, as before
+            return path in include_keys and bool(value)
+        return path not in exclude_keys
+
+    # convert each value where it sits, so every item in a list gets its own converted value
+    def convert(value, path):
+        if isinstance(value, dict):
+            for key in value:
+                value[key] = convert(value[key], f"{path}.{key}" if path else key)
+            return value
+        if isinstance(value, list):
+            for i, item in enumerate(value):
+                value[i] = convert(item, path)
+            return value
+        return fn(value) if should_convert(path, value) else value
+
+    return convert(d, "")
 
 
 # from biothings, originally
