@@ -1005,4 +1005,10 @@ class JobManager:
             "available_system_memory": summary["available_system_memory"],
             "max_memory_usage": summary["max_memory_usage"],
             "hub_pid": summary["hub_pid"],
+            # whether CPU-bound jobs run in threads of the hub's process (HUB_FREE_THREADED_WORKERS),
+            # and whether the GIL is enabled: importing an extension module without free-threading
+            # support enables it again, even after these threads started (sys._is_gil_enabled() is
+            # new in Python 3.13, which is the first to have builds without it)
+            "free_threaded_workers": isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor),
+            "gil_enabled": not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled(),
         }

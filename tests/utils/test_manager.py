@@ -260,6 +260,34 @@ class TestJobManager:
             shutdown(manager)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "opt_in,gil_enabled,expected",
+        [
+            pytest.param(False, None, (False, True), id="python-before-3.13"),
+            pytest.param(False, True, (False, True), id="process-workers"),
+            pytest.param(False, False, (False, False), id="process-workers-gil-disabled"),
+            pytest.param(True, False, (True, False), id="free-threaded-workers"),
+            pytest.param(True, True, (True, True), id="gil-enabled-again"),
+        ],
+    )
+    async def test_job_info_free_threading(self, monkeypatch, tmp_path, opt_in, gil_enabled, expected):
+        monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", opt_in, raising=False)
+        monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path), raising=False)
+        # the workers start with the GIL disabled...
+        monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
+        manager = make_manager()
+        try:
+            # ...and importing an extension module without free-threading support can enable it again
+            if gil_enabled is None:
+                monkeypatch.delattr(sys, "_is_gil_enabled", raising=False)
+            else:
+                monkeypatch.setattr(sys, "_is_gil_enabled", lambda: gil_enabled, raising=False)
+            info = manager.job_info()
+            assert (info["free_threaded_workers"], info["gil_enabled"]) == expected
+        finally:
+            shutdown(manager)
+
+    @pytest.mark.asyncio
     async def test_free_threaded_pending_job_accounting(self, monkeypatch, tmp_path):
         monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", True, raising=False)
         monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
