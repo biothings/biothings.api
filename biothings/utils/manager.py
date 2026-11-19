@@ -699,15 +699,17 @@ class JobManager:
     def get_thread_files(self):
         tids = {}
         try:
-            # see track() for filename format; the second alternative matches
-            # free-threaded mode worker files ("<pid>-FTWorker_<n>_<jobid>")
-            pat = re.compile(r".*/(?:(Thread\w*-\d+)|\d+-(FTWorker_\d+))_.*\.pickle")
+            # see track() for filename format: the thread name is everything before
+            # the last "_" (job IDs have none), as in "ThreadPoolExecutor-0_1_<jobid>";
+            # the second alternative matches free-threaded mode worker files
+            # ("<pid>-FTWorker_<n>_<jobid>")
+            pat = re.compile(r".*/(?:(Thread[^/]*)|\d+-(FTWorker_\d+))_[^_/]*\.pickle")
             # threads = self.thread_queue._threads
             # active_tids = [t.getName() for t in threads]
             for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle")):
                 try:
                     thread_tid, ft_tid = pat.findall(fn)[0]
-                    tid = ft_tid or thread_tid.split("_")[0]
+                    tid = ft_tid or thread_tid
                     worker = pickle.load(open(fn, "rb"))
                     worker["process"] = self.hub_process  # misleading... it's the hub process
                     tids[tid] = worker
@@ -717,11 +719,6 @@ class JobManager:
         except Exception:
             pass
         return tids
-
-    def extract_pending_info(self, pending):
-        info = pending.fn.args[2]
-        assert isinstance(info, dict)
-        return info
 
     def extract_worker_info(self, worker):
         info = OrderedDict()
@@ -895,7 +892,7 @@ class JobManager:
         pworkers = self.get_pid_files(child)
         tworkers = self.get_thread_files()
         ppendings = self.get_pending_processes()
-        tpendings = {}  # TODO:
+        tpendings = self.get_pending_threads()
         return {
             "process": {
                 "running": list(pworkers.keys()),
@@ -916,40 +913,44 @@ class JobManager:
         }
 
     def get_pending_summary(self, getstr=False):
-        if isinstance(self.process_queue, concurrent.futures.ThreadPoolExecutor):
-            # The thread-pool queue contains only jobs not yet picked up. Cap
-            # it with the tracked count so shutdown sentinels aren't reported.
-            pending = min(self._pending_jobs_count(), self.process_queue._work_queue.qsize())
-        else:
-            running = len(self.get_pid_files())
-            pending = self._pending_jobs_count() - running
-        return "%d pending job(s)" % max(0, pending)
+        pending = len(self.get_pending_processes()) + len(self.get_pending_threads())
+        return "%d pending job(s)" % pending
+
+    def _running_job_ids(self):
+        """IDs of the jobs a worker started, from their tracking files: see track(),
+        "<pid or thread>_<job id>.pickle" (job IDs have no "_")."""
+        return {
+            os.path.splitext(os.path.basename(fn))[0].rsplit("_", 1)[-1]
+            for fn in glob.glob(os.path.join(config.RUN_DIR, "*.pickle"))
+        }
+
+    def _pending_jobs(self, process):
+        """Jobs no worker started yet, among the ones submitted to the process executor
+        (process=True) or to the thread executor, as {job ID: pinfo} in submission order.
+        Unlike the executors' own queues, this works the same for worker processes,
+        free-threaded workers and threads, and holds only jobs: the process executor
+        also queues _ensure_process_pool_alive()'s health checks."""
+        running = self._running_job_ids()
+        return {
+            job_id: pinfo
+            for job_id, pinfo in self.jobs.items()
+            if (job_id in self._process_job_ids) == process and job_id not in running
+        }
 
     def get_pending_processes(self):
-        if not isinstance(self.process_queue, concurrent.futures.ProcessPoolExecutor):
-            # free-threaded workers mode: no per-job introspection available
-            return {}
-        # pendings are kept in queue while running, until result is there so we need
-        # to adjust the actual real pending jobs. also, pending job are get() from the
-        # queue following FIFO order. finally, worker ID is incremental. So...
-        pendings = sorted(self.process_queue._pending_work_items.items())
-        running = len(self.get_pid_files())
-        actual_pendings = dict(pendings[running:])
-        return actual_pendings
+        return self._pending_jobs(process=True)
+
+    def get_pending_threads(self):
+        return self._pending_jobs(process=False)
 
     def show_pendings(self, running=None):
-        out = []
-        out.append(self.get_pending_summary())
-        actual_pendings = self.get_pending_processes()
-        if actual_pendings:
+        out = [self.get_pending_summary()]
+        pendings = {**self.get_pending_processes(), **self.get_pending_threads()}
+        if pendings:
             out.append(self.__class__.HEADERLINE.format(**self.__class__.HEADER))
-            for num, pending in actual_pendings.items():
-                info = self.extract_pending_info(pending)
-                try:
-                    self.print_pending_info(num, info)
-                except Exception as e:
-                    out.append(e)
-                    out.append(pformat(pending))
+            for job_id, pinfo in pendings.items():
+                info = {key: str(pinfo.get(key) or "") for key in ("category", "source", "step", "description")}
+                out.extend(str(line) for line in self.print_pending_info(job_id, info))
 
         return "\n".join(out)
 
