@@ -211,6 +211,25 @@ def cli(hub, *args, **kwargs):
     return CliRunner().invoke(hub_application, ["--url", hub.url, *args], **kwargs)
 
 
+@pytest.fixture
+def restoring_hub(hub):
+    calls = []
+
+    def restore_snapshot(snapshot_env, snapshot, *, include_aliases=False, dry_run: bool = False):
+        if dry_run:
+            return {"dry_run": True}
+        calls.append((snapshot_env, snapshot, include_aliases))
+
+        async def complete():
+            return {"restored": snapshot}
+
+        return asyncio.create_task(complete())
+
+    hub.shell.add_command("restore_snapshot", CommandDefinition(command=restore_snapshot))
+    hub.restore_calls = calls
+    return hub
+
+
 def test_commands_lists_builtin_and_hook_commands(hub):
     result = cli(hub, "commands")
     assert result.exit_code == 0, result.output
@@ -340,6 +359,103 @@ def test_run_asks_for_a_confirmation(hub):
     assert "use --yes" in result.output
     result = cli(hub, "run", "--yes", "rmmerge", "mygene_1")
     assert (result.exit_code, result.stdout) == (0, "deleted mygene_1\n")
+
+
+@pytest.mark.parametrize("detached", [False, True])
+def test_alias_restore_requires_yes_without_a_terminal(restoring_hub, detached):
+    options = ["--no-wait"] if detached else []
+    result = cli(restoring_hub, "run", *options, "restore_snapshot", "target", "snapshot_a", "--include-aliases")
+    assert result.exit_code == 2, result.output
+    assert "Restoring snapshot aliases" in result.stderr
+    assert "use --yes" in result.stderr
+    assert restoring_hub.restore_calls == []
+
+
+@pytest.mark.parametrize("detached", [False, True])
+@pytest.mark.parametrize("as_json", [False, True])
+def test_alias_restore_with_yes_still_warns(restoring_hub, detached, as_json):
+    options = ["--yes", *(["--no-wait"] if detached else []), *(["--json"] if as_json else [])]
+    result = cli(
+        restoring_hub,
+        "run",
+        *options,
+        "restore_snapshot",
+        "target",
+        '["snapshot_a", "snapshot_b"]',
+        "--include-aliases",
+    )
+    assert result.exit_code == 0, result.output
+    assert result.stderr.count("Restoring snapshot aliases") == 1
+    assert "Run it?" not in result.output
+    assert restoring_hub.restore_calls == [("target", ["snapshot_a", "snapshot_b"], True)]
+    if as_json:
+        json.loads(result.stdout)
+
+
+def test_alias_restore_dry_run_warns_without_confirmation(restoring_hub):
+    result = cli(
+        restoring_hub, "run", "--json", "restore_snapshot", "target", "snapshot_a", "--include-aliases", "--dry-run"
+    )
+    assert result.exit_code == 0, result.output
+    assert result.stderr.count("Restoring snapshot aliases") == 1
+    assert "Run it?" not in result.output
+    assert json.loads(result.stdout)["result"] == {"dry_run": True}
+    assert restoring_hub.restore_calls == []
+
+
+def test_restore_without_aliases_does_not_ask_for_confirmation(restoring_hub):
+    result = cli(restoring_hub, "run", "restore_snapshot", "target", "snapshot_a")
+    assert result.exit_code == 0, result.output
+    assert "Restoring snapshot aliases" not in result.output
+    assert "Run it?" not in result.output
+    assert restoring_hub.restore_calls == [("target", "snapshot_a", False)]
+
+
+@pytest.mark.parametrize("answer, accepted", [("y\n", True), ("n\n", False), ("\n", False)])
+def test_alias_restore_prompts_once_before_starting(restoring_hub, monkeypatch, answer, accepted):
+    get_client = hub_cli.get_client
+
+    def interactive_client(ctx):
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        return get_client(ctx)
+
+    monkeypatch.setattr(hub_cli, "get_client", interactive_client)
+    result = cli(
+        restoring_hub,
+        "run",
+        "--no-wait",
+        "restore_snapshot",
+        "target",
+        '["snapshot_a", "snapshot_b"]',
+        "--include-aliases",
+        input=answer,
+    )
+    assert result.exit_code == (0 if accepted else 1), result.output
+    assert result.output.count("Run it?") == 1
+    assert result.stderr.count("Restoring snapshot aliases") == 1
+    assert len(restoring_hub.restore_calls) == int(accepted)
+
+
+def test_alias_restore_help_explains_conditional_confirmation(restoring_hub):
+    result = cli(restoring_hub, "help", "restore_snapshot")
+    assert result.exit_code == 0, result.output
+    assert "confirmation with --include-aliases" in result.output
+    assert "unless --dry-run" in result.output
+
+
+def test_interactive_shell_confirms_alias_restores_once_per_batch(restoring_hub):
+    lines = [
+        'restore_snapshot target \'["snapshot_a", "snapshot_b"]\' --include-aliases',
+        "y",
+        "restore_snapshot target snapshot_c --include-aliases",
+        "n",
+        "exit",
+    ]
+    result = cli(restoring_hub, "shell", input="\n".join(lines) + "\n")
+    assert result.exit_code == 0, result.output
+    assert result.output.count("Run it?") == 2
+    assert result.stderr.count("Restoring snapshot aliases") == 2
+    assert restoring_hub.restore_calls == [("target", ["snapshot_a", "snapshot_b"], True)]
 
 
 def test_hooks(hub):

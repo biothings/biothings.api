@@ -359,6 +359,60 @@ def test_commands_deleting_data_must_be_confirmed():
     assert deleted == ["mygene_1", "mygene_2"]
 
 
+@pytest.mark.parametrize(
+    "options, confirmed, blocked, warns",
+    [
+        ([], False, False, False),
+        (["--no-include-aliases"], False, False, False),
+        (["--include-aliases"], False, True, True),
+        (["--include-aliases"], True, False, True),
+        (["--include-aliases", "--dry-run"], False, False, True),
+    ],
+)
+def test_snapshot_alias_confirmation_precedes_execution(options, confirmed, blocked, warns):
+    calls = []
+
+    def restore_snapshot(snapshot_env, snapshot, *, include_aliases=False, dry_run: bool = False):
+        calls.append((snapshot_env, snapshot, include_aliases, dry_run))
+        return "preview" if dry_run else "restored"
+
+    terminal, shell, _ = make_terminal(restore_snapshot=restore_snapshot)
+    argv = ["restore_snapshot", "target", '["snapshot_a", "snapshot_b"]', *options]
+    if blocked:
+        with pytest.raises(ConfirmationRequired) as error:
+            terminal.run(argv=argv)
+        assert len(error.value.reasons) == 1
+        assert "Restoring snapshot aliases" in error.value.reasons[0]
+        assert calls == []
+        assert shell.launched_commands == {}
+    else:
+        response = terminal.run(argv=argv, confirmed=confirmed)
+        assert len(calls) == 1
+        warnings = response.get("warnings", [])
+        assert len(warnings) == int(warns)
+        if warns:
+            assert "existing destination aliases" in warnings[0]
+
+
+def test_snapshot_alias_confirmation_also_covers_python_call_syntax():
+    def restore_snapshot(snapshot_env, snapshot, *, include_aliases=False, dry_run=False):
+        pytest.fail("The restore must not be submitted without confirmation")
+
+    terminal, _, _ = make_terminal(restore_snapshot=restore_snapshot)
+    with pytest.raises(ConfirmationRequired, match="Restoring snapshot aliases"):
+        terminal.run('restore_snapshot("target", "snapshot_a", include_aliases=True)')
+
+
+def test_console_displays_snapshot_alias_warning():
+    def restore_snapshot(snapshot_env, snapshot, *, include_aliases=False, dry_run=False):
+        return "restored"
+
+    terminal, _, _ = make_terminal(restore_snapshot=restore_snapshot)
+    outputs = terminal.console("restore_snapshot target snapshot_a --include-aliases")
+    assert sum("Restoring snapshot aliases" in output for output in outputs) == 1
+    assert outputs[-1] == "restored"
+
+
 class Thing:
     def __repr__(self):
         return "<Thing>"

@@ -672,13 +672,139 @@ store_value_to_db(name, value) method of biothings.utils.configuration.Configura
 This is a instance of type: <class 'biothings.hub.dataload.source.SourceManager'>
 
 
-.. py:method:: snapshot(snapshot_env, index, snapshot=None)
+.. py:method:: snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run=False)
 
-method snapshot in module biothings.hub.dataindex.snapshooter
+method run_snapshot in module biothings.hub.dataindex.snapshooter
 
-snapshot(snapshot_env, index, snapshot=None) method of biothings.hub.dataindex.snapshooter.SnapshotManager instance
-    Create a snapshot named "snapshot" (or, by default, same name as the index)
-    from "index" according to environment definition (repository, etc...) "env".
+run_snapshot(snapshot_env, index, snapshot=None, recreate_repo=False, *, dry_run=False) method of biothings.hub.dataindex.snapshooter.SnapshotManager instance
+    Create one snapshot per index in the repository of a configured snapshot environment.
+    The command uses ``SnapshotManager.run_snapshot()``; the underlying
+    ``SnapshotManager.create_snapshot()`` provides the single-index operation.
+    Lists delegate to ``SnapshotManager.create_snapshots()``, which reuses ``create_snapshot()``
+    for each index. Call ``ssm.create_snapshots(snapshot_env, indices)`` directly for batch
+    execution; ``dry_run`` is available through ``run_snapshot()`` only.
+    ``index`` accepts one name or a list of exact index names. Each snapshot defaults to
+    its index's name. A custom ``snapshot`` name and ``recreate_repo=True`` require a
+    single index.
+
+    ``dry_run=True`` returns a read-only preview. Batch preflight skips missing source
+    indices and rejects aliases, wildcards, duplicate names, unregistered indices,
+    read-only repositories, and snapshots already running before submitting jobs.
+
+    Existing single-index calls keep their native task and result behavior. A list
+    returns one tracked batch task with per-index results. Indices from the same build
+    run sequentially. A runtime failure raises ``SnapshotBatchError`` with successful,
+    skipped, and failed entries in its ``results`` attribute; a batch is not atomic.
+
+    CLI preview:
+
+    .. code-block:: bash
+
+        biothings-cli hub run snapshot s3_env '["index_a", "index_b"]' --dry-run
+
+    Python callers should use ``SnapshotManager.create_snapshot()`` instead of
+    ``snapshot()``. The old manager method preserves its original signature and
+    single-index behavior, and emits ``DeprecationWarning`` with the caller's location.
+    This deprecation applies only to the Python manager method. The ``snapshot``
+    CLI command and ``PUT /snapshot`` endpoint remain the public entry points,
+    using ``run_snapshot()`` without a deprecation notice.
+
+
+
+.. py:method:: restore_snapshot(snapshot_env, snapshot, index=None, *, repository=None, include_aliases=False, index_settings=None, ignore_index_settings=None, recovery_timeout=None, dry_run=False)
+
+method run_restore in module biothings.hub.dataindex.snapshooter
+
+    Restore one snapshot or a list on the cluster selected by the
+    destination snapshot environment in ``SNAPSHOT_CONFIG``. Every snapshot must
+    be complete and contain exactly one index. Its metadata supplies the destination
+    index name; ``index`` optionally renames a single destination. Existing indices
+    and aliases, duplicate destinations, and missing or incomplete snapshots block
+    the whole batch before submission. No source Hub build registration is needed.
+    Repositories must already be registered on the destination; read-only
+    registrations are supported. This command does not register or modify them.
+
+    Repository lookup follows this order, independently for each snapshot:
+
+    1. ``repository`` / ``--repository`` is an exact override. A missing repository,
+       missing snapshot, or incomplete snapshot blocks the restore without fallback.
+    2. Reuse the actual repository recorded in local snapshot records, then published
+       release documents. Known document URLs come from local publishing records;
+       existing ``VERSION_URLS`` catalogs provide other full-release document URLs.
+       A document must match ``metadata.snapshot_name`` exactly, and its recorded
+       repository must be registered on the destination and contain that snapshot.
+    3. Search registered repositories matching the configured name's template family.
+       For example, ``drug_repository-$(Y)`` searches ``drug_repository-*``, including
+       historical years. Build-field placeholders in repository names also become
+       wildcards. A literal configured name searches that repository only. A name
+       consisting entirely of placeholders requires recorded metadata or an override.
+
+    Missing recorded repositories, missing snapshots at recorded locations, and
+    missing release documents allow fallback. Permission, connection, malformed
+    catalog, and incomplete-snapshot errors stop the lookup. Multiple matching
+    repositories require ``--repository``; no match reports whether a destination
+    repository or the snapshot is missing. Dry-run rows include ``repository_source``
+    for successful lookups and candidate repository names for ambiguous matches.
+    Release documents are read once per batch, using existing
+    ``STANDALONE_AWS_CREDENTIALS`` for private S3 releases. Catalog lookup may need
+    to download multiple full-release documents because catalogs do not index
+    snapshot names. No configuration changes are required; absent catalogs and
+    publishing records simply skip release-document lookup.
+
+    Only the repository name participates in family search. Unrelated creation
+    settings such as a build-templated ``base_path`` are not formatted; Elasticsearch
+    uses the existing repository registration. The resolved repository is retained
+    through submission, where the snapshot identity and destination are rechecked.
+    The command runs preflight in a worker so catalog downloads do not block the
+    Hub. Dry runs also return a tracked job; the CLI waits for the preview unless
+    detached with ``--no-wait``.
+
+    ``SnapshotManager.restore()`` delegates a single restore to the environment;
+    ``restore_many()`` reuses it for a batch. ``run_restore()`` handles command dispatch
+    and ``dry_run=True`` previews. Submission and recovery monitoring use
+    ``ESIndexer.restore()`` and ``get_restore_status()``. The task completes after
+    recovery, not merely after Elasticsearch accepts the request. Monitoring has
+    no deadline by default (``recovery_timeout=None``). A positive finite
+    ``recovery_timeout`` limits monitoring per snapshot, in seconds. Detaching with
+    ``hub run --no-wait`` leaves monitoring running in the Hub. Monitoring errors
+    are retried up to three consecutive failures; uncertain restore submissions
+    are not retried.
+
+    A confirmed recovery failure triggers automatic deletion of the failed
+    destination, after checking that its index UUID has not changed. The error
+    reports whether cleanup succeeded, failed, or was skipped. Successful batch
+    members remain available. Fix the reported recovery problem before retrying.
+    A timeout, cancellation, or uncertain submission or monitoring outcome leaves
+    the destination in place because Elasticsearch may still be recovering it.
+    Check recovery and existence before retrying; wait for recovery to finish or
+    remove the failed destination after verifying it is safe to do so.
+
+    Source aliases are excluded by default; set ``include_aliases=True`` to restore
+    them. Restored indices may join existing destination aliases, causing those
+    aliases to query both existing and restored data. Existing alias targets are
+    retained. Saved alias names are unavailable during preflight, so the warning
+    applies whenever aliases are requested, even without a known conflict.
+    The CLI asks for confirmation before submitting the batch, including with
+    ``hub run --no-wait``. Noninteractive use requires ``hub run --yes``; the
+    warning is still displayed. Dry runs display the warning without prompting.
+    Global state is excluded. ``index_settings`` and ``ignore_index_settings``
+    pass destination settings options to ``ESIndexer.restore()``. Batch results
+    retain every snapshot's outcome. A failed batch raises ``RestoreBatchError``
+    with those outcomes in ``results``; the CLI includes them in the error text.
+    A batch is not atomic. Cancellation stops monitoring, while an accepted
+    Elasticsearch restore may continue.
+
+    The existing ``restore`` command restores Hub database backups. ``install``
+    continues to install published releases. Application-specific build discovery
+    and alias staging belong in custom hooks.
+
+    .. code-block:: bash
+
+        biothings-cli hub run restore_snapshot target_env '["snapshot_a", "snapshot_b"]' --dry-run
+        biothings-cli hub run restore_snapshot target_env snapshot_a --repository drug_repository-2024 --dry-run
+        biothings-cli hub run --no-wait restore_snapshot target_env '["snapshot_a", "snapshot_b"]'
+        biothings-cli hub run --yes --no-wait restore_snapshot target_env snapshot_a --include-aliases
+        biothings-cli hub history <id> --wait
 
 
 
