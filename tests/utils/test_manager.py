@@ -2,7 +2,9 @@ import asyncio
 import os
 import sys
 import sysconfig
+import tempfile
 import threading
+import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import pytest
@@ -36,6 +38,16 @@ def wait_for_release(started, release, finished=None):
     finally:
         if finished is not None:
             finished.set()
+
+
+def wait_for_release_file(started_dir, release_file):
+    # like wait_for_release, with files, so it also works in worker processes
+    os.close(tempfile.mkstemp(dir=started_dir)[0])
+    deadline = time.monotonic() + 10
+    while not os.path.exists(release_file):
+        if time.monotonic() > deadline:
+            raise TimeoutError("test worker was not released")
+        time.sleep(0.01)
 
 
 class MemoryBackend:
@@ -284,6 +296,60 @@ class TestJobManager:
             assert len(manager.process_queue._threads) == 1
         finally:
             release.set()
+            shutdown(manager)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("free_threaded", [False, True], ids=["process-workers", "free-threaded-workers"])
+    async def test_job_info_pending_and_running_jobs(self, monkeypatch, tmp_path, free_threaded):
+        monkeypatch.setattr(manager_module.config, "HUB_FREE_THREADED_WORKERS", free_threaded, raising=False)
+        if free_threaded:
+            monkeypatch.setattr(sys, "_is_gil_enabled", lambda: False, raising=False)
+        monkeypatch.setattr(manager_module.config, "RUN_DIR", str(tmp_path / "run"), raising=False)
+        started = tmp_path / "started"
+        started.mkdir()
+        release = tmp_path / "release"
+        manager = make_manager(num_workers=1, num_threads=2)
+        try:
+            jobs = []
+            for i in range(3):
+                pinfo = dict(PINFO, description="process job %d" % i)
+                jobs.append(await manager.defer_to_process(pinfo, wait_for_release_file, str(started), str(release)))
+            for i in range(3):
+                pinfo = dict(PINFO, description="thread job %d" % i)
+                jobs.append(await manager.defer_to_thread(pinfo, wait_for_release_file, str(started), str(release)))
+            # the only worker runs a process job, the two threads run thread jobs
+            for _ in range(500):
+                if len(os.listdir(started)) == 3:
+                    break
+                await asyncio.sleep(0.01)
+            assert len(os.listdir(started)) == 3
+
+            queue = manager.job_info()["queue"]
+            # the queued jobs, not the process executor's health check queued with each one
+            assert [manager.jobs[job_id]["description"] for job_id in queue["process"]["pending"]] == [
+                "process job 1",
+                "process job 2",
+            ]
+            assert [manager.jobs[job_id]["description"] for job_id in queue["thread"]["pending"]] == ["thread job 2"]
+            assert manager.get_pending_summary() == "3 pending job(s)"
+            pendings = manager.top("pending")
+            for description in ["process job 1", "process job 2", "thread job 2"]:
+                assert description in pendings
+            # each thread of the thread executor counts, with its job
+            threads = [name for name in queue["thread"]["running"] if not name.startswith("FTWorker")]
+            assert sorted(threads) == sorted(thread.name for thread in manager.thread_queue._threads)
+            assert sorted(queue["thread"]["all"][name]["job"]["description"] for name in threads) == [
+                "thread job 0",
+                "thread job 1",
+            ]
+
+            release.touch()
+            await asyncio.gather(*jobs)
+            queue = manager.job_info()["queue"]
+            assert queue["process"]["pending"] == queue["thread"]["pending"] == []
+            assert manager.get_pending_summary() == "0 pending job(s)"
+        finally:
+            release.touch()
             shutdown(manager)
 
     @pytest.mark.asyncio
