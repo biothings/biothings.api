@@ -583,7 +583,9 @@ class ESQueryBuilder:
             if isinstance(q, list):
                 search = MultiSearch()
                 for _q in q:
-                    _search = self._build_one(_q, options)
+                    # each query gets its own copy of the options,
+                    # so that one, like __any__, can't change the others.
+                    _search = self._build_one(_q, dotdict(options))
                     search = search.add(_search)
             else:  # str, int ...
                 search = self._build_one(q, options)
@@ -652,16 +654,17 @@ class ESQueryBuilder:
                 search = search.query("function_score", random_score={})
             else:  # pseudo random by overriding 'from' value
                 search = search.query()
-                try:  # limit 'from' parameter to a valid result window
-                    metadata = self.metadata.biothings_metadata[options.biothing_type]
-                    total = metadata["stats"]["total"]
-                    # 'from' + 'size' must stay inside the result window
-                    size = options.get("size") or ES_DEFAULT_SIZE
-                    fmax = min(total, MAX_RESULT_WINDOW) - size
-                    # Random result selection is not used for security or cryptographic purposes.
-                    options["from"] = randrange(fmax) if fmax > 0 else 0  # nosec B311
-                except Exception:
+                # the number of documents, from the metadata loaded at startup
+                metadata = self.metadata.get_metadata(options.biothing_type) if self.metadata else {}
+                total = metadata.get("stats", {}).get("total")
+                if not isinstance(total, int):
                     raise ValueError("random query not available.")
+                # limit 'from' parameter to a valid result window:
+                # 'from' + 'size' must stay inside the result window
+                size = options.get("size") or ES_DEFAULT_SIZE
+                fmax = min(total, MAX_RESULT_WINDOW) - size
+                # Random result selection is not used for security or cryptographic purposes.
+                options["from"] = randrange(fmax) if fmax > 0 else 0  # nosec B311
 
         elif self.user_query.has_query(userquery):
             userquery_ = self.user_query.get_query(userquery, q=q)
