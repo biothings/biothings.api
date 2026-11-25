@@ -120,6 +120,10 @@ docker = [
 docker_ssh = [
     "docker[ssh]>=6.0.1",
 ]
+# required by KubernetesJobDumper
+kubernetes = [
+    "kubernetes>=29.0.0",
+]
 # extra requirements to develop biothings
 dev = [
     "aioresponses",

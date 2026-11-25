@@ -122,3 +122,46 @@ def docker_source_info_parser(url):
         # remove keep_container if not set, so that later we can check its value from image/container metadata
         source_config.pop("keep_container")
     return source_config
+
+
+def kubernetes_source_info_parser(url):
+    """
+    Parse a k8s:// url into KubernetesJobDumper parameters.
+
+    :param url: one of
+        k8s://CONNECTION_NAME?namespace=NAMESPACE&podtemplate=POD_TEMPLATE_NAME&path=/path/to/file&wait_timeout=1800&keep_job=false  # NOQA
+        k8s://CONNECTION_NAME?namespace=NAMESPACE&image=IMAGE&tag=TAG&command=["python","run.py"]&path=/path/to/file  # NOQA
+        CONNECTION_NAME must be a key of KUBERNETES_CONFIG.
+    :return: dict of parameters. keep_job and wait_timeout are left out when unset.
+    """
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    image = query.get("image")
+    image_tag = query.get("tag")
+    command = query.get("command")
+    if command:
+        command = json.loads(command)
+    keep_job = query.get("keep_job")
+    if keep_job:
+        keep_job = keep_job.lower() in {"true", "yes", "1", "y"}
+    wait_timeout = query.get("wait_timeout")
+    if wait_timeout:
+        wait_timeout = int(wait_timeout)
+    if not image_tag:
+        image_tag = "latest"
+    job_image = image and f"{image}:{image_tag}" or None
+    source_config = {
+        "namespace": query.get("namespace"),
+        "podtemplate_name": query.get("podtemplate"),
+        "job_image": job_image,
+        "command": command,
+        "path": query.get("path"),
+        "connection_name": parsed.netloc,
+        "keep_job": keep_job,
+        "wait_timeout": wait_timeout,
+    }
+    if keep_job is None:
+        source_config.pop("keep_job")
+    if wait_timeout is None:
+        source_config.pop("wait_timeout")
+    return source_config

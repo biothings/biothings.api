@@ -7,6 +7,7 @@ import os
 import os.path
 import pprint
 import re
+import shutil
 import stat
 import subprocess
 import time
@@ -30,6 +31,14 @@ try:
 except ImportError:
     docker_avail = False
 
+try:
+    from kubernetes import client as k8s_client, config as k8s_config
+    from kubernetes.client.rest import ApiException as K8sApiException
+
+    kubernetes_avail = True
+except ImportError:
+    kubernetes_avail = False
+
 import requests
 
 from biothings import config as btconfig
@@ -40,7 +49,7 @@ from biothings.hub.manager import ResourceError
 from biothings.utils.common import first_exception, open_anyfile, rmdashfr, timesofar, untarall
 from biothings.utils.hub_db import get_src_dump
 from biothings.utils.loggers import get_logger
-from biothings.utils.parsers import docker_source_info_parser
+from biothings.utils.parsers import docker_source_info_parser, kubernetes_source_info_parser
 
 logging = btconfig.logger
 
@@ -50,6 +59,10 @@ class DumperException(Exception):
 
 
 class DockerContainerException(Exception):
+    pass
+
+
+class KubernetesJobException(Exception):
     pass
 
 
@@ -2426,3 +2439,293 @@ class DockerContainerDumper(BaseDumper):
         """Delete container or restore the container status if necessary, called in the dump method after the dump is done (during the "post" step)"""
         super().post_dump(*args, **kwargs)
         self.delete_or_restore_container()
+
+
+class KubernetesJobDumper(BaseDumper):
+    """
+    Run a Kubernetes Job to produce a data file, wait for it to finish, then read the
+    output from a volume shared by the Hub and the Job's pod (typically a ReadWriteMany PVC).
+
+    Counterpart of DockerContainerDumper. That one execs a command in a remote container
+    and pulls the file over the Docker API; this one needs no file transfer.
+
+    The Job's pod spec comes from one of:
+        - podtemplate: clone an existing core/v1 PodTemplate. Image, command, resources and
+          volumes stay defined there. A PodTemplate never runs on its own, so this
+          source's SCHEDULE is the only trigger.
+        - image (+ command): build a one-off Job from an image, no PodTemplate needed.
+
+    Connections must be defined in config.py under KUBERNETES_CONFIG, Ex:
+        KUBERNETES_CONFIG = {
+            "in-cluster": {"in_cluster": True},
+            "local-dev": {
+                "kubeconfig_path": "~/.kube/config",
+                "context": "my-context",
+            },
+        }
+    KUBERNETES_HOST overrides the connection named in the src_url (same role as DOCKER_HOST).
+
+    The data_url should match one of:
+        k8s://CONNECTION_NAME?namespace=NAMESPACE&podtemplate=POD_TEMPLATE_NAME&path=/path/to/file&wait_timeout=1800&keep_job=false  # NOQA
+        k8s://CONNECTION_NAME?namespace=NAMESPACE&image=IMAGE&tag=TAG&command=["python","run.py"]&path=/path/to/file  # NOQA
+
+    Supported params:
+        - namespace: (Required) namespace of the PodTemplate and the Job.
+        - podtemplate: (one of podtemplate/image) PodTemplate to clone the Job from.
+        - image/tag: (one of podtemplate/image) image to run. tag defaults to "latest".
+        - command: (Optional, image only) JSON list that overrides the image's entrypoint.
+        - path: (Required) output file path, as mounted in the Hub's container. A release.txt
+            (ISO 8601 timestamp) must sit next to it.
+        - wait_timeout: (Optional, default 1800) seconds to wait for the Job.
+        - keep_job: (Optional, default false) keep the Job after the dump.
+
+    Ex:
+      - k8s://in-cluster?namespace=nde-hub-nonprod&podtemplate=vdj-crawler-template&path=/data/vdj_crawled/data.ndjson
+      - k8s://in-cluster?namespace=nde-hub-nonprod&image=biothings/nde-crawler-vdj&tag=latest&command=["venv/bin/python3.10","ndjson.py"]&path=/data/vdj_crawled/data.ndjson  # NOQA
+    """
+
+    # Label on every Job this dumper creates. Used to find the source's running Job.
+    JOB_LABEL_KEY = "biothings-hub-dumper-source"
+
+    NAMESPACE = None
+    POD_TEMPLATE_NAME = None
+    JOB_IMAGE = None
+    JOB_COMMAND = None
+    DATA_PATH = None
+    WAIT_TIMEOUT = 1800
+    POLL_INTERVAL = 5
+    KEEP_JOB = False
+    # One file download at a time. Does not limit Jobs; see _find_active_job.
+    MAX_PARALLEL_DUMP = 1
+
+    def __init__(self, *args, **kwargs):
+        if not kubernetes_avail:
+            raise ImportError('"kubernetes" package is required for "KubernetesJobDumper" class.')
+        super().__init__(*args, **kwargs)
+        self.job_name = None  # Job created or reused by this run
+        self._source_info = {}  # parsed SRC_URLS[0]
+
+    def init_state(self):
+        super().init_state()
+        # CoreV1Api: reads PodTemplates and pod logs. Kept in _state so __getstate__
+        # blanks it before pickling, like "client".
+        self._state["core_client"] = None
+
+    @property
+    def core_client(self):
+        if not self._state["core_client"]:
+            if self.need_prepare():
+                self.prepare_client()
+            self._state["core_client"] = k8s_client.CoreV1Api()
+        return self._state["core_client"]
+
+    @property
+    def source_config(self):
+        if not self._source_info:
+            url = self.__class__.SRC_URLS[0]
+            self._source_info = kubernetes_source_info_parser(url)
+        return self._source_info
+
+    @property
+    def SRC_ROOT_FOLDER(self):
+        if not self.SRC_NAME:
+            raise RuntimeError
+        return os.path.join(btconfig.DATA_ARCHIVE_ROOT, self.SRC_NAME)
+
+    def need_prepare(self):
+        if not self.client:
+            return True
+
+    def prepare_client(self):
+        self.logger.info("Preparing Kubernetes client...")
+        if not isinstance(self.__class__.SRC_URLS, list):
+            raise DumperException("SRC_URLS should be a list")
+        elif not self.__class__.SRC_URLS:
+            raise DumperException("SRC_URLS list is empty")
+        elif len(self.__class__.SRC_URLS) > 1:
+            raise DumperException("SRC_URLS list should contain only one source url string")
+        if not self._state["client"]:
+            connection_name = btconfig.KUBERNETES_HOST or self.source_config["connection_name"]
+            k8s_connection = btconfig.KUBERNETES_CONFIG.get(connection_name)
+            if not k8s_connection:
+                raise KubernetesJobException(f'No KUBERNETES_CONFIG entry for connection "{connection_name}"')
+            if k8s_connection.get("in_cluster"):
+                k8s_config.load_incluster_config()
+            else:
+                k8s_config.load_kube_config(
+                    config_file=k8s_connection.get("kubeconfig_path"),
+                    context=k8s_connection.get("context"),
+                )
+            self._state["client"] = k8s_client.BatchV1Api()
+        self.prepare_dumper_params()
+        return self._state["client"]
+
+    def release_client(self):
+        self._state["client"] = None
+        self._state["core_client"] = None
+
+    def prepare_dumper_params(self):
+        """
+        Load the dumper parameters from the parsed k8s:// URL.
+        Requires namespace, path, and one of podtemplate or image.
+        """
+        self.NAMESPACE = self.source_config.get("namespace")
+        if not self.NAMESPACE:
+            raise DumperException('Missing the required "namespace" parameter')
+        self.POD_TEMPLATE_NAME = self.source_config.get("podtemplate_name")
+        self.JOB_IMAGE = self.source_config.get("job_image")
+        if not self.POD_TEMPLATE_NAME and not self.JOB_IMAGE:
+            raise DumperException('Either "podtemplate" or "image" must be defined in the data plugin manifest')
+        self.JOB_COMMAND = self.source_config.get("command")
+        self.set_data_path()
+        if self.source_config.get("wait_timeout"):
+            self.WAIT_TIMEOUT = self.source_config["wait_timeout"]
+        if "keep_job" in self.source_config:
+            self.KEEP_JOB = self.source_config["keep_job"]
+
+    def set_data_path(self):
+        self.DATA_PATH = self.source_config.get("path")
+        if not self.DATA_PATH:
+            raise DumperException('Missing the required "path" parameter')
+
+    def get_remote_file(self):
+        if not self.DATA_PATH:
+            self.set_data_path()
+        return self.DATA_PATH
+
+    def _build_job_spec_from_image(self):
+        if not self.JOB_IMAGE:
+            raise DumperException('"image" must be defined when "podtemplate" is not')
+        container = k8s_client.V1Container(
+            name=self.src_name,
+            image=self.JOB_IMAGE,
+            command=self.JOB_COMMAND,
+        )
+        pod_spec = k8s_client.V1PodSpec(containers=[container], restart_policy="Never")
+        template = k8s_client.V1PodTemplateSpec(spec=pod_spec)
+        return k8s_client.V1JobSpec(template=template, backoff_limit=1)
+
+    def _find_active_job(self):
+        """
+        Return the name of this source's Job that is still running, or None.
+        Stops a second trigger (e.g. a double "Download" click) from starting a duplicate Job.
+        """
+        label_selector = f"{self.JOB_LABEL_KEY}={self.src_name}"
+        jobs = self.client.list_namespaced_job(self.NAMESPACE, label_selector=label_selector)
+        for job in jobs.items:
+            if not job.status.succeeded and not job.status.failed:
+                return job.metadata.name
+        return None
+
+    def trigger_job(self):
+        """Create a Job for this source, or reuse the one still running."""
+        active = self._find_active_job()
+        if active:
+            self.job_name = active
+            self.logger.info('Reusing already-active Job "%s"', self.job_name)
+            return
+        if self.POD_TEMPLATE_NAME:
+            pod_template = self.core_client.read_namespaced_pod_template(self.POD_TEMPLATE_NAME, self.NAMESPACE)
+            job_spec = k8s_client.V1JobSpec(template=pod_template.template, backoff_limit=1)
+        else:
+            job_spec = self._build_job_spec_from_image()
+        self.job_name = f"{self.POD_TEMPLATE_NAME or self.src_name}-hub-{int(time.time())}"
+        job = k8s_client.V1Job(
+            metadata=k8s_client.V1ObjectMeta(
+                name=self.job_name,
+                labels={self.JOB_LABEL_KEY: self.src_name},
+            ),
+            spec=job_spec,
+        )
+        self.client.create_namespaced_job(self.NAMESPACE, job)
+        self.logger.info('Created Job "%s" from %s', self.job_name, self.POD_TEMPLATE_NAME or "image spec")
+
+    def _tail_pod_logs(self, tail_lines=200):
+        try:
+            pods = self.core_client.list_namespaced_pod(self.NAMESPACE, label_selector=f"job-name={self.job_name}")
+            if not pods.items:
+                return "(no pod found for job)"
+            pod_name = pods.items[0].metadata.name
+            return self.core_client.read_namespaced_pod_log(pod_name, self.NAMESPACE, tail_lines=tail_lines)
+        except K8sApiException as e:
+            return f"(could not fetch pod logs: {e})"
+
+    def wait_for_job_completion(self):
+        """Block until the Job succeeds. Raise if it fails or WAIT_TIMEOUT passes."""
+        waited = 0
+        while waited < self.WAIT_TIMEOUT:
+            status = self.client.read_namespaced_job_status(self.job_name, self.NAMESPACE).status
+            if status.succeeded:
+                self.logger.info('Job "%s" succeeded', self.job_name)
+                return
+            if status.failed:
+                raise KubernetesJobException(f'Job "{self.job_name}" failed: {self._tail_pod_logs()}')
+            time.sleep(self.POLL_INTERVAL)
+            waited += self.POLL_INTERVAL
+        raise KubernetesJobException(f'Job "{self.job_name}" did not complete within {self.WAIT_TIMEOUT}s')
+
+    def remote_is_better(self, remotefile, localfile):
+        raise RuntimeError("KubernetesJobDumper does not use remote_is_better, create_todump_list compares releases")
+
+    def create_todump_list(self, force=False, **kwargs):
+        """
+        Run the Job, then compare the release.txt it wrote with the current one.
+        Queue the output file and release.txt for download unless the release is unchanged.
+        Raise if the new release is older than the dumped one.
+        """
+        if self.need_prepare():
+            self.prepare_client()
+        self.trigger_job()
+        self.wait_for_job_completion()
+
+        remote_file = self.get_remote_file()
+        release_filename = os.path.join(os.path.dirname(remote_file), "release.txt")
+        if not os.path.exists(release_filename):
+            self.to_dump = []
+            return
+        with open(release_filename, "r") as fh:
+            next_release = fh.readline(63)
+        if not force and self.current_data_folder:
+            existing_release_fn = os.path.join(self.current_data_folder, "release.txt")
+            try:
+                with open(existing_release_fn, "r") as fh:
+                    existing_release = fh.readline(63)
+            except FileNotFoundError:
+                existing_release = None
+            if existing_release:
+                ex_rl_dt = datetime.fromisoformat(existing_release.replace("Z", "+00:00"))
+                nxt_rl_dt = datetime.fromisoformat(next_release.replace("Z", "+00:00"))
+                if ex_rl_dt == nxt_rl_dt:
+                    self.to_dump = []
+                    return
+                elif ex_rl_dt > nxt_rl_dt:
+                    raise RuntimeError("Crawled release is older than dumped release")
+
+        self.release = next_release
+        file_name = os.path.basename(remote_file)
+        new_localfile = os.path.join(self.new_data_folder, file_name)
+        new_release_file = os.path.join(self.new_data_folder, "release.txt")
+        self.to_dump = [
+            {"remote": release_filename, "local": os.path.abspath(new_release_file)},
+            {"remote": remote_file, "local": os.path.abspath(new_localfile)},
+        ]
+
+    def download(self, remotefile, localfile):
+        """Hard link the file from the shared volume into the release folder. Copy if linking fails."""
+        target_dir = os.path.dirname(localfile)
+        os.makedirs(target_dir, exist_ok=True)
+        try:
+            os.link(remotefile, localfile)
+        except OSError:
+            shutil.copy(remotefile, localfile)
+
+    def post_dump(self, *args, **kwargs):
+        """Delete the Job unless KEEP_JOB is set."""
+        super().post_dump(*args, **kwargs)
+        if self.job_name and not self.KEEP_JOB:
+            try:
+                self.client.delete_namespaced_job(self.job_name, self.NAMESPACE, propagation_policy="Background")
+                self.logger.info('Deleted Job "%s"', self.job_name)
+            except K8sApiException as e:
+                if e.status != 404:
+                    raise

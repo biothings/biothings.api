@@ -163,6 +163,16 @@ DOCKER_CONFIG = {
 # Optional, can used to override the docker connection name from the src_url
 DOCKER_HOST = None
 
+# Kubernetes connections for KubernetesJobDumper.
+# "in_cluster": True uses the Hub pod's ServiceAccount.
+# Otherwise set "kubeconfig_path" and "context".
+KUBERNETES_CONFIG = {
+    "in-cluster": {"in_cluster": True},
+}
+
+# Optional. Overrides the connection name in every k8s:// url.
+KUBERNETES_HOST = None
+
 # * 3. Folders *#
 # Path to a folder to store all downloaded files, logs, caches, etc...
 DATA_ARCHIVE_ROOT = ConfigurationError(
