@@ -354,10 +354,11 @@ class ESResultFormatter(ResultFormatter):
         When flattened, the field could be converted to an empty list.
         """
         if isinstance(obj, (dict, Doc)):
+            prefix = f"{path}." if path else ""
             for field in fields or []:
-                if field.startswith(path):
-                    key = field[len(path) :].lstrip(".")  # noqa: E203
-                    if "." not in key and key not in obj:
+                if field.startswith(prefix):
+                    key = field[len(prefix) :]  # noqa: E203
+                    if key and "." not in key and key not in obj:
                         obj[key] = None
 
     @staticmethod
@@ -367,10 +368,11 @@ class ESResultFormatter(ResultFormatter):
         None converts to an emtpy list [] instead of [None].
         """
         if isinstance(obj, (dict, Doc)):
+            prefix = f"{path}." if path else ""
             for field in fields:
-                if field.startswith(path):
-                    key = field[len(path) :].lstrip(".")  # noqa: E203
-                    if key in obj and not isinstance(obj[key], list):
+                if field.startswith(prefix):
+                    key = field[len(prefix) :]  # noqa: E203
+                    if key and key in obj and not isinstance(obj[key], list):
                         obj[key] = [obj[key]] if obj[key] is not None else []
 
     @staticmethod

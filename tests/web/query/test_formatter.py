@@ -134,3 +134,40 @@ def test_formatter_dict_include_keeps_only_requested_keys():
     data.include({"_id", "symbol"})
 
     assert data == {"_id": "1017", "symbol": "CDK2"}
+
+
+def test_allow_null_respects_dot_boundaries():
+    formatter = ESResultFormatter()
+
+    res = formatter.transform(
+        {"hits": {"total": {"value": 1}, "hits": [{"_id": "1", "_source": {"gene": {"symbol": "CDK2"}}}]}},
+        allow_null=["gene", "geneid", "gene.name"],
+    )
+    hit = res["hits"][0]
+    assert hit["gene"] == {"symbol": "CDK2", "name": None}
+    assert hit["geneid"] is None
+
+
+def test_always_list_respects_dot_boundaries():
+    formatter = ESResultFormatter()
+
+    res = formatter.transform(
+        {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_id": "1",
+                        "_source": {
+                            "gene": {"id": 42, "alias": "A"},
+                            "geneid": 1017,
+                        },
+                    }
+                ],
+            }
+        },
+        always_list=["geneid", "gene.alias"],
+    )
+    hit = res["hits"][0]
+    assert hit["gene"] == {"id": 42, "alias": ["A"]}
+    assert hit["geneid"] == [1017]
